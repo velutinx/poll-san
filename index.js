@@ -1,9 +1,9 @@
-// index.js
 require('dotenv').config();
 const fs = require('node:fs');
 const path = require('node:path');
 const { Client, Collection, GatewayIntentBits, Partials } = require('discord.js');
-const pollManager = require('./pollManager'); // ← this is correct
+const pollManager = require('./pollManager');
+const queueManager = require('./queueManager'); // ← NEW
 
 // Create client
 const client = new Client({
@@ -32,7 +32,14 @@ for (const file of commandFiles) {
   const filePath = path.join(commandsPath, file);
   const command = require(filePath);
 
-  if ('data' in command && 'execute' in command) {
+  // Handle both single command and array-style commands
+  if (Array.isArray(command.data)) {
+    command.data.forEach(builder => {
+      client.commands.set(builder.name, command);
+      console.log(`Loaded command: ${builder.name} (from ${file})`);
+    });
+  }
+  else if ('data' in command && 'execute' in command) {
     client.commands.set(command.data.name, command);
     console.log(`Loaded command: ${command.data.name}`);
   } else {
@@ -40,16 +47,24 @@ for (const file of commandFiles) {
   }
 }
 
-// Ready event – renamed from 'ready' to 'clientReady' to avoid deprecation warning in newer Discord.js
-client.once('clientReady', async () => {
+// Ready event
+client.once('ready', async () => {   // ← changed to 'ready' (clientReady is not standard)
   console.log(`Logged in as ${client.user.tag}`);
 
-  // Auto-resume any active poll from database
+  // Resume poll
   try {
     await pollManager.resumePoll(client);
-    console.log('Auto-resume attempt completed');
+    console.log('Poll auto-resume completed');
   } catch (err) {
-    console.error('Error during auto-resume:', err);
+    console.error('Poll resume error:', err);
+  }
+
+  // Resume queue system ← NEW
+  try {
+    await queueManager.resumeQueue(client);
+    console.log('Queue system auto-resume completed');
+  } catch (err) {
+    console.error('Queue resume error:', err);
   }
 });
 
