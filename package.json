@@ -1,13 +1,21 @@
 {
   "name": "discord-bot",
   "version": "1.0.0",
-  "description": "",
+  "description": "Discord poll & queue bot",
   "main": "index.js",
   "scripts": {
+    "start": "node index.js",
+    "register-commands": "node deploy.js",
+    "postdeploy": "npm run register-commands",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "keywords": [],
-  "author": "",
+  "keywords": [
+    "discord",
+    "bot",
+    "poll",
+    "queue"
+  ],
+  "author": "Velutinx",
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
