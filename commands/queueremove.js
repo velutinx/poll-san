@@ -1,7 +1,7 @@
 const { SlashCommandBuilder, MessageFlags } = require('discord.js');
 const queueManager = require('../queueManager');
 
-const OWNER_ID = '1467153810970644638';     // Change only if wrong
+const OWNER_ID = '1380051214766444617';     // Change only if wrong
 const QUEUE_CHANNEL_ID = '1473730427318435860';
 
 module.exports = {
