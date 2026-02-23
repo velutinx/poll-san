@@ -42,43 +42,60 @@ const pollManager = {
     return `${days}d ${hours}h ${minutes}m ${seconds}s`;
   },
 
-  calculateWeight: async function(guild, userId) {
-    const supabaseUrl = process.env.SUPABASE_URL;
-    const supabaseKey = process.env.SUPABASE_KEY;
+calculateWeight: async function(guild, userId) {
+  const supabaseUrl = process.env.SUPABASE_URL;
+  const supabaseKey = process.env.SUPABASE_KEY;
+
+  try {
+    // First try to get member (may throw if not in guild anymore)
+    let member;
     try {
-      const member = await guild.members.fetch(userId);
-      let weight = 1;
+      member = await guild.members.fetch(userId);
+    } catch (fetchErr) {
+      if (fetchErr.code === 10007) {  // Unknown Member
+        console.log(`[Weight] User ${userId} not in guild anymore → using default weight 1`);
+        // Optional: you could return 0 here to completely ignore ex-members' votes
+        return 1;
+      }
+      throw fetchErr; // re-throw other errors
+    }
 
-      for (const [roleId, bonus] of Object.entries(TIER_WEIGHTS)) {
-        if (member.roles.cache.has(roleId)) {
-          weight = Math.max(weight, bonus);
+    let weight = 1;
+
+    for (const [roleId, bonus] of Object.entries(TIER_WEIGHTS)) {
+      if (member.roles.cache.has(roleId)) {
+        weight = Math.max(weight, bonus);
+      }
+    }
+
+    if (member.roles.cache.has(BOOSTER_ROLE_ID)) {
+      weight += 0.5;
+    }
+
+    const xpRes = await fetch(
+      `${supabaseUrl}/rest/v1/user_xp?user_id=eq.${userId}&guild_id=eq.${guild.id}`,
+      {
+        headers: {
+          apikey: supabaseKey,
+          Authorization: `Bearer ${supabaseKey}`
         }
       }
+    );
 
-      if (member.roles.cache.has(BOOSTER_ROLE_ID)) {
-        weight += 0.5;
-      }
-
-      const xpRes = await fetch(
-        `${supabaseUrl}/rest/v1/user_xp?user_id=eq.${userId}&guild_id=eq.${guild.id}`,
-        {
-          headers: {
-            apikey: supabaseKey,
-            Authorization: `Bearer ${supabaseKey}`
-          }
-        }
-      );
-
+    if (!xpRes.ok) {
+      console.warn(`[XP] Failed to fetch XP for ${userId}: ${xpRes.status}`);
+    } else {
       const xpRows = await xpRes.json();
       const lvl = xpRows[0]?.level ?? 0;
       weight += lvl * LEVEL_MULTIPLIER_PER_LEVEL;
-
-      return weight;
-    } catch (err) {
-      console.error('[XP] Weight calculation failed:', err);
-      return 1;
     }
-  },
+
+    return weight;
+  } catch (err) {
+    console.error(`[XP] Weight calculation failed for user ${userId}:`, err);
+    return 1;  // fallback - prevents poll from breaking
+  }
+},
 
   // NEW: Syncs live Discord reactions → Supabase on every resume/restart
   syncCurrentVotes: async function(message) {
