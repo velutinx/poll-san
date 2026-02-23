@@ -3,7 +3,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { Client, Collection, GatewayIntentBits, Partials } = require('discord.js');
 const pollManager = require('./pollManager');
-const queueManager = require('./queueManager'); // ← NEW
+const queueManager = require('./queueManager');
 
 // Create client
 const client = new Client({
@@ -47,8 +47,8 @@ for (const file of commandFiles) {
   }
 }
 
-// Ready event
-client.once('ready', async () => {   // ← changed to 'ready' (clientReady is not standard)
+// Ready event – fixed to clientReady (removes deprecation warning)
+client.once('clientReady', async () => {
   console.log(`Logged in as ${client.user.tag}`);
 
   // Resume poll
@@ -59,7 +59,7 @@ client.once('ready', async () => {   // ← changed to 'ready' (clientReady is n
     console.error('Poll resume error:', err);
   }
 
-  // Resume queue system ← NEW
+  // Resume queue system
   try {
     await queueManager.resumeQueue(client);
     console.log('Queue system auto-resume completed');
