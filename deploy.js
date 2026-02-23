@@ -35,10 +35,20 @@ for (const file of commandFiles) {
   try {
     const command = require(path.join(commandsPath, file));
 
-    if ('data' in command && typeof command.data.toJSON === 'function') {
+    // Handle both single command and array of commands (like our new queue.js)
+    if (Array.isArray(command.data)) {
+      // It's an array of SlashCommandBuilder objects
+      command.data.forEach(builder => {
+        commands.push(builder.toJSON());
+        console.log(`✅ Loaded sub-command: ${builder.name}`);
+      });
+    }
+    else if ('data' in command && typeof command.data.toJSON === 'function') {
+      // Classic single command
       commands.push(command.data.toJSON());
       console.log(`✅ Loaded: ${command.data.name || file}`);
-    } else {
+    }
+    else {
       console.warn(`⚠️ Skipped ${file} (missing data or toJSON)`);
     }
   } catch (err) {
@@ -61,7 +71,7 @@ const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
     );
 
     console.log(`✅ Successfully deployed ${data.length} guild commands.`);
-    console.log('🔄 Refresh Discord (Ctrl+R)');
+    console.log('🔄 Refresh Discord (Ctrl+R) to see new commands');
   } catch (error) {
     console.error('❌ Deploy error:', error);
   }
