@@ -4,10 +4,9 @@
   "description": "Discord poll & queue bot",
   "main": "index.js",
   "scripts": {
-    "start": "node index.js",
+    "start": "node deploy.js && node index.js",
     "register-commands": "node deploy.js",
-    "postdeploy": "npm run register-commands",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"No tests configured\""
   },
   "keywords": [
     "discord",
