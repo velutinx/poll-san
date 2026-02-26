@@ -1,15 +1,14 @@
-// commands/selectwinner.js
 require('dotenv').config();
 const { SlashCommandBuilder } = require('discord.js');
 
 const SUPABASE_URL = process.env.SUPABASE_URL?.replace(/\/$/, '') || '';
 const SUPABASE_KEY = process.env.SUPABASE_KEY || '';
 const POLL_ID = 'character_poll_new';
-const OWNER_ID = '1380051214766444617';
+const OWNER_ID = '1380051214766444617';  // ← your ID
 
 async function safeFetch(url, options = {}) {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 10000); // 10 sec timeout
+  const timeout = setTimeout(() => controller.abort(), 10000);
 
   try {
     const res = await fetch(url, {
@@ -39,21 +38,17 @@ module.exports = {
 
   async execute(interaction) {
 
-    // 🚀 Immediate defer (prevents "not responding")
     await interaction.deferReply({ ephemeral: true });
 
-    // Owner check
     if (interaction.user.id !== OWNER_ID) {
-      return interaction.editReply({
-        content: '❌ You are not allowed to select winners.'
-      });
+      return interaction.editReply({ content: '❌ You are not allowed to select winners.' });
     }
 
     try {
       const winnerNumber = interaction.options.getInteger('number');
 
       // ─────────────────────────────────────────────
-      // 1️⃣ Fetch stored poll results (FAST)
+      // 1. Fetch current poll results
       // ─────────────────────────────────────────────
       const resultRes = await safeFetch(
         `${SUPABASE_URL}/rest/v1/poll_result?poll_id=eq.${POLL_ID}&select=option_id,character_name,score&order=option_id.asc`,
@@ -66,25 +61,43 @@ module.exports = {
       );
 
       if (!resultRes.ok) {
-        const errText = await resultRes.text();
-        console.error('Failed to fetch poll_result:', errText);
-        return interaction.editReply('❌ Failed to fetch poll results.');
+        console.error('poll_result fetch failed:', await resultRes.text());
+        return interaction.editReply({ content: '❌ Failed to fetch poll results.' });
       }
 
       const rows = await resultRes.json();
-
       if (!rows.length) {
-        return interaction.editReply('⚠️ No poll results found.');
+        return interaction.editReply({ content: '⚠️ No poll results found.' });
       }
 
       const characters = rows.map(r => r.character_name);
       const counts = rows.map(r => parseFloat(r.score ?? 0));
 
-      const winnerName = characters[winnerNumber - 1] || `Option ${winnerNumber}`;
-      const selectedAt = new Date().toISOString();
+      // ─────────────────────────────────────────────
+      // 2. Fetch ALL previous winners from poll_winners
+      // ─────────────────────────────────────────────
+      const winnersRes = await safeFetch(
+        `${SUPABASE_URL}/rest/v1/poll_winners?poll_id=eq.${POLL_ID}&select=option_id`,
+        {
+          headers: {
+            apikey: SUPABASE_KEY,
+            Authorization: `Bearer ${SUPABASE_KEY}`
+          }
+        }
+      );
+
+      if (!winnersRes.ok) {
+        console.error('poll_winners fetch failed:', await winnersRes.text());
+        // Continue anyway - treat as no previous winners
+        var winnerIds = new Set([winnerNumber]);
+      } else {
+        const winnerRows = await winnersRes.json();
+        var winnerIds = new Set(winnerRows.map(r => r.option_id));
+        winnerIds.add(winnerNumber);  // include the one we just selected
+      }
 
       // ─────────────────────────────────────────────
-      // 2️⃣ Build formatted result text
+      // 3. Build announcement text with ALL winners spoiled
       // ─────────────────────────────────────────────
       const now = new Date();
       const dateStr = now.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
@@ -102,20 +115,20 @@ module.exports = {
         ][i];
 
         const line = `${emoji} = ${counts[i].toFixed(1)} -- ${characters[i]}`;
+        const isWinner = winnerIds.has(i + 1);
 
-        resultText += (i + 1 === winnerNumber)
-          ? `||${line}||\n`
-          : `${line}\n`;
+        resultText += isWinner ? `||${line}||\n` : `${line}\n`;
       }
 
-      const announcement =
-        `**${winnerName} has been marked as a poll winner! 🎉**\n\n${resultText}`;
+      const winnerName = characters[winnerNumber - 1] || `Option ${winnerNumber}`;
+      const announcement = `**${winnerName} has been marked as a poll winner! 🎉**\n\n${resultText}`;
 
       // ─────────────────────────────────────────────
-      // 3️⃣ Update database (lightweight)
+      // 4. Save the new winner to database
       // ─────────────────────────────────────────────
+      const selectedAt = now.toISOString();
 
-      // Update poll_result
+      // Update poll_result (if not already set)
       await safeFetch(
         `${SUPABASE_URL}/rest/v1/poll_result?poll_id=eq.${POLL_ID}&option_id=eq.${winnerNumber}`,
         {
@@ -130,7 +143,7 @@ module.exports = {
         }
       );
 
-      // Insert into poll_winners
+      // Insert into poll_winners (merge-duplicates prevents duplicates)
       await safeFetch(
         `${SUPABASE_URL}/rest/v1/poll_winners`,
         {
@@ -150,7 +163,7 @@ module.exports = {
       );
 
       // ─────────────────────────────────────────────
-      // 4️⃣ Try to post to thread (optional)
+      // 5. Optional: post to thread
       // ─────────────────────────────────────────────
       try {
         const channel = await interaction.client.channels.fetch(process.env.POLL_CHANNEL_ID);
@@ -170,14 +183,14 @@ module.exports = {
       }
 
       // ─────────────────────────────────────────────
-      // 5️⃣ Final success response
+      // 6. Success reply
       // ─────────────────────────────────────────────
       await interaction.editReply({
-        content: `✅ Winner #${winnerNumber} (${winnerName}) marked successfully!`
+        content: `✅ Winner #${winnerNumber} (${winnerName}) marked! All winners are now spoiled in the announcement.`
       });
 
     } catch (err) {
-      console.error('SELECTWINNER CRASH:', err);
+      console.error('SELECTWINNER ERROR:', err);
       await interaction.editReply({
         content: '❌ Failed to select winner. Check logs.'
       }).catch(() => {});
