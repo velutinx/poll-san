@@ -1,5 +1,5 @@
 require('dotenv').config();
-const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
+const fetch = (...args) => import('node-fetch').then(({ default: fetch }) => fetch(...args));
 
 const LEVEL_MULTIPLIER_PER_LEVEL = 0.02;
 
@@ -19,18 +19,8 @@ const pollManager = {
   winners: new Set(),
 
   NUMBER_EMOJIS: [
-    '1️⃣',
-    '2️⃣',
-    '3️⃣',
-    '4️⃣',
-    '5️⃣',
-    '6️⃣',
-    '7️⃣',
-    '8️⃣',
-    '9️⃣',
-    '🔟',
-    '<:eleven:1475214132268761129>',
-    '<:twelve:1475214143589056713>'
+    '1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣', '7️⃣', '8️⃣', '9️⃣', '🔟',
+    '<:eleven:1475214132268761129>', '<:twelve:1475214143589056713>'
   ],
 
   formatTime: function(ms) {
@@ -42,62 +32,57 @@ const pollManager = {
     return `${days}d ${hours}h ${minutes}m ${seconds}s`;
   },
 
-calculateWeight: async function(guild, userId) {
-  const supabaseUrl = process.env.SUPABASE_URL;
-  const supabaseKey = process.env.SUPABASE_KEY;
+  calculateWeight: async function(guild, userId) {
+    const supabaseUrl = process.env.SUPABASE_URL;
+    const supabaseKey = process.env.SUPABASE_KEY;
 
-  try {
-    // First try to get member (may throw if not in guild anymore)
-    let member;
     try {
-      member = await guild.members.fetch(userId);
-    } catch (fetchErr) {
-      if (fetchErr.code === 10007) {  // Unknown Member
-        console.log(`[Weight] User ${userId} not in guild anymore → using default weight 1`);
-        // Optional: you could return 0 here to completely ignore ex-members' votes
-        return 1;
+      let member;
+      try {
+        member = await guild.members.fetch(userId);
+      } catch (fetchErr) {
+        if (fetchErr.code === 10007) { // Unknown Member
+          console.log(`[Weight] User ${userId} not in guild anymore → weight 1`);
+          return 1;
+        }
+        throw fetchErr;
       }
-      throw fetchErr; // re-throw other errors
-    }
 
-    let weight = 1;
+      let weight = 1;
 
-    for (const [roleId, bonus] of Object.entries(TIER_WEIGHTS)) {
-      if (member.roles.cache.has(roleId)) {
-        weight = Math.max(weight, bonus);
-      }
-    }
-
-    if (member.roles.cache.has(BOOSTER_ROLE_ID)) {
-      weight += 0.5;
-    }
-
-    const xpRes = await fetch(
-      `${supabaseUrl}/rest/v1/user_xp?user_id=eq.${userId}&guild_id=eq.${guild.id}`,
-      {
-        headers: {
-          apikey: supabaseKey,
-          Authorization: `Bearer ${supabaseKey}`
+      for (const [roleId, bonus] of Object.entries(TIER_WEIGHTS)) {
+        if (member.roles.cache.has(roleId)) {
+          weight = Math.max(weight, bonus);
         }
       }
-    );
 
-    if (!xpRes.ok) {
-      console.warn(`[XP] Failed to fetch XP for ${userId}: ${xpRes.status}`);
-    } else {
-      const xpRows = await xpRes.json();
-      const lvl = xpRows[0]?.level ?? 0;
-      weight += lvl * LEVEL_MULTIPLIER_PER_LEVEL;
+      if (member.roles.cache.has(BOOSTER_ROLE_ID)) {
+        weight += 0.5;
+      }
+
+      const xpRes = await fetch(
+        `${supabaseUrl}/rest/v1/user_xp?user_id=eq.${userId}&guild_id=eq.${guild.id}`,
+        {
+          headers: {
+            apikey: supabaseKey,
+            Authorization: `Bearer ${supabaseKey}`
+          }
+        }
+      );
+
+      if (xpRes.ok) {
+        const xpRows = await xpRes.json();
+        const lvl = xpRows[0]?.level ?? 0;
+        weight += lvl * LEVEL_MULTIPLIER_PER_LEVEL;
+      }
+
+      return weight;
+    } catch (err) {
+      console.error(`[Weight] Calculation failed for ${userId}:`, err);
+      return 1;
     }
+  },
 
-    return weight;
-  } catch (err) {
-    console.error(`[XP] Weight calculation failed for user ${userId}:`, err);
-    return 1;  // fallback - prevents poll from breaking
-  }
-},
-
-  // NEW: Syncs live Discord reactions → Supabase on every resume/restart
   syncCurrentVotes: async function(message) {
     if (!this.activePoll || !message?.guild) {
       console.warn('[Poll] Cannot sync votes: no active poll or message');
@@ -106,7 +91,7 @@ calculateWeight: async function(guild, userId) {
 
     console.log('🔄 [Poll Resume] Syncing live Discord reactions to discord_votes table...');
 
-    const currentUserOption = new Map(); // userId => optionIndex (last reaction wins)
+    const currentUserOption = new Map(); // userId → last optionIndex
 
     for (let i = 0; i < this.NUMBER_EMOJIS.length; i++) {
       const emojiStr = this.NUMBER_EMOJIS[i];
@@ -139,14 +124,15 @@ calculateWeight: async function(guild, userId) {
       }
     }
 
-    console.log(`✅ [Poll Resume] Synced ${updatedCount} Discord votes (switches while offline now updated)`);
+    console.log(`✅ [Poll Resume] Synced ${updatedCount} Discord votes`);
 
-    // Refresh scoreboard immediately
+    // Force refresh message after sync (THIS FIXES THE STALE DISPLAY ISSUE)
     try {
       const updatedContent = await this.buildPollMessage();
       await message.edit(updatedContent);
+      console.log('[Poll Resume] Message refreshed after vote sync');
     } catch (err) {
-      console.error('[Poll] Failed to refresh message after sync:', err);
+      console.error('[Poll Resume] Failed to refresh message after sync:', err);
     }
   },
 
@@ -167,17 +153,15 @@ calculateWeight: async function(guild, userId) {
         }
       );
 
-      if (!res.ok) throw new Error(`Failed to fetch votes: ${res.status}`);
+      if (!res.ok) throw new Error(`Website votes fetch failed: ${res.status}`);
 
       const votes = await res.json();
-
       for (const vote of votes) {
         const optionIndex = parseInt(vote.option_id) - 1;
         if (optionIndex >= 0 && optionIndex < 12) {
           websiteCounts[optionIndex] += 1.0;
         }
       }
-
       return websiteCounts;
     } catch (err) {
       console.error('[Supabase] Website votes fetch failed:', err);
@@ -214,7 +198,7 @@ calculateWeight: async function(guild, userId) {
         });
 
         if (!res.ok) {
-          console.error(`Supabase upsert failed for option ${i+1}: ${res.status} - ${await res.text()}`);
+          console.error(`Upsert failed for option ${i+1}: ${res.status}`);
         }
       } catch (err) {
         console.error('[Supabase] Result update failed:', err);
@@ -224,12 +208,15 @@ calculateWeight: async function(guild, userId) {
 
   calculateCounts: async function(message) {
     const discordCounts = new Array(12).fill(0.0);
+
     for (let i = 0; i < 12; i++) {
       const emojiStr = this.NUMBER_EMOJIS[i];
       const reaction = message.reactions.cache.find(r => r.emoji.toString() === emojiStr);
       if (!reaction) continue;
+
       const users = await reaction.users.fetch();
       users.delete(message.client.user.id);
+
       for (const userId of users.keys()) {
         const weight = await this.calculateWeight(message.guild, userId);
         discordCounts[i] += weight;
@@ -237,7 +224,6 @@ calculateWeight: async function(guild, userId) {
     }
 
     const websiteCounts = await this.fetchWebsiteVotes();
-
     return discordCounts.map((dc, i) => dc + websiteCounts[i]);
   },
 
@@ -256,7 +242,7 @@ calculateWeight: async function(guild, userId) {
         guild_id: guild.id,
         user_id: userId,
         option_id: optionIndex + 1,
-        weight: weight,
+        weight,
         discord_username: user.username,
         updated_at: now
       };
@@ -272,10 +258,10 @@ calculateWeight: async function(guild, userId) {
         body: JSON.stringify(data)
       });
 
-      if (!res.ok) {
-        console.error(`Failed to save Discord vote: ${res.status} - ${await res.text()}`);
-      } else {
+      if (res.ok) {
         console.log(`Saved Discord vote for ${user.username} → option ${optionIndex + 1}`);
+      } else {
+        console.error(`Failed to save vote: ${res.status} - ${await res.text()}`);
       }
     } catch (err) {
       console.error('Error saving Discord vote:', err);
@@ -380,19 +366,10 @@ calculateWeight: async function(guild, userId) {
 
       const res = await fetch(
         `${supabaseUrl}/rest/v1/active_polls?active=eq.true&select=*`,
-        {
-          headers: {
-            apikey: supabaseKey,
-            Authorization: `Bearer ${supabaseKey}`
-          }
-        }
+        { headers: { apikey: supabaseKey, Authorization: `Bearer ${supabaseKey}` } }
       );
 
-      if (!res.ok) {
-        console.error(`Failed to fetch active poll: ${res.status} - ${await res.text()}`);
-        return;
-      }
-
+      if (!res.ok) throw new Error(`Active poll fetch failed: ${res.status}`);
       const rows = await res.json();
       if (rows.length === 0) {
         console.log('No active poll found in database');
@@ -400,7 +377,6 @@ calculateWeight: async function(guild, userId) {
       }
 
       const activeRow = rows[0];
-
       const channel = await client.channels.fetch(activeRow.channel_id).catch(() => null);
       if (!channel) {
         console.error('Poll channel not found');
@@ -413,58 +389,45 @@ calculateWeight: async function(guild, userId) {
         return;
       }
 
-      const pollData = {
-        characters: [],
-        endTime: new Date(activeRow.ends_at).getTime(),
-        message: message,
-        collector: null
-      };
-
       const charsRes = await fetch(
         `${supabaseUrl}/rest/v1/poll_result?poll_id=eq.${activeRow.poll_id}&select=option_id,character_name&order=option_id.asc`,
-        {
-          headers: {
-            apikey: supabaseKey,
-            Authorization: `Bearer ${supabaseKey}`
-          }
-        }
+        { headers: { apikey: supabaseKey, Authorization: `Bearer ${supabaseKey}` } }
       );
 
+      let characters = [];
       if (charsRes.ok) {
         const charRows = await charsRes.json();
-        pollData.characters = charRows.map(r => r.character_name);
-      } else {
-        console.error('Failed to fetch characters from poll_result');
-        return;
+        characters = charRows.map(r => r.character_name);
       }
 
-      if (pollData.characters.length !== 12) {
+      if (characters.length !== 12) {
         console.error('Incomplete character list from poll_result');
         return;
       }
 
-      this.activePoll = pollData;
+      this.activePoll = {
+        characters,
+        endTime: new Date(activeRow.ends_at).getTime(),
+        message,
+        collector: null
+      };
 
-      // Re-add reactions if missing
+      // Re-add missing reactions
       for (const emoji of this.NUMBER_EMOJIS) {
-        try {
-          if (!message.reactions.cache.has(emoji)) {
-            await message.react(emoji);
-          }
-        } catch (err) {
-          console.error('Failed to re-react:', err);
+        if (!message.reactions.cache.has(emoji)) {
+          await message.react(emoji).catch(err => console.error('Failed to re-react:', err));
         }
       }
 
-      // NEW: Sync live Discord votes (handles switches while bot was offline)
+      // Sync existing votes & refresh message
       await this.syncCurrentVotes(message);
 
-      // Resume collector
+      // Resume collector for NEW reactions
       const filter = (reaction, user) => !user.bot && this.NUMBER_EMOJIS.includes(reaction.emoji.toString());
       const collector = message.createReactionCollector({
         filter,
         dispose: true,
-        time: pollData.endTime - Date.now()
+        time: this.activePoll.endTime - Date.now()
       });
 
       this.activePoll.collector = collector;
@@ -476,6 +439,7 @@ calculateWeight: async function(guild, userId) {
 
           await this.saveDiscordVote(user, optionIndex);
 
+          // Enforce single vote
           const otherReactions = message.reactions.cache.filter(r =>
             this.NUMBER_EMOJIS.includes(r.emoji.toString()) &&
             r.emoji.toString() !== reaction.emoji.toString() &&
@@ -483,54 +447,46 @@ calculateWeight: async function(guild, userId) {
           );
 
           for (const r of otherReactions.values()) {
-            await r.users.remove(user.id);
+            await r.users.remove(user.id).catch(() => {});
           }
 
           const updatedContent = await this.buildPollMessage();
           await message.edit(updatedContent);
         } catch (err) {
-          console.error('Failed to process resumed vote:', err);
+          console.error('Failed to process vote:', err);
         }
       });
 
-      collector.on('dispose', async (reaction, user) => {
+      collector.on('dispose', async () => {
         try {
           const updatedContent = await this.buildPollMessage();
           await message.edit(updatedContent);
         } catch (err) {
-          console.error('Failed to update on dispose (resumed):', err);
+          console.error('Failed to update on dispose:', err);
         }
       });
 
+      // Timer to update message periodically
       this.updateInterval = setInterval(async () => {
-        try {
-          if (!this.activePoll) return;
+        if (!this.activePoll) return;
 
-          const timeLeft = this.activePoll.endTime - Date.now();
+        const timeLeft = this.activePoll.endTime - Date.now();
+        if (timeLeft <= 0) {
+          clearInterval(this.updateInterval);
+          this.updateInterval = null;
+          if (this.activePoll.collector) this.activePoll.collector.stop();
 
-          if (timeLeft <= 0) {
-            clearInterval(this.updateInterval);
-            this.updateInterval = null;
-            if (this.activePoll?.collector) this.activePoll.collector.stop();
+          const finalContent = await this.buildPollMessage();
+          const finalText = finalContent.replace(/⏳ Time remaining: .*\n/, '🛑 Poll has ended.\n');
+          await this.activePoll.message.edit(finalText).catch(console.error);
 
-            if (this.activePoll?.message) {
-              const finalContent = await this.buildPollMessage();
-              const finalText = finalContent.replace(/⏳ Time remaining: .*\n/, '🛑 Poll has ended.\n');
-              await this.activePoll.message.edit(finalText);
-            }
-
-            this.activePoll = null;
-            this.winners = new Set();
-            return;
-          }
-
-          const updatedContent = await this.buildPollMessage();
-          if (this.activePoll?.message) {
-            await this.activePoll.message.edit(updatedContent);
-          }
-        } catch (err) {
-          console.error('Resumed poll update error:', err);
+          this.activePoll = null;
+          this.winners = new Set();
+          return;
         }
+
+        const updatedContent = await this.buildPollMessage();
+        await this.activePoll.message.edit(updatedContent).catch(console.error);
       }, 10000);
 
       console.log('Poll resumed successfully from database');
@@ -685,8 +641,9 @@ calculateWeight: async function(guild, userId) {
     }
   },
 
-  buildPollMessage: async function() {
+    buildPollMessage: async function() {
     if (!this.activePoll) return 'No active poll.';
+
     const { characters, endTime, message } = this.activePoll;
     const timeRemaining = this.formatTime(endTime - Date.now());
     const now = new Date().toLocaleString();
@@ -694,7 +651,7 @@ calculateWeight: async function(guild, userId) {
     let resultText = `⏳ Time remaining: ${timeRemaining}\n`;
     resultText += `📊 Current Results (${now})\n\n`;
 
-    const counts = message ? await this.calculateCounts(message) : new Array(12).fill(0.0);
+    const counts = message ? await this.calculateCounts(message) : new Array(12).fill(0);
 
     await this.updateSupabaseResults(counts);
 
@@ -707,6 +664,7 @@ calculateWeight: async function(guild, userId) {
 
     return resultText;
   },
+
 
   createCharacterThread: async function() {
     if (!this.activePoll || !this.activePoll.message) {
