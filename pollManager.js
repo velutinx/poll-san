@@ -18,10 +18,11 @@ const pollManager = {
   updateInterval: null,
   winners: new Set(),
 
-  NUMBER_EMOJIS: [
-    '1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣', '7️⃣', '8️⃣', '9️⃣', '🔟',
-    '<:eleven:1475214132268761129>', '<:twelve:1475214143589056713>'
-  ],
+NUMBER_EMOJIS: [
+  '1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣', '7️⃣', '8️⃣', '9️⃣', '🔟',
+  '🟦',  // Large Blue Square for 11
+  '🟥'   // Large Red Square for 12
+],
 
   formatTime: function(ms) {
     const totalSeconds = Math.floor(ms / 1000);
