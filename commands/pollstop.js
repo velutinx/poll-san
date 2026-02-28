@@ -12,66 +12,65 @@ module.exports = {
     .setDMPermission(false),
 
   async execute(interaction) {
+    const OWNER_ID = '1380051214766444617';
+
+    if (interaction.user.id !== OWNER_ID) {
+      return interaction.reply({ content: '❌ You are not allowed to stop polls.', ephemeral: true });
+    }
+
+    await interaction.deferReply({ ephemeral: true });
+
     try {
-      const OWNER_ID = '1380051214766444617';
-
-      if (interaction.user.id !== OWNER_ID) {
-        return interaction.reply({
-          content: '❌ You are not allowed to stop polls.',
-          ephemeral: true
-        });
-      }
-
-      await interaction.deferReply({ ephemeral: true });
-
       const stopped = await pollManager.stopPoll();
 
       if (!stopped) {
-        return interaction.editReply({
-          content: '⚠️ No active poll to stop.'
-        });
+        return interaction.editReply({ content: '⚠️ No active poll to stop.' });
       }
 
-      // Clear all related tables EXCEPT votes
-      const tableFilters = [
-        { table: 'poll_result',    filter: 'poll_id=neq.invalid' },
-        { table: 'active_polls',   filter: 'poll_id=neq.invalid' },
-        { table: 'discord_votes',  filter: 'poll_id=neq.invalid' },
-        { table: 'poll_options',   filter: 'poll_id=neq.invalid' },
-        { table: 'poll_winners',   filter: 'poll_id=neq.invalid' }
-        // votes intentionally excluded — clear manually in Supabase
+      // Tables to clear (excluding votes – as intended)
+      const tables = [
+        'poll_result',
+        'active_polls',
+        'discord_votes',     // ← you have this here but said votes are manual → remove if unwanted
+        'poll_options',
+        'poll_winners'
       ];
 
-      for (const { table, filter } of tableFilters) {
+      for (const table of tables) {
         try {
-          const url = `${SUPABASE_URL}/rest/v1/${table}?${filter}`;
+          // ────────────────────────────────────────────────
+          // Correct way to delete all rows in a table
+          const url = `${SUPABASE_URL}/rest/v1/${table}?poll_id=not.is.null`;
+
           const res = await fetch(url, {
             method: 'DELETE',
             headers: {
               apikey: SUPABASE_KEY,
-              Authorization: `Bearer ${SUPABASE_KEY}`
+              Authorization: `Bearer ${SUPABASE_KEY}`,
+              Prefer: 'return=minimal'           // reduces response size
             }
           });
 
           if (res.ok) {
-            console.log(`Successfully cleared table ${table}`);
+            console.log(`✅ Cleared table ${table}`);
           } else {
-            const text = await res.text();
-            console.error(`Failed to clear table ${table}: ${res.status} - ${text}`);
+            const errorText = await res.text();
+            console.error(`Failed to clear ${table}: ${res.status} – ${errorText}`);
+            // You can continue with other tables or throw – up to you
           }
         } catch (err) {
-          console.error(`Error clearing table ${table}:`, err);
+          console.error(`Exception while clearing ${table}:`, err);
         }
       }
 
       await interaction.editReply({
-        content: '✅ Poll stopped and most Supabase tables cleared (votes must be cleared manually).'
+        content: '✅ Poll stopped and Supabase tables cleared (votes must be cleared manually if included).'
       });
 
     } catch (err) {
-      console.error('POLLSTOP ERROR:', err);
+      console.error('POLLSTOP CRITICAL ERROR:', err);
       await interaction.editReply({
-        content: '❌ An error occurred while stopping the poll.'
+        content: '❌ Failed to stop poll or clear tables. Check bot logs.'
       });
     }
   }
