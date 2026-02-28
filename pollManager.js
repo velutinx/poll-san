@@ -641,29 +641,42 @@ const pollManager = {
     }
   },
 
-    buildPollMessage: async function() {
-    if (!this.activePoll) return 'No active poll.';
+buildPollMessage: async function() {
+  if (!this.activePoll) return 'No active poll.';
 
-    const { characters, endTime, message } = this.activePoll;
-    const timeRemaining = this.formatTime(endTime - Date.now());
-    const now = new Date().toLocaleString();
+  const { characters, endTime, message } = this.activePoll;
+  const timeRemaining = this.formatTime(endTime - Date.now());
+  const now = new Date().toLocaleString();
 
-    let resultText = `⏳ Time remaining: ${timeRemaining}\n`;
-    resultText += `📊 Current Results (${now})\n\n`;
+  let resultText = `⏳ Time remaining: ${timeRemaining}\n`;
+  resultText += `📊 Current Results (${now})\n\n`;
 
-    const counts = message ? await this.calculateCounts(message) : new Array(12).fill(0);
+  const counts = message ? await this.calculateCounts(message) : new Array(12).fill(0);
 
-    await this.updateSupabaseResults(counts);
+  await this.updateSupabaseResults(counts);
 
-    for (let i = 0; i < characters.length; i++) {
-      resultText += `${this.NUMBER_EMOJIS[i]} = ${counts[i].toFixed(2)} -- ${characters[i]}\n`;
-    }
+  // ────────────────────────────────────────────────
+  // Monospace grid – looks aligned on desktop & mobile
+  resultText += '```\n';
 
-    resultText += `\nDiscord weighted vote + Website poll results\n\n`;
-    resultText += `👇 Click the thread below for character images & discussion!`;
+  for (let i = 0; i < characters.length; i++) {
+    const emoji = this.NUMBER_EMOJIS[i];
+    const score = counts[i].toFixed(2);
 
-    return resultText;
-  },
+    // Right-align the score (widest expected ~ "100.00" → pad to 6 chars)
+    const paddedScore = score.padStart(6, ' ');
+
+    // Add extra space after score for clean separation
+    resultText += `${emoji} ${paddedScore}  ${characters[i]}\n`;
+  }
+
+  resultText += '```\n\n';
+
+  resultText += `Discord weighted vote + Website poll results\n\n`;
+  resultText += `👇 Click the thread below for character images & discussion!`;
+
+  return resultText;
+},
 
 
   createCharacterThread: async function() {
