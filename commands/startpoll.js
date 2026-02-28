@@ -1,5 +1,5 @@
 // commands/startpoll.js
-const { SlashCommandBuilder, MessageFlags } = require('discord.js');
+const { SlashCommandBuilder } = require('discord.js');
 const pollManager = require('../pollManager');
 
 module.exports = {
@@ -14,7 +14,7 @@ module.exports = {
     )
     .addStringOption(option =>
       option.setName('characters')
-        .setDescription('12 characters separated by ♂️ or ♀️ (gender symbols)')
+        .setDescription('12 characters prefixed by ♂️ or ♀️ (e.g. ♂️Name ♀️Name ...)')
         .setRequired(true)
     ),
 
@@ -25,11 +25,11 @@ module.exports = {
       if (interaction.user.id !== OWNER_ID) {
         return interaction.reply({
           content: '❌ You are not allowed to start polls.',
-          flags: MessageFlags.Ephemeral
+          ephemeral: true
         });
       }
 
-      await interaction.deferReply({ ephemeral: true });  // flags → ephemeral: true
+      await interaction.deferReply({ ephemeral: true });
 
       const days = interaction.options.getInteger('days');
       const rawInput = interaction.options.getString('characters')?.trim();
@@ -38,29 +38,38 @@ module.exports = {
         return interaction.editReply({ content: '❌ Characters field is missing.' });
       }
 
-      // Define the two separators (use the actual Unicode characters)
-      const MALE   = '♂️';   // U+2642 + U+FE0F
-      const FEMALE = '♀️';   // U+2640 + U+FE0F
+      const MALE   = '♂️';
+      const FEMALE = '♀️';
 
-      // Split on either ♂️ or ♀️ — normalize spaces around separators
-      let characters = rawInput
-        .split(new RegExp(`\\s*(${MALE}|${FEMALE})\\s*`))   // split AND capture separators
-        .map(part => part.trim())
-        .filter(part => part !== '' && part !== MALE && part !== FEMALE);  // remove empty & separators themselves
+      // Split while capturing the gender symbols
+      const parts = rawInput.split(new RegExp(`(${MALE}|${FEMALE})`));
 
-      // Alternative (simpler but less strict) — if you don't care about capturing gender
-      // characters = rawInput.split(/[♂️♀️]+/).map(c => c.trim()).filter(Boolean);
+      const characters = [];
+      let currentGender = '';
+
+      for (const part of parts) {
+        const trimmed = part.trim();
+        if (!trimmed) continue;
+
+        if (trimmed === MALE || trimmed === FEMALE) {
+          currentGender = trimmed;
+        } else {
+          // Attach gender if we have one pending
+          const displayName = currentGender ? `${currentGender} ${trimmed}` : trimmed;
+          characters.push(displayName);
+          currentGender = ''; // reset after use
+        }
+      }
 
       if (characters.length !== 12) {
         return interaction.editReply({
-          content: `❌ Exactly 12 characters required. You provided ${characters.length}.\n\n` +
-                   `Input received (after trimming): "${rawInput}"\n` +
-                   `Parsed: ${characters.join(' | ')}`
+          content: `❌ Exactly 12 characters required. Got ${characters.length}.\n\n` +
+                   `Raw input: ${rawInput}\n` +
+                   `Parsed (${characters.length}):\n${characters.map((c,i) => `${i+1}. ${c}`).join('\n')}`
         });
       }
 
-      // Optional: log for debugging
-      console.log(`Starting poll | days: ${days} | chars: ${characters.join(', ')}`);
+      console.log(`Starting poll | ${days}d | ${characters.join(' • ')}`);
 
       await pollManager.startPoll(interaction.client, days, characters);
 
@@ -71,7 +80,7 @@ module.exports = {
     } catch (err) {
       console.error('STARTPOLL ERROR:', err);
 
-      const msg = '❌ An unexpected error occurred.';
+      const msg = '❌ An unexpected error occurred. Check console.';
       if (interaction.deferred || interaction.replied) {
         await interaction.editReply({ content: msg }).catch(() => {});
       } else {
