@@ -1,13 +1,9 @@
-// index.js
 require('dotenv').config();
 const fs = require('node:fs');
 const path = require('node:path');
-const { Client, Collection, GatewayIntentBits, Partials, REST, Routes } = require('discord.js');
-
-// Import your managers and role remover
+const { Client, Collection, GatewayIntentBits, Partials } = require('discord.js');
 const pollManager = require('./pollManager');
 const queueManager = require('./queueManager');
-const roleRemover = require('./roleRemover');  // ← This line activates the role remover!
 
 // Create client
 const client = new Client({
@@ -16,76 +12,44 @@ const client = new Client({
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.MessageContent,
     GatewayIntentBits.GuildMembers,
-    GatewayIntentBits.GuildMessageReactions,
+    GatewayIntentBits.GuildMessageReactions
   ],
   partials: [
     Partials.Message,
     Partials.Channel,
-    Partials.Reaction,
-  ],
+    Partials.Reaction
+  ]
 });
 
 // Command collection
 client.commands = new Collection();
 
-// === Load commands ===
+// Load all commands from ./commands folder
 const commandsPath = path.join(__dirname, 'commands');
 const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith('.js'));
 
-const commands = []; // For deployment
-
 for (const file of commandFiles) {
-  try {
-    const filePath = path.join(commandsPath, file);
-    const command = require(filePath);
+  const filePath = path.join(commandsPath, file);
+  const command = require(filePath);
 
-    // Handle both single command and array of commands
-    if (Array.isArray(command.data)) {
-      command.data.forEach(builder => {
-        client.commands.set(builder.name, command);
-        commands.push(builder.toJSON());
-        console.log(`✅ Loaded sub-command: ${builder.name} (from ${file})`);
-      });
-    } else if ('data' in command && 'execute' in command) {
-      client.commands.set(command.data.name, command);
-      commands.push(command.data.toJSON());
-      console.log(`✅ Loaded command: ${command.data.name}`);
-    } else {
-      console.warn(`⚠️ The command at ${filePath} is missing "data" or "execute".`);
-    }
-  } catch (err) {
-    console.error(`❌ Failed to load command ${file}:`, err);
+  // Handle both single command and array-style commands
+  if (Array.isArray(command.data)) {
+    command.data.forEach(builder => {
+      client.commands.set(builder.name, command);
+      console.log(`Loaded command: ${builder.name} (from ${file})`);
+    });
+  }
+  else if ('data' in command && 'execute' in command) {
+    client.commands.set(command.data.name, command);
+    console.log(`Loaded command: ${command.data.name}`);
+  } else {
+    console.warn(`The command at ${filePath} is missing "data" or "execute".`);
   }
 }
 
-// === Deploy commands to guild (instant / guild-specific) ===
-if (process.env.DISCORD_TOKEN && process.env.CLIENT_ID && process.env.GUILD_ID) {
-  const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
-
-  (async () => {
-    try {
-      console.log(`🚀 Deploying ${commands.length} commands to guild (instant)...`);
-      const data = await rest.put(
-        Routes.applicationGuildCommands(process.env.CLIENT_ID, process.env.GUILD_ID),
-        { body: commands }
-      );
-      console.log(`✅ Successfully deployed ${data.length} guild commands.`);
-      console.log('🔄 Refresh Discord (Ctrl+R) to see new commands');
-    } catch (error) {
-      console.error('❌ Deploy error:', error);
-    }
-  })();
-} else {
-  console.warn('⚠️ Missing env vars for command deployment (DISCORD_TOKEN, CLIENT_ID, GUILD_ID)');
-}
-
-// === Client ready event ===
-client.once('ready', async () => {
+// Ready event – fixed to clientReady (removes deprecation warning)
+client.once('clientReady', async () => {
   console.log(`Logged in as ${client.user.tag}`);
-
-  // Activate role remover (sets up event listener + interval)
-  roleRemover(client);
-  console.log('Role remover initialized');
 
   // Resume poll
   try {
@@ -104,7 +68,7 @@ client.once('ready', async () => {
   }
 });
 
-// === Handle slash commands ===
+// Handle slash commands
 client.on('interactionCreate', async interaction => {
   if (!interaction.isChatInputCommand()) return;
 
@@ -119,16 +83,15 @@ client.on('interactionCreate', async interaction => {
     await command.execute(interaction);
   } catch (error) {
     console.error(error);
-    const replyMethod = interaction.replied || interaction.deferred ? 'followUp' : 'reply';
-    await interaction[replyMethod]({ 
-      content: 'There was an error while executing this command!', 
-      ephemeral: true 
-    }).catch(() => {}); // Silent fail if already replied
+    if (interaction.replied || interaction.deferred) {
+      await interaction.followUp({ content: 'There was an error while executing this command!', ephemeral: true });
+    } else {
+      await interaction.reply({ content: 'There was an error while executing this command!', ephemeral: true });
+    }
   }
 });
 
-// === Login ===
+// Login
 client.login(process.env.DISCORD_TOKEN).catch(err => {
   console.error('Login failed:', err);
-  process.exit(1);
 });
