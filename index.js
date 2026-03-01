@@ -4,6 +4,7 @@ const path = require('node:path');
 const { Client, Collection, GatewayIntentBits, Partials } = require('discord.js');
 const pollManager = require('./pollManager');
 const queueManager = require('./queueManager');
+const roleRemover = require('./roleRemover'); // <-- ADD THIS
 
 // Create client
 const client = new Client({
@@ -21,6 +22,9 @@ const client = new Client({
   ]
 });
 
+// Initialize role remover system
+roleRemover(client); // <-- ADD THIS
+
 // Command collection
 client.commands = new Collection();
 
@@ -32,7 +36,6 @@ for (const file of commandFiles) {
   const filePath = path.join(commandsPath, file);
   const command = require(filePath);
 
-  // Handle both single command and array-style commands
   if (Array.isArray(command.data)) {
     command.data.forEach(builder => {
       client.commands.set(builder.name, command);
@@ -47,11 +50,9 @@ for (const file of commandFiles) {
   }
 }
 
-// Ready event – fixed to clientReady (removes deprecation warning)
 client.once('clientReady', async () => {
   console.log(`Logged in as ${client.user.tag}`);
 
-  // Resume poll
   try {
     await pollManager.resumePoll(client);
     console.log('Poll auto-resume completed');
@@ -59,7 +60,6 @@ client.once('clientReady', async () => {
     console.error('Poll resume error:', err);
   }
 
-  // Resume queue system
   try {
     await queueManager.resumeQueue(client);
     console.log('Queue system auto-resume completed');
@@ -68,7 +68,6 @@ client.once('clientReady', async () => {
   }
 });
 
-// Handle slash commands
 client.on('interactionCreate', async interaction => {
   if (!interaction.isChatInputCommand()) return;
 
@@ -91,7 +90,6 @@ client.on('interactionCreate', async interaction => {
   }
 });
 
-// Login
 client.login(process.env.DISCORD_TOKEN).catch(err => {
   console.error('Login failed:', err);
 });
