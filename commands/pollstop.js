@@ -27,36 +27,37 @@ module.exports = {
         return interaction.editReply({ content: '⚠️ No active poll to stop.' });
       }
 
-      // Tables to clear (excluding votes – as intended)
+      // Tables to clear (excluding discord_votes so votes stay for history)
       const tables = [
         'poll_result',
         'active_polls',
-        'discord_votes',     // ← you have this here but said votes are manual → remove if unwanted
         'poll_options',
         'poll_winners'
+        // 'discord_votes'  ← commented out = votes preserved (as you wanted manual clear)
       ];
+
+      const pollId = 'character_poll_new';
+      let clearedCount = 0;
 
       for (const table of tables) {
         try {
-          // ────────────────────────────────────────────────
-          // Correct way to delete all rows in a table
-          const url = `${SUPABASE_URL}/rest/v1/${table}?poll_id=not.is.null`;
+          const url = `${SUPABASE_URL}/rest/v1/${table}?poll_id=eq.${pollId}`;
 
           const res = await fetch(url, {
             method: 'DELETE',
             headers: {
               apikey: SUPABASE_KEY,
               Authorization: `Bearer ${SUPABASE_KEY}`,
-              Prefer: 'return=minimal'           // reduces response size
+              Prefer: 'return=minimal'
             }
           });
 
           if (res.ok) {
-            console.log(`✅ Cleared table ${table}`);
+            console.log(`✅ Cleared table ${table} for poll ${pollId}`);
+            clearedCount++;
           } else {
             const errorText = await res.text();
             console.error(`Failed to clear ${table}: ${res.status} – ${errorText}`);
-            // You can continue with other tables or throw – up to you
           }
         } catch (err) {
           console.error(`Exception while clearing ${table}:`, err);
@@ -64,7 +65,7 @@ module.exports = {
       }
 
       await interaction.editReply({
-        content: '✅ Poll stopped and Supabase tables cleared (votes must be cleared manually if included).'
+        content: `✅ Poll stopped.\nCleared ${clearedCount}/${tables.length} tables successfully.\n(Votes in discord_votes preserved – clear manually if needed.)`
       });
 
     } catch (err) {
