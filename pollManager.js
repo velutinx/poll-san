@@ -170,12 +170,17 @@ NUMBER_EMOJIS: [
     }
   },
 
+  // ──────────────────────────────────────────────────────────────
+  // FIXED: Robust upsert with 3 retries on 502/5xx errors
+  // ──────────────────────────────────────────────────────────────
   updateSupabaseResults: async function(counts) {
     if (!this.activePoll || !this.activePoll.characters) return;
 
     const supabaseUrl = process.env.SUPABASE_URL;
     const supabaseKey = process.env.SUPABASE_KEY;
     const pollId = 'character_poll_new';
+
+    console.log(`[Supabase Results] Updating poll_result (12 options)...`);
 
     for (let i = 0; i < 12; i++) {
       const data = {
@@ -186,23 +191,46 @@ NUMBER_EMOJIS: [
         selected_at: null
       };
 
-      try {
-        const res = await fetch(`${supabaseUrl}/rest/v1/poll_result`, {
-          method: 'POST',
-          headers: {
-            apikey: supabaseKey,
-            Authorization: `Bearer ${supabaseKey}`,
-            'Content-Type': 'application/json',
-            Prefer: 'resolution=merge-duplicates'
-          },
-          body: JSON.stringify(data)
-        });
+      let lastError = null;
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        try {
+          const res = await fetch(`${supabaseUrl}/rest/v1/poll_result`, {
+            method: 'POST',
+            headers: {
+              apikey: supabaseKey,
+              Authorization: `Bearer ${supabaseKey}`,
+              'Content-Type': 'application/json',
+              Prefer: 'resolution=merge-duplicates'
+            },
+            body: JSON.stringify(data)
+          });
 
-        if (!res.ok) {
-          console.error(`Upsert failed for option ${i+1}: ${res.status}`);
+          if (res.ok) {
+            console.log(`✅ poll_result option ${i+1} updated → ${counts[i].toFixed(2)}`);
+            break;
+          }
+
+          const status = res.status;
+          const text = await res.text().catch(() => '(no body)');
+          lastError = `HTTP ${status} - ${text}`;
+
+          if (status >= 500) {
+            console.warn(`[Supabase] Option ${i+1} failed (attempt ${attempt}/3): ${lastError}`);
+            if (attempt < 3) await new Promise(r => setTimeout(r, 800 * attempt));
+            continue;
+          } else {
+            console.error(`❌ Option ${i+1} permanent failure: ${lastError}`);
+            break;
+          }
+        } catch (err) {
+          lastError = err.message;
+          console.warn(`[Supabase] Option ${i+1} network error (attempt ${attempt}/3): ${lastError}`);
+          if (attempt < 3) await new Promise(r => setTimeout(r, 800 * attempt));
         }
-      } catch (err) {
-        console.error('[Supabase] Result update failed:', err);
+      }
+
+      if (lastError) {
+        console.error(`❌ Final failure for option ${i+1}: ${lastError}`);
       }
     }
   },
