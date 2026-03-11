@@ -145,7 +145,7 @@ NUMBER_EMOJIS: [
 
     try {
       const res = await fetch(
-        `${supabaseUrl}/rest/v1/votes?poll_id=eq.${pollId}&source=eq.website`,
+`${supabaseUrl}/rest/v1/website_voting?poll_id=eq.${pollId}`,
         {
           headers: {
             apikey: supabaseKey,
