@@ -12,7 +12,7 @@ const TIER_WEIGHTS = {
 };
 const BOOSTER_ROLE_ID = '1469284491456548976';
 
-module.exports = async (reaction, user) => {
+module.exports = async (reaction, user, action = 'add') => {
     if (user.bot) return;
 
     if (reaction.partial) {
@@ -36,7 +36,19 @@ module.exports = async (reaction, user) => {
     if (optionId < 1) return;
 
     try {
-        // 3. Calculate Weight
+        if (action === 'remove') {
+            // Delete vote from database
+            await supabase
+                .from('votes_discord')
+                .delete()
+                .eq('user_id', user.id)
+                .eq('poll_id', 'character_poll_new')
+                .eq('option_id', optionId);
+            console.log(`🗑️ Vote Removed: ${user.username} for Option ${optionId}`);
+            return;
+        }
+
+        // Otherwise, handle add (with weight calculation)
         const member = await message.guild.members.fetch(user.id).catch(() => null);
         let weight = 1.0;
 
