@@ -19,6 +19,17 @@ module.exports = (client) => {
     app.use(express.json());
     app.use(express.static(path.join(__dirname, 'public')));
 
+
+    // Polyfill for crypto.getRandomValues (if missing in environment)
+if (typeof global.crypto === 'undefined') {
+  global.crypto = require('crypto');
+}
+if (typeof global.crypto.getRandomValues === 'undefined') {
+  global.crypto.getRandomValues = function(array) {
+    return require('crypto').randomBytes(array.length);
+  };
+}
+    
     // ────────────────────────────────────────────────
     // CONFIG
     // ────────────────────────────────────────────────
