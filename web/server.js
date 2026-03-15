@@ -735,6 +735,7 @@ app.post('/api/test-zip', upload.single('zipfile'), async (req, res) => {
     });
 
     app.listen(PORT, () => {
-        console.log(`🌐 Dashboard running at http://localhost:${PORT}/poll-san`);
+//        console.log(`🌐 Dashboard running at http://localhost:${PORT}/poll-san`);
+          console.log(`🌐 Dashboard running at https://d.velutinx.com/poll-san`);
     });
 };
