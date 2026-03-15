@@ -129,7 +129,8 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
 // --- 3. EVENT LISTENERS ---
 client.on(Events.GuildMemberAdd, (member) => require('./events/guildMemberAdd')(member));
-client.on(Events.MessageReactionAdd, (reaction, user) => require('./events/reactions')(reaction, user));
+client.on(Events.MessageReactionAdd, (reaction, user) => require('./events/reactions')(reaction, user, 'add'));
+client.on(Events.MessageReactionRemove, (reaction, user) => require('./events/reactions')(reaction, user, 'remove'));
 
 // --- 4. XP SYSTEM ---
 client.on(Events.MessageCreate, async (message) => {
