@@ -1,0 +1,488 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Poll-san Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
+    <link rel="stylesheet" href="/css/index.css">
+</head>
+<body>
+    <nav>
+        <h2>Poll-san</h2>
+        <div class="nav-item active" onclick="switchTab('poll-mgmt')">📊 Polls</div>
+        <div class="nav-item" onclick="switchTab('queue-mgmt')">📋 Queue</div>
+        <div class="nav-item" onclick="switchTab('releases-mgmt')">🚀 Releases</div>
+        <div class="nav-item" onclick="switchTab('greetings')">👋 Greetings</div>
+    </nav>
+
+    <main>
+        <!-- Polls tab -->
+        <div id="poll-mgmt" class="tab-content active">
+            <div class="mgmt-container">
+                <div class="mgmt-column">
+                    <h1>Launch New Poll</h1>
+                    <div class="card">
+                        <div class="form-group">
+                            <label>Target Channel</label>
+                            <select id="poll_channel"></select>
+                        </div>
+                        <div class="form-group">
+                            <label>Duration (Days)</label>
+                            <input type="number" id="poll_days" value="7">
+                        </div>
+                        <div class="form-group">
+                            <label>Character List (Paste with Emojis)</label>
+                            <textarea id="poll_list" placeholder=":female_sign: Himari Akeboshi..."></textarea>
+                        </div>
+                        <div class="btn-row">
+                            <button id="launch-btn" onclick="triggerPoll()">Launch Poll</button>
+                            <button id="stop-btn" onclick="stopPoll()" style="background: var(--disabled-gray); flex:1;" disabled>Stop Poll</button>
+                        </div>
+                        <div id="poll-status" class="status"></div>
+                    </div>
+                </div>
+                <div class="mgmt-column">
+                    <h1>Select Winner</h1>
+                    <div class="card">
+                        <div id="winner-list" class="winner-grid">
+                            <p>Loading active data...</p>
+                        </div>
+                        <div id="winner-status" class="status"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Releases tab -->
+        <div id="releases-mgmt" class="tab-content">
+            <h1>Release Dashboard</h1>
+            <div class="sub-nav">
+                <span class="active" onclick="switchSubTab('preview')">Preview</span>
+                <span onclick="switchSubTab('supporters')">Supporters</span>
+            </div>
+
+            <!-- Preview tab -->
+            <div id="preview" class="sub-tab-content active">
+                <div class="mgmt-container">
+                    <div class="mgmt-column">
+                        <!-- Create New Release card -->
+                        <div class="card">
+                            <span class="card-header-label">Create New Release</span>
+                            <div class="form-group">
+                                <label>Pack Number</label>
+                                <input type="text" id="rel-pack" placeholder="e.g. 156">
+                            </div>
+                            <div class="form-group">
+                                <label>Set Size</label>
+                                <input type="text" id="rel-size" placeholder="e.g. XX or 30">
+                            </div>
+                            <div class="form-group">
+                                <label>Sex & Name</label>
+                                <div style="display: flex; gap: 10px;">
+                                    <select id="rel-gender" style="flex: 0 0 80px;">
+                                        <option value=":female_sign:">♀️</option>
+                                        <option value=":male_sign:">♂️</option>
+                                    </select>
+                                    <input type="text" id="rel-name" placeholder="Nico Robin" style="flex: 1;">
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label>Series</label>
+                                <input type="text" id="rel-series" placeholder="One Piece">
+                            </div>
+                            <div class="form-group">
+                                <label>Suffix</label>
+                                <select id="rel-suffix">
+                                    <option value="">None</option>
+                                    <option value="Poll">Poll</option>
+                                    <option value="Request">Request</option>
+                                </select>
+                            </div>
+                            <button onclick="submitRelease()" id="rel-submit-btn" style="background: var(--blue); width: 100%;">🚀 Post Release Preview</button>
+                            <div id="release-status" class="status"></div>
+                        </div>
+
+                        <!-- Edit Existing Forum Post card -->
+                        <div class="card" style="border-top: 4px solid var(--warning-orange);">
+                            <span class="card-header-label" style="color: var(--warning-orange);">Edit Existing Forum Post</span>
+                            <div class="form-group">
+                                <label>Select Post</label>
+                                <select id="postDropdown" onchange="loadPostData()">
+                                    <option value="">-- Select a post to edit --</option>
+                                </select>
+                            </div>
+                            <div id="editFields" style="display:none;">
+                                <div style="display: flex; gap: 10px;">
+                                    <div class="form-group" style="flex:1;">
+                                        <label>Pack #</label>
+                                        <input type="text" id="editPack">
+                                    </div>
+                                    <div class="form-group" style="flex:1;">
+                                        <label>Size</label>
+                                        <input type="text" id="editSize">
+                                    </div>
+                                </div>
+                                <div class="form-group">
+                                    <label>Sex & Name</label>
+                                    <div style="display: flex; gap: 10px;">
+                                        <select id="editGender" style="flex: 0 0 80px;">
+                                            <option value=":female_sign:">♀️</option>
+                                            <option value=":male_sign:">♂️</option>
+                                        </select>
+                                        <input type="text" id="editName" style="flex: 1;">
+                                    </div>
+                                </div>
+                                <div class="form-group">
+                                    <label>Series</label>
+                                    <input type="text" id="editSeries">
+                                </div>
+                                <div class="form-group">
+                                    <label>Suffix</label>
+                                    <select id="editSuffix">
+                                        <option value="">None</option>
+                                        <option value="Poll">Poll</option>
+                                        <option value="Request">Request</option>
+                                    </select>
+                                </div>
+                                <button onclick="submitEdit()" id="edit-submit-btn" style="background: var(--warning-orange); width: 100%;">💾 Apply Changes</button>
+                                <div id="edit-status" class="status"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Right column: SFW Previews -->
+                    <div class="mgmt-column">
+                        <div style="display:flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                            <label style="margin:0;">SFW Previews (For New Releases Only)</label>
+                            <span onclick="clearImages()" style="color: var(--accent); font-size: 0.8rem; cursor: pointer; font-weight: bold;">✕ Clear All</span>
+                        </div>
+                        <div id="drop-zone">
+                            <span id="drop-text" style="color: #94a3b8; text-align: center;">Drag images here or click to browse</span>
+                            <div id="preview-container"></div>
+                            <input type="file" id="file-input" multiple accept="image/*" style="display: none;">
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Supporters tab -->
+            <div id="supporters" class="sub-tab-content" style="display:none;">
+                <div class="mgmt-container">
+                    <!-- LEFT COLUMN: Original supporter release form -->
+                    <div class="mgmt-column">
+                        <div class="card">
+                            <span class="card-header-label">Create Supporter Release</span>
+                            <div class="form-group">
+                                <label>Select Preview Post (auto-fill)</label>
+                                <select id="supporterPostSelect" onchange="loadSupporterPostData()">
+                                    <option value="">-- Select a post to base this on --</option>
+                                </select>
+                            </div>
+
+                            <div class="form-group" style="margin-top: 20px;">
+                                <label>Select Supporter Post to Edit</label>
+                                <select id="supporterEditDropdown" onchange="loadSupporterEditData()">
+                                    <option value="">-- Select a supporter post to edit --</option>
+                                </select>
+                            </div>
+
+                            <div style="margin-top: 20px;">
+                                <label>Existing Images in Selected Post</label>
+                                <div id="supporter-existing-images" style="display: flex; flex-wrap: wrap; gap: 10px; margin-top: 10px; min-height: 100px; border: 1px dashed #475569; border-radius: 8px; padding: 10px; background: #0f172a;"></div>
+                            </div>
+
+                            <div style="display: flex; gap: 20px; flex-wrap: wrap; margin-top: 30px;">
+                                <div style="flex: 1; min-width: 320px;">
+                                    <div class="form-group">
+                                        <label>Pack Number</label>
+                                        <input type="text" id="supPack" placeholder="e.g. 183">
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Set Size</label>
+                                        <input type="text" id="supSize" placeholder="e.g. 51">
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Sex & Name</label>
+                                        <div style="display: flex; gap: 10px;">
+                                            <select id="supGender" style="flex: 0 0 80px;">
+                                                <option value=":female_sign:">♀️</option>
+                                                <option value=":male_sign:">♂️</option>
+                                            </select>
+                                            <input type="text" id="supName" placeholder="Hayasaka Ai" style="flex: 1;">
+                                        </div>
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Series</label>
+                                        <input type="text" id="supSeries" placeholder="KAGUYA-SAMA WA KOKURASETAI">
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Suffix</label>
+                                        <select id="supSuffix">
+                                            <option value="">None</option>
+                                            <option value="Poll">Poll</option>
+                                            <option value="Request">Request</option>
+                                        </select>
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Download Link</label>
+                                        <input type="url" id="supDownload" placeholder="https://mega.nz/file/...">
+                                    </div>
+                                </div>
+
+                                <div style="flex: 1; min-width: 320px;">
+                                    <div style="display:flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                                        <label style="margin:0;">New Images (will replace existing if posted)</label>
+                                        <span onclick="clearSupporterImages()" style="color: var(--accent); font-size: 0.8rem; cursor: pointer; font-weight: bold;">✕ Clear All</span>
+                                    </div>
+                                    <div id="sup-drop-zone" style="border: 2px dashed #475569; border-radius: 8px; padding: 20px; background: #0f172a; min-height: 160px; text-align: center; cursor: pointer;">
+                                        <span id="sup-drop-text" style="color: #94a3b8; user-select: none;">Drag images here or click to select</span>
+                                        <div id="sup-preview-container" style="display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; justify-content: center;"></div>
+                                        <input type="file" id="sup-file-input" multiple accept="image/*" style="display: none;">
+                                    </div>
+                                </div>
+                            </div>
+
+                            <button onclick="submitSupporterRelease()" style="background: var(--success-green); width: 100%; margin-top: 20px; padding: 14px; font-size: 1.1rem; font-weight: bold;">📤 Post / Update to #supporter-releases</button>
+
+<div style="margin-top: 16px; display: flex; align-items: center; justify-content: center; gap: 12px; font-size: 1rem; color: #e2e8f0;">
+    <label for="edit-preview-toggle" style="cursor: pointer; user-select: none;">
+        Edit Preview too
+    </label>
+    <label class="toggle-switch">
+        <input type="checkbox" id="edit-preview-toggle">
+<span class="toggle-slider"></span>
+    </label>
+</div>
+                            <div id="supporter-status" class="status" style="margin-top: 12px; text-align: center; min-height: 24px;"></div>
+                        </div>
+                    </div>
+
+                    <!-- RIGHT COLUMN: ZIP Preview + MEGA Upload -->
+                    <div class="mgmt-column">
+                        <!-- ZIP Preview card -->
+                        <div class="card">
+                            <span class="card-header-label">ZIP Preview</span>
+                            
+                            <!-- Drag & drop zone -->
+                            <div style="margin-top: 20px;">
+                                <label>ZIP File (max 100MB)</label>
+                                <div id="test-drop-zone" style="border: 2px dashed #475569; border-radius: 8px; padding: 20px; background: #0f172a; min-height: 160px; text-align: center; cursor: pointer;">
+                                    <span id="test-drop-text" style="color: #94a3b8; user-select: none;">Drag ZIP file here or click to select</span>
+                                    <div id="test-preview-container" style="display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; justify-content: center;"></div>
+                                    <input type="file" id="test-file-input" accept=".zip" style="display: none;">
+                                </div>
+                            </div>
+
+                            <!-- Image grid (first 10 images) -->
+                            <div id="test-image-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 10px; margin-top: 20px;"></div>
+
+                            <!-- Selected images bar -->
+                            <div style="margin-top: 30px; border-top: 2px solid #334155; padding-top: 20px;">
+                                <div style="display: flex; justify-content: space-between; align-items: center;">
+                                    <span onclick="clearSelection()" style="color: var(--accent); font-size: 0.9rem; cursor: pointer; font-weight: bold;">✕ Clear All</span>
+                                </div>
+                            </div>
+
+                        </div>
+
+<!-- MEGA Upload card -->
+<div class="card" style="margin-top: 20px;">
+    <span class="card-header-label">Upload ZIP to MEGA</span>
+
+    <!-- Filename input (editable) -->
+    <div class="form-group">
+        <label>Filename (will be uploaded as)</label>
+        <input type="text" id="mega-filename" placeholder="[Pack 184] Himari Akeboshi - BLUE ARCHIVE.zip">
+    </div>
+
+    <!-- Progress bar -->
+    <div style="margin-top: 20px;">
+        <progress id="mega-progress" value="0" max="100" style="width:100%; height:20px; display:none;"></progress>
+    </div>
+
+    <!-- Upload button -->
+    <button onclick="uploadToMega()" id="mega-upload-btn" style="background: var(--accent); width: 100%; margin-top: 20px; padding: 14px; font-size: 1.1rem; font-weight: bold;">
+        ⬆️ Upload to MEGA
+    </button>
+
+    <div id="mega-status" class="status" style="margin-top: 12px; text-align: center; min-height: 24px;"></div>
+</div>                   
+					
+					</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Queue Management -->
+        <div id="queue-mgmt" class="tab-content">
+            <h1>Queue Management</h1>
+            <div class="card" style="max-width: 600px;">
+                <div class="queue-input-group">
+                    <input type="text" id="queue_input" placeholder=":female_sign: Isane Kotetsu">
+                    <button style="background: var(--accent)" onclick="addToQueue()">Add</button>
+                </div>
+                <div id="draggable-queue"></div>
+                <div id="queue-status" class="status"></div>
+            </div>
+        </div>
+
+        <!-- Greetings -->
+        <div id="greetings" class="tab-content">
+            <h1>Welcome Settings</h1>
+            <div class="card">
+                <div class="form-group">
+                    <label>Welcome Channel</label>
+                    <select id="welcome_channel_id"></select>
+                </div>
+                <div class="form-group">
+                    <label>Welcome Message</label>
+                    <textarea id="welcome_message" placeholder="Welcome to the server, {user}!"></textarea>
+                </div>
+                <button style="background: var(--accent)" onclick="saveGreetings()">Save Greetings</button>
+                <div id="greetings-status" class="status"></div>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        // ======================================================
+        // GLOBAL STATE
+        // ======================================================
+        let uploadedFiles = [];
+        let supporterUploadedFiles = [];
+        let globalForumPosts = [];
+        let globalSupporterPosts = [];
+
+// ======================================================
+// TAB SWITCHING
+// ======================================================
+async function switchTab(tabId) {
+    document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+
+    document.getElementById(tabId).classList.add('active');
+
+    document.querySelectorAll('.nav-item').forEach(item => {
+        if (item.innerText.toLowerCase().includes(tabId.split('-')[0])) {
+            item.classList.add('active');
+        }
+    });
+
+    // --------------------------------
+    // LOAD DATA ONLY WHEN TAB OPENS
+    // --------------------------------
+    if (tabId === 'poll-mgmt') {
+        loadActivePoll(); // from poll.js
+    }
+    if (tabId === 'queue-mgmt') {
+        loadQueueData(); // from queue.js
+    }
+    if (tabId === 'releases-mgmt') {
+        switchSubTab('preview');
+        if (typeof fetchForumPosts === 'function') fetchForumPosts();
+        if (typeof fetchSupporterPosts === 'function') fetchSupporterPosts();
+    }
+    if (tabId === 'greetings') {
+        await loadChannels(); // wait for channels to load
+        await loadSettings();  // then set the saved channel
+    }
+    if (tabId === 'mega-mgmt') {
+        if (typeof initMega === 'function') initMega();
+    }
+}
+
+
+
+        // ======================================================
+        // SUB TAB SWITCHING
+        // ======================================================
+        function switchSubTab(subId) {
+            document.querySelectorAll('.sub-tab-content').forEach(t => t.style.display = 'none');
+            document.querySelectorAll('.sub-nav span').forEach(s => s.classList.remove('active'));
+            document.getElementById(subId).style.display = 'block';
+            const el = document.querySelector(`.sub-nav span[onclick="switchSubTab('${subId}')"]`);
+            if (el) el.classList.add('active');
+        }
+
+        // ======================================================
+        // GREETINGS
+        // ======================================================
+        async function saveGreetings() {
+            const channel = document.getElementById('welcome_channel_id').value;
+            const message = document.getElementById('welcome_message').value;
+            const res = await fetch('/api/save-settings', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ welcome_channel_id: channel, welcome_message: message })
+            });
+            document.getElementById('greetings-status').innerText = res.ok ? "✅ Saved!" : "❌ Error.";
+        }
+
+// ======================================================
+// CHANNELS + SETTINGS
+// ======================================================
+const POLL_CHANNEL_ID = '1466635718930731113'; // <-- set your desired default poll channel ID
+
+async function loadChannels() {
+    try {
+        const res = await fetch('/api/channels');
+        const channels = await res.json();
+        ['poll_channel', 'welcome_channel_id'].forEach(id => {
+            const el = document.getElementById(id);
+            if (!el) return;
+            el.innerHTML = '';
+            if (channels.length === 0) {
+                el.innerHTML = '<option>No channels found</option>';
+                return;
+            }
+            channels.forEach(ch => {
+                // For poll_channel, use the hardcoded ID as default; for welcome, keep existing logic (name 'poll')
+                const isPollDefault = (id === 'poll_channel' && ch.id === POLL_CHANNEL_ID);
+                // (Optional) you could also keep a fallback name‑based default if the ID isn't found,
+                // but the above will only select if the exact ID exists.
+                const isWelcomeDefault = (id === 'welcome_channel_id' && ch.name.toLowerCase() === 'poll');
+                el.innerHTML += `<option value="${ch.id}" ${isPollDefault || isWelcomeDefault ? 'selected' : ''}>#${ch.name}</option>`;
+            });
+        });
+    } catch (e) {
+        console.error(e);
+        ['poll_channel', 'welcome_channel_id'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.innerHTML = '<option>Error loading channels</option>';
+        });
+    }
+}
+
+        async function loadSettings() {
+            try {
+                const res = await fetch('/api/get-settings');
+                const settings = await res.json();
+                if (settings.welcome_channel_id)
+                    document.getElementById('welcome_channel_id').value = settings.welcome_channel_id;
+                if (settings.welcome_message)
+                    document.getElementById('welcome_message').value = settings.welcome_message;
+            } catch (e) {
+                console.error(e);
+                document.getElementById('greetings-status').innerText = '❌ Error loading settings.';
+            }
+        }
+
+        // ======================================================
+        // INITIAL PAGE LOAD
+        // ======================================================
+        window.onload = () => {
+            switchTab('poll-mgmt');
+            setInterval(loadActivePoll, 10000); // from poll.js
+            if (typeof initReleases === 'function') initReleases();
+        };
+    </script>
+
+    <!-- External scripts -->
+    <script src="/js/queue.js" defer></script>
+    <script src="/js/releases.js" defer></script>
+    <script src="/js/megalink.js" defer></script>
+    <script src="/js/poll.js" defer></script>
+    <script src="/js/uploading.js" defer></script>
+</body>
+</html>
