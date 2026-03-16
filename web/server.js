@@ -692,14 +692,13 @@ app.post('/api/upload-to-mega', upload.single('file'), async (req, res) => {
 
 
 // ────────────────────────────────────────────────
-// 14. TEST ZIP (extract first 10 images and count total)
+// 14. TEST ZIP (extract first 10 images, sorted)
 // ────────────────────────────────────────────────
 app.post('/api/test-zip', upload.single('zipfile'), async (req, res) => {
     if (!req.file) {
         return res.status(400).json({ error: 'No file uploaded' });
     }
 
-    // Optional size limit (100MB)
     if (req.file.size > 100 * 1024 * 1024) {
         return res.status(400).json({ error: 'File exceeds 100MB limit' });
     }
@@ -712,6 +711,12 @@ app.post('/api/test-zip', upload.single('zipfile'), async (req, res) => {
         const imageEntries = entries.filter(entry => 
             /\.(jpg|jpeg|png|gif|webp)$/i.test(entry.entryName) && !entry.isDirectory
         );
+
+        // Sort image entries naturally by filename (so 1,2,...10,11 appear in order)
+        imageEntries.sort((a, b) => {
+            return a.entryName.localeCompare(b.entryName, undefined, { numeric: true });
+        });
+
         const totalImages = imageEntries.length;
 
         // Take first 10 for preview
@@ -726,7 +731,6 @@ app.post('/api/test-zip', upload.single('zipfile'), async (req, res) => {
         res.status(500).json({ error: err.message });
     }
 });
-
     // ────────────────────────────────────────────────
     // SERVE DASHBOARD
     // ────────────────────────────────────────────────
