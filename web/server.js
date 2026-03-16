@@ -692,7 +692,7 @@ app.post('/api/upload-to-mega', upload.single('file'), async (req, res) => {
 
 
 // ────────────────────────────────────────────────
-// 14. TEST ZIP (extract first 10 images, sorted)
+// 14. TEST ZIP (extract first 10 images, sorted by embedded number)
 // ────────────────────────────────────────────────
 app.post('/api/test-zip', upload.single('zipfile'), async (req, res) => {
     if (!req.file) {
@@ -707,19 +707,22 @@ app.post('/api/test-zip', upload.single('zipfile'), async (req, res) => {
         const zip = new AdmZip(req.file.buffer);
         const entries = zip.getEntries();
 
-        // Filter image files (common extensions)
+        // Filter image files
         const imageEntries = entries.filter(entry => 
             /\.(jpg|jpeg|png|gif|webp)$/i.test(entry.entryName) && !entry.isDirectory
         );
 
-        // Sort image entries naturally by filename (so 1,2,...10,11 appear in order)
+        // Sort by the numeric part in the filename (e.g., "Astolfo -001-.jpg" → 1)
         imageEntries.sort((a, b) => {
-            return a.entryName.localeCompare(b.entryName, undefined, { numeric: true });
+            const regex = /-(\d{3})-/; // matches pattern like -001-
+            const aMatch = a.entryName.match(regex);
+            const bMatch = b.entryName.match(regex);
+            const aNum = aMatch ? parseInt(aMatch[1], 10) : 0;
+            const bNum = bMatch ? parseInt(bMatch[1], 10) : 0;
+            return aNum - bNum;
         });
 
         const totalImages = imageEntries.length;
-
-        // Take first 10 for preview
         const previewImages = imageEntries.slice(0, 10).map(entry => ({
             name: entry.entryName.split('/').pop(),
             data: `data:image/jpeg;base64,${entry.getData().toString('base64')}`
