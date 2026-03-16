@@ -78,11 +78,17 @@ async function uploadTestZip() {
         const res = await fetch('/api/test-zip', { method: 'POST', body: formData });
         if (!res.ok) throw new Error(await res.text());
         const data = await res.json();
-        currentImages = data.images;
-        window.totalImagesCount = data.total; // <-- store total count
+
+        // Sort images by filename (natural numeric order)
+        currentImages = data.images.sort((a, b) => {
+            // Extract numbers from filenames (e.g., "image51.jpg" → 51)
+            const aNum = (a.name.match(/\d+/) || [0])[0];
+            const bNum = (b.name.match(/\d+/) || [0])[0];
+            return parseInt(aNum, 10) - parseInt(bNum, 10);
+        });
 
         // Render images in right grid
-        data.images.forEach((img, index) => {
+        currentImages.forEach((img, index) => {
             const container = document.createElement('div');
             container.style.position = 'relative';
             container.style.width = '100%';
@@ -102,7 +108,6 @@ async function uploadTestZip() {
             imgEl.addEventListener('click', () => toggleSelectImage(index));
             container.appendChild(imgEl);
 
-            // Overlay for selected state
             const overlay = document.createElement('div');
             overlay.style.position = 'absolute';
             overlay.style.inset = '0';
