@@ -7,7 +7,7 @@
 // Fetch posts from the preview forum (for both edit and auto-fill)
 // ────────────────────────────────────────────────────────────
 async function fetchForumPosts() {
-    const previewChannelId = '1465938599378812980'; // Preview forum channel ID
+    const previewChannelId = '1465938599378812980';
     const previewDrop = document.getElementById('postDropdown');
     const supporterBaseDrop = document.getElementById('supporterPostSelect');
 
@@ -44,6 +44,19 @@ async function fetchForumPosts() {
                 supporterBaseDrop.appendChild(option);
             }
         });
+
+        // --- NEW: Auto-fill Pack Number and Set Size in Create New Release ---
+        // Extract all pack numbers from post titles
+        const packNumbers = globalForumPosts
+            .map(p => p.name.match(/Pack #(\d+)/i))
+            .filter(match => match)
+            .map(match => parseInt(match[1], 10));
+        const maxPack = packNumbers.length ? Math.max(...packNumbers) : 0;
+        const nextPack = maxPack + 1;
+        document.getElementById('rel-pack').value = nextPack;
+        // Set default Set Size to "xx"
+        document.getElementById('rel-size').value = 'xx';
+        // --------------------------------------------------------------------
 
     } catch (error) {
         console.error('Error fetching preview forum posts:', error);
@@ -272,17 +285,6 @@ async function loadSupporterPostData() {
         console.error("Error fetching preview post content:", e);
     }
 }
-
-// after populating dropdowns, compute next pack number
-const packNumbers = globalForumPosts
-    .map(p => p.name.match(/Pack #(\d+)/i))
-    .filter(match => match)
-    .map(match => parseInt(match[1], 10));
-const maxPack = packNumbers.length ? Math.max(...packNumbers) : 0;
-const nextPack = maxPack + 1;
-document.getElementById('rel-pack').value = nextPack;
-// Also set default set size to "xx"
-document.getElementById('rel-size').value = 'xx';
 
 // ────────────────────────────────────────────────────────────
 // Submit edit for a preview post (Preview tab)
