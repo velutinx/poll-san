@@ -273,6 +273,17 @@ async function loadSupporterPostData() {
     }
 }
 
+// after populating dropdowns, compute next pack number
+const packNumbers = globalForumPosts
+    .map(p => p.name.match(/Pack #(\d+)/i))
+    .filter(match => match)
+    .map(match => parseInt(match[1], 10));
+const maxPack = packNumbers.length ? Math.max(...packNumbers) : 0;
+const nextPack = maxPack + 1;
+document.getElementById('rel-pack').value = nextPack;
+// Also set default set size to "xx"
+document.getElementById('rel-size').value = 'xx';
+
 // ────────────────────────────────────────────────────────────
 // Submit edit for a preview post (Preview tab)
 // ────────────────────────────────────────────────────────────
