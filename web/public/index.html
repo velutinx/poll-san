@@ -352,15 +352,14 @@
     <div class="card">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
             <span class="card-header-label">Active Subscribers</span>
-            <button onclick="loadMembershipData()" style="background: var(--blue); padding: 5px 15px; font-size: 0.8rem;">🔄 Refresh List</button>
-        </div>
+            </div>
         
         <div style="overflow-x: auto;">
             <table style="width: 100%; border-collapse: collapse; color: #e2e8f0;">
                 <thead>
                     <tr style="text-align: left; border-bottom: 2px solid #334155; color: #94a3b8; font-size: 0.9rem;">
-                        <th style="padding: 12px;">User / Tag</th>
-                        <th style="padding: 12px;">Discord ID</th>
+                        <th style="padding: 12px;">Server Nickname</th>
+                        <th style="padding: 12px;">Discord Tag</th>
                         <th style="padding: 12px;">Rank</th>
                         <th style="padding: 12px;">Days Left</th>
                     </tr>
@@ -368,7 +367,7 @@
                 <tbody id="membership-list-body">
                     <tr>
                         <td colspan="4" style="padding: 30px; text-align: center; color: #64748b;">
-                            Click "Membership" tab to load data...
+                            Loading membership data...
                         </td>
                     </tr>
                 </tbody>
