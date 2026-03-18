@@ -2,7 +2,7 @@ const express = require('express');
 const path = require('path');
 const { ChannelType } = require('discord.js');
 const multer = require('multer');
-const cors = require('cors'); // 1. Imported
+const cors = require('cors'); 
 const supabase = require('../services/supabase');
 const queueService = require('../services/queueService');
 const { Storage } = require('megajs');
@@ -14,18 +14,18 @@ module.exports = (client) => {
     const app = express();
     const PORT = process.env.PORT || 3000;
 
-    // 2. MUST BE THE VERY FIRST MIDDLEWARE
+    // 1. CORS MUST BE THE VERY FIRST MIDDLEWARE
     app.use(cors({
         origin: 'https://velutinx.com',
         methods: ['GET', 'POST', 'OPTIONS'],
         allowedHeaders: ['Content-Type', 'Authorization']
     }));
 
-    // 3. PARSERS (Only once!)
+    // 2. PARSERS (Only once!)
     app.use(express.json());
     app.use(express.static(path.join(__dirname, 'public')));
 
-    // 4. MULTER
+    // 3. MULTER
     const upload = multer({ storage: multer.memoryStorage() });
 
     // Polyfill for crypto.getRandomValues
@@ -43,7 +43,6 @@ module.exports = (client) => {
     // ────────────────────────────────────────────────
     app.post('/api/capture-membership-order', async (req, res) => {
         const { orderId, tier, discordId } = req.body;
-        
         console.log(`📥 Received Capture: Order ${orderId} for User ${discordId}`);
 
         try {
