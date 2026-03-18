@@ -875,13 +875,21 @@ app.get('/api/get-memberships', async (req, res) => {
 
         if (error) throw error;
 
-        // Try to get Discord Usernames from the bot's cache/fetch
+        // Replace 'YOUR_GUILD_ID' with your actual Discord Server ID
+        const guild = await client.guilds.fetch('YOUR_GUILD_ID'); 
+
         const enriched = await Promise.all(data.map(async (row) => {
             try {
-                const user = await client.users.fetch(row.discord_id);
-                return { ...row, discord_name: user.tag };
+                // Fetch the member specifically from your server
+                const member = await guild.members.fetch(row.discord_id);
+                return { 
+                    ...row, 
+                    server_name: member.displayName, // Server Nickname
+                    discord_name: member.user.tag    // Global Username
+                };
             } catch {
-                return { ...row, discord_name: null };
+                // Fallback if they left the server
+                return { ...row, server_name: 'Not in Server', discord_name: 'Unknown' };
             }
         }));
 
@@ -890,10 +898,6 @@ app.get('/api/get-memberships', async (req, res) => {
         res.status(500).json({ error: err.message });
     }
 });
-
-
-
-
 
 	
     // ────────────────────────────────────────────────
