@@ -406,7 +406,7 @@ async function switchTab(tabId) {
         }
 
         // ======================================================
-        // GREETINGS
+        // GREETINGS – updated to use toast notifications
         // ======================================================
         async function saveGreetings() {
             const channel = document.getElementById('welcome_channel_id').value;
@@ -416,7 +416,12 @@ async function switchTab(tabId) {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ welcome_channel_id: channel, welcome_message: message })
             });
-            document.getElementById('greetings-status').innerText = res.ok ? "✅ Saved!" : "❌ Error.";
+
+            if (res.ok) {
+                showToast('Success!', 'Settings applied');
+            } else {
+                showToast('Error!', 'Failed to save', 'error');
+            }
         }
 
 // ======================================================
@@ -484,5 +489,6 @@ async function loadChannels() {
     <script src="/js/megalink.js" defer></script>
     <script src="/js/poll.js" defer></script>
     <script src="/js/uploading.js" defer></script>
+    <script src="/js/toast.js" defer></script>  <!-- NEW toast script -->
 </body>
 </html>
