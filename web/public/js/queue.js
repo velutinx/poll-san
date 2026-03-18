@@ -40,24 +40,28 @@ function renderQueue() {
         animation: 150,
         handle: '.drag-handle',
         ghostClass: 'queue-ghost',
-        onEnd: async (evt) => {
-            const oldIndex = evt.oldIndex;
-            const newIndex = evt.newIndex;
-            if (oldIndex === newIndex) return;
-            const movedItem = queueItems.splice(oldIndex, 1)[0];
-            queueItems.splice(newIndex, 0, movedItem);
-            try {
-                const res = await fetch('/api/queue-reorder', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ newQueue: queueItems })
-                });
-                if (!res.ok) throw new Error('Reorder failed');
-                renderQueue();
-            } catch (err) {
-                console.error(err);
-                showToast('Error', 'Failed to reorder queue', 'error');
-                loadQueueData();
+// Inside renderQueue, the Sortable onEnd callback
+onEnd: async (evt) => {
+    const oldIndex = evt.oldIndex;
+    const newIndex = evt.newIndex;
+    if (oldIndex === newIndex) return;
+
+    const movedItem = queueItems.splice(oldIndex, 1)[0];
+    queueItems.splice(newIndex, 0, movedItem);
+
+    try {
+        const res = await fetch('/api/queue-reorder', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ newQueue: queueItems })
+        });
+        if (!res.ok) throw new Error('Reorder failed');
+        renderQueue();
+        showToast('Queue Reordered', 'New order saved'); // <-- ADD THIS LINE
+    } catch (err) {
+        console.error(err);
+        showToast('Error', 'Failed to reorder queue', 'error');
+        loadQueueData(); // revert
             }
         }
     });
