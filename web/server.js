@@ -868,7 +868,6 @@ app.post('/api/capture-membership-order', async (req, res) => {
 // ────────────────────────────────────────────────
 app.get('/api/memberships', async (req, res) => {
     try {
-        // Fetch everything from your memberships table
         const { data: subs, error } = await supabase
             .from('memberships') 
             .select('*');
@@ -879,22 +878,26 @@ app.get('/api/memberships', async (req, res) => {
 
         const membershipData = await Promise.all(subs.map(async (sub) => {
             try {
-                // Fetch member to get their latest Discord Name/Nick
-                const member = await guild.members.fetch(sub.user_id);
+                // Debugging: Log the raw data from Supabase to your Railway console
+                console.log('Raw Supabase Row:', sub);
+
+                const userId = sub.user_id || sub.discord_id || sub.id;
+                const member = await guild.members.fetch(userId);
 
                 return {
                     nickname: member.displayName,
                     discordTag: member.user.tag,
-                    // CRITICAL: Ensure these column names match your Supabase exactly
-                    rank: String(sub.rank), 
-                    daysLeft: sub.days_left 
+                    // Try different column names for Rank
+                    rank: String(sub.rank || sub.membership_type || 'Standard'),
+                    // Try different column names for Days
+                    daysLeft: sub.days_left ?? sub.days ?? sub.remaining_days ?? 0
                 };
             } catch (err) {
                 return {
                     nickname: "User Left Server",
                     discordTag: "Unknown",
-                    rank: String(sub.rank || '1'),
-                    daysLeft: sub.days_left || 0
+                    rank: String(sub.rank || 'Standard'),
+                    daysLeft: sub.days_left ?? 0
                 };
             }
         }));
