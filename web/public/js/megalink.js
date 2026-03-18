@@ -54,16 +54,15 @@ async function uploadToMega() {
     const filenameInput = document.getElementById('mega-filename');
     const progressBar = document.getElementById('mega-progress');
 
-    // Use the global zip file from uploading.js
     const fileToUpload = window.currentZipFile;
     if (!fileToUpload) {
-        status.innerText = '❌ No ZIP file loaded in ZIP Preview.';
+        showToast('Error', 'No ZIP file loaded in ZIP Preview', 'error');
         return;
     }
 
     let finalFileName = filenameInput.value.trim();
     if (!finalFileName) {
-        status.innerText = '❌ No filename. Select a preview post first.';
+        showToast('Error', 'Please enter a filename', 'error');
         return;
     }
 
@@ -83,9 +82,7 @@ async function uploadToMega() {
     xhr.open('POST', '/api/upload-to-mega', true);
 
     xhr.upload.onprogress = (e) => {
-        if (e.lengthComputable) {
-            progressBar.value = (e.loaded / e.total) * 100;
-        }
+        if (e.lengthComputable) progressBar.value = (e.loaded / e.total) * 100;
     };
 
     xhr.onload = () => {
@@ -93,25 +90,26 @@ async function uploadToMega() {
             try {
                 const data = JSON.parse(xhr.responseText);
                 document.getElementById('supDownload').value = data.link || '';
-                // Also set the Set Size field if we have the total count
-                if (window.totalImagesCount) {
-                    document.getElementById('supSize').value = window.totalImagesCount;
-                }
-                status.innerText = '✅ Uploaded!';
+                showToast('Upload Complete', 'File uploaded to MEGA');
+                clearMegaFile();
+                status.innerText = '';
             } catch (e) {
-                status.innerText = '❌ Invalid server response.';
+                showToast('Error', 'Invalid server response', 'error');
+                status.innerText = '';
             }
         } else {
-            status.innerText = `❌ Upload failed: ${xhr.responseText}`;
+            showToast('Error', `Upload failed: ${xhr.status}`, 'error');
+            status.innerText = '';
         }
         btn.disabled = false;
         progressBar.style.display = 'none';
     };
 
     xhr.onerror = () => {
-        status.innerText = '❌ Network error.';
+        showToast('Error', 'Network error', 'error');
         btn.disabled = false;
         progressBar.style.display = 'none';
+        status.innerText = '';
     };
 
     xhr.send(formData);
