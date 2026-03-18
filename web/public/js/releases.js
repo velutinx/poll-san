@@ -291,7 +291,7 @@ async function loadSupporterPostData() {
 // ────────────────────────────────────────────────────────────
 async function submitEdit() {
     const status = document.getElementById('edit-status');
-    const btn = document.getElementById('edit-submit-btn');
+const btn = document.getElementById('rel-submit-btn');
     const data = {
         threadId: document.getElementById('postDropdown').value,
         pack: document.getElementById('editPack').value,
@@ -333,7 +333,7 @@ submitRelease
 // ────────────────────────────────────────────────────────────
 async function submitRelease() {
     const status = document.getElementById('release-status');
-    const btn = document.getElementById('release-submit-btn');
+    const btn = document.getElementById('rel-submit-btn'); // <-- fixed ID
     
     // Basic validation
     const series = document.getElementById('rel-series').value;
@@ -353,13 +353,13 @@ async function submitRelease() {
     formData.append('input', `${document.getElementById('rel-gender').value} ${name}`.trim());
     formData.append('suffix', document.getElementById('rel-suffix').value || '');
 
-    // Add the images from the uploadedFiles array
+    // Add images
     uploadedFiles.forEach(file => {
         formData.append('images', file);
     });
 
     try {
-        const res = await fetch('/api/create-release', {
+        const res = await fetch('/api/release-preview', { // <-- fixed endpoint
             method: 'POST',
             body: formData
         });
@@ -367,8 +367,7 @@ async function submitRelease() {
         if (res.ok) {
             showToast('Success', 'New release created successfully');
             clearImages();
-            // Refresh the dropdowns so the new post appears
-            await fetchForumPosts();
+            await fetchForumPosts(); // refresh dropdowns
             if (status) status.innerText = '';
         } else {
             const errData = await res.json();
