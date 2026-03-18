@@ -42,35 +42,40 @@ module.exports = (client) => {
     // NEW ENDPOINT: Capture Membership
     // ────────────────────────────────────────────────
 app.post('/api/capture-membership-order', async (req, res) => {
+    try {
         const { orderId, tier, discordId } = req.body;
-        
-        console.log(`📥 Received Capture: Order ${orderId} for User ${discordId}`);
 
-        try {
-            const { error } = await supabase
-                .from('memberships')
-                .upsert({ 
-                    discord_id: discordId, 
-                    tier: parseInt(tier), 
-                    order_id: orderId,
-                    updated_at: new Date().toISOString()
-                }, { onConflict: 'discord_id' }); // Explicitly handle the conflict
+        // Log the incoming data to ensure it's not undefined
+        console.log('Incoming membership data:', { orderId, tier, discordId });
 
-            if (error) {
-                console.error('❌ Supabase Error Details:', error);
-                return res.status(400).json({ 
-                    error: "Supabase Rejected Request", 
-                    details: error.message,
-                    code: error.code 
-                });
-            }
-
-            res.json({ success: true });
-        } catch (err) {
-            console.error('❌ Server Crash Error:', err);
-            res.status(500).json({ error: "Internal Server Error", message: err.message });
+        if (!orderId || !tier || !discordId) {
+            return res.status(400).json({ error: "Missing required fields", received: req.body });
         }
-    });
+
+        const { data, error } = await supabase
+            .from('memberships')
+            .upsert({ 
+                discord_id: discordId, 
+                tier: parseInt(tier), 
+                order_id: orderId,
+                updated_at: new Date().toISOString()
+            }, { onConflict: 'discord_id' });
+
+        if (error) {
+            console.error('Supabase Error:', error);
+            return res.status(500).json({ error: "Database error", details: error.message });
+        }
+
+        return res.json({ success: true, data });
+    } catch (err) {
+        console.error('Crash Error:', err);
+        return res.status(500).json({ 
+            error: "Server Crash", 
+            message: err.message, 
+            stack: err.stack // This will tell us the exact line that failed
+        });
+    }
+});
     
     // ────────────────────────────────────────────────
     // CONFIG
