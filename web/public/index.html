@@ -470,44 +470,45 @@ const MEMBERSHIP_MAP = {
 };
 
 async function loadMembershipData() {
-    const tbody = document.getElementById('membership-list-body');
-    // Minimalist loading state
-    tbody.innerHTML = '<tr><td colspan="4" style="padding: 20px; text-align: center; color: #94a3b8;">🛰️ Syncing Database...</td></tr>';
-
+    const tableBody = document.getElementById('membership-list-body');
+    
     try {
-        const res = await fetch('/api/get-memberships');
-        const data = await res.json();
-
-        if (!data || data.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="4" style="padding: 20px; text-align: center;">No active members found.</td></tr>';
+        const response = await fetch('/api/memberships');
+        if (!response.ok) throw new Error('Failed to fetch');
+        
+        const members = await response.json();
+        
+        if (members.length === 0) {
+            tableBody.innerHTML = '<tr><td colspan="4" style="text-align:center; padding:20px;">No active subscribers found.</td></tr>';
             return;
         }
 
-        tbody.innerHTML = ''; 
+        tableBody.innerHTML = members.map(member => {
+            // Determine rank emoji/style
+            let rankDisplay = member.rank || 'Standard';
+            if (rankDisplay.toLowerCase() === 'platinum') rankDisplay = '✨ Platinum';
+            if (rankDisplay.toLowerCase() === 'bronze') rankDisplay = '🥉 Bronze';
 
-        data.forEach(user => {
-            const expiry = new Date(user.expires_at);
-            const now = new Date();
-            const diffMs = expiry - now;
-            const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
-
-            const rankInfo = MEMBERSHIP_MAP[String(user.tier)] || { name: `Tier ${user.tier}`, color: "#fff" };
-            const timeStatus = diffDays <= 0 ? "Expired" : `${diffDays} Day${diffDays === 1 ? '' : 's'}`;
-            const timeColor = diffDays <= 3 ? "var(--warning-orange)" : "var(--success-green)";
-
-            tbody.innerHTML += `
-                <tr style="border-bottom: 1px solid #1e293b; font-size: 0.95rem;">
-                    <td style="padding: 12px; font-weight: 600; color: var(--blue);">${user.server_name || '—'}</td>
-                    <td style="padding: 12px; color: #94a3b8;">${user.discord_name}</td>
-                    <td style="padding: 12px; color: ${rankInfo.color}; font-weight: bold;">${rankInfo.name}</td>
-                    <td style="padding: 12px; font-weight: bold; color: ${timeColor};">${timeStatus}</td>
+            return `
+                <tr style="border-bottom: 1px solid #1e293b;">
+                    <td style="padding: 12px;">${member.nickname || 'Unknown'}</td>
+                    <td style="padding: 12px; color: #94a3b8;">${member.discordTag || 'Unknown'}</td>
+                    <td style="padding: 12px;">${rankDisplay}</td>
+                    <td style="padding: 12px; color: ${member.daysLeft < 5 ? '#f87171' : '#10b981'};">
+                        ${member.daysLeft} Days
+                    </td>
                 </tr>
             `;
-        });
-    } catch (err) {
-        tbody.innerHTML = '<tr><td colspan="4" style="padding: 20px; text-align: center; color: var(--accent);">Failed to load database.</td></tr>';
+        }).join('');
+
+    } catch (error) {
+        console.error('Membership load error:', error);
+        tableBody.innerHTML = '<tr><td colspan="4" style="text-align:center; padding:20px; color:#f87171;">Error loading data. Check console.</td></tr>';
     }
 }
+
+// Call this when the page loads or when the tab is clicked
+document.addEventListener('DOMContentLoaded', loadMembershipData);
 
 // ======================================================
 // CHANNELS + SETTINGS
