@@ -869,7 +869,7 @@ app.post('/api/capture-membership-order', async (req, res) => {
 app.get('/api/memberships', async (req, res) => {
     try {
         const { data: subs, error } = await supabase
-            .from('memberships') 
+            .from('memberships')
             .select('*');
 
         if (error) throw error;
@@ -877,27 +877,26 @@ app.get('/api/memberships', async (req, res) => {
         const guild = await client.guilds.fetch(process.env.GUILD_ID);
 
         const membershipData = await Promise.all(subs.map(async (sub) => {
+            // Calculate days left from expires_at
+            const now = new Date();
+            const expiresAt = new Date(sub.expires_at);
+            const daysLeft = Math.max(0, Math.ceil((expiresAt - now) / (1000 * 60 * 60 * 24)));
+
             try {
-                // Debugging: Log the raw data from Supabase to your Railway console
-                console.log('Raw Supabase Row:', sub);
-
-                const userId = sub.user_id || sub.discord_id || sub.id;
-                const member = await guild.members.fetch(userId);
-
+                const member = await guild.members.fetch(sub.discord_id);
                 return {
                     nickname: member.displayName,
                     discordTag: member.user.tag,
-                    // Try different column names for Rank
-                    rank: String(sub.rank || sub.membership_type || 'Standard'),
-                    // Try different column names for Days
-                    daysLeft: sub.days_left ?? sub.days ?? sub.remaining_days ?? 0
+                    rank: sub.tier.toString(),          // send tier as string for frontend mapping
+                    daysLeft: daysLeft
                 };
             } catch (err) {
+                // User left the server
                 return {
                     nickname: "User Left Server",
                     discordTag: "Unknown",
-                    rank: String(sub.rank || 'Standard'),
-                    daysLeft: sub.days_left ?? 0
+                    rank: sub.tier.toString(),
+                    daysLeft: daysLeft
                 };
             }
         }));
