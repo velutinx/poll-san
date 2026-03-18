@@ -875,26 +875,31 @@ app.get('/api/get-memberships', async (req, res) => {
 
         if (error) throw error;
 
-        // Replace 'YOUR_GUILD_ID' with your actual Discord Server ID
-        const guild = await client.guilds.fetch('YOUR_GUILD_ID'); 
+        // Ensure client is ready and guild ID is valid
+        const guildId = 'YOUR_GUILD_ID'; 
+        const guild = await client.guilds.fetch(guildId).catch(() => null);
+
+        if (!guild) {
+            console.error("Could not fetch guild. Check ID and Bot Permissions.");
+            return res.json(data.map(row => ({ ...row, server_name: 'Guild Error', discord_name: 'Unknown' })));
+        }
 
         const enriched = await Promise.all(data.map(async (row) => {
             try {
-                // Fetch the member specifically from your server
                 const member = await guild.members.fetch(row.discord_id);
                 return { 
                     ...row, 
-                    server_name: member.displayName, // Server Nickname
-                    discord_name: member.user.tag    // Global Username
+                    server_name: member.displayName,
+                    discord_name: member.user.tag 
                 };
             } catch {
-                // Fallback if they left the server
                 return { ...row, server_name: 'Not in Server', discord_name: 'Unknown' };
             }
         }));
 
         res.json(enriched);
     } catch (err) {
+        console.error("Membership API Error:", err);
         res.status(500).json({ error: err.message });
     }
 });
