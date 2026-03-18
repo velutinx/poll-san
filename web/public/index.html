@@ -356,14 +356,15 @@
         
         <div style="overflow-x: auto;">
             <table style="width: 100%; border-collapse: collapse; color: #e2e8f0;">
-                <thead>
-                    <tr style="text-align: left; border-bottom: 2px solid #334155; color: #94a3b8; font-size: 0.9rem;">
-                        <th style="padding: 12px;">Server Nickname</th>
-                        <th style="padding: 12px;">Discord Tag</th>
-                        <th style="padding: 12px;">Rank</th>
-                        <th style="padding: 12px;">Days Left</th>
-                    </tr>
-                </thead>
+<thead>
+    <tr style="text-align: left; border-bottom: 2px solid #334155; color: #94a3b8; font-size: 0.9rem;">
+        <th style="padding: 12px; cursor: pointer;" onclick="sortMembers('nickname')">Server Nickname <span id="sort-nickname"></span></th>
+        <th style="padding: 12px; cursor: pointer;" onclick="sortMembers('discordTag')">Discord Tag <span id="sort-discordTag"></span></th>
+        <th style="padding: 12px; cursor: pointer;" onclick="sortMembers('userId')">User ID <span id="sort-userId"></span></th>
+        <th style="padding: 12px; cursor: pointer;" onclick="sortMembers('rank')">Rank <span id="sort-rank"></span></th>
+        <th style="padding: 12px; cursor: pointer;" onclick="sortMembers('daysLeft')">Days Left <span id="sort-daysLeft"></span></th>
+    </tr>
+</thead>
                 <tbody id="membership-list-body">
                     <tr>
                         <td colspan="4" style="padding: 30px; text-align: center; color: #64748b;">
@@ -469,48 +470,92 @@ const MEMBERSHIP_MAP = {
     "5": { name: "✨ Platinum", color: "#e5e4e2" }
 };
 
+// Sort state
+let currentSort = { column: null, direction: 'asc' };
+let membersData = [];
+
+// Sorting function
+function sortMembers(column) {
+    if (currentSort.column === column) {
+        // toggle direction
+        currentSort.direction = currentSort.direction === 'asc' ? 'desc' : 'asc';
+    } else {
+        currentSort.column = column;
+        currentSort.direction = 'asc';
+    }
+    renderMembersTable();
+}
+
+// Render table with current sort
+function renderMembersTable() {
+    const tableBody = document.getElementById('membership-list-body');
+    if (!membersData.length) {
+        tableBody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:20px;">No active subscribers found.</td></tr>';
+        return;
+    }
+
+    // Sort a copy of the data
+    const sorted = [...membersData].sort((a, b) => {
+        let aVal = a[currentSort.column];
+        let bVal = b[currentSort.column];
+
+        // Handle numeric columns
+        const numericColumns = ['daysLeft', 'userId'];
+        if (numericColumns.includes(currentSort.column)) {
+            aVal = Number(aVal);
+            bVal = Number(bVal);
+        } else {
+            aVal = String(aVal).toLowerCase();
+            bVal = String(bVal).toLowerCase();
+        }
+
+        if (aVal < bVal) return currentSort.direction === 'asc' ? -1 : 1;
+        if (aVal > bVal) return currentSort.direction === 'asc' ? 1 : -1;
+        return 0;
+    });
+
+    // Update header arrows
+    document.querySelectorAll('thead th span').forEach(span => span.innerHTML = '');
+    if (currentSort.column) {
+        const arrow = currentSort.direction === 'asc' ? ' ▲' : ' ▼';
+        const span = document.getElementById(`sort-${currentSort.column}`);
+        if (span) span.innerHTML = arrow;
+    }
+
+    // Build rows
+    tableBody.innerHTML = sorted.map(member => {
+        const rankInfo = MEMBERSHIP_MAP[member.rank] || { name: member.rank || 'Standard', color: '#94a3b8' };
+        const days = member.daysLeft;
+        return `
+            <tr style="border-bottom: 1px solid #1e293b;">
+                <td style="padding: 12px;">${member.nickname || 'Unknown'}</td>
+                <td style="padding: 12px; color: #94a3b8;">${member.discordTag || 'Unknown'}</td>
+                <td style="padding: 12px; color: #94a3b8; font-family: monospace;">${member.userId || ''}</td>
+                <td style="padding: 12px; color: ${rankInfo.color}; font-weight: bold;">${rankInfo.name}</td>
+                <td style="padding: 12px; color: ${days < 5 ? '#f87171' : '#10b981'};">${days} Days</td>
+            </tr>
+        `;
+    }).join('');
+}
+
+// Load data from backend
 async function loadMembershipData() {
     const tableBody = document.getElementById('membership-list-body');
+    tableBody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:20px;">Loading membership data...</td></tr>';
     
     try {
         const response = await fetch('/api/memberships');
         if (!response.ok) throw new Error('Failed to fetch');
         
-        const members = await response.json();
-        
-        if (members.length === 0) {
-            tableBody.innerHTML = '<tr><td colspan="4" style="text-align:center; padding:20px;">No active subscribers found.</td></tr>';
-            return;
-        }
-
-        tableBody.innerHTML = members.map(member => {
-            // 1. USE THE MAP: Convert the ID (e.g., "5") into the human name (e.g., "Platinum")
-            const rankInfo = MEMBERSHIP_MAP[member.rank] || { name: member.rank || 'Standard', color: '#94a3b8' };
-            
-            // 2. FIX UNDEFINED: Fallback to 0 if daysLeft is missing
-            const days = member.daysLeft !== undefined ? member.daysLeft : 0;
-
-            return `
-                <tr style="border-bottom: 1px solid #1e293b;">
-                    <td style="padding: 12px;">${member.nickname || 'Unknown'}</td>
-                    <td style="padding: 12px; color: #94a3b8;">${member.discordTag || 'Unknown'}</td>
-                    <td style="padding: 12px; color: ${rankInfo.color}; font-weight: bold;">
-                        ${rankInfo.name}
-                    </td>
-                    <td style="padding: 12px; color: ${days < 5 ? '#f87171' : '#10b981'};">
-                        ${days} Days
-                    </td>
-                </tr>
-            `;
-        }).join('');
-
+        membersData = await response.json();
+        renderMembersTable();
     } catch (error) {
         console.error('Membership load error:', error);
-        tableBody.innerHTML = '<tr><td colspan="4" style="text-align:center; padding:20px; color:#f87171;">Error loading data. Check console.</td></tr>';
+        tableBody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:20px; color:#f87171;">Error loading data.</td></tr>';
     }
 }
 
-// Call this when the page loads or when the tab is clicked
+// Auto-load on page load
 document.addEventListener('DOMContentLoaded', loadMembershipData);
 
 // ======================================================
