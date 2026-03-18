@@ -734,6 +734,103 @@ app.post('/api/test-zip', upload.single('zipfile'), async (req, res) => {
         res.status(500).json({ error: err.message });
     }
 });
+
+// ────────────────────────────────────────────────
+// 15. PAYPAL MEMBERSHIP (Single Purchase)
+// ────────────────────────────────────────────────
+const paypal = require('@paypal/checkout-server-sdk');
+
+// Set up PayPal environment (uses your .env variables)
+function environment() {
+  const clientId = process.env.PAYPAL_CLIENT_ID;
+  const clientSecret = process.env.PAYPAL_CLIENT_SECRET;
+  if (process.env.NODE_ENV === 'production') {
+    return new paypal.core.LiveEnvironment(clientId, clientSecret);
+  } else {
+    return new paypal.core.SandboxEnvironment(clientId, clientSecret);
+  }
+}
+const paypalClient = new paypal.core.PayPalHttpClient(environment());
+
+// Create a PayPal order for one-time membership purchase
+app.post('/api/create-paypal-order', async (req, res) => {
+  try {
+    const { tier, discordId, price } = req.body;
+    if (!tier || !discordId || !price) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+
+    const request = new paypal.orders.OrdersCreateRequest();
+    request.prefer('return=representation');
+    request.requestBody({
+      intent: 'CAPTURE',
+      purchase_units: [{
+        amount: {
+          currency_code: 'USD',
+          value: price.toFixed(2)
+        },
+        description: `VELUTINX Membership Tier ${tier} (30 days)`
+      }],
+      application_context: {
+        // ✅ FIXED: use your actual success page URL
+        return_url: `https://velutinx.github.io/s/membership-success.html?tier=${tier}&discordId=${encodeURIComponent(discordId)}`,
+        cancel_url: 'https://velutinx.com/membership'
+      }
+    });
+
+    const order = await paypalClient.execute(request);
+    const approvalLink = order.result.links.find(link => link.rel === 'approve').href;
+    res.json({ id: order.result.id, approvalUrl: approvalLink });
+  } catch (err) {
+    console.error('PayPal order creation error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Capture the order after user approves
+app.post('/api/capture-membership-order', async (req, res) => {
+  try {
+    const { orderId, tier, discordId } = req.body;
+    if (!orderId || !tier || !discordId) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+
+    const request = new paypal.orders.OrdersCaptureRequest(orderId);
+    request.requestBody({});
+    const capture = await paypalClient.execute(request);
+
+    // Verify amount (optional but recommended)
+    const expectedPrice = [10.00, 20.00, 40.00][tier - 1];
+    const capturedAmount = parseFloat(capture.result.purchase_units[0].payments.captures[0].amount.value);
+    if (capturedAmount !== expectedPrice) {
+      return res.status(400).json({ error: 'Payment amount mismatch' });
+    }
+
+    // Insert into Supabase (30-day expiry)
+    const expiryDate = new Date();
+    expiryDate.setDate(expiryDate.getDate() + 30);
+    const { error: dbError } = await supabase
+      .from('memberships')
+      .insert({
+        discord_user_id: discordId,
+        tier: tier,
+        payment_type: 'one_time',
+        payment_provider: 'paypal',
+        order_id: orderId,
+        start_date: new Date().toISOString(),
+        expiry_date: expiryDate.toISOString(),
+        is_active: true
+      });
+    if (dbError) throw dbError;
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Capture error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+
     // ────────────────────────────────────────────────
     // SERVE DASHBOARD
     // ────────────────────────────────────────────────
