@@ -4,6 +4,8 @@
 // POLL FUNCTIONS
 // ======================================================
 
+// poll.js
+
 async function loadActivePoll() {
     const listArea = document.getElementById('winner-list');
     if (!listArea) return;
@@ -35,30 +37,45 @@ async function triggerPoll() {
     const channel = document.getElementById('poll_channel').value;
     const days = document.getElementById('poll_days').value;
     const list = document.getElementById('poll_list').value;
-    await fetch('/api/trigger-poll', {
+    const res = await fetch('/api/trigger-poll', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ channel_id: channel, days, character_list: list })
     });
-    loadActivePoll();
+    if (res.ok) {
+        showToast('Poll Started', 'New poll launched successfully');
+        loadActivePoll();
+    } else {
+        showToast('Error', 'Failed to start poll', 'error');
+    }
 }
 
 async function stopPoll() {
     if (!confirm("Stop poll?")) return;
-    await fetch('/api/stop-poll', { method: 'POST' });
-    loadActivePoll();
+    const res = await fetch('/api/stop-poll', { method: 'POST' });
+    if (res.ok) {
+        showToast('Poll Stopped', 'The poll has been stopped');
+        loadActivePoll();
+    } else {
+        showToast('Error', 'Failed to stop poll', 'error');
+    }
 }
 
 async function markWinner(name) {
-    await fetch('/api/mark-winner', {
+    const res = await fetch('/api/mark-winner', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ winner_name: name })
     });
-    loadActivePoll();
+    if (res.ok) {
+        showToast('Winner Selected', `Character "${name}" marked as winner`);
+        loadActivePoll();
+    } else {
+        showToast('Error', 'Failed to mark winner', 'error');
+    }
 }
 
-// Expose functions globally for HTML onclick handlers
+// Expose functions globally
 window.loadActivePoll = loadActivePoll;
 window.triggerPoll = triggerPoll;
 window.stopPoll = stopPoll;
