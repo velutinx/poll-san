@@ -14,6 +14,8 @@
         <div class="nav-item" onclick="switchTab('queue-mgmt')">📋 Queue</div>
         <div class="nav-item" onclick="switchTab('releases-mgmt')">🚀 Releases</div>
         <div class="nav-item" onclick="switchTab('greetings')">👋 Greetings</div>
+        <div class="nav-item" onclick="switchTab('member-mgmt')">💵 Membership</div>
+		
     </nav>
 
     <main>
@@ -343,6 +345,37 @@
                 <div id="greetings-status" class="status"></div>
             </div>
         </div>
+
+		        <!-- membership tab -->
+<div id="member-mgmt" class="tab-content">
+    <h1>Membership Monitor</h1>
+    <div class="card">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+            <span class="card-header-label">Active Subscribers</span>
+            <button onclick="loadMembershipData()" style="background: var(--blue); padding: 5px 15px; font-size: 0.8rem;">🔄 Refresh List</button>
+        </div>
+        
+        <div style="overflow-x: auto;">
+            <table style="width: 100%; border-collapse: collapse; color: #e2e8f0;">
+                <thead>
+                    <tr style="text-align: left; border-bottom: 2px solid #334155; color: #94a3b8; font-size: 0.9rem;">
+                        <th style="padding: 12px;">User / Tag</th>
+                        <th style="padding: 12px;">Discord ID</th>
+                        <th style="padding: 12px;">Rank</th>
+                        <th style="padding: 12px;">Days Left</th>
+                    </tr>
+                </thead>
+                <tbody id="membership-list-body">
+                    <tr>
+                        <td colspan="4" style="padding: 30px; text-align: center; color: #64748b;">
+                            Click "Membership" tab to load data...
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
     </main>
 
     <script>
@@ -423,6 +456,59 @@ async function switchTab(tabId) {
                 showToast('Error!', 'Failed to save', 'error');
             }
         }
+
+
+        // ======================================================
+		// Mapping of your specific Role IDs to Human Names
+        // ======================================================
+const MEMBERSHIP_MAP = {
+    "1": { name: "✨ Bronze", color: "#cd7f32" },
+    "2": { name: "✨ Copper", color: "#b87333" },
+    "3": { name: "✨ Silver", color: "#c0c0c0" },
+    "4": { name: "✨ Gold", color: "#ffd700" },
+    "5": { name: "✨ Platinum", color: "#e5e4e2" }
+};
+
+async function loadMembershipData() {
+    const tbody = document.getElementById('membership-list-body');
+    tbody.innerHTML = '<tr><td colspan="4" style="padding: 20px; text-align: center;">🛰️ Fetching from Supabase...</td></tr>';
+
+    try {
+        const res = await fetch('/api/get-memberships');
+        const data = await res.json();
+
+        if (!data || data.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="4" style="padding: 20px; text-align: center;">No active members found.</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = ''; // Clear status message
+
+        data.forEach(user => {
+            // Days Left Calculation (Rounding Up)
+            const expiry = new Date(user.expires_at);
+            const now = new Date();
+            const diffMs = expiry - now;
+            const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+
+            const rankInfo = MEMBERSHIP_MAP[String(user.tier)] || { name: `Tier ${user.tier}`, color: "#fff" };
+            const timeStatus = diffDays <= 0 ? "Expired" : `${diffDays} Day${diffDays === 1 ? '' : 's'}`;
+            const timeColor = diffDays <= 3 ? "var(--warning-orange)" : "var(--success-green)";
+
+            tbody.innerHTML += `
+                <tr style="border-bottom: 1px solid #1e293b; font-size: 0.95rem;">
+                    <td style="padding: 12px; font-weight: 500;">${user.discord_name || 'Ghost User'}</td>
+                    <td style="padding: 12px; font-family: monospace; color: #64748b; font-size: 0.85rem;">${user.discord_id}</td>
+                    <td style="padding: 12px; color: ${rankInfo.color}; font-weight: bold;">${rankInfo.name}</td>
+                    <td style="padding: 12px; font-weight: bold; color: ${timeColor};">${timeStatus}</td>
+                </tr>
+            `;
+        });
+    } catch (err) {
+        console.error(err);
+        tbody.innerHTML = '<tr><td colspan="4" style="padding: 20px; text-align: center; color: var(--accent);">Failed to load database.</td></tr>';
+    }
+}
 
 // ======================================================
 // CHANNELS + SETTINGS
