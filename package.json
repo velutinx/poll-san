@@ -8,6 +8,7 @@
     "dev": "node --watch index.js"
   },
   "dependencies": {
+    "@paypal/checkout-server-sdk": "^2.0.2",
     "@supabase/supabase-js": "^2.39.0",
     "adm-zip": "^0.5.10",
     "discord.js": "^14.14.1",
