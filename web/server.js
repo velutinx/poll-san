@@ -2,6 +2,7 @@ const express = require('express');
 const path = require('path');
 const { ChannelType } = require('discord.js');
 const multer = require('multer');
+const cors = require('cors'); // 1. ADD THIS
 const supabase = require('../services/supabase');
 const queueService = require('../services/queueService');
 const { Storage } = require('megajs');
@@ -18,7 +19,19 @@ module.exports = (client) => {
 
     app.use(express.json());
     app.use(express.static(path.join(__dirname, 'public')));
+    
+// 2. CONFIGURE CORS BEFORE OTHER ROUTES
+    app.use(cors({
+        origin: 'https://velutinx.com', // Allows your shop to talk to this API
+        methods: ['GET', 'POST'],
+        allowedHeaders: ['Content-Type']
+    }));
 
+    // Multer for file uploads
+    const upload = multer({ storage: multer.memoryStorage() });
+
+    app.use(express.json());
+    app.use(express.static(path.join(__dirname, 'public')));
 
     // Polyfill for crypto.getRandomValues (if missing in environment)
 if (typeof global.crypto === 'undefined') {
@@ -736,100 +749,52 @@ app.post('/api/test-zip', upload.single('zipfile'), async (req, res) => {
 });
 
 // ────────────────────────────────────────────────
-// 15. PAYPAL MEMBERSHIP (Single Purchase)
-// ────────────────────────────────────────────────
-const paypal = require('@paypal/checkout-server-sdk');
+    // NEW: 15. PAYPAL CAPTURE (Place this near your Create Order logic)
+    // ────────────────────────────────────────────────
+    app.post('/api/capture-membership-order', async (req, res) => {
+        const { orderId, tier, discordId } = req.body;
 
-// Set up PayPal environment (uses your .env variables)
-function environment() {
-  const clientId = process.env.PAYPAL_CLIENT_ID;
-  const clientSecret = process.env.PAYPAL_CLIENT_SECRET;
-  if (process.env.NODE_ENV === 'production') {
-    return new paypal.core.LiveEnvironment(clientId, clientSecret);
-  } else {
-    return new paypal.core.SandboxEnvironment(clientId, clientSecret);
-  }
-}
-const paypalClient = new paypal.core.PayPalHttpClient(environment());
+        try {
+            // Log the attempt
+            console.log(`📥 Processing Membership: Order ${orderId} | Tier ${tier} | User ${discordId}`);
 
-// Create a PayPal order for one-time membership purchase
-app.post('/api/create-paypal-order', async (req, res) => {
-  try {
-    const { tier, discordId, price } = req.body;
-    if (!tier || !discordId || !price) {
-      return res.status(400).json({ error: 'Missing required fields' });
-    }
+            // 1. Update Supabase
+            const { error } = await supabase
+                .from('memberships')
+                .upsert({ 
+                    discord_id: discordId, 
+                    tier: parseInt(tier), 
+                    order_id: orderId,
+                    updated_at: new Date().toISOString()
+                });
 
-    const request = new paypal.orders.OrdersCreateRequest();
-    request.prefer('return=representation');
-    request.requestBody({
-      intent: 'CAPTURE',
-      purchase_units: [{
-        amount: {
-          currency_code: 'USD',
-          value: price.toFixed(2)
-        },
-        description: `VELUTINX Membership Tier ${tier} (30 days)`
-      }],
-      application_context: {
-        // ✅ FIXED: use your actual success page URL
-return_url: `https://velutinx.com/s/success.html?tier=${tier}&discordId=${encodeURIComponent(discordId)}`,
-          cancel_url: 'https://velutinx.com/membership'
-      }
+            if (error) throw error;
+
+            // 2. Assign Discord Role (Optional but recommended)
+            const guild = await client.guilds.fetch(process.env.GUILD_ID);
+            const member = await guild.members.fetch(discordId).catch(() => null);
+            
+            if (member) {
+                // Map your Tier numbers to actual Role IDs from your Discord server
+                const tierRoles = {
+                    "1": "123456789012345678", // Replace with Bronze Role ID
+                    "2": "876543210987654321"  // Replace with Silver Role ID
+                };
+
+                const roleId = tierRoles[String(tier)];
+                if (roleId) {
+                    await member.roles.add(roleId);
+                    console.log(`✅ Role added to ${member.user.tag}`);
+                }
+            }
+
+            res.json({ success: true });
+        } catch (err) {
+            console.error('❌ Capture error:', err);
+            res.status(500).json({ error: "Failed to process membership" });
+        }
     });
-
-    const order = await paypalClient.execute(request);
-    const approvalLink = order.result.links.find(link => link.rel === 'approve').href;
-    res.json({ id: order.result.id, approvalUrl: approvalLink });
-  } catch (err) {
-    console.error('PayPal order creation error:', err);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// Capture the order after user approves
-app.post('/api/capture-membership-order', async (req, res) => {
-  console.log('🔥🔥🔥 CAPTURE ENDPOINT HIT', req.body);
-  try {
-    const { orderId, tier, discordId } = req.body;
-    if (!orderId || !tier || !discordId) {
-      return res.status(400).json({ error: 'Missing required fields' });
-    }
-
-    // ✅ FIXED: The frontend already captured the money. 
-    // We just need to Get the order and verify it's completed.
-    const request = new paypal.orders.OrdersGetRequest(orderId);
-    const orderInfo = await paypalClient.execute(request);
-
-    if (orderInfo.result.status !== 'COMPLETED') {
-      return res.status(400).json({ error: 'Payment was not completed on PayPal' });
-    }
-
-    // Insert into Supabase (30-day expiry)
-    const expiryDate = new Date();
-    expiryDate.setDate(expiryDate.getDate() + 30);
     
-    const { error: dbError } = await supabase
-      .from('memberships')
-      .insert({
-        discord_user_id: discordId,
-        tier: tier,
-        payment_type: 'one_time',
-        payment_provider: 'paypal',
-        order_id: orderId,
-        start_date: new Date().toISOString(),
-        expiry_date: expiryDate.toISOString(),
-        is_active: true
-      });
-      
-    if (dbError) throw dbError;
-
-    res.json({ success: true });
-  } catch (err) {
-    console.error('Verify/Supabase error:', err);
-    res.status(500).json({ error: err.message });
-  }
-});
     // ────────────────────────────────────────────────
     // SERVE DASHBOARD
     // ────────────────────────────────────────────────
