@@ -773,8 +773,8 @@ app.post('/api/create-paypal-order', async (req, res) => {
       }],
       application_context: {
         // ✅ FIXED: use your actual success page URL
-        return_url: `https://velutinx.github.io/s/membership-success.html?tier=${tier}&discordId=${encodeURIComponent(discordId)}`,
-        cancel_url: 'https://velutinx.com/membership'
+return_url: `https://velutinx.github.io/s/membership-success.html?tier=${tier}&discordId=${encodeURIComponent(discordId)}`,
+          cancel_url: 'https://velutinx.com/membership'
       }
     });
 
