@@ -806,7 +806,7 @@ app.post('/api/test-zip', upload.single('zipfile'), async (req, res) => {
     }
 });
 
-// ────────────────────────────────────────────────
+    // ────────────────────────────────────────────────
     // NEW: 15. PAYPAL CAPTURE (Place this near your Create Order logic)
     // ────────────────────────────────────────────────
 app.post('/api/capture-membership-order', async (req, res) => {
@@ -861,7 +861,41 @@ app.post('/api/capture-membership-order', async (req, res) => {
         res.status(500).json({ error: "Failed to process membership", details: err.message });
     }
 });
-    
+
+
+    // ────────────────────────────────────────────────
+    // NEW: 16. MEMBERSHIP FROM SITE
+    // ────────────────────────────────────────────────
+app.get('/api/get-memberships', async (req, res) => {
+    try {
+        const { data, error } = await supabase
+            .from('memberships')
+            .select('*')
+            .order('expires_at', { ascending: true });
+
+        if (error) throw error;
+
+        // Try to get Discord Usernames from the bot's cache/fetch
+        const enriched = await Promise.all(data.map(async (row) => {
+            try {
+                const user = await client.users.fetch(row.discord_id);
+                return { ...row, discord_name: user.tag };
+            } catch {
+                return { ...row, discord_name: null };
+            }
+        }));
+
+        res.json(enriched);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+
+
+
+
+	
     // ────────────────────────────────────────────────
     // SERVE DASHBOARD
     // ────────────────────────────────────────────────
