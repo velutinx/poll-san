@@ -76,8 +76,11 @@ app.post('/api/capture-membership-order', async (req, res) => {
             
             if (member) {
                 const tierRoles = {
-                    "1": "123456789012345678", // Replace with your Bronze Role ID
-                    "2": "876543210987654321"  // Replace with your Silver Role ID
+                    "1": "1465444240845963326",  // ✨ Bronze
+                    "2": "1465670134743044139",  // ✨ Copper
+					"3": "1465904476417163457",  // ✨ Silver
+					"4": "1465904548320378956",  // ✨ Gold
+					"5": "1465952085026541804"   // ✨ Platinum
                 };
 
                 const roleId = tierRoles[String(tier)];
