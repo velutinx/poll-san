@@ -876,30 +876,30 @@ app.get('/api/memberships', async (req, res) => {
 
         const guild = await client.guilds.fetch(process.env.GUILD_ID);
 
-        const membershipData = await Promise.all(subs.map(async (sub) => {
-            // Calculate days left from expires_at
-            const now = new Date();
-            const expiresAt = new Date(sub.expires_at);
-            const daysLeft = Math.max(0, Math.ceil((expiresAt - now) / (1000 * 60 * 60 * 24)));
+const membershipData = await Promise.all(subs.map(async (sub) => {
+    const now = new Date();
+    const expiresAt = new Date(sub.expires_at);
+    const daysLeft = Math.max(0, Math.ceil((expiresAt - now) / (1000 * 60 * 60 * 24)));
 
-            try {
-                const member = await guild.members.fetch(sub.discord_id);
-                return {
-                    nickname: member.displayName,
-                    discordTag: member.user.tag,
-                    rank: sub.tier.toString(),          // send tier as string for frontend mapping
-                    daysLeft: daysLeft
-                };
-            } catch (err) {
-                // User left the server
-                return {
-                    nickname: "User Left Server",
-                    discordTag: "Unknown",
-                    rank: sub.tier.toString(),
-                    daysLeft: daysLeft
-                };
-            }
-        }));
+    try {
+        const member = await guild.members.fetch(sub.discord_id);
+        return {
+            nickname: member.displayName,
+            discordTag: member.user.tag,
+            userId: sub.discord_id,   // <-- add this
+            rank: sub.tier.toString(),
+            daysLeft: daysLeft
+        };
+    } catch (err) {
+        return {
+            nickname: "User Left Server",
+            discordTag: "Unknown",
+            userId: sub.discord_id,   // <-- add this
+            rank: sub.tier.toString(),
+            daysLeft: daysLeft
+        };
+    }
+}));
 
         res.json(membershipData);
     } catch (error) {
