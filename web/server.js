@@ -863,41 +863,41 @@ app.post('/api/capture-membership-order', async (req, res) => {
 });
 
 
-    // ────────────────────────────────────────────────
-    // NEW: 16. MEMBERSHIP FROM SITE
-    // ────────────────────────────────────────────────
-// --- Add this inside your server.js exports ---
-
+// ────────────────────────────────────────────────
+// MEMBERSHIP MONITOR API
+// ────────────────────────────────────────────────
 app.get('/api/memberships', async (req, res) => {
     try {
         // 1. Fetch from Supabase
-        // Note: Check if your table is actually named 'memberships'
         const { data: subs, error } = await supabase
             .from('memberships') 
             .select('*');
 
         if (error) throw error;
 
-        // 2. Get the Guild from the client passed in startDashboard(client)
+        // 2. Get the Guild (Ensure GUILD_ID is correct in Railway)
         const guild = await client.guilds.fetch(process.env.GUILD_ID);
 
         // 3. Map database IDs to Discord Nicknames
         const membershipData = await Promise.all(subs.map(async (sub) => {
             try {
-                // We use the user_id column from your DB to find them in Discord
-                const member = await guild.members.fetch(sub.user_id);
+                // IMPORTANT: If your column is NOT named 'user_id', change 'sub.user_id' below
+                const userId = sub.user_id || sub.discord_id || sub.id; 
+                const member = await guild.members.fetch(userId);
+
                 return {
-                    nickname: member.displayName, // Server Nickname
-                    discordTag: member.user.tag,   // Username#0000
-                    rank: sub.rank,
-                    daysLeft: sub.days_left
+                    nickname: member.displayName,
+                    discordTag: member.user.tag,
+                    rank: sub.rank || 'Standard',
+                    // This maps the DB 'days_left' to the frontend 'daysLeft'
+                    daysLeft: sub.days_left 
                 };
             } catch (err) {
-                // Fallback if user left or bot can't see them
+                // If it reaches here, the bot couldn't find the user in the server
                 return {
                     nickname: "User Left Server",
                     discordTag: "Unknown",
-                    rank: sub.rank,
+                    rank: sub.rank || 'Standard',
                     daysLeft: sub.days_left
                 };
             }
