@@ -308,39 +308,26 @@ async function submitEdit() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(data)
         });
-        status.innerText = res.ok ? "✅ Updated!" : "❌ Failed.";
-        if (res.ok) setTimeout(fetchForumPosts, 1000);
-    } catch (e) { status.innerText = "❌ Error."; }
-    finally { btn.disabled = false; }
+        if (res.ok) {
+            showToast('Post Updated', 'Preview post edited successfully');
+            setTimeout(fetchForumPosts, 1000);
+            status.innerText = '';
+        } else {
+            showToast('Error', 'Failed to edit post', 'error');
+            status.innerText = '';
+        }
+    } catch (e) {
+        showToast('Error', e.message, 'error');
+        status.innerText = '';
+    } finally {
+        btn.disabled = false;
+    }
 }
 
 // ────────────────────────────────────────────────────────────
 // Create a new preview release (Preview tab)
 // ────────────────────────────────────────────────────────────
-async function submitRelease() {
-    const status = document.getElementById('release-status');
-    const btn = document.getElementById('rel-submit-btn');
-    const formData = new FormData();
-    formData.append('pack', document.getElementById('rel-pack').value);
-    formData.append('setSize', document.getElementById('rel-size').value || '');
-    formData.append('input', `${document.getElementById('rel-gender').value} ${document.getElementById('rel-name').value}`);
-    formData.append('series', document.getElementById('rel-series').value);
-    formData.append('suffix', document.getElementById('rel-suffix').value || '');
-    uploadedFiles.forEach(file => formData.append('images', file));
-    btn.disabled = true;
-    status.innerText = "⏳ Uploading...";
-    try {
-        const res = await fetch('/api/release-preview', { method: 'POST', body: formData });
-        if (res.ok) {
-            status.innerText = "✅ Posted!";
-            clearImages();
-        } else {
-            status.innerText = "❌ Error.";
-        }
-    } catch (e) { status.innerText = "❌ Error."; }
-    finally { btn.disabled = false; }
-}
-
+submitRelease
 // ────────────────────────────────────────────────────────────
 // Submit supporter release (create or update)
 // ────────────────────────────────────────────────────────────
@@ -364,22 +351,30 @@ async function submitSupporterRelease() {
     formData.append('download', document.getElementById('supDownload').value);
     formData.append('editPreview', toggle);
     formData.append('previewThreadId', previewThreadId);
-    if (supporterThreadId) {
-        formData.append('supporterThreadId', supporterThreadId);
-    }
+    if (supporterThreadId) formData.append('supporterThreadId', supporterThreadId);
     supporterUploadedFiles.forEach(file => formData.append('images', file));
 
     try {
         const res = await fetch('/api/supporter-release', { method: 'POST', body: formData });
         if (res.ok) {
-            status.innerText = "✅ Posted/Updated!";
+            let message = 'Supporter release ';
+            if (supporterThreadId) {
+                message += 'updated';
+                if (toggle) message += ' and preview edited';
+            } else {
+                message += 'created';
+            }
+            showToast('Success', message);
             clearSupporterImages();
             await fetchSupporterPosts();
+            status.innerText = '';
         } else {
-            status.innerText = "❌ Failed.";
+            showToast('Error', 'Failed to post', 'error');
+            status.innerText = '';
         }
     } catch (e) {
-        status.innerText = "❌ Error.";
+        showToast('Error', e.message, 'error');
+        status.innerText = '';
     } finally {
         btn.disabled = false;
     }
