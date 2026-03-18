@@ -868,39 +868,36 @@ app.post('/api/capture-membership-order', async (req, res) => {
 // ────────────────────────────────────────────────
 app.get('/api/memberships', async (req, res) => {
     try {
-        // 1. Fetch from Supabase
         const { data: subs, error } = await supabase
             .from('memberships') 
             .select('*');
 
         if (error) throw error;
 
-        // 2. Get the Guild (Ensure GUILD_ID is correct in Railway)
         const guild = await client.guilds.fetch(process.env.GUILD_ID);
 
-        // 3. Map database IDs to Discord Nicknames
         const membershipData = await Promise.all(subs.map(async (sub) => {
             try {
-                // IMPORTANT: If your column is NOT named 'user_id', change 'sub.user_id' below
-                const userId = sub.user_id || sub.discord_id || sub.id; 
+                // Debugging: Log the raw data from Supabase to your Railway console
+                console.log('Raw Supabase Row:', sub);
+
+                const userId = sub.user_id || sub.discord_id || sub.id;
                 const member = await guild.members.fetch(userId);
 
-// Inside server.js -> app.get('/api/memberships')
-return {
-    nickname: member.displayName, 
-    discordTag: member.user.tag,   
-    // Use the EXACT column names from your Supabase table here:
-    rank: sub.rank || 'Standard',  
-    daysLeft: sub.days_left || 0,
-    userId: sub.user_id // Adding the ID just in case you need it later
-};
+                return {
+                    nickname: member.displayName,
+                    discordTag: member.user.tag,
+                    // Try different column names for Rank
+                    rank: String(sub.rank || sub.membership_type || 'Standard'),
+                    // Try different column names for Days
+                    daysLeft: sub.days_left ?? sub.days ?? sub.remaining_days ?? 0
+                };
             } catch (err) {
-                // If it reaches here, the bot couldn't find the user in the server
                 return {
                     nickname: "User Left Server",
                     discordTag: "Unknown",
-                    rank: sub.rank || 'Standard',
-                    daysLeft: sub.days_left
+                    rank: String(sub.rank || 'Standard'),
+                    daysLeft: sub.days_left ?? 0
                 };
             }
         }));
