@@ -885,13 +885,15 @@ app.get('/api/memberships', async (req, res) => {
                 const userId = sub.user_id || sub.discord_id || sub.id; 
                 const member = await guild.members.fetch(userId);
 
-                return {
-                    nickname: member.displayName,
-                    discordTag: member.user.tag,
-                    rank: sub.rank || 'Standard',
-                    // This maps the DB 'days_left' to the frontend 'daysLeft'
-                    daysLeft: sub.days_left 
-                };
+// Inside server.js -> app.get('/api/memberships')
+return {
+    nickname: member.displayName, 
+    discordTag: member.user.tag,   
+    // Use the EXACT column names from your Supabase table here:
+    rank: sub.rank || 'Standard',  
+    daysLeft: sub.days_left || 0,
+    userId: sub.user_id // Adding the ID just in case you need it later
+};
             } catch (err) {
                 // If it reaches here, the bot couldn't find the user in the server
                 return {
