@@ -2,7 +2,7 @@ const express = require('express');
 const path = require('path');
 const { ChannelType } = require('discord.js');
 const multer = require('multer');
-const cors = require('cors'); 
+const cors = require('cors'); // 1. Imported
 const supabase = require('../services/supabase');
 const queueService = require('../services/queueService');
 const { Storage } = require('megajs');
@@ -12,22 +12,20 @@ const os = require('os');
 
 module.exports = (client) => {
     const app = express();
-    // Use the port Railway provides, or default to 8080
-    const PORT = process.env.PORT || 8080; 
+    const PORT = process.env.PORT || 3000;
 
-    // 1. CORS MUST BE FIRST
+    // 2. MUST BE THE VERY FIRST MIDDLEWARE
     app.use(cors({
         origin: 'https://velutinx.com',
         methods: ['GET', 'POST', 'OPTIONS'],
-        allowedHeaders: ['Content-Type', 'Authorization'],
-        credentials: true
+        allowedHeaders: ['Content-Type', 'Authorization']
     }));
 
-    // 2. PARSERS & STATICS (Only once!)
+    // 3. PARSERS (Only once!)
     app.use(express.json());
     app.use(express.static(path.join(__dirname, 'public')));
 
-    // 3. MULTER
+    // 4. MULTER
     const upload = multer({ storage: multer.memoryStorage() });
 
     // Polyfill for crypto.getRandomValues
@@ -41,16 +39,13 @@ module.exports = (client) => {
     }
     
     // ────────────────────────────────────────────────
-    // CONFIG & NEW ENDPOINT
+    // NEW ENDPOINT: Capture Membership
     // ────────────────────────────────────────────────
-    const FORUM_ID = '1465938599378812980';
-    const SUPPORTER_FORUM_ID = '1465937644394512516';
-
-    // ADD THIS HERE to handle the capture call from the shop
     app.post('/api/capture-membership-order', async (req, res) => {
         const { orderId, tier, discordId } = req.body;
-        console.log(`📥 Capture Request: Order ${orderId} | Tier ${tier} | User ${discordId}`);
         
+        console.log(`📥 Received Capture: Order ${orderId} for User ${discordId}`);
+
         try {
             const { error } = await supabase
                 .from('memberships')
