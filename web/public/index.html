@@ -474,24 +474,26 @@ async function loadMembershipData() {
     
     try {
         const response = await fetch('/api/memberships');
+        if (!response.ok) throw new Error('Failed to fetch');
+        
         const members = await response.json();
         
-        if (!members || members.length === 0) {
-            tableBody.innerHTML = '<tr><td colspan="4" style="text-align:center; padding:20px;">No active subscribers.</td></tr>';
+        if (members.length === 0) {
+            tableBody.innerHTML = '<tr><td colspan="4" style="text-align:center; padding:20px;">No active subscribers found.</td></tr>';
             return;
         }
 
         tableBody.innerHTML = members.map(member => {
-            // This looks up "1", "2", etc. in your MEMBERSHIP_MAP
-            const rankInfo = MEMBERSHIP_MAP[member.rank] || { name: 'Standard', color: '#94a3b8' };
+            // 1. USE THE MAP: Convert the ID (e.g., "5") into the human name (e.g., "Platinum")
+            const rankInfo = MEMBERSHIP_MAP[member.rank] || { name: member.rank || 'Standard', color: '#94a3b8' };
             
-            // This ensures we show the days from the backend
+            // 2. FIX UNDEFINED: Fallback to 0 if daysLeft is missing
             const days = member.daysLeft !== undefined ? member.daysLeft : 0;
 
             return `
                 <tr style="border-bottom: 1px solid #1e293b;">
-                    <td style="padding: 12px;">${member.nickname}</td>
-                    <td style="padding: 12px; color: #94a3b8;">${member.discordTag}</td>
+                    <td style="padding: 12px;">${member.nickname || 'Unknown'}</td>
+                    <td style="padding: 12px; color: #94a3b8;">${member.discordTag || 'Unknown'}</td>
                     <td style="padding: 12px; color: ${rankInfo.color}; font-weight: bold;">
                         ${rankInfo.name}
                     </td>
@@ -504,6 +506,7 @@ async function loadMembershipData() {
 
     } catch (error) {
         console.error('Membership load error:', error);
+        tableBody.innerHTML = '<tr><td colspan="4" style="text-align:center; padding:20px; color:#f87171;">Error loading data. Check console.</td></tr>';
     }
 }
 
