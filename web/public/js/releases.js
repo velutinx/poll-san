@@ -329,52 +329,56 @@ async function submitEdit() {
 // ────────────────────────────────────────────────────────────
 submitRelease
 // ────────────────────────────────────────────────────────────
-// Submit supporter release (create or update)
+// Create a new preview release (Preview tab)
 // ────────────────────────────────────────────────────────────
-async function submitSupporterRelease() {
-    const status = document.getElementById('supporter-status');
-    const btn = event.target;
-    btn.disabled = true;
-    status.innerText = "⏳ Posting...";
+async function submitRelease() {
+    const status = document.getElementById('release-status');
+    const btn = document.getElementById('release-submit-btn');
+    
+    // Basic validation
+    const series = document.getElementById('rel-series').value;
+    const name = document.getElementById('rel-name').value;
+    if (!series || !name) {
+        showToast('Error', 'Series and Name are required', 'error');
+        return;
+    }
 
-    const toggle = document.getElementById('edit-preview-toggle').checked;
-    const previewThreadId = document.getElementById('supporterPostSelect').value;
-    const editDropdown = document.getElementById('supporterEditDropdown');
-    const supporterThreadId = editDropdown.value;
+    btn.disabled = true;
+    if (status) status.innerText = "⏳ Posting...";
 
     const formData = new FormData();
-    formData.append('pack', document.getElementById('supPack').value);
-    formData.append('setSize', document.getElementById('supSize').value);
-    formData.append('input', `${document.getElementById('supGender').value} ${document.getElementById('supName').value}`.trim());
-    formData.append('series', document.getElementById('supSeries').value);
-    formData.append('suffix', document.getElementById('supSuffix').value || '');
-    formData.append('download', document.getElementById('supDownload').value);
-    formData.append('editPreview', toggle);
-    formData.append('previewThreadId', previewThreadId);
-    if (supporterThreadId) formData.append('supporterThreadId', supporterThreadId);
-    supporterUploadedFiles.forEach(file => formData.append('images', file));
+    formData.append('pack', document.getElementById('rel-pack').value);
+    formData.append('setSize', document.getElementById('rel-size').value);
+    formData.append('series', series);
+    formData.append('input', `${document.getElementById('rel-gender').value} ${name}`.trim());
+    formData.append('suffix', document.getElementById('rel-suffix').value || '');
+
+    // Add the images from the uploadedFiles array
+    uploadedFiles.forEach(file => {
+        formData.append('images', file);
+    });
 
     try {
-        const res = await fetch('/api/supporter-release', { method: 'POST', body: formData });
+        const res = await fetch('/api/create-release', {
+            method: 'POST',
+            body: formData
+        });
+
         if (res.ok) {
-            let message = 'Supporter release ';
-            if (supporterThreadId) {
-                message += 'updated';
-                if (toggle) message += ' and preview edited';
-            } else {
-                message += 'created';
-            }
-            showToast('Success', message);
-            clearSupporterImages();
-            await fetchSupporterPosts();
-            status.innerText = '';
+            showToast('Success', 'New release created successfully');
+            clearImages();
+            // Refresh the dropdowns so the new post appears
+            await fetchForumPosts();
+            if (status) status.innerText = '';
         } else {
-            showToast('Error', 'Failed to post', 'error');
-            status.innerText = '';
+            const errData = await res.json();
+            showToast('Error', errData.error || 'Failed to create release', 'error');
+            if (status) status.innerText = '';
         }
     } catch (e) {
+        console.error("Submission error:", e);
         showToast('Error', e.message, 'error');
-        status.innerText = '';
+        if (status) status.innerText = '';
     } finally {
         btn.disabled = false;
     }
