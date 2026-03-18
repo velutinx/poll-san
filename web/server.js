@@ -789,6 +789,7 @@ return_url: `https://velutinx.com/s/success.html?tier=${tier}&discordId=${encode
 
 // Capture the order after user approves
 app.post('/api/capture-membership-order', async (req, res) => {
+  console.log('🔥🔥🔥 CAPTURE ENDPOINT HIT', req.body);
   try {
     const { orderId, tier, discordId } = req.body;
     if (!orderId || !tier || !discordId) {
