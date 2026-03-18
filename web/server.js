@@ -796,20 +796,19 @@ app.post('/api/capture-membership-order', async (req, res) => {
       return res.status(400).json({ error: 'Missing required fields' });
     }
 
-    const request = new paypal.orders.OrdersCaptureRequest(orderId);
-    request.requestBody({});
-    const capture = await paypalClient.execute(request);
+    // ✅ FIXED: The frontend already captured the money. 
+    // We just need to Get the order and verify it's completed.
+    const request = new paypal.orders.OrdersGetRequest(orderId);
+    const orderInfo = await paypalClient.execute(request);
 
-    // Verify amount (optional but recommended)
-    const expectedPrice = [10.00, 20.00, 40.00][tier - 1];
-    const capturedAmount = parseFloat(capture.result.purchase_units[0].payments.captures[0].amount.value);
-    if (capturedAmount !== expectedPrice) {
-      return res.status(400).json({ error: 'Payment amount mismatch' });
+    if (orderInfo.result.status !== 'COMPLETED') {
+      return res.status(400).json({ error: 'Payment was not completed on PayPal' });
     }
 
     // Insert into Supabase (30-day expiry)
     const expiryDate = new Date();
     expiryDate.setDate(expiryDate.getDate() + 30);
+    
     const { error: dbError } = await supabase
       .from('memberships')
       .insert({
@@ -822,33 +821,12 @@ app.post('/api/capture-membership-order', async (req, res) => {
         expiry_date: expiryDate.toISOString(),
         is_active: true
       });
+      
     if (dbError) throw dbError;
 
     res.json({ success: true });
   } catch (err) {
-    console.error('Capture error:', err);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-app.get('/api/confirm-membership', async (req, res) => {
-  const { orderID } = req.query;
-  if (!orderID) return res.status(400).json({ error: 'Missing orderID' });
-
-  try {
-    // Look up the order in your memberships table
-    const { data, error } = await supabase
-      .from('memberships')
-      .select('*')
-      .eq('order_id', orderID)
-      .maybeSingle();
-
-    if (error) throw error;
-    if (!data) return res.status(404).json({ error: 'Order not found' });
-
-    res.json({ success: true, membership: data });
-  } catch (err) {
-    console.error('Membership confirmation error:', err);
+    console.error('Verify/Supabase error:', err);
     res.status(500).json({ error: err.message });
   }
 });
