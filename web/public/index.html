@@ -419,8 +419,9 @@ async function switchTab(tabId) {
         await loadChannels(); // wait for channels to load
         await loadSettings();  // then set the saved channel
     }
-    if (tabId === 'mega-mgmt') {
-        if (typeof initMega === 'function') initMega();
+// Add this:
+if (tabId === 'member-mgmt') {
+    loadMembershipData();
     }
 }
 
@@ -470,7 +471,8 @@ const MEMBERSHIP_MAP = {
 
 async function loadMembershipData() {
     const tbody = document.getElementById('membership-list-body');
-    tbody.innerHTML = '<tr><td colspan="4" style="padding: 20px; text-align: center;">🛰️ Fetching from Supabase...</td></tr>';
+    // Minimalist loading state
+    tbody.innerHTML = '<tr><td colspan="4" style="padding: 20px; text-align: center; color: #94a3b8;">🛰️ Syncing Database...</td></tr>';
 
     try {
         const res = await fetch('/api/get-memberships');
@@ -481,10 +483,9 @@ async function loadMembershipData() {
             return;
         }
 
-        tbody.innerHTML = ''; // Clear status message
+        tbody.innerHTML = ''; 
 
         data.forEach(user => {
-            // Days Left Calculation (Rounding Up)
             const expiry = new Date(user.expires_at);
             const now = new Date();
             const diffMs = expiry - now;
@@ -496,15 +497,14 @@ async function loadMembershipData() {
 
             tbody.innerHTML += `
                 <tr style="border-bottom: 1px solid #1e293b; font-size: 0.95rem;">
-                    <td style="padding: 12px; font-weight: 500;">${user.discord_name || 'Ghost User'}</td>
-                    <td style="padding: 12px; font-family: monospace; color: #64748b; font-size: 0.85rem;">${user.discord_id}</td>
+                    <td style="padding: 12px; font-weight: 600; color: var(--blue);">${user.server_name || '—'}</td>
+                    <td style="padding: 12px; color: #94a3b8;">${user.discord_name}</td>
                     <td style="padding: 12px; color: ${rankInfo.color}; font-weight: bold;">${rankInfo.name}</td>
                     <td style="padding: 12px; font-weight: bold; color: ${timeColor};">${timeStatus}</td>
                 </tr>
             `;
         });
     } catch (err) {
-        console.error(err);
         tbody.innerHTML = '<tr><td colspan="4" style="padding: 20px; text-align: center; color: var(--accent);">Failed to load database.</td></tr>';
     }
 }
