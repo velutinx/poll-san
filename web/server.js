@@ -866,41 +866,47 @@ app.post('/api/capture-membership-order', async (req, res) => {
     // ────────────────────────────────────────────────
     // NEW: 16. MEMBERSHIP FROM SITE
     // ────────────────────────────────────────────────
-app.get('/api/get-memberships', async (req, res) => {
+// --- Add this inside your server.js exports ---
+
+app.get('/api/memberships', async (req, res) => {
     try {
-        const { data, error } = await supabase
-            .from('memberships')
-            .select('*')
-            .order('expires_at', { ascending: true });
+        // 1. Fetch from Supabase
+        // Note: Check if your table is actually named 'memberships'
+        const { data: subs, error } = await supabase
+            .from('memberships') 
+            .select('*');
 
         if (error) throw error;
 
-        // Ensure client is ready and guild ID is valid
-        const guildId = 'YOUR_GUILD_ID'; 
-        const guild = await client.guilds.fetch(guildId).catch(() => null);
+        // 2. Get the Guild from the client passed in startDashboard(client)
+        const guild = await client.guilds.fetch(process.env.GUILD_ID);
 
-        if (!guild) {
-            console.error("Could not fetch guild. Check ID and Bot Permissions.");
-            return res.json(data.map(row => ({ ...row, server_name: 'Guild Error', discord_name: 'Unknown' })));
-        }
-
-        const enriched = await Promise.all(data.map(async (row) => {
+        // 3. Map database IDs to Discord Nicknames
+        const membershipData = await Promise.all(subs.map(async (sub) => {
             try {
-                const member = await guild.members.fetch(row.discord_id);
-                return { 
-                    ...row, 
-                    server_name: member.displayName,
-                    discord_name: member.user.tag 
+                // We use the user_id column from your DB to find them in Discord
+                const member = await guild.members.fetch(sub.user_id);
+                return {
+                    nickname: member.displayName, // Server Nickname
+                    discordTag: member.user.tag,   // Username#0000
+                    rank: sub.rank,
+                    daysLeft: sub.days_left
                 };
-            } catch {
-                return { ...row, server_name: 'Not in Server', discord_name: 'Unknown' };
+            } catch (err) {
+                // Fallback if user left or bot can't see them
+                return {
+                    nickname: "User Left Server",
+                    discordTag: "Unknown",
+                    rank: sub.rank,
+                    daysLeft: sub.days_left
+                };
             }
         }));
 
-        res.json(enriched);
-    } catch (err) {
-        console.error("Membership API Error:", err);
-        res.status(500).json({ error: err.message });
+        res.json(membershipData);
+    } catch (error) {
+        console.error('Membership API Error:', error);
+        res.status(500).json({ error: 'Internal Server Error' });
     }
 });
 
