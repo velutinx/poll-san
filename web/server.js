@@ -806,34 +806,40 @@ app.post('/api/test-zip', upload.single('zipfile'), async (req, res) => {
 // ────────────────────────────────────────────────
     // NEW: 15. PAYPAL CAPTURE (Place this near your Create Order logic)
     // ────────────────────────────────────────────────
-    app.post('/api/capture-membership-order', async (req, res) => {
-        const { orderId, tier, discordId } = req.body;
+app.post('/api/capture-membership-order', async (req, res) => {
+    const { orderId, tier, discordId } = req.body;
 
+    try {
+        console.log(`📥 Processing Membership: Order ${orderId} | Tier ${tier} | User ${discordId}`);
+
+        // Calculate expiration (30 days from now)
+        const now = new Date();
+        const expiresAt = new Date();
+        expiresAt.setDate(now.getDate() + 30);
+
+        // 1. Update Supabase with explicit expiration
+        const { error } = await supabase
+            .from('memberships')
+            .upsert({ 
+                discord_id: discordId, 
+                tier: parseInt(tier), 
+                order_id: orderId,
+                updated_at: now.toISOString(),
+                expires_at: expiresAt.toISOString() // Store this for the bot!
+            }, { onConflict: 'discord_id' });
+
+        if (error) throw error;
+
+        // 2. Assign Discord Role
+        // Using a try/catch here so if Discord fails, the DB record still stays saved
         try {
-            // Log the attempt
-            console.log(`📥 Processing Membership: Order ${orderId} | Tier ${tier} | User ${discordId}`);
-
-            // 1. Update Supabase
-            const { error } = await supabase
-                .from('memberships')
-                .upsert({ 
-                    discord_id: discordId, 
-                    tier: parseInt(tier), 
-                    order_id: orderId,
-                    updated_at: new Date().toISOString()
-                });
-
-            if (error) throw error;
-
-            // 2. Assign Discord Role (Optional but recommended)
             const guild = await client.guilds.fetch(process.env.GUILD_ID);
             const member = await guild.members.fetch(discordId).catch(() => null);
             
             if (member) {
-                // Map your Tier numbers to actual Role IDs from your Discord server
                 const tierRoles = {
-                    "1": "123456789012345678", // Replace with Bronze Role ID
-                    "2": "876543210987654321"  // Replace with Silver Role ID
+                    "1": "1346397089470353408", // Replace with your ACTUAL Bronze ID
+                    "2": "876543210987654321"  // Replace with your ACTUAL Silver ID
                 };
 
                 const roleId = tierRoles[String(tier)];
@@ -842,13 +848,16 @@ app.post('/api/test-zip', upload.single('zipfile'), async (req, res) => {
                     console.log(`✅ Role added to ${member.user.tag}`);
                 }
             }
-
-            res.json({ success: true });
-        } catch (err) {
-            console.error('❌ Capture error:', err);
-            res.status(500).json({ error: "Failed to process membership" });
+        } catch (discordErr) {
+            console.error('⚠️ DB updated, but Discord role failed:', discordErr.message);
         }
-    });
+
+        res.json({ success: true });
+    } catch (err) {
+        console.error('❌ Capture error:', err);
+        res.status(500).json({ error: "Failed to process membership", details: err.message });
+    }
+});
     
     // ────────────────────────────────────────────────
     // SERVE DASHBOARD
