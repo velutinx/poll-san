@@ -41,8 +41,9 @@ module.exports = (client) => {
     // ────────────────────────────────────────────────
     // NEW ENDPOINT: Capture Membership
     // ────────────────────────────────────────────────
-    app.post('/api/capture-membership-order', async (req, res) => {
+app.post('/api/capture-membership-order', async (req, res) => {
         const { orderId, tier, discordId } = req.body;
+        
         console.log(`📥 Received Capture: Order ${orderId} for User ${discordId}`);
 
         try {
@@ -53,13 +54,21 @@ module.exports = (client) => {
                     tier: parseInt(tier), 
                     order_id: orderId,
                     updated_at: new Date().toISOString()
-                });
+                }, { onConflict: 'discord_id' }); // Explicitly handle the conflict
 
-            if (error) throw error;
+            if (error) {
+                console.error('❌ Supabase Error Details:', error);
+                return res.status(400).json({ 
+                    error: "Supabase Rejected Request", 
+                    details: error.message,
+                    code: error.code 
+                });
+            }
+
             res.json({ success: true });
         } catch (err) {
-            console.error('❌ Capture Error:', err);
-            res.status(500).json({ error: "Failed to process membership" });
+            console.error('❌ Server Crash Error:', err);
+            res.status(500).json({ error: "Internal Server Error", message: err.message });
         }
     });
     
