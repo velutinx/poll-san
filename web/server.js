@@ -830,7 +830,27 @@ app.post('/api/capture-membership-order', async (req, res) => {
   }
 });
 
+app.get('/api/confirm-membership', async (req, res) => {
+  const { orderID } = req.query;
+  if (!orderID) return res.status(400).json({ error: 'Missing orderID' });
 
+  try {
+    // Look up the order in your memberships table
+    const { data, error } = await supabase
+      .from('memberships')
+      .select('*')
+      .eq('order_id', orderID)
+      .maybeSingle();
+
+    if (error) throw error;
+    if (!data) return res.status(404).json({ error: 'Order not found' });
+
+    res.json({ success: true, membership: data });
+  } catch (err) {
+    console.error('Membership confirmation error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
     // ────────────────────────────────────────────────
     // SERVE DASHBOARD
     // ────────────────────────────────────────────────
