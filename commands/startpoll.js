@@ -74,8 +74,9 @@ module.exports = async (interaction) => {
         await thread.send({ content, files }).catch(e => console.error("Thread Image Error:", e.message));
     }
     
-    await thread.send({ content: ":point_up_2: Character images for the poll above!" });
-
+await thread.send({ 
+    content: ":point_up_2: Character images for the poll above! <@&1477469835473719466>" 
+});
     // 8. FINALIZE INTERACTION
     if (interaction.editReply) {
         await interaction.editReply({ content: '✅ Poll Live!' }).catch(() => {});
