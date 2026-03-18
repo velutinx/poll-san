@@ -45,12 +45,14 @@ app.post('/api/capture-membership-order', async (req, res) => {
     try {
         const { orderId, tier, discordId } = req.body;
 
-        // Log the incoming data to ensure it's not undefined
-        console.log('Incoming membership data:', { orderId, tier, discordId });
-
         if (!orderId || !tier || !discordId) {
-            return res.status(400).json({ error: "Missing required fields", received: req.body });
+            return res.status(400).json({ error: "Missing required fields" });
         }
+
+        // Calculate dates
+        const now = new Date();
+        const expirationDate = new Date();
+        expirationDate.setDate(now.getDate() + 30); // Sets expiration to 30 days from now
 
         const { data, error } = await supabase
             .from('memberships')
@@ -58,7 +60,8 @@ app.post('/api/capture-membership-order', async (req, res) => {
                 discord_id: discordId, 
                 tier: parseInt(tier), 
                 order_id: orderId,
-                updated_at: new Date().toISOString()
+                updated_at: now.toISOString(),
+                expires_at: expirationDate.toISOString() // This is the key for the bot
             }, { onConflict: 'discord_id' });
 
         if (error) {
@@ -66,14 +69,32 @@ app.post('/api/capture-membership-order', async (req, res) => {
             return res.status(500).json({ error: "Database error", details: error.message });
         }
 
-        return res.json({ success: true, data });
+        // --- DISCORD ROLE ASSIGNMENT ---
+        try {
+            const guild = await client.guilds.fetch(process.env.GUILD_ID);
+            const member = await guild.members.fetch(discordId).catch(() => null);
+            
+            if (member) {
+                const tierRoles = {
+                    "1": "123456789012345678", // Replace with your Bronze Role ID
+                    "2": "876543210987654321"  // Replace with your Silver Role ID
+                };
+
+                const roleId = tierRoles[String(tier)];
+                if (roleId) {
+                    await member.roles.add(roleId);
+                    console.log(`✅ Role added to ${member.user.tag}`);
+                }
+            }
+        } catch (discordErr) {
+            console.error('⚠️ Membership saved, but Discord role failed:', discordErr);
+            // We don't return 500 here because the payment/DB part worked.
+        }
+
+        return res.json({ success: true });
     } catch (err) {
         console.error('Crash Error:', err);
-        return res.status(500).json({ 
-            error: "Server Crash", 
-            message: err.message, 
-            stack: err.stack // This will tell us the exact line that failed
-        });
+        return res.status(500).json({ error: "Server Crash", message: err.message });
     }
 });
     
