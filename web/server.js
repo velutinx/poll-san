@@ -2,7 +2,7 @@ const express = require('express');
 const path = require('path');
 const { ChannelType } = require('discord.js');
 const multer = require('multer');
-const cors = require('cors'); // 1. ADD THIS
+const cors = require('cors'); 
 const supabase = require('../services/supabase');
 const queueService = require('../services/queueService');
 const { Storage } = require('megajs');
@@ -12,36 +12,62 @@ const os = require('os');
 
 module.exports = (client) => {
     const app = express();
-    const PORT = process.env.PORT || 3000;
+    // Use the port Railway provides, or default to 8080
+    const PORT = process.env.PORT || 8080; 
 
-    // Multer for file uploads
-    const upload = multer({ storage: multer.memoryStorage() });
-
-    app.use(express.json());
-    app.use(express.static(path.join(__dirname, 'public')));
-    
-// 2. CONFIGURE CORS BEFORE OTHER ROUTES
+    // 1. CORS MUST BE FIRST
     app.use(cors({
-        origin: 'https://velutinx.com', // Allows your shop to talk to this API
-        methods: ['GET', 'POST'],
-        allowedHeaders: ['Content-Type']
+        origin: 'https://velutinx.com',
+        methods: ['GET', 'POST', 'OPTIONS'],
+        allowedHeaders: ['Content-Type', 'Authorization'],
+        credentials: true
     }));
 
-    // Multer for file uploads
-    const upload = multer({ storage: multer.memoryStorage() });
-
+    // 2. PARSERS & STATICS (Only once!)
     app.use(express.json());
     app.use(express.static(path.join(__dirname, 'public')));
 
-    // Polyfill for crypto.getRandomValues (if missing in environment)
-if (typeof global.crypto === 'undefined') {
-  global.crypto = require('crypto');
-}
-if (typeof global.crypto.getRandomValues === 'undefined') {
-  global.crypto.getRandomValues = function(array) {
-    return require('crypto').randomBytes(array.length);
-  };
-}
+    // 3. MULTER
+    const upload = multer({ storage: multer.memoryStorage() });
+
+    // Polyfill for crypto.getRandomValues
+    if (typeof global.crypto === 'undefined') {
+        global.crypto = require('crypto');
+    }
+    if (typeof global.crypto.getRandomValues === 'undefined') {
+        global.crypto.getRandomValues = function(array) {
+            return require('crypto').randomBytes(array.length);
+        };
+    }
+    
+    // ────────────────────────────────────────────────
+    // CONFIG & NEW ENDPOINT
+    // ────────────────────────────────────────────────
+    const FORUM_ID = '1465938599378812980';
+    const SUPPORTER_FORUM_ID = '1465937644394512516';
+
+    // ADD THIS HERE to handle the capture call from the shop
+    app.post('/api/capture-membership-order', async (req, res) => {
+        const { orderId, tier, discordId } = req.body;
+        console.log(`📥 Capture Request: Order ${orderId} | Tier ${tier} | User ${discordId}`);
+        
+        try {
+            const { error } = await supabase
+                .from('memberships')
+                .upsert({ 
+                    discord_id: discordId, 
+                    tier: parseInt(tier), 
+                    order_id: orderId,
+                    updated_at: new Date().toISOString()
+                });
+
+            if (error) throw error;
+            res.json({ success: true });
+        } catch (err) {
+            console.error('❌ Capture Error:', err);
+            res.status(500).json({ error: "Failed to process membership" });
+        }
+    });
     
     // ────────────────────────────────────────────────
     // CONFIG
