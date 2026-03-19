@@ -1,9 +1,9 @@
-// uploading.js – final version with concurrency lock and duplicate prevention
+// uploading.js – final production version
 
 let testSelectedFile = null;
 let currentImages = [];
 let selectedIndices = new Set();
-let isUploading = false; // prevents multiple simultaneous uploadTestZip calls
+let isUploading = false;
 
 window.currentZipFile = null;
 window.totalImagesCount = 0;
@@ -87,7 +87,7 @@ function handleTestFile(file) {
 }
 
 async function uploadTestZip() {
-    if (isUploading) return; // prevent concurrent runs
+    if (isUploading) return;
     isUploading = true;
 
     const imageGrid = document.getElementById('test-image-grid');
@@ -173,9 +173,8 @@ function addToSupporter(index) {
     const imgData = currentImages[index];
     if (!imgData) return;
 
-    // Prevent duplicate addition (just in case)
     if (Array.from(document.querySelectorAll('#sup-preview-container > div')).some(div => div.dataset.index == index)) {
-        return; // already in the preview
+        return; // already in preview
     }
 
     const byteString = atob(imgData.data.split(',')[1]);
