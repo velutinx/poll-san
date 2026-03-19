@@ -14,24 +14,24 @@ module.exports = (client) => {
     const app = express();
     const PORT = process.env.PORT || 3000;
 
-// 1. CORS – allow both main domain and subdomain
-app.use(cors({
-    origin: ['https://velutinx.com', 'https://d.velutinx.com'],
-    methods: ['GET', 'POST', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization']
-}));
+    // 1. CORS – allow both main domain and subdomain
+    app.use(cors({
+        origin: ['https://velutinx.com', 'https://d.velutinx.com'],
+        methods: ['GET', 'POST', 'OPTIONS'],
+        allowedHeaders: ['Content-Type', 'Authorization']
+    }));
 
-// 2. LOGGING MIDDLEWARE – log every request
-app.use((req, res, next) => {
-    console.log(`${new Date().toISOString()} - ${req.method} ${req.url}`);
-    next();
-});
+    // 2. LOGGING MIDDLEWARE – log every request
+    app.use((req, res, next) => {
+        console.log(`${new Date().toISOString()} - ${req.method} ${req.url}`);
+        next();
+    });
 
-// 3. PARSERS (Only once!)
-app.use(express.json());
-app.use(express.static(path.join(__dirname, 'public')));
+    // 3. PARSERS (Only once!)
+    app.use(express.json());
+    app.use(express.static(path.join(__dirname, 'public')));
 
-    // 3. MULTER
+    // 4. MULTER
     const upload = multer({ storage: multer.memoryStorage() });
 
     // Polyfill for crypto.getRandomValues
@@ -43,8 +43,7 @@ app.use(express.static(path.join(__dirname, 'public')));
             return require('crypto').randomBytes(array.length);
         };
     }
-    
-   
+
     // ────────────────────────────────────────────────
     // CONFIG
     // ────────────────────────────────────────────────
@@ -90,40 +89,37 @@ app.use(express.static(path.join(__dirname, 'public')));
         }
     });
 
-app.post('/api/save-settings', async (req, res) => {
-    const { welcome_channel_id, welcome_message } = req.body;
-    try {
-        // First, check if a row exists for this guild
-        const { data: existing } = await supabase
-            .from('server_settings')
-            .select('guild_id')
-            .eq('guild_id', String(process.env.GUILD_ID))
-            .maybeSingle();
+    app.post('/api/save-settings', async (req, res) => {
+        const { welcome_channel_id, welcome_message } = req.body;
+        try {
+            const { data: existing } = await supabase
+                .from('server_settings')
+                .select('guild_id')
+                .eq('guild_id', String(process.env.GUILD_ID))
+                .maybeSingle();
 
-        let error;
-        if (existing) {
-            // Update
-            ({ error } = await supabase
-                .from('server_settings')
-                .update({ welcome_channel_id, welcome_message })
-                .eq('guild_id', String(process.env.GUILD_ID)));
-        } else {
-            // Insert
-            ({ error } = await supabase
-                .from('server_settings')
-                .insert({
-                    guild_id: String(process.env.GUILD_ID),
-                    welcome_channel_id,
-                    welcome_message
-                }));
+            let error;
+            if (existing) {
+                ({ error } = await supabase
+                    .from('server_settings')
+                    .update({ welcome_channel_id, welcome_message })
+                    .eq('guild_id', String(process.env.GUILD_ID)));
+            } else {
+                ({ error } = await supabase
+                    .from('server_settings')
+                    .insert({
+                        guild_id: String(process.env.GUILD_ID),
+                        welcome_channel_id,
+                        welcome_message
+                    }));
+            }
+            if (error) throw error;
+            res.json({ success: true });
+        } catch (err) {
+            console.error('Save settings error:', err);
+            res.status(500).json({ error: err.message });
         }
-        if (error) throw error;
-        res.json({ success: true });
-    } catch (err) {
-        console.error('Save settings error:', err);
-        res.status(500).json({ error: err.message });
-    }
-});
+    });
 
     // ────────────────────────────────────────────────
     // 3. START POLL
@@ -186,12 +182,9 @@ app.post('/api/save-settings', async (req, res) => {
     // ────────────────────────────────────────────────
     app.post('/api/stop-poll', async (req, res) => {
         try {
-            // Delete from all poll-related tables
             await supabase.from('auto_resume').delete().neq('id', 0);
             await supabase.from('final_votes').delete().neq('option_id', 0);
-            await supabase.from('votes_discord').delete().neq('id', 0); // Added
-            // await supabase.from('website_voting').delete().neq('id', 0); // Commented out as requested
-
+            await supabase.from('votes_discord').delete().neq('id', 0);
             res.json({ success: true });
         } catch (err) {
             console.error('Stop poll error:', err);
@@ -243,9 +236,9 @@ app.post('/api/save-settings', async (req, res) => {
                     return cleanChar === cleanRecord;
                 });
                 const score = record ? parseFloat(record.score).toFixed(1) : "0.0";
-const isWinner = record && record.selected_at !== null;
-const line = `${emoji} = ${score} -- ${char}`;
-scoreboard += isWinner ? `||${line}||\n` : `${line}\n`;
+                const isWinner = record && record.selected_at !== null;
+                const line = `${emoji} = ${score} -- ${char}`;
+                scoreboard += isWinner ? `||${line}||\n` : `${line}\n`;
             });
 
             await thread.send(scoreboard);
@@ -615,251 +608,245 @@ ${download || 'Download link here'}`;
         }
     });
 
-// ────────────────────────────────────────────────
-// 13. MEGA UPLOAD (with month folder and progress)
-// ────────────────────────────────────────────────
-app.post('/api/upload-to-mega', upload.single('file'), async (req, res) => {
-    if (!req.file) {
-        return res.status(400).json({ error: 'No file uploaded' });
-    }
-
-    if (!req.file.originalname.toLowerCase().endsWith('.zip')) {
-        return res.status(400).json({ error: 'Only ZIP files are allowed' });
-    }
-
-    if (req.file.size > 100 * 1024 * 1024) {
-        return res.status(400).json({ error: 'File exceeds 100MB limit' });
-    }
-
-    const megaEmail = process.env.MEGA_EMAIL;
-    const megaPassword = process.env.MEGA_PASSWORD;
-    if (!megaEmail || !megaPassword) {
-        console.error('MEGA credentials not set in environment');
-        return res.status(500).json({ error: 'Server configuration error' });
-    }
-
-    const desiredFileName = req.file.originalname;
-    const month = req.body.month; // e.g., "MAR-26"
-    if (!month) {
-        return res.status(400).json({ error: 'Month folder not provided' });
-    }
-
-    // Parse year from month string (assumes format "MMM-YY")
-    const yearShort = month.slice(-2);
-    const year = `20${yearShort}`;
-    const folderPath = ['Packs', year, month];
-
-    // Helper to create folders recursively
-    async function getOrCreateFolder(node, pathParts) {
-        let current = node;
-        for (const part of pathParts) {
-            let child = current.children.find(c => c.name === part && c.directory);
-            if (!child) {
-                child = await current.mkdir(part);
-            }
-            current = child;
-        }
-        return current;
-    }
-
-    const tempDir = os.tmpdir();
-    const tempFilePath = path.join(tempDir, `mega-upload-${Date.now()}-${desiredFileName}`);
-
-    try {
-        fs.writeFileSync(tempFilePath, req.file.buffer);
-
-        const storage = await new Storage({
-            email: megaEmail,
-            password: megaPassword
-        }).ready;
-
-        const targetFolder = await getOrCreateFolder(storage.root, folderPath);
-
-        const readStream = fs.createReadStream(tempFilePath);
-
-        const uploadResult = await new Promise((resolve, reject) => {
-            const upload = targetFolder.upload({
-                name: desiredFileName,
-                size: req.file.size
-            }, readStream);
-
-            upload.on('error', reject);
-            upload.on('complete', (file) => resolve(file));
-        });
-
-        // Only log this one line on success
-        console.log('📤️[MEGA] Upload complete');
-
-        const link = await uploadResult.link();
-
-        fs.unlinkSync(tempFilePath);
-        storage.close();
-
-        res.json({ success: true, link });
-    } catch (error) {
-        console.error('MEGA upload error:', error);
-        if (fs.existsSync(tempFilePath)) {
-            fs.unlinkSync(tempFilePath);
-        }
-        res.status(500).json({ error: error.message || 'Upload failed' });
-    }
-});
-
-
-// ────────────────────────────────────────────────
-// 14. TEST ZIP (extract first 10 images, sorted by embedded number)
-// ────────────────────────────────────────────────
-app.post('/api/test-zip', upload.single('zipfile'), async (req, res) => {
-    if (!req.file) {
-        return res.status(400).json({ error: 'No file uploaded' });
-    }
-
-    if (req.file.size > 100 * 1024 * 1024) {
-        return res.status(400).json({ error: 'File exceeds 100MB limit' });
-    }
-
-    try {
-        const zip = new AdmZip(req.file.buffer);
-        const entries = zip.getEntries();
-
-        // Filter image files
-        const imageEntries = entries.filter(entry => 
-            /\.(jpg|jpeg|png|gif|webp)$/i.test(entry.entryName) && !entry.isDirectory
-        );
-
-        // Sort by the numeric part in the filename (e.g., "Astolfo -001-.jpg" → 1)
-        imageEntries.sort((a, b) => {
-            const regex = /-(\d{3})-/; // matches pattern like -001-
-            const aMatch = a.entryName.match(regex);
-            const bMatch = b.entryName.match(regex);
-            const aNum = aMatch ? parseInt(aMatch[1], 10) : 0;
-            const bNum = bMatch ? parseInt(bMatch[1], 10) : 0;
-            return aNum - bNum;
-        });
-
-        const totalImages = imageEntries.length;
-        const previewImages = imageEntries.slice(0, 10).map(entry => ({
-            name: entry.entryName.split('/').pop(),
-            data: `data:image/jpeg;base64,${entry.getData().toString('base64')}`
-        }));
-
-        res.json({ success: true, images: previewImages, total: totalImages });
-    } catch (err) {
-        console.error('Test zip error:', err);
-        res.status(500).json({ error: err.message });
-    }
-});
-
-// Temporary GET for testing – remove after debugging
-app.get('/api/test-zip', (req, res) => {
-    res.json({ message: 'GET works' });
-});
-
-// ────────────────────────────────────────────────
-// CAPTURE MEMBERSHIP (correct version with your actual role IDs)
-// ────────────────────────────────────────────────
-app.post('/api/capture-membership-order', async (req, res) => {
-    console.log('🔥🔥🔥 CAPTURE ENDPOINT HIT! 🔥🔥🔥'); // <-- ADD THIS LINE
-    try {
-        const { orderId, tier, discordId } = req.body;
-
-        if (!orderId || !tier || !discordId) {
-            return res.status(400).json({ error: "Missing required fields" });
+    // ────────────────────────────────────────────────
+    // 13. MEGA UPLOAD (with month folder and progress)
+    // ────────────────────────────────────────────────
+    app.post('/api/upload-to-mega', upload.single('file'), async (req, res) => {
+        if (!req.file) {
+            return res.status(400).json({ error: 'No file uploaded' });
         }
 
-        const now = new Date();
-        const expirationDate = new Date();
-        expirationDate.setDate(now.getDate() + 30);
-
-        const { error } = await supabase
-            .from('memberships')
-            .upsert({ 
-                discord_id: discordId, 
-                tier: parseInt(tier), 
-                order_id: orderId,
-                updated_at: now.toISOString(),
-                expires_at: expirationDate.toISOString()
-            }, { onConflict: 'discord_id' });
-
-        if (error) {
-            console.error('Supabase Error:', error);
-            return res.status(500).json({ error: "Database error", details: error.message });
+        if (!req.file.originalname.toLowerCase().endsWith('.zip')) {
+            return res.status(400).json({ error: 'Only ZIP files are allowed' });
         }
 
-        // Discord role assignment – your actual role IDs
-        try {
-            const guild = await client.guilds.fetch(process.env.GUILD_ID);
-            const member = await guild.members.fetch(discordId).catch(() => null);
-            
-            if (member) {
-                const tierRoles = {
-                    "1": "1465444240845963326",  // ✨ Bronze
-                    "2": "1465670134743044139",  // ✨ Copper
-                    "3": "1465904476417163457",  // ✨ Silver
-                    "4": "1465904548320378956",  // ✨ Gold
-                    "5": "1465952085026541804"   // ✨ Platinum
-                };
-                const roleId = tierRoles[String(tier)];
-                if (roleId) {
-                    await member.roles.add(roleId);
-                    console.log(`✅ Role added to ${member.user.tag}`);
+        if (req.file.size > 100 * 1024 * 1024) {
+            return res.status(400).json({ error: 'File exceeds 100MB limit' });
+        }
+
+        const megaEmail = process.env.MEGA_EMAIL;
+        const megaPassword = process.env.MEGA_PASSWORD;
+        if (!megaEmail || !megaPassword) {
+            console.error('MEGA credentials not set in environment');
+            return res.status(500).json({ error: 'Server configuration error' });
+        }
+
+        const desiredFileName = req.file.originalname;
+        const month = req.body.month; // e.g., "MAR-26"
+        if (!month) {
+            return res.status(400).json({ error: 'Month folder not provided' });
+        }
+
+        const yearShort = month.slice(-2);
+        const year = `20${yearShort}`;
+        const folderPath = ['Packs', year, month];
+
+        async function getOrCreateFolder(node, pathParts) {
+            let current = node;
+            for (const part of pathParts) {
+                let child = current.children.find(c => c.name === part && c.directory);
+                if (!child) {
+                    child = await current.mkdir(part);
                 }
+                current = child;
             }
-        } catch (discordErr) {
-            console.error('⚠️ Membership saved, but Discord role failed:', discordErr);
+            return current;
         }
 
-        res.json({ success: true });
-    } catch (err) {
-        console.error('Crash Error:', err);
-        res.status(500).json({ error: "Server Crash", message: err.message });
-    }
-});
+        const tempDir = os.tmpdir();
+        const tempFilePath = path.join(tempDir, `mega-upload-${Date.now()}-${desiredFileName}`);
 
-// ────────────────────────────────────────────────
-// MEMBERSHIP MONITOR API
-// ────────────────────────────────────────────────
-app.get('/api/memberships', async (req, res) => {
-    try {
-        const { data: subs, error } = await supabase
-            .from('memberships')
-            .select('*');
+        try {
+            fs.writeFileSync(tempFilePath, req.file.buffer);
 
-        if (error) throw error;
+            const storage = await new Storage({
+                email: megaEmail,
+                password: megaPassword
+            }).ready;
 
-        const guild = await client.guilds.fetch(process.env.GUILD_ID);
+            const targetFolder = await getOrCreateFolder(storage.root, folderPath);
 
-const membershipData = await Promise.all(subs.map(async (sub) => {
-    const now = new Date();
-    const expiresAt = new Date(sub.expires_at);
-    const daysLeft = Math.max(0, Math.ceil((expiresAt - now) / (1000 * 60 * 60 * 24)));
+            const readStream = fs.createReadStream(tempFilePath);
 
-    try {
-        const member = await guild.members.fetch(sub.discord_id);
-        return {
-            nickname: member.displayName,
-            discordTag: member.user.tag,
-            userId: sub.discord_id,
-            rank: sub.tier.toString(),
-            daysLeft: daysLeft
-        };
-    } catch (err) {
-        return {
-            nickname: "User Left Server",
-            discordTag: "Unknown",
-            userId: sub.discord_id,
-            rank: sub.tier.toString(),
-            daysLeft: daysLeft
-        };
-    }
-}));
+            const uploadResult = await new Promise((resolve, reject) => {
+                const upload = targetFolder.upload({
+                    name: desiredFileName,
+                    size: req.file.size
+                }, readStream);
 
-        res.json(membershipData);
-    } catch (error) {
-        console.error('Membership API Error:', error);
-        res.status(500).json({ error: 'Internal Server Error' });
-    }
-});
+                upload.on('error', reject);
+                upload.on('complete', (file) => resolve(file));
+            });
+
+            console.log('📤️[MEGA] Upload complete');
+
+            const link = await uploadResult.link();
+
+            fs.unlinkSync(tempFilePath);
+            storage.close();
+
+            res.json({ success: true, link });
+        } catch (error) {
+            console.error('MEGA upload error:', error);
+            if (fs.existsSync(tempFilePath)) {
+                fs.unlinkSync(tempFilePath);
+            }
+            res.status(500).json({ error: error.message || 'Upload failed' });
+        }
+    });
+
+    // ────────────────────────────────────────────────
+    // 14. TEST ZIP (extract first 10 images, sorted by embedded number)
+    // ────────────────────────────────────────────────
+    app.post('/api/test-zip', upload.single('zipfile'), async (req, res) => {
+        if (!req.file) {
+            return res.status(400).json({ error: 'No file uploaded' });
+        }
+
+        if (req.file.size > 100 * 1024 * 1024) {
+            return res.status(400).json({ error: 'File exceeds 100MB limit' });
+        }
+
+        try {
+            const zip = new AdmZip(req.file.buffer);
+            const entries = zip.getEntries();
+
+            const imageEntries = entries.filter(entry => 
+                /\.(jpg|jpeg|png|gif|webp)$/i.test(entry.entryName) && !entry.isDirectory
+            );
+
+            imageEntries.sort((a, b) => {
+                const regex = /-(\d{3})-/;
+                const aMatch = a.entryName.match(regex);
+                const bMatch = b.entryName.match(regex);
+                const aNum = aMatch ? parseInt(aMatch[1], 10) : 0;
+                const bNum = bMatch ? parseInt(bMatch[1], 10) : 0;
+                return aNum - bNum;
+            });
+
+            const totalImages = imageEntries.length;
+            const previewImages = imageEntries.slice(0, 10).map(entry => ({
+                name: entry.entryName.split('/').pop(),
+                data: `data:image/jpeg;base64,${entry.getData().toString('base64')}`
+            }));
+
+            res.json({ success: true, images: previewImages, total: totalImages });
+        } catch (err) {
+            console.error('Test zip error:', err);
+            res.status(500).json({ error: err.message });
+        }
+    });
+
+    // Temporary GET for testing – remove after debugging
+    app.get('/api/test-zip', (req, res) => {
+        res.json({ message: 'GET works' });
+    });
+
+    // ────────────────────────────────────────────────
+    // CAPTURE MEMBERSHIP (correct version with your actual role IDs)
+    // ────────────────────────────────────────────────
+    app.post('/api/capture-membership-order', async (req, res) => {
+        console.log('🔥🔥🔥 CAPTURE ENDPOINT HIT! 🔥🔥🔥'); // <-- ADD THIS LINE
+        try {
+            const { orderId, tier, discordId } = req.body;
+
+            if (!orderId || !tier || !discordId) {
+                return res.status(400).json({ error: "Missing required fields" });
+            }
+
+            const now = new Date();
+            const expirationDate = new Date();
+            expirationDate.setDate(now.getDate() + 30);
+
+            const { error } = await supabase
+                .from('memberships')
+                .upsert({ 
+                    discord_id: discordId, 
+                    tier: parseInt(tier), 
+                    order_id: orderId,
+                    updated_at: now.toISOString(),
+                    expires_at: expirationDate.toISOString()
+                }, { onConflict: 'discord_id' });
+
+            if (error) {
+                console.error('Supabase Error:', error);
+                return res.status(500).json({ error: "Database error", details: error.message });
+            }
+
+            // Discord role assignment – your actual role IDs
+            try {
+                const guild = await client.guilds.fetch(process.env.GUILD_ID);
+                const member = await guild.members.fetch(discordId).catch(() => null);
+                
+                if (member) {
+                    const tierRoles = {
+                        "1": "1465444240845963326",  // ✨ Bronze
+                        "2": "1465670134743044139",  // ✨ Copper
+                        "3": "1465904476417163457",  // ✨ Silver
+                        "4": "1465904548320378956",  // ✨ Gold
+                        "5": "1465952085026541804"   // ✨ Platinum
+                    };
+                    const roleId = tierRoles[String(tier)];
+                    if (roleId) {
+                        await member.roles.add(roleId);
+                        console.log(`✅ Role added to ${member.user.tag}`);
+                    }
+                }
+            } catch (discordErr) {
+                console.error('⚠️ Membership saved, but Discord role failed:', discordErr);
+            }
+
+            res.json({ success: true });
+        } catch (err) {
+            console.error('Crash Error:', err);
+            res.status(500).json({ error: "Server Crash", message: err.message });
+        }
+    });
+
+    // ────────────────────────────────────────────────
+    // MEMBERSHIP MONITOR API
+    // ────────────────────────────────────────────────
+    app.get('/api/memberships', async (req, res) => {
+        try {
+            const { data: subs, error } = await supabase
+                .from('memberships')
+                .select('*');
+
+            if (error) throw error;
+
+            const guild = await client.guilds.fetch(process.env.GUILD_ID);
+
+            const membershipData = await Promise.all(subs.map(async (sub) => {
+                const now = new Date();
+                const expiresAt = new Date(sub.expires_at);
+                const daysLeft = Math.max(0, Math.ceil((expiresAt - now) / (1000 * 60 * 60 * 24)));
+
+                try {
+                    const member = await guild.members.fetch(sub.discord_id);
+                    return {
+                        nickname: member.displayName,
+                        discordTag: member.user.tag,
+                        userId: sub.discord_id,
+                        rank: sub.tier.toString(),
+                        daysLeft: daysLeft
+                    };
+                } catch (err) {
+                    return {
+                        nickname: "User Left Server",
+                        discordTag: "Unknown",
+                        userId: sub.discord_id,
+                        rank: sub.tier.toString(),
+                        daysLeft: daysLeft
+                    };
+                }
+            }));
+
+            res.json(membershipData);
+        } catch (error) {
+            console.error('Membership API Error:', error);
+            res.status(500).json({ error: 'Internal Server Error' });
+        }
+    });
 
     // ────────────────────────────────────────────────
     // SERVE DASHBOARD
@@ -870,6 +857,6 @@ const membershipData = await Promise.all(subs.map(async (sub) => {
 
     app.listen(PORT, () => {
         console.log(`🌐 Dashboard running at http://localhost:${PORT}/poll-san`);
-//          console.log(`🌐 Dashboard running at https://d.velutinx.com/poll-san`);
+        // console.log(`🌐 Dashboard running at https://d.velutinx.com/poll-san`);
     });
 };
