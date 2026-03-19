@@ -1,4 +1,4 @@
-// uploading.js – with manual reload and persistent logging
+// uploading.js – with improved event handling and debugging
 
 let testSelectedFile = null;
 let currentImages = [];
@@ -7,7 +7,6 @@ let selectedIndices = new Set();
 window.currentZipFile = null;
 window.totalImagesCount = 0;
 
-// Manual reload – call this from console to open file picker
 window.reloadZip = function() {
     console.log('reloadZip: opening file picker');
     document.getElementById('test-file-input')?.click();
@@ -26,37 +25,42 @@ function initUploadTest() {
     }
     console.log('initUploadTest: drop zone found, element:', dropZone);
 
-    dropZone.onclick = () => {
+    // Click on drop zone triggers file input
+    dropZone.addEventListener('click', () => {
         console.log('dropZone clicked, triggering file input');
         fileInput?.click();
-    };
+    });
 
-    dropZone.ondragover = (e) => {
+    // Drag over
+    dropZone.addEventListener('dragover', (e) => {
         e.preventDefault();
         dropZone.style.borderColor = 'var(--blue)';
-    };
+    });
 
-    dropZone.ondragleave = () => {
+    // Drag leave
+    dropZone.addEventListener('dragleave', () => {
         dropZone.style.borderColor = '#475569';
-    };
+    });
 
-    dropZone.ondrop = (e) => {
+    // Drop event
+    dropZone.addEventListener('drop', (e) => {
         e.preventDefault();
         dropZone.style.borderColor = '#475569';
         const files = e.dataTransfer.files;
         console.log('drop event: files.length =', files.length);
         if (files.length > 0) {
             console.log('First file:', files[0].name, 'type:', files[0].type);
+            // Call the handler and then upload
             handleTestFile(files[0]);
             uploadTestZip();
         } else {
             console.warn('drop event: no files');
         }
-    };
+    });
 
     if (fileInput) {
         console.log('initUploadTest: file input found, element:', fileInput);
-        fileInput.onchange = (e) => {
+        fileInput.addEventListener('change', (e) => {
             console.log('file input change event, files:', e.target.files);
             if (e.target.files.length > 0) {
                 handleTestFile(e.target.files[0]);
@@ -64,7 +68,7 @@ function initUploadTest() {
             } else {
                 console.warn('file input: no files');
             }
-        };
+        });
     } else {
         console.error('initUploadTest: file input not found!');
     }
@@ -77,7 +81,7 @@ function handleTestFile(file) {
         return;
     }
     testSelectedFile = file;
-    window.currentZipFile = file;
+    window.currentZipFile = file; // Store globally for mega upload
     console.log('✅ window.currentZipFile set to:', window.currentZipFile.name);
 
     const previewContainer = document.getElementById('test-preview-container');
@@ -197,13 +201,11 @@ function addToSupporter(index) {
     const blob = new Blob([ab], { type: mimeString });
     const file = new File([blob], imgData.name, { type: mimeString });
 
-    if (typeof window.supporterUploadedFiles !== 'undefined') {
-        window.supporterUploadedFiles.push(file);
-        console.log('addToSupporter: window.supporterUploadedFiles now length', window.supporterUploadedFiles.length);
-    } else {
-        console.warn('addToSupporter: window.supporterUploadedFiles is undefined – creating it');
-        window.supporterUploadedFiles = [file];
+    if (typeof window.supporterUploadedFiles === 'undefined') {
+        window.supporterUploadedFiles = [];
     }
+    window.supporterUploadedFiles.push(file);
+    console.log('addToSupporter: window.supporterUploadedFiles now length', window.supporterUploadedFiles.length);
 
     const container = document.getElementById('sup-preview-container');
     const reader = new FileReader();
@@ -291,6 +293,7 @@ function rebuildSupporterPreview() {
         const blob = new Blob([ab], { type: mimeString });
         const file = new File([blob], imgData.name, { type: mimeString });
 
+        if (!window.supporterUploadedFiles) window.supporterUploadedFiles = [];
         window.supporterUploadedFiles.push(file);
 
         const reader = new FileReader();
@@ -361,7 +364,6 @@ function updateMainGridOverlay() {
     });
 }
 
-// Clear selection and optionally remove the ZIP file
 window.clearSelection = function(clearFile = false) {
     console.log('clearSelection called with clearFile=', clearFile);
     selectedIndices.clear();
