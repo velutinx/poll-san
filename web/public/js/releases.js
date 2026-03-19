@@ -1,7 +1,10 @@
 // public/js/releases.js
 
-// These global variables are declared in index.html, so we don't redeclare them.
-// uploadedFiles, supporterUploadedFiles, globalForumPosts, globalSupporterPosts
+// Global variables (declared in index.html)
+let uploadedFiles = [];
+let supporterUploadedFiles = [];
+let globalForumPosts = [];
+let globalSupporterPosts = [];
 
 // ────────────────────────────────────────────────────────────
 // Fetch posts from the preview forum (for both edit and auto-fill)
@@ -45,8 +48,7 @@ async function fetchForumPosts() {
             }
         });
 
-        // --- NEW: Auto-fill Pack Number and Set Size in Create New Release ---
-        // Extract all pack numbers from post titles
+        // Auto-fill Pack Number and Set Size in Create New Release
         const packNumbers = globalForumPosts
             .map(p => p.name.match(/Pack #(\d+)/i))
             .filter(match => match)
@@ -54,9 +56,7 @@ async function fetchForumPosts() {
         const maxPack = packNumbers.length ? Math.max(...packNumbers) : 0;
         const nextPack = maxPack + 1;
         document.getElementById('rel-pack').value = nextPack;
-        // Set default Set Size to "xx"
         document.getElementById('rel-size').value = 'xx';
-        // --------------------------------------------------------------------
 
     } catch (error) {
         console.error('Error fetching preview forum posts:', error);
@@ -291,7 +291,7 @@ async function loadSupporterPostData() {
 // ────────────────────────────────────────────────────────────
 async function submitEdit() {
     const status = document.getElementById('edit-status');
-const btn = document.getElementById('rel-submit-btn');
+    const btn = document.getElementById('edit-submit-btn');
     const data = {
         threadId: document.getElementById('postDropdown').value,
         pack: document.getElementById('editPack').value,
@@ -327,15 +327,10 @@ const btn = document.getElementById('rel-submit-btn');
 // ────────────────────────────────────────────────────────────
 // Create a new preview release (Preview tab)
 // ────────────────────────────────────────────────────────────
-submitRelease
-// ────────────────────────────────────────────────────────────
-// Create a new preview release (Preview tab)
-// ────────────────────────────────────────────────────────────
 async function submitRelease() {
     const status = document.getElementById('release-status');
-    const btn = document.getElementById('rel-submit-btn'); // <-- fixed ID
+    const btn = document.getElementById('rel-submit-btn');
     
-    // Basic validation
     const series = document.getElementById('rel-series').value;
     const name = document.getElementById('rel-name').value;
     if (!series || !name) {
@@ -353,13 +348,12 @@ async function submitRelease() {
     formData.append('input', `${document.getElementById('rel-gender').value} ${name}`.trim());
     formData.append('suffix', document.getElementById('rel-suffix').value || '');
 
-    // Add images
     uploadedFiles.forEach(file => {
         formData.append('images', file);
     });
 
     try {
-        const res = await fetch('/api/release-preview', { // <-- fixed endpoint
+        const res = await fetch('/api/release-preview', {
             method: 'POST',
             body: formData
         });
@@ -367,7 +361,7 @@ async function submitRelease() {
         if (res.ok) {
             showToast('Success', 'New release created successfully');
             clearImages();
-            await fetchForumPosts(); // refresh dropdowns
+            await fetchForumPosts();
             if (status) status.innerText = '';
         } else {
             const errData = await res.json();
@@ -384,7 +378,129 @@ async function submitRelease() {
 }
 
 // ────────────────────────────────────────────────────────────
-// Drag & drop helpers for images
+// Submit Supporter Release (Post/Update to #supporter-releases)
+// ────────────────────────────────────────────────────────────
+async function submitSupporterRelease() {
+    const status = document.getElementById('supporter-status');
+    const btn = document.querySelector('button[onclick="submitSupporterRelease()"]');
+    if (!btn) return;
+
+    const series = document.getElementById('supSeries').value;
+    const name = document.getElementById('supName').value;
+    const pack = document.getElementById('supPack').value;
+    const size = document.getElementById('supSize').value;
+    const download = document.getElementById('supDownload').value;
+
+    if (!series || !name || !pack || !size || !download) {
+        showToast('Error', 'All fields except images are required', 'error');
+        return;
+    }
+
+    btn.disabled = true;
+    if (status) status.innerText = "⏳ Posting...";
+
+    const formData = new FormData();
+    formData.append('pack', pack);
+    formData.append('setSize', size);
+    formData.append('series', series);
+    formData.append('input', `${document.getElementById('supGender').value} ${name}`.trim());
+    formData.append('suffix', document.getElementById('supSuffix').value || '');
+    formData.append('download', download);
+    formData.append('editPreview', document.getElementById('edit-preview-toggle').checked ? 'true' : 'false');
+
+    const supporterThreadId = document.getElementById('supporterEditDropdown').value;
+    if (supporterThreadId) {
+        formData.append('supporterThreadId', supporterThreadId);
+    }
+
+    const previewThreadId = document.getElementById('postDropdown').value;
+    if (previewThreadId) {
+        formData.append('previewThreadId', previewThreadId);
+    }
+
+    supporterUploadedFiles.forEach(file => {
+        formData.append('images', file);
+    });
+
+    try {
+        const res = await fetch('/api/supporter-release', {
+            method: 'POST',
+            body: formData
+        });
+
+        if (res.ok) {
+            showToast('Success', 'Supporter release posted/updated');
+            clearSupporterImages();
+            await fetchSupporterPosts();
+            if (status) status.innerText = '';
+        } else {
+            const errData = await res.json();
+            showToast('Error', errData.error || 'Failed', 'error');
+            if (status) status.innerText = '';
+        }
+    } catch (e) {
+        console.error("Supporter submission error:", e);
+        showToast('Error', e.message, 'error');
+        if (status) status.innerText = '';
+    } finally {
+        btn.disabled = false;
+    }
+}
+
+// ────────────────────────────────────────────────────────────
+// Upload ZIP to MEGA (from Supporters tab)
+// ────────────────────────────────────────────────────────────
+async function uploadToMega() {
+    const status = document.getElementById('mega-status');
+    const btn = document.getElementById('mega-upload-btn');
+    const fileInput = document.getElementById('test-file-input');
+    const file = fileInput?.files[0];
+
+    if (!file) {
+        showToast('Error', 'No ZIP file selected', 'error');
+        return;
+    }
+
+    const month = prompt("Enter month folder (e.g., MAR-26):");
+    if (!month) return;
+
+    const filenameInput = document.getElementById('mega-filename');
+    const desiredName = filenameInput.value.trim() || file.name;
+
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('month', month);
+    formData.append('desiredName', desiredName);
+
+    btn.disabled = true;
+    status.innerText = "⏳ Uploading...";
+
+    try {
+        const res = await fetch('/api/upload-to-mega', {
+            method: 'POST',
+            body: formData
+        });
+
+        if (!res.ok) throw new Error(`Upload failed: ${res.status}`);
+
+        const data = await res.json();
+        if (data.link) {
+            document.getElementById('supDownload').value = data.link;
+            showToast('Success', 'Uploaded! Link added to Download field');
+        } else {
+            showToast('Error', 'No link returned', 'error');
+        }
+    } catch (e) {
+        console.error("MEGA upload error:", e);
+        showToast('Error', e.message, 'error');
+    } finally {
+        btn.disabled = false;
+        status.innerText = '';
+    }
+}
+
+// ────────────────────────────────────────────────────────────
+// Drag & drop helpers for images and ZIP
 // ────────────────────────────────────────────────────────────
 function handleFiles(files) {
     for (let file of files) {
@@ -442,9 +558,44 @@ function clearSupporterImages() {
 }
 
 // ────────────────────────────────────────────────────────────
-// Initialize drag-and-drop listeners
+// Test ZIP – extract first 10 images and display
+// ────────────────────────────────────────────────────────────
+async function handleTestZip(file) {
+    const formData = new FormData();
+    formData.append('zipfile', file);
+
+    try {
+        const res = await fetch('/api/test-zip', {
+            method: 'POST',
+            body: formData
+        });
+        const data = await res.json();
+        if (data.success) {
+            const grid = document.getElementById('test-image-grid');
+            grid.innerHTML = '';
+            data.images.forEach(img => {
+                const imgEl = document.createElement('img');
+                imgEl.src = img.data;
+                imgEl.style.width = '100px';
+                imgEl.style.height = '100px';
+                imgEl.style.objectFit = 'cover';
+                imgEl.style.borderRadius = '4px';
+                grid.appendChild(imgEl);
+            });
+            showToast('Success', `Loaded ${data.total} images (showing first 10)`);
+        } else {
+            showToast('Error', data.error || 'Failed to process ZIP', 'error');
+        }
+    } catch (e) {
+        showToast('Error', e.message, 'error');
+    }
+}
+
+// ────────────────────────────────────────────────────────────
+// Initialize all drag-and-drop listeners
 // ────────────────────────────────────────────────────────────
 function initReleases() {
+    // Preview images drop zone
     const dropZone = document.getElementById('drop-zone');
     const fileInput = document.getElementById('file-input');
     if (dropZone) {
@@ -459,6 +610,7 @@ function initReleases() {
     }
     if (fileInput) fileInput.onchange = (e) => handleFiles(e.target.files);
 
+    // Supporter images drop zone
     const supDropZone = document.getElementById('sup-drop-zone');
     const supFileInput = document.getElementById('sup-file-input');
     if (supDropZone) {
@@ -472,4 +624,29 @@ function initReleases() {
         };
     }
     if (supFileInput) supFileInput.onchange = (e) => handleSupporterFiles(e.target.files);
+
+    // Test ZIP drop zone
+    const testDropZone = document.getElementById('test-drop-zone');
+    const testFileInput = document.getElementById('test-file-input');
+    if (testDropZone) {
+        testDropZone.onclick = () => testFileInput?.click();
+        testDropZone.ondragover = (e) => { e.preventDefault(); testDropZone.style.borderColor = "var(--blue)"; };
+        testDropZone.ondragleave = () => { testDropZone.style.borderColor = "#475569"; };
+        testDropZone.ondrop = (e) => {
+            e.preventDefault();
+            testDropZone.style.borderColor = "#475569";
+            const file = e.dataTransfer.files[0];
+            if (file && file.name.endsWith('.zip')) {
+                handleTestZip(file);
+                const textSpan = document.getElementById('test-drop-text');
+                if (textSpan) textSpan.textContent = `📦 ${file.name}`;
+            } else {
+                showToast('Error', 'Please drop a ZIP file', 'error');
+            }
+        };
+    }
+    if (testFileInput) testFileInput.onchange = (e) => {
+        const file = e.target.files[0];
+        if (file) handleTestZip(file);
+    };
 }
