@@ -11,7 +11,6 @@ function initMega() {
     }
 }
 
-// Generate filename from selected preview post
 function generateFilenameFromPost() {
     const select = document.getElementById('supporterPostSelect');
     if (!select) return;
@@ -39,7 +38,6 @@ function generateFilenameFromPost() {
     }
 }
 
-// Helper to get current month in uppercase MMM-YY format
 function getCurrentMonth() {
     const months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
     const now = new Date();
@@ -58,14 +56,12 @@ async function uploadToMega() {
     // Try multiple sources for the file
     let fileToUpload = window.currentZipFile;
 
-    // If not set, check testSelectedFile (if it exists in scope)
     if (!fileToUpload && typeof testSelectedFile !== 'undefined' && testSelectedFile) {
         console.log('Recovering file from testSelectedFile');
         fileToUpload = testSelectedFile;
-        window.currentZipFile = fileToUpload; // restore global
+        window.currentZipFile = fileToUpload;
     }
 
-    // Last resort: try to get the file from the file input element directly
     if (!fileToUpload) {
         const fileInput = document.getElementById('test-file-input');
         if (fileInput && fileInput.files.length > 0) {
@@ -105,7 +101,6 @@ async function uploadToMega() {
     progressBar.value = 0;
 
     const formData = new FormData();
-    // Create a new File with the desired name (the original file data remains intact)
     const renamedFile = new File([fileToUpload], finalFileName, { type: fileToUpload.type });
     formData.append('file', renamedFile);
     formData.append('month', currentMonth);
@@ -146,7 +141,6 @@ async function uploadToMega() {
     xhr.send(formData);
 }
 
-// Initialize when DOM is ready
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', initMega);
 } else {
