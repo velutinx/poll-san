@@ -368,13 +368,13 @@
         // ======================================================
         // GLOBAL STATE (declared only once)
         // ======================================================
-        let uploadedFiles = [];
-        let supporterUploadedFiles = [];
-        let globalForumPosts = [];
-        let globalSupporterPosts = [];
-        let currentImages = [];
-        let selectedIndices = new Set();
-        let testSelectedFile = null;
+        window.uploadedFiles = [];
+        window.supporterUploadedFiles = [];
+        window.globalForumPosts = [];
+        window.globalSupporterPosts = [];
+        window.currentImages = [];
+        window.selectedIndices = new Set();
+        window.testSelectedFile = null;
 
         window.currentZipFile = null;
         window.totalImagesCount = 0;
@@ -393,20 +393,18 @@
                 }
             });
 
-            if (tabId === 'poll-mgmt') loadActivePoll?.();
-            if (tabId === 'queue-mgmt') loadQueueData?.();
+            if (tabId === 'poll-mgmt' && typeof loadActivePoll === 'function') loadActivePoll();
+            if (tabId === 'queue-mgmt' && typeof loadQueueData === 'function') loadQueueData();
             if (tabId === 'releases-mgmt') {
                 switchSubTab('preview');
-                fetchForumPosts?.();
-                fetchSupporterPosts?.();
+                if (typeof fetchForumPosts === 'function') fetchForumPosts();
+                if (typeof fetchSupporterPosts === 'function') fetchSupporterPosts();
             }
             if (tabId === 'greetings') {
-                await loadChannels?.();
-                await loadSettings?.();
+                await loadChannels();
+                await loadSettings();
             }
-            if (tabId === 'member-mgmt') {
-                loadMembershipData?.();
-            }
+            if (tabId === 'member-mgmt' && typeof loadMembershipData === 'function') loadMembershipData();
         }
 
         function switchSubTab(subId) {
@@ -417,214 +415,7 @@
         }
 
         // ======================================================
-        // ZIP PREVIEW + CLICK TO SELECT IMAGES
-        // ======================================================
-        function initUploadTest() {
-            const dropZone = document.getElementById('test-drop-zone');
-            const fileInput = document.getElementById('test-file-input');
-            const dropText = document.getElementById('test-drop-text');
-            const previewContainer = document.getElementById('test-preview-container');
-
-            if (!dropZone) return;
-
-            dropZone.onclick = () => fileInput?.click();
-
-            dropZone.ondragover = e => { e.preventDefault(); dropZone.style.borderColor = 'var(--blue)'; };
-            dropZone.ondragleave = () => { dropZone.style.borderColor = '#475569'; };
-
-            dropZone.ondrop = e => {
-                e.preventDefault();
-                dropZone.style.borderColor = '#475569';
-                if (e.dataTransfer.files.length) {
-                    handleTestFile(e.dataTransfer.files[0]);
-                    uploadTestZip();
-                }
-            };
-
-            fileInput.onchange = e => {
-                if (e.target.files.length) {
-                    handleTestFile(e.target.files[0]);
-                    uploadTestZip();
-                }
-            };
-        }
-
-        function handleTestFile(file) {
-            if (!file.name.toLowerCase().endsWith('.zip')) {
-                alert('Please select a ZIP file.');
-                return;
-            }
-            testSelectedFile = file;
-            window.currentZipFile = file;
-
-            const pc = document.getElementById('test-preview-container');
-            const dt = document.getElementById('test-drop-text');
-            pc.innerHTML = `<span style="color:#e2e8f0">📦 ${file.name}</span>`;
-            dt.style.display = 'none';
-        }
-
-        async function uploadTestZip() {
-            const grid = document.getElementById('test-image-grid');
-            if (!testSelectedFile) return;
-
-            grid.innerHTML = '';
-            selectedIndices.clear();
-            supporterUploadedFiles = [];
-
-            const fd = new FormData();
-            fd.append('zipfile', testSelectedFile);
-
-            try {
-                const res = await fetch('/api/test-zip', { method: 'POST', body: fd });
-                if (!res.ok) throw new Error(await res.text());
-                const data = await res.json();
-
-                currentImages = data.images.sort((a,b) => {
-                    const na = parseInt((a.name.match(/\d+/)||['0'])[0],10);
-                    const nb = parseInt((b.name.match(/\d+/)||['0'])[0],10);
-                    return na - nb;
-                });
-
-                document.getElementById('supSize')?.setAttribute('value', data.total);
-
-                currentImages.forEach((img, i) => {
-                    const div = document.createElement('div');
-                    div.style.cssText = 'position:relative; width:100%; aspect-ratio:1/1;';
-                    div.dataset.index = i;
-
-                    const imgEl = document.createElement('img');
-                    imgEl.src = img.data;
-                    imgEl.title = img.name;
-                    imgEl.style.cssText = 'width:100%; height:100%; object-fit:cover; border-radius:6px; border:2px solid #334155; cursor:pointer; transition:border 0.2s;';
-                    imgEl.addEventListener('click', () => toggleSelectImage(i));
-
-                    const overlay = document.createElement('div');
-                    overlay.className = 'selected-overlay';
-                    overlay.style.cssText = 'position:absolute; inset:0; background:rgba(128,128,128,0.5); border-radius:6px; pointer-events:none; display:none;';
-
-                    div.append(imgEl, overlay);
-                    grid.appendChild(div);
-                });
-            } catch (err) {
-                console.error(err);
-                alert(err.message || 'ZIP processing failed');
-            } finally {
-                document.getElementById('test-file-input').value = '';
-            }
-        }
-
-        function toggleSelectImage(idx) {
-            if (selectedIndices.has(idx)) {
-                selectedIndices.delete(idx);
-            } else {
-                if (selectedIndices.size >= 4) {
-                    alert('Maximum 4 images can be selected.');
-                    return;
-                }
-                selectedIndices.add(idx);
-                addToSupporter(idx);
-            }
-            rebuildSupporterPreview();
-            updateMainGridOverlay();
-        }
-
-        function addToSupporter(idx) {
-            const img = currentImages[idx];
-            if (!img) return;
-
-            const bytes = atob(img.data.split(',')[1]);
-            const mime = img.data.split(',')[0].split(':')[1].split(';')[0];
-            const buf = new ArrayBuffer(bytes.length);
-            const u8 = new Uint8Array(buf);
-            for (let i = 0; i < bytes.length; i++) u8[i] = bytes.charCodeAt(i);
-
-            const blob = new Blob([buf], {type: mime});
-            supporterUploadedFiles.push(new File([blob], img.name, {type: mime}));
-        }
-
-        function rebuildSupporterPreview() {
-            const cont = document.getElementById('sup-preview-container');
-            cont.innerHTML = '';
-
-            supporterUploadedFiles = [];
-
-            [...selectedIndices].sort((a,b)=>a-b).forEach(idx => {
-                const img = currentImages[idx];
-                if (!img) return;
-
-                const bytes = atob(img.data.split(',')[1]);
-                const mime = img.data.split(',')[0].split(':')[1].split(';')[0];
-                const buf = new ArrayBuffer(bytes.length);
-                const u8 = new Uint8Array(buf);
-                for (let i = 0; i < bytes.length; i++) u8[i] = bytes.charCodeAt(i);
-
-                supporterUploadedFiles.push(new File([new Blob([buf], {type:mime})], img.name, {type:mime}));
-
-                const div = document.createElement('div');
-                div.style.cssText = 'position:relative; width:100%; aspect-ratio:1/1;';
-                div.dataset.index = idx;
-
-                const im = document.createElement('img');
-                im.src = img.data;
-                im.className = 'preview-img';
-                im.style.cssText = 'width:100%; height:100%; object-fit:cover; border-radius:6px; border:2px solid #334155; cursor:pointer;';
-                im.onclick = () => {
-                    selectedIndices.delete(idx);
-                    rebuildSupporterPreview();
-                    updateMainGridOverlay();
-                };
-
-                div.appendChild(im);
-                cont.appendChild(div);
-            });
-
-            initSortable();
-        }
-
-        function initSortable() {
-            const cont = document.getElementById('sup-preview-container');
-            if (!cont?.children.length || typeof Sortable === 'undefined') return;
-
-            if (cont._sortable) cont._sortable.destroy();
-
-            cont._sortable = Sortable.create(cont, {
-                animation: 150,
-                handle: '.preview-img',
-                onEnd: () => {
-                    const newFiles = [];
-                    [...cont.children].forEach(child => {
-                        const i = parseInt(child.dataset.index);
-                        if (isNaN(i) || !currentImages[i]) return;
-                        const img = currentImages[i];
-                        const bytes = atob(img.data.split(',')[1]);
-                        const mime = img.data.split(',')[0].split(':')[1].split(';')[0];
-                        const buf = new ArrayBuffer(bytes.length);
-                        const u8 = new Uint8Array(buf);
-                        for (let k=0; k<bytes.length; k++) u8[k] = bytes.charCodeAt(k);
-                        newFiles.push(new File([new Blob([buf],{type:mime})], img.name, {type:mime}));
-                    });
-                    supporterUploadedFiles = newFiles;
-                }
-            });
-        }
-
-        function updateMainGridOverlay() {
-            document.querySelectorAll('#test-image-grid > div').forEach(div => {
-                const i = parseInt(div.dataset.index);
-                const ov = div.querySelector('.selected-overlay');
-                if (ov) ov.style.display = selectedIndices.has(i) ? 'block' : 'none';
-            });
-        }
-
-        window.clearSelection = () => {
-            selectedIndices.clear();
-            supporterUploadedFiles = [];
-            document.getElementById('sup-preview-container').innerHTML = '';
-            updateMainGridOverlay();
-        };
-
-        // ======================================================
-        // OTHER FUNCTIONS (greetings, membership, etc.)
+        // GREETINGS
         // ======================================================
         async function saveGreetings() {
             const channel = document.getElementById('welcome_channel_id').value;
@@ -635,9 +426,9 @@
                 body: JSON.stringify({ welcome_channel_id: channel, welcome_message: message })
             });
             if (res.ok) {
-                showToast?.('Success!', 'Settings applied');
+                if (typeof showToast === 'function') showToast('Success!', 'Settings applied');
             } else {
-                showToast?.('Error!', 'Failed to save', 'error');
+                if (typeof showToast === 'function') showToast('Error!', 'Failed to save', 'error');
             }
         }
 
@@ -685,7 +476,8 @@
             document.querySelectorAll('thead th span').forEach(s => s.innerHTML = '');
             if (currentSort.column) {
                 const arrow = currentSort.direction === 'asc' ? ' ▲' : ' ▼';
-                document.getElementById(`sort-${currentSort.column}`).innerHTML = arrow;
+                const span = document.getElementById(`sort-${currentSort.column}`);
+                if (span) span.innerHTML = arrow;
             }
 
             tb.innerHTML = sorted.map(m => {
@@ -762,25 +554,18 @@
         // ======================================================
         window.onload = () => {
             switchTab('poll-mgmt');
-            setInterval(loadActivePoll, 10000);
+            if (typeof loadActivePoll === 'function') setInterval(loadActivePoll, 10000);
             if (typeof initReleases === 'function') initReleases();
             loadMembershipData();
         };
-
-        if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', () => {
-                initUploadTest();
-            });
-        } else {
-            initUploadTest();
-        }
     </script>
 
-    <!-- Keep your other external scripts -->
+    <!-- External scripts – order matters -->
     <script src="/js/queue.js" defer></script>
-    <script src="/js/releases.js" defer></script>
-    <script src="/js/megalink.js" defer></script>
     <script src="/js/poll.js" defer></script>
     <script src="/js/toast.js" defer></script>
+    <script src="/js/releases.js" defer></script>
+    <script src="/js/uploading.js" defer></script>
+    <script src="/js/megalink.js" defer></script>
 </body>
 </html>
