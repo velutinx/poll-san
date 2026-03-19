@@ -1,12 +1,12 @@
-// uploading.js
+// uploading.js – Fixed: ensure window.currentZipFile is set and persists
 
 let testSelectedFile = null;
 let currentImages = [];
 let selectedIndices = new Set();
 
-// Make the current zip file and total image count available globally
+// Expose the current ZIP file globally
 window.currentZipFile = null;
-window.totalImagesCount = 0;  // <-- new global
+window.totalImagesCount = 0;
 
 function initUploadTest() {
     const dropZone = document.getElementById('test-drop-zone');
@@ -315,16 +315,19 @@ function updateMainGridOverlay() {
     });
 }
 
-// Clear selection
-window.clearSelection = function() {
+// Clear selection and optionally remove the ZIP file
+window.clearSelection = function(clearFile = false) {
     selectedIndices.clear();
     rebuildSupporterPreview();
     updateMainGridOverlay();
-    // Optionally clear the global zip file if you want to remove it from mega upload
-    // window.currentZipFile = null;
-    // testSelectedFile = null;
-    // document.getElementById('test-preview-container').innerHTML = '';
-    // document.getElementById('test-drop-text').style.display = 'block';
+    if (clearFile) {
+        // Also clear the ZIP file reference and UI
+        window.currentZipFile = null;
+        testSelectedFile = null;
+        document.getElementById('test-preview-container').innerHTML = '';
+        document.getElementById('test-drop-text').style.display = 'block';
+        document.getElementById('test-image-grid').innerHTML = '';
+    }
 };
 
 // Expose upload function globally
