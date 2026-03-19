@@ -812,6 +812,12 @@ app.post('/api/test-zip', upload.single('zipfile'), async (req, res) => {
     }
 });
 
+// Temporary GET for testing – remove after debugging
+app.get('/api/test-zip', (req, res) => {
+    res.json({ message: 'GET works' });
+});
+
+	
     // ────────────────────────────────────────────────
     // NEW: 15. PAYPAL CAPTURE (Place this near your Create Order logic)
     // ────────────────────────────────────────────────
