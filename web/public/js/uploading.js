@@ -1,12 +1,19 @@
-// uploading.js
+// uploading.js – with click debugging
 
 let testSelectedFile = null;
 let currentImages = [];
 let selectedIndices = new Set();
 
-// Make the current zip file and total image count available globally
 window.currentZipFile = null;
-window.totalImagesCount = 0;  // <-- new global
+window.totalImagesCount = 0;
+
+if (typeof window.supporterUploadedFiles === 'undefined') {
+    window.supporterUploadedFiles = [];
+}
+
+window.reloadZip = function() {
+    document.getElementById('test-file-input')?.click();
+};
 
 function initUploadTest() {
     const dropZone = document.getElementById('test-drop-zone');
@@ -16,18 +23,18 @@ function initUploadTest() {
 
     if (!dropZone) return;
 
-    dropZone.onclick = () => fileInput?.click();
+    dropZone.addEventListener('click', () => fileInput?.click());
 
-    dropZone.ondragover = (e) => {
+    dropZone.addEventListener('dragover', (e) => {
         e.preventDefault();
         dropZone.style.borderColor = 'var(--blue)';
-    };
+    });
 
-    dropZone.ondragleave = () => {
+    dropZone.addEventListener('dragleave', () => {
         dropZone.style.borderColor = '#475569';
-    };
+    });
 
-    dropZone.ondrop = (e) => {
+    dropZone.addEventListener('drop', (e) => {
         e.preventDefault();
         dropZone.style.borderColor = '#475569';
         const files = e.dataTransfer.files;
@@ -35,15 +42,30 @@ function initUploadTest() {
             handleTestFile(files[0]);
             uploadTestZip();
         }
-    };
+    });
 
     if (fileInput) {
-        fileInput.onchange = (e) => {
+        fileInput.addEventListener('change', (e) => {
             if (e.target.files.length > 0) {
                 handleTestFile(e.target.files[0]);
                 uploadTestZip();
             }
-        };
+        });
+    }
+
+    // Event delegation for image grid clicks
+    const imageGrid = document.getElementById('test-image-grid');
+    if (imageGrid) {
+        imageGrid.addEventListener('click', (e) => {
+            const container = e.target.closest('div[data-index]');
+            if (container) {
+                const index = parseInt(container.dataset.index);
+                console.log('Image clicked, index:', index); // ← temporary debug
+                if (!isNaN(index)) {
+                    toggleSelectImage(index);
+                }
+            }
+        });
     }
 }
 
@@ -53,7 +75,7 @@ function handleTestFile(file) {
         return;
     }
     testSelectedFile = file;
-    window.currentZipFile = file; // Store globally for mega upload
+    window.currentZipFile = file;
 
     const previewContainer = document.getElementById('test-preview-container');
     const dropText = document.getElementById('test-drop-text');
@@ -79,18 +101,15 @@ async function uploadTestZip() {
         if (!res.ok) throw new Error(await res.text());
         const data = await res.json();
 
-        // Sort images by filename (natural numeric order)
         currentImages = data.images.sort((a, b) => {
             const aNum = (a.name.match(/\d+/) || [0])[0];
             const bNum = (b.name.match(/\d+/) || [0])[0];
             return parseInt(aNum, 10) - parseInt(bNum, 10);
         });
 
-        // ✅ AUTO-FILL SET SIZE FIELD
         const sizeInput = document.getElementById('supSize');
         if (sizeInput) sizeInput.value = data.total;
 
-        // Render images in right grid
         currentImages.forEach((img, index) => {
             const container = document.createElement('div');
             container.style.position = 'relative';
@@ -107,8 +126,6 @@ async function uploadTestZip() {
             imgEl.style.borderRadius = '6px';
             imgEl.style.border = '2px solid #334155';
             imgEl.style.cursor = 'pointer';
-            imgEl.style.transition = 'border 0.2s';
-            imgEl.addEventListener('click', () => toggleSelectImage(index));
             container.appendChild(imgEl);
 
             const overlay = document.createElement('div');
@@ -124,7 +141,7 @@ async function uploadTestZip() {
             imageGrid.appendChild(container);
         });
     } catch (err) {
-        console.error(err);
+        console.error('uploadTestZip error:', err);
         alert(err.message);
     } finally {
         document.getElementById('test-file-input').value = '';
@@ -160,9 +177,7 @@ function addToSupporter(index) {
     const blob = new Blob([ab], { type: mimeString });
     const file = new File([blob], imgData.name, { type: mimeString });
 
-    if (typeof supporterUploadedFiles !== 'undefined') {
-        supporterUploadedFiles.push(file);
-    }
+    window.supporterUploadedFiles.push(file);
 
     const container = document.getElementById('sup-preview-container');
     const reader = new FileReader();
@@ -212,7 +227,7 @@ function addToSupporter(index) {
                             }
                         }
                     });
-                    supporterUploadedFiles = newOrder;
+                    window.supporterUploadedFiles = newOrder;
                 }
             });
         }
@@ -229,7 +244,7 @@ function removeFromSupporter(index) {
 function rebuildSupporterPreview() {
     const container = document.getElementById('sup-preview-container');
     container.innerHTML = '';
-    supporterUploadedFiles = [];
+    window.supporterUploadedFiles = [];
 
     const indices = Array.from(selectedIndices).sort((a, b) => a - b);
     indices.forEach(index => {
@@ -246,7 +261,7 @@ function rebuildSupporterPreview() {
         const blob = new Blob([ab], { type: mimeString });
         const file = new File([blob], imgData.name, { type: mimeString });
 
-        supporterUploadedFiles.push(file);
+        window.supporterUploadedFiles.push(file);
 
         const reader = new FileReader();
         reader.onload = (e) => {
@@ -295,7 +310,7 @@ function rebuildSupporterPreview() {
                                 }
                             }
                         });
-                        supporterUploadedFiles = newOrder;
+                        window.supporterUploadedFiles = newOrder;
                     }
                 });
             }
@@ -315,19 +330,19 @@ function updateMainGridOverlay() {
     });
 }
 
-// Clear selection
-window.clearSelection = function() {
+window.clearSelection = function(clearFile = false) {
     selectedIndices.clear();
     rebuildSupporterPreview();
     updateMainGridOverlay();
-    // Optionally clear the global zip file if you want to remove it from mega upload
-    // window.currentZipFile = null;
-    // testSelectedFile = null;
-    // document.getElementById('test-preview-container').innerHTML = '';
-    // document.getElementById('test-drop-text').style.display = 'block';
+    if (clearFile) {
+        window.currentZipFile = null;
+        testSelectedFile = null;
+        document.getElementById('test-preview-container').innerHTML = '';
+        document.getElementById('test-drop-text').style.display = 'block';
+        document.getElementById('test-image-grid').innerHTML = '';
+    }
 };
 
-// Expose upload function globally
 window.uploadTestZip = uploadTestZip;
 
 if (document.readyState === 'loading') {
