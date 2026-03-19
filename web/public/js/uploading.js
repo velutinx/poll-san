@@ -1,4 +1,4 @@
-// uploading.js – with manual fallback and better logging
+// uploading.js – final, no logs
 
 let testSelectedFile = null;
 let currentImages = [];
@@ -15,22 +15,14 @@ window.reloadZip = function() {
 };
 
 function initUploadTest() {
-    console.log('initUploadTest running');
     const dropZone = document.getElementById('test-drop-zone');
     const fileInput = document.getElementById('test-file-input');
     const dropText = document.getElementById('test-drop-text');
     const previewContainer = document.getElementById('test-preview-container');
 
-    if (!dropZone) {
-        console.error('test-drop-zone not found');
-        return;
-    }
-    console.log('test-drop-zone found');
+    if (!dropZone) return;
 
-    dropZone.addEventListener('click', () => {
-        console.log('drop zone clicked');
-        fileInput?.click();
-    });
+    dropZone.addEventListener('click', () => fileInput?.click());
 
     dropZone.addEventListener('dragover', (e) => {
         e.preventDefault();
@@ -44,34 +36,24 @@ function initUploadTest() {
     dropZone.addEventListener('drop', (e) => {
         e.preventDefault();
         dropZone.style.borderColor = '#475569';
-        console.log('drop event');
         const files = e.dataTransfer.files;
         if (files.length > 0) {
-            console.log('file dropped:', files[0].name);
             handleTestFile(files[0]);
-        } else {
-            console.warn('drop: no files');
         }
     });
 
     if (fileInput) {
         fileInput.addEventListener('change', (e) => {
-            console.log('file input change');
             if (e.target.files.length > 0) {
                 handleTestFile(e.target.files[0]);
             }
         });
-    } else {
-        console.error('file input not found');
     }
 
     const imageGrid = document.getElementById('test-image-grid');
     if (imageGrid) {
         imageGrid.removeEventListener('click', handleGridClick);
         imageGrid.addEventListener('click', handleGridClick);
-        console.log('grid click listener attached');
-    } else {
-        console.error('test-image-grid not found');
     }
 }
 
@@ -80,14 +62,12 @@ function handleGridClick(e) {
     if (container) {
         const index = parseInt(container.dataset.index);
         if (!isNaN(index)) {
-            console.log('grid click index:', index);
             toggleSelectImage(index);
         }
     }
 }
 
 function handleTestFile(file) {
-    console.log('handleTestFile', file.name);
     if (!file.name.toLowerCase().endsWith('.zip')) {
         alert('Please select a ZIP file.');
         return;
@@ -108,13 +88,11 @@ function handleTestFile(file) {
 }
 
 async function uploadTestZip() {
-    console.log('uploadTestZip started');
     if (isUploading) return;
     isUploading = true;
 
     const imageGrid = document.getElementById('test-image-grid');
     if (!testSelectedFile) {
-        console.warn('no testSelectedFile');
         isUploading = false;
         return;
     }
@@ -125,11 +103,9 @@ async function uploadTestZip() {
     formData.append('zipfile', testSelectedFile);
 
     try {
-        console.log('fetching /api/test-zip');
         const res = await fetch('/api/test-zip', { method: 'POST', body: formData });
         if (!res.ok) throw new Error(await res.text());
         const data = await res.json();
-        console.log('got', data.images.length, 'images');
 
         currentImages = data.images.sort((a, b) => {
             const aNum = (a.name.match(/\d+/) || [0])[0];
@@ -170,7 +146,6 @@ async function uploadTestZip() {
 
             imageGrid.appendChild(container);
         });
-        console.log('image grid populated');
     } catch (err) {
         console.error('uploadTestZip error:', err);
         alert(err.message);
@@ -179,6 +154,7 @@ async function uploadTestZip() {
         isUploading = false;
     }
 }
+
 
 function toggleSelectImage(index) {
     if (selectedIndices.has(index)) {
