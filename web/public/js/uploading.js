@@ -1,4 +1,4 @@
-// uploading.js – Fixed: ensure window.currentZipFile is set and persists
+// uploading.js – with debug logs and persistent file reference
 
 let testSelectedFile = null;
 let currentImages = [];
@@ -9,6 +9,7 @@ window.currentZipFile = null;
 window.totalImagesCount = 0;
 
 function initUploadTest() {
+    console.log('initUploadTest: setting up drop zones');
     const dropZone = document.getElementById('test-drop-zone');
     const fileInput = document.getElementById('test-file-input');
     const dropText = document.getElementById('test-drop-text');
@@ -48,12 +49,14 @@ function initUploadTest() {
 }
 
 function handleTestFile(file) {
+    console.log('handleTestFile called with:', file.name);
     if (!file.name.toLowerCase().endsWith('.zip')) {
         alert('Please select a ZIP file.');
         return;
     }
     testSelectedFile = file;
     window.currentZipFile = file; // Store globally for mega upload
+    console.log('window.currentZipFile set to:', window.currentZipFile.name);
 
     const previewContainer = document.getElementById('test-preview-container');
     const dropText = document.getElementById('test-drop-text');
@@ -66,8 +69,12 @@ function handleTestFile(file) {
 }
 
 async function uploadTestZip() {
+    console.log('uploadTestZip: starting');
     const imageGrid = document.getElementById('test-image-grid');
-    if (!testSelectedFile) return;
+    if (!testSelectedFile) {
+        console.warn('uploadTestZip: testSelectedFile is null');
+        return;
+    }
     imageGrid.innerHTML = '';
     selectedIndices.clear();
 
@@ -78,6 +85,7 @@ async function uploadTestZip() {
         const res = await fetch('/api/test-zip', { method: 'POST', body: formData });
         if (!res.ok) throw new Error(await res.text());
         const data = await res.json();
+        console.log('uploadTestZip: received', data.images.length, 'images');
 
         // Sort images by filename (natural numeric order)
         currentImages = data.images.sort((a, b) => {
@@ -124,7 +132,7 @@ async function uploadTestZip() {
             imageGrid.appendChild(container);
         });
     } catch (err) {
-        console.error(err);
+        console.error('uploadTestZip error:', err);
         alert(err.message);
     } finally {
         document.getElementById('test-file-input').value = '';
@@ -317,6 +325,7 @@ function updateMainGridOverlay() {
 
 // Clear selection and optionally remove the ZIP file
 window.clearSelection = function(clearFile = false) {
+    console.log('clearSelection called with clearFile=', clearFile);
     selectedIndices.clear();
     rebuildSupporterPreview();
     updateMainGridOverlay();
