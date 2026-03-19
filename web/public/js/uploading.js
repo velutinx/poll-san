@@ -33,24 +33,24 @@ function initUploadTest() {
         dropZone.style.borderColor = '#475569';
     });
 
-    dropZone.addEventListener('drop', (e) => {
-        e.preventDefault();
-        dropZone.style.borderColor = '#475569';
-        const files = e.dataTransfer.files;
-        if (files.length > 0) {
-            handleTestFile(files[0]);
-            uploadTestZip();
+dropZone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    dropZone.style.borderColor = '#475569';
+
+    const files = e.dataTransfer.files;
+    if (files.length > 0) {
+        handleTestFile(files[0]);
+    }
+});
+
+if (fileInput) {
+    fileInput.addEventListener('change', (e) => {
+        if (e.target.files.length > 0) {
+            handleTestFile(e.target.files[0]);
         }
     });
+}
 
-    if (fileInput) {
-        fileInput.addEventListener('change', (e) => {
-            if (e.target.files.length > 0) {
-                handleTestFile(e.target.files[0]);
-                uploadTestZip();
-            }
-        });
-    }
 
     // Event delegation for image grid clicks – one listener for all current and future images
     const imageGrid = document.getElementById('test-image-grid');
@@ -78,18 +78,26 @@ function handleTestFile(file) {
         alert('Please select a ZIP file.');
         return;
     }
+
     testSelectedFile = file;
     window.currentZipFile = file;
 
     const previewContainer = document.getElementById('test-preview-container');
     const dropText = document.getElementById('test-drop-text');
+
     previewContainer.innerHTML = '';
+
     const span = document.createElement('span');
     span.style.color = '#e2e8f0';
     span.textContent = `📦 ${file.name}`;
     previewContainer.appendChild(span);
+
     dropText.style.display = 'none';
+
+    // ✅ ONLY place where upload is triggered
+    uploadTestZip();
 }
+
 
 async function uploadTestZip() {
     if (isUploading) return;
