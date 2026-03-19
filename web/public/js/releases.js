@@ -1,4 +1,4 @@
-// public/js/releases.js – No variable declarations, always use window.
+// public/js/releases.js – No ZIP handling, uses window globals
 
 // ────────────────────────────────────────────────────────────
 // Fetch posts from the preview forum (for both edit and auto-fill)
@@ -442,59 +442,7 @@ async function submitSupporterRelease() {
 }
 
 // ────────────────────────────────────────────────────────────
-// Upload ZIP to MEGA (from Supporters tab)
-// ────────────────────────────────────────────────────────────
-async function uploadToMega() {
-    const status = document.getElementById('mega-status');
-    const btn = document.getElementById('mega-upload-btn');
-    const fileInput = document.getElementById('test-file-input');
-    const file = fileInput?.files[0];
-
-    if (!file) {
-        showToast('Error', 'No ZIP file selected', 'error');
-        return;
-    }
-
-    const month = prompt("Enter month folder (e.g., MAR-26):");
-    if (!month) return;
-
-    const filenameInput = document.getElementById('mega-filename');
-    const desiredName = filenameInput.value.trim() || file.name;
-
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('month', month);
-    formData.append('desiredName', desiredName);
-
-    btn.disabled = true;
-    status.innerText = "⏳ Uploading...";
-
-    try {
-        const res = await fetch('/api/upload-to-mega', {
-            method: 'POST',
-            body: formData
-        });
-
-        if (!res.ok) throw new Error(`Upload failed: ${res.status}`);
-
-        const data = await res.json();
-        if (data.link) {
-            document.getElementById('supDownload').value = data.link;
-            showToast('Success', 'Uploaded! Link added to Download field');
-        } else {
-            showToast('Error', 'No link returned', 'error');
-        }
-    } catch (e) {
-        console.error("MEGA upload error:", e);
-        showToast('Error', e.message, 'error');
-    } finally {
-        btn.disabled = false;
-        status.innerText = '';
-    }
-}
-
-// ────────────────────────────────────────────────────────────
-// Drag & drop helpers for images and ZIP
+// Drag & drop helpers for images (preview and supporter)
 // ────────────────────────────────────────────────────────────
 function handleFiles(files) {
     for (let file of files) {
@@ -552,41 +500,7 @@ function clearSupporterImages() {
 }
 
 // ────────────────────────────────────────────────────────────
-// Test ZIP – extract first 10 images and display
-// ────────────────────────────────────────────────────────────
-async function handleTestZip(file) {
-    const formData = new FormData();
-    formData.append('zipfile', file);
-
-    try {
-        const res = await fetch('/api/test-zip', {
-            method: 'POST',
-            body: formData
-        });
-        const data = await res.json();
-        if (data.success) {
-            const grid = document.getElementById('test-image-grid');
-            grid.innerHTML = '';
-            data.images.forEach(img => {
-                const imgEl = document.createElement('img');
-                imgEl.src = img.data;
-                imgEl.style.width = '100px';
-                imgEl.style.height = '100px';
-                imgEl.style.objectFit = 'cover';
-                imgEl.style.borderRadius = '4px';
-                grid.appendChild(imgEl);
-            });
-            showToast('Success', `Loaded ${data.total} images (showing first 10)`);
-        } else {
-            showToast('Error', data.error || 'Failed to process ZIP', 'error');
-        }
-    } catch (e) {
-        showToast('Error', e.message, 'error');
-    }
-}
-
-// ────────────────────────────────────────────────────────────
-// Initialize all drag-and-drop listeners
+// Initialize all drag-and-drop listeners (except ZIP, which is in uploading.js)
 // ────────────────────────────────────────────────────────────
 function initReleases() {
     // Preview images drop zone
@@ -619,28 +533,5 @@ function initReleases() {
     }
     if (supFileInput) supFileInput.onchange = (e) => handleSupporterFiles(e.target.files);
 
-    // Test ZIP drop zone
-    const testDropZone = document.getElementById('test-drop-zone');
-    const testFileInput = document.getElementById('test-file-input');
-    if (testDropZone) {
-        testDropZone.onclick = () => testFileInput?.click();
-        testDropZone.ondragover = (e) => { e.preventDefault(); testDropZone.style.borderColor = "var(--blue)"; };
-        testDropZone.ondragleave = () => { testDropZone.style.borderColor = "#475569"; };
-        testDropZone.ondrop = (e) => {
-            e.preventDefault();
-            testDropZone.style.borderColor = "#475569";
-            const file = e.dataTransfer.files[0];
-            if (file && file.name.endsWith('.zip')) {
-                handleTestZip(file);
-                const textSpan = document.getElementById('test-drop-text');
-                if (textSpan) textSpan.textContent = `📦 ${file.name}`;
-            } else {
-                showToast('Error', 'Please drop a ZIP file', 'error');
-            }
-        };
-    }
-    if (testFileInput) testFileInput.onchange = (e) => {
-        const file = e.target.files[0];
-        if (file) handleTestZip(file);
-    };
+    // NOTE: ZIP drop zone is now handled entirely by uploading.js
 }
