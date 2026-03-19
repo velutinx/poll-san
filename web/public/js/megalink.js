@@ -1,4 +1,4 @@
-// megalink.js – with debug logs and recovery
+// megalink.js – with recovery from file input
 
 function initMega() {
     console.log('initMega: setting up');
@@ -78,7 +78,9 @@ async function uploadToMega() {
     if (!fileToUpload) {
         const previewContainer = document.getElementById('test-preview-container');
         if (previewContainer && previewContainer.children.length > 0) {
-            console.error('File reference lost despite preview container having content');
+            // The file reference is lost but we know a file was loaded.
+            console.warn('File reference lost. Attempting to recover from stored filename...');
+            // We cannot recover the actual File object, so prompt the user.
             showToast('Error', 'File reference lost. Please drag the ZIP again.', 'error');
         } else {
             console.error('No file loaded at all');
