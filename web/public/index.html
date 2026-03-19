@@ -15,7 +15,6 @@
         <div class="nav-item" onclick="switchTab('releases-mgmt')">🚀 Releases</div>
         <div class="nav-item" onclick="switchTab('greetings')">👋 Greetings</div>
         <div class="nav-item" onclick="switchTab('member-mgmt')">💵 Membership</div>
-		
     </nav>
 
     <main>
@@ -64,7 +63,7 @@
                 <span onclick="switchSubTab('supporters')">Supporters</span>
             </div>
 
-            <!-- Preview tab -->
+            <!-- Preview sub-tab -->
             <div id="preview" class="sub-tab-content active">
                 <div class="mgmt-container">
                     <div class="mgmt-column">
@@ -168,10 +167,10 @@
                 </div>
             </div>
 
-            <!-- Supporters tab -->
+            <!-- Supporters sub-tab -->
             <div id="supporters" class="sub-tab-content" style="display:none;">
                 <div class="mgmt-container">
-                    <!-- LEFT COLUMN: Original supporter release form -->
+                    <!-- LEFT COLUMN -->
                     <div class="mgmt-column">
                         <div class="card">
                             <span class="card-header-label">Create Supporter Release</span>
@@ -181,14 +180,12 @@
                                     <option value="">-- Select a post to base this on --</option>
                                 </select>
                             </div>
-
                             <div class="form-group" style="margin-top: 20px;">
                                 <label>Select Supporter Post to Edit</label>
                                 <select id="supporterEditDropdown" onchange="loadSupporterEditData()">
                                     <option value="">-- Select a supporter post to edit --</option>
                                 </select>
                             </div>
-
                             <div style="margin-top: 20px;">
                                 <label>Existing Images in Selected Post</label>
                                 <div id="supporter-existing-images" style="display: flex; flex-wrap: wrap; gap: 10px; margin-top: 10px; min-height: 100px; border: 1px dashed #475569; border-radius: 8px; padding: 10px; background: #0f172a;"></div>
@@ -247,15 +244,16 @@
 
                             <button onclick="submitSupporterRelease()" style="background: var(--success-green); width: 100%; margin-top: 20px; padding: 14px; font-size: 1.1rem; font-weight: bold;">📤 Post / Update to #supporter-releases</button>
 
-<div style="margin-top: 16px; display: flex; align-items: center; justify-content: center; gap: 12px; font-size: 1rem; color: #e2e8f0;">
-    <label for="edit-preview-toggle" style="cursor: pointer; user-select: none;">
-        Edit Preview too
-    </label>
-    <label class="toggle-switch">
-        <input type="checkbox" id="edit-preview-toggle">
-<span class="toggle-slider"></span>
-    </label>
-</div>
+                            <div style="margin-top: 16px; display: flex; align-items: center; justify-content: center; gap: 12px; font-size: 1rem; color: #e2e8f0;">
+                                <label for="edit-preview-toggle" style="cursor: pointer; user-select: none;">
+                                    Edit Preview too
+                                </label>
+                                <label class="toggle-switch">
+                                    <input type="checkbox" id="edit-preview-toggle">
+                                    <span class="toggle-slider"></span>
+                                </label>
+                            </div>
+
                             <div id="supporter-status" class="status" style="margin-top: 12px; text-align: center; min-height: 24px;"></div>
                         </div>
                     </div>
@@ -265,8 +263,7 @@
                         <!-- ZIP Preview card -->
                         <div class="card">
                             <span class="card-header-label">ZIP Preview</span>
-                            
-                            <!-- Drag & drop zone -->
+
                             <div style="margin-top: 20px;">
                                 <label>ZIP File (max 100MB)</label>
                                 <div id="test-drop-zone" style="border: 2px dashed #475569; border-radius: 8px; padding: 20px; background: #0f172a; min-height: 160px; text-align: center; cursor: pointer;">
@@ -276,42 +273,31 @@
                                 </div>
                             </div>
 
-                            <!-- Image grid (first 10 images) -->
                             <div id="test-image-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 10px; margin-top: 20px;"></div>
 
-                            <!-- Selected images bar -->
                             <div style="margin-top: 30px; border-top: 2px solid #334155; padding-top: 20px;">
                                 <div style="display: flex; justify-content: space-between; align-items: center;">
                                     <span onclick="clearSelection()" style="color: var(--accent); font-size: 0.9rem; cursor: pointer; font-weight: bold;">✕ Clear All</span>
                                 </div>
                             </div>
-
                         </div>
 
-<!-- MEGA Upload card -->
-<div class="card" style="margin-top: 20px;">
-    <span class="card-header-label">Upload ZIP to MEGA</span>
-
-    <!-- Filename input (editable) -->
-    <div class="form-group">
-        <label>Filename (will be uploaded as)</label>
-        <input type="text" id="mega-filename" placeholder="[Pack 184] Himari Akeboshi - BLUE ARCHIVE.zip">
-    </div>
-
-    <!-- Progress bar -->
-    <div style="margin-top: 20px;">
-        <progress id="mega-progress" value="0" max="100" style="width:100%; height:20px; display:none;"></progress>
-    </div>
-
-    <!-- Upload button -->
-    <button onclick="uploadToMega()" id="mega-upload-btn" style="background: var(--accent); width: 100%; margin-top: 20px; padding: 14px; font-size: 1.1rem; font-weight: bold;">
-        ⬆️ Upload to MEGA
-    </button>
-
-    <div id="mega-status" class="status" style="margin-top: 12px; text-align: center; min-height: 24px;"></div>
-</div>                   
-					
-					</div>
+                        <!-- MEGA Upload card -->
+                        <div class="card" style="margin-top: 20px;">
+                            <span class="card-header-label">Upload ZIP to MEGA</span>
+                            <div class="form-group">
+                                <label>Filename (will be uploaded as)</label>
+                                <input type="text" id="mega-filename" placeholder="[Pack 184] Himari Akeboshi - BLUE ARCHIVE.zip">
+                            </div>
+                            <div style="margin-top: 20px;">
+                                <progress id="mega-progress" value="0" max="100" style="width:100%; height:20px; display:none;"></progress>
+                            </div>
+                            <button onclick="uploadToMega()" id="mega-upload-btn" style="background: var(--accent); width: 100%; margin-top: 20px; padding: 14px; font-size: 1.1rem; font-weight: bold;">
+                                ⬆️ Upload to MEGA
+                            </button>
+                            <div id="mega-status" class="status" style="margin-top: 12px; text-align: center; min-height: 24px;"></div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -346,100 +332,299 @@
             </div>
         </div>
 
-		        <!-- membership tab -->
-<div id="member-mgmt" class="tab-content">
-    <h1>Membership Monitor</h1>
-    <div class="card">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-            <span class="card-header-label">Active Subscribers</span>
-            <button onclick="loadMembershipData()" style="background: var(--blue); padding: 5px 15px; font-size: 0.8rem;">🔄 Refresh List</button>
+        <!-- Membership tab -->
+        <div id="member-mgmt" class="tab-content">
+            <h1>Membership Monitor</h1>
+            <div class="card">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                    <span class="card-header-label">Active Subscribers</span>
+                </div>
+
+                <div style="overflow-x: auto;">
+                    <table style="width: 100%; border-collapse: collapse; color: #e2e8f0;">
+                        <thead>
+                            <tr style="text-align: left; border-bottom: 2px solid #334155; color: #94a3b8; font-size: 0.9rem;">
+                                <th style="padding: 12px; cursor: pointer;" onclick="sortMembers('nickname')">Server Nickname <span id="sort-nickname"></span></th>
+                                <th style="padding: 12px; cursor: pointer;" onclick="sortMembers('discordTag')">Discord Tag <span id="sort-discordTag"></span></th>
+                                <th style="padding: 12px; cursor: pointer;" onclick="sortMembers('userId')">User ID <span id="sort-userId"></span></th>
+                                <th style="padding: 12px; cursor: pointer;" onclick="sortMembers('rank')">Rank <span id="sort-rank"></span></th>
+                                <th style="padding: 12px; cursor: pointer;" onclick="sortMembers('daysLeft')">Days Left <span id="sort-daysLeft"></span></th>
+                            </tr>
+                        </thead>
+                        <tbody id="membership-list-body">
+                            <tr>
+                                <td colspan="5" style="padding: 30px; text-align: center; color: #64748b;">
+                                    Loading membership data...
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
         </div>
-        
-        <div style="overflow-x: auto;">
-            <table style="width: 100%; border-collapse: collapse; color: #e2e8f0;">
-                <thead>
-                    <tr style="text-align: left; border-bottom: 2px solid #334155; color: #94a3b8; font-size: 0.9rem;">
-                        <th style="padding: 12px;">User / Tag</th>
-                        <th style="padding: 12px;">Discord ID</th>
-                        <th style="padding: 12px;">Rank</th>
-                        <th style="padding: 12px;">Days Left</th>
-                    </tr>
-                </thead>
-                <tbody id="membership-list-body">
-                    <tr>
-                        <td colspan="4" style="padding: 30px; text-align: center; color: #64748b;">
-                            Click "Membership" tab to load data...
-                        </td>
-                    </tr>
-                </tbody>
-            </table>
-        </div>
-    </div>
-</div>
     </main>
 
     <script>
         // ======================================================
-        // GLOBAL STATE
+        // GLOBAL STATE (declared only once)
         // ======================================================
         let uploadedFiles = [];
         let supporterUploadedFiles = [];
         let globalForumPosts = [];
         let globalSupporterPosts = [];
+        let currentImages = [];
+        let selectedIndices = new Set();
+        let testSelectedFile = null;
 
-// ======================================================
-// TAB SWITCHING
-// ======================================================
-async function switchTab(tabId) {
-    document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
-    document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+        window.currentZipFile = null;
+        window.totalImagesCount = 0;
 
-    document.getElementById(tabId).classList.add('active');
+        // ======================================================
+        // TAB & SUB-TAB SWITCHING
+        // ======================================================
+        async function switchTab(tabId) {
+            document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+            document.getElementById(tabId).classList.add('active');
 
-    document.querySelectorAll('.nav-item').forEach(item => {
-        if (item.innerText.toLowerCase().includes(tabId.split('-')[0])) {
-            item.classList.add('active');
+            document.querySelectorAll('.nav-item').forEach(item => {
+                if (item.innerText.toLowerCase().includes(tabId.split('-')[0])) {
+                    item.classList.add('active');
+                }
+            });
+
+            if (tabId === 'poll-mgmt') loadActivePoll?.();
+            if (tabId === 'queue-mgmt') loadQueueData?.();
+            if (tabId === 'releases-mgmt') {
+                switchSubTab('preview');
+                fetchForumPosts?.();
+                fetchSupporterPosts?.();
+            }
+            if (tabId === 'greetings') {
+                await loadChannels?.();
+                await loadSettings?.();
+            }
+            if (tabId === 'member-mgmt') {
+                loadMembershipData?.();
+            }
         }
-    });
 
-    // --------------------------------
-    // LOAD DATA ONLY WHEN TAB OPENS
-    // --------------------------------
-    if (tabId === 'poll-mgmt') {
-        loadActivePoll(); // from poll.js
-    }
-    if (tabId === 'queue-mgmt') {
-        loadQueueData(); // from queue.js
-    }
-    if (tabId === 'releases-mgmt') {
-        switchSubTab('preview');
-        if (typeof fetchForumPosts === 'function') fetchForumPosts();
-        if (typeof fetchSupporterPosts === 'function') fetchSupporterPosts();
-    }
-    if (tabId === 'greetings') {
-        await loadChannels(); // wait for channels to load
-        await loadSettings();  // then set the saved channel
-    }
-    if (tabId === 'mega-mgmt') {
-        if (typeof initMega === 'function') initMega();
-    }
-}
-
-
-
-        // ======================================================
-        // SUB TAB SWITCHING
-        // ======================================================
         function switchSubTab(subId) {
             document.querySelectorAll('.sub-tab-content').forEach(t => t.style.display = 'none');
             document.querySelectorAll('.sub-nav span').forEach(s => s.classList.remove('active'));
             document.getElementById(subId).style.display = 'block';
-            const el = document.querySelector(`.sub-nav span[onclick="switchSubTab('${subId}')"]`);
-            if (el) el.classList.add('active');
+            document.querySelector(`.sub-nav span[onclick="switchSubTab('${subId}')"]`)?.classList.add('active');
         }
 
         // ======================================================
-        // GREETINGS – updated to use toast notifications
+        // ZIP PREVIEW + CLICK TO SELECT IMAGES
+        // ======================================================
+        function initUploadTest() {
+            const dropZone = document.getElementById('test-drop-zone');
+            const fileInput = document.getElementById('test-file-input');
+            const dropText = document.getElementById('test-drop-text');
+            const previewContainer = document.getElementById('test-preview-container');
+
+            if (!dropZone) return;
+
+            dropZone.onclick = () => fileInput?.click();
+
+            dropZone.ondragover = e => { e.preventDefault(); dropZone.style.borderColor = 'var(--blue)'; };
+            dropZone.ondragleave = () => { dropZone.style.borderColor = '#475569'; };
+
+            dropZone.ondrop = e => {
+                e.preventDefault();
+                dropZone.style.borderColor = '#475569';
+                if (e.dataTransfer.files.length) {
+                    handleTestFile(e.dataTransfer.files[0]);
+                    uploadTestZip();
+                }
+            };
+
+            fileInput.onchange = e => {
+                if (e.target.files.length) {
+                    handleTestFile(e.target.files[0]);
+                    uploadTestZip();
+                }
+            };
+        }
+
+        function handleTestFile(file) {
+            if (!file.name.toLowerCase().endsWith('.zip')) {
+                alert('Please select a ZIP file.');
+                return;
+            }
+            testSelectedFile = file;
+            window.currentZipFile = file;
+
+            const pc = document.getElementById('test-preview-container');
+            const dt = document.getElementById('test-drop-text');
+            pc.innerHTML = `<span style="color:#e2e8f0">📦 ${file.name}</span>`;
+            dt.style.display = 'none';
+        }
+
+        async function uploadTestZip() {
+            const grid = document.getElementById('test-image-grid');
+            if (!testSelectedFile) return;
+
+            grid.innerHTML = '';
+            selectedIndices.clear();
+            supporterUploadedFiles = [];
+
+            const fd = new FormData();
+            fd.append('zipfile', testSelectedFile);
+
+            try {
+                const res = await fetch('/api/test-zip', { method: 'POST', body: fd });
+                if (!res.ok) throw new Error(await res.text());
+                const data = await res.json();
+
+                currentImages = data.images.sort((a,b) => {
+                    const na = parseInt((a.name.match(/\d+/)||['0'])[0],10);
+                    const nb = parseInt((b.name.match(/\d+/)||['0'])[0],10);
+                    return na - nb;
+                });
+
+                document.getElementById('supSize')?.setAttribute('value', data.total);
+
+                currentImages.forEach((img, i) => {
+                    const div = document.createElement('div');
+                    div.style.cssText = 'position:relative; width:100%; aspect-ratio:1/1;';
+                    div.dataset.index = i;
+
+                    const imgEl = document.createElement('img');
+                    imgEl.src = img.data;
+                    imgEl.title = img.name;
+                    imgEl.style.cssText = 'width:100%; height:100%; object-fit:cover; border-radius:6px; border:2px solid #334155; cursor:pointer; transition:border 0.2s;';
+                    imgEl.addEventListener('click', () => toggleSelectImage(i));
+
+                    const overlay = document.createElement('div');
+                    overlay.className = 'selected-overlay';
+                    overlay.style.cssText = 'position:absolute; inset:0; background:rgba(128,128,128,0.5); border-radius:6px; pointer-events:none; display:none;';
+
+                    div.append(imgEl, overlay);
+                    grid.appendChild(div);
+                });
+            } catch (err) {
+                console.error(err);
+                alert(err.message || 'ZIP processing failed');
+            } finally {
+                document.getElementById('test-file-input').value = '';
+            }
+        }
+
+        function toggleSelectImage(idx) {
+            if (selectedIndices.has(idx)) {
+                selectedIndices.delete(idx);
+            } else {
+                if (selectedIndices.size >= 4) {
+                    alert('Maximum 4 images can be selected.');
+                    return;
+                }
+                selectedIndices.add(idx);
+                addToSupporter(idx);
+            }
+            rebuildSupporterPreview();
+            updateMainGridOverlay();
+        }
+
+        function addToSupporter(idx) {
+            const img = currentImages[idx];
+            if (!img) return;
+
+            const bytes = atob(img.data.split(',')[1]);
+            const mime = img.data.split(',')[0].split(':')[1].split(';')[0];
+            const buf = new ArrayBuffer(bytes.length);
+            const u8 = new Uint8Array(buf);
+            for (let i = 0; i < bytes.length; i++) u8[i] = bytes.charCodeAt(i);
+
+            const blob = new Blob([buf], {type: mime});
+            supporterUploadedFiles.push(new File([blob], img.name, {type: mime}));
+        }
+
+        function rebuildSupporterPreview() {
+            const cont = document.getElementById('sup-preview-container');
+            cont.innerHTML = '';
+
+            supporterUploadedFiles = [];
+
+            [...selectedIndices].sort((a,b)=>a-b).forEach(idx => {
+                const img = currentImages[idx];
+                if (!img) return;
+
+                const bytes = atob(img.data.split(',')[1]);
+                const mime = img.data.split(',')[0].split(':')[1].split(';')[0];
+                const buf = new ArrayBuffer(bytes.length);
+                const u8 = new Uint8Array(buf);
+                for (let i = 0; i < bytes.length; i++) u8[i] = bytes.charCodeAt(i);
+
+                supporterUploadedFiles.push(new File([new Blob([buf], {type:mime})], img.name, {type:mime}));
+
+                const div = document.createElement('div');
+                div.style.cssText = 'position:relative; width:100%; aspect-ratio:1/1;';
+                div.dataset.index = idx;
+
+                const im = document.createElement('img');
+                im.src = img.data;
+                im.className = 'preview-img';
+                im.style.cssText = 'width:100%; height:100%; object-fit:cover; border-radius:6px; border:2px solid #334155; cursor:pointer;';
+                im.onclick = () => {
+                    selectedIndices.delete(idx);
+                    rebuildSupporterPreview();
+                    updateMainGridOverlay();
+                };
+
+                div.appendChild(im);
+                cont.appendChild(div);
+            });
+
+            initSortable();
+        }
+
+        function initSortable() {
+            const cont = document.getElementById('sup-preview-container');
+            if (!cont?.children.length || typeof Sortable === 'undefined') return;
+
+            if (cont._sortable) cont._sortable.destroy();
+
+            cont._sortable = Sortable.create(cont, {
+                animation: 150,
+                handle: '.preview-img',
+                onEnd: () => {
+                    const newFiles = [];
+                    [...cont.children].forEach(child => {
+                        const i = parseInt(child.dataset.index);
+                        if (isNaN(i) || !currentImages[i]) return;
+                        const img = currentImages[i];
+                        const bytes = atob(img.data.split(',')[1]);
+                        const mime = img.data.split(',')[0].split(':')[1].split(';')[0];
+                        const buf = new ArrayBuffer(bytes.length);
+                        const u8 = new Uint8Array(buf);
+                        for (let k=0; k<bytes.length; k++) u8[k] = bytes.charCodeAt(k);
+                        newFiles.push(new File([new Blob([buf],{type:mime})], img.name, {type:mime}));
+                    });
+                    supporterUploadedFiles = newFiles;
+                }
+            });
+        }
+
+        function updateMainGridOverlay() {
+            document.querySelectorAll('#test-image-grid > div').forEach(div => {
+                const i = parseInt(div.dataset.index);
+                const ov = div.querySelector('.selected-overlay');
+                if (ov) ov.style.display = selectedIndices.has(i) ? 'block' : 'none';
+            });
+        }
+
+        window.clearSelection = () => {
+            selectedIndices.clear();
+            supporterUploadedFiles = [];
+            document.getElementById('sup-preview-container').innerHTML = '';
+            updateMainGridOverlay();
+        };
+
+        // ======================================================
+        // OTHER FUNCTIONS (greetings, membership, etc.)
         // ======================================================
         async function saveGreetings() {
             const channel = document.getElementById('welcome_channel_id').value;
@@ -449,132 +634,153 @@ async function switchTab(tabId) {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ welcome_channel_id: channel, welcome_message: message })
             });
-
             if (res.ok) {
-                showToast('Success!', 'Settings applied');
+                showToast?.('Success!', 'Settings applied');
             } else {
-                showToast('Error!', 'Failed to save', 'error');
+                showToast?.('Error!', 'Failed to save', 'error');
             }
         }
 
+        const MEMBERSHIP_MAP = {
+            "1": { name: "🥉 Bronze", color: "#cd7f32" },
+            "2": { name: "✨ Copper", color: "#b87333" },
+            "3": { name: "🥈 Silver", color: "#c0c0c0" },
+            "4": { name: "🥇 Gold", color: "#ffd700" },
+            "5": { name: "✨ Platinum", color: "#e5e4e2" }
+        };
 
-        // ======================================================
-		// Mapping of your specific Role IDs to Human Names
-        // ======================================================
-const MEMBERSHIP_MAP = {
-    "1": { name: "✨ Bronze", color: "#cd7f32" },
-    "2": { name: "✨ Copper", color: "#b87333" },
-    "3": { name: "✨ Silver", color: "#c0c0c0" },
-    "4": { name: "✨ Gold", color: "#ffd700" },
-    "5": { name: "✨ Platinum", color: "#e5e4e2" }
-};
+        let currentSort = { column: null, direction: 'asc' };
+        let membersData = [];
 
-async function loadMembershipData() {
-    const tbody = document.getElementById('membership-list-body');
-    tbody.innerHTML = '<tr><td colspan="4" style="padding: 20px; text-align: center;">🛰️ Fetching from Supabase...</td></tr>';
-
-    try {
-        const res = await fetch('/api/get-memberships');
-        const data = await res.json();
-
-        if (!data || data.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="4" style="padding: 20px; text-align: center;">No active members found.</td></tr>';
-            return;
+        function sortMembers(col) {
+            if (currentSort.column === col) {
+                currentSort.direction = currentSort.direction === 'asc' ? 'desc' : 'asc';
+            } else {
+                currentSort.column = col;
+                currentSort.direction = 'asc';
+            }
+            renderMembersTable();
         }
 
-        tbody.innerHTML = ''; // Clear status message
-
-        data.forEach(user => {
-            // Days Left Calculation (Rounding Up)
-            const expiry = new Date(user.expires_at);
-            const now = new Date();
-            const diffMs = expiry - now;
-            const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
-
-            const rankInfo = MEMBERSHIP_MAP[String(user.tier)] || { name: `Tier ${user.tier}`, color: "#fff" };
-            const timeStatus = diffDays <= 0 ? "Expired" : `${diffDays} Day${diffDays === 1 ? '' : 's'}`;
-            const timeColor = diffDays <= 3 ? "var(--warning-orange)" : "var(--success-green)";
-
-            tbody.innerHTML += `
-                <tr style="border-bottom: 1px solid #1e293b; font-size: 0.95rem;">
-                    <td style="padding: 12px; font-weight: 500;">${user.discord_name || 'Ghost User'}</td>
-                    <td style="padding: 12px; font-family: monospace; color: #64748b; font-size: 0.85rem;">${user.discord_id}</td>
-                    <td style="padding: 12px; color: ${rankInfo.color}; font-weight: bold;">${rankInfo.name}</td>
-                    <td style="padding: 12px; font-weight: bold; color: ${timeColor};">${timeStatus}</td>
-                </tr>
-            `;
-        });
-    } catch (err) {
-        console.error(err);
-        tbody.innerHTML = '<tr><td colspan="4" style="padding: 20px; text-align: center; color: var(--accent);">Failed to load database.</td></tr>';
-    }
-}
-
-// ======================================================
-// CHANNELS + SETTINGS
-// ======================================================
-const POLL_CHANNEL_ID = '1466635718930731113'; // <-- set your desired default poll channel ID
-
-async function loadChannels() {
-    try {
-        const res = await fetch('/api/channels');
-        const channels = await res.json();
-        ['poll_channel', 'welcome_channel_id'].forEach(id => {
-            const el = document.getElementById(id);
-            if (!el) return;
-            el.innerHTML = '';
-            if (channels.length === 0) {
-                el.innerHTML = '<option>No channels found</option>';
+        function renderMembersTable() {
+            const tb = document.getElementById('membership-list-body');
+            if (!membersData.length) {
+                tb.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:20px;">No active subscribers found.</td></tr>';
                 return;
             }
-            channels.forEach(ch => {
-                // For poll_channel, use the hardcoded ID as default; for welcome, keep existing logic (name 'poll')
-                const isPollDefault = (id === 'poll_channel' && ch.id === POLL_CHANNEL_ID);
-                // (Optional) you could also keep a fallback name‑based default if the ID isn't found,
-                // but the above will only select if the exact ID exists.
-                const isWelcomeDefault = (id === 'welcome_channel_id' && ch.name.toLowerCase() === 'poll');
-                el.innerHTML += `<option value="${ch.id}" ${isPollDefault || isWelcomeDefault ? 'selected' : ''}>#${ch.name}</option>`;
+
+            const sorted = [...membersData].sort((a,b) => {
+                let va = a[currentSort.column], vb = b[currentSort.column];
+                if (['daysLeft','userId'].includes(currentSort.column)) {
+                    va = Number(va); vb = Number(vb);
+                } else {
+                    va = String(va).toLowerCase();
+                    vb = String(vb).toLowerCase();
+                }
+                if (va < vb) return currentSort.direction === 'asc' ? -1 : 1;
+                if (va > vb) return currentSort.direction === 'asc' ? 1 : -1;
+                return 0;
             });
-        });
-    } catch (e) {
-        console.error(e);
-        ['poll_channel', 'welcome_channel_id'].forEach(id => {
-            const el = document.getElementById(id);
-            if (el) el.innerHTML = '<option>Error loading channels</option>';
-        });
-    }
-}
+
+            document.querySelectorAll('thead th span').forEach(s => s.innerHTML = '');
+            if (currentSort.column) {
+                const arrow = currentSort.direction === 'asc' ? ' ▲' : ' ▼';
+                document.getElementById(`sort-${currentSort.column}`).innerHTML = arrow;
+            }
+
+            tb.innerHTML = sorted.map(m => {
+                const r = MEMBERSHIP_MAP[m.rank] || {name: m.rank || 'Standard', color:'#94a3b8'};
+                const days = m.daysLeft;
+                return `<tr style="border-bottom:1px solid #1e293b;">
+                    <td style="padding:12px;">${m.nickname||'Unknown'}</td>
+                    <td style="padding:12px; color:#94a3b8;">${m.discordTag||'Unknown'}</td>
+                    <td style="padding:12px; color:#94a3b8; font-family:monospace;">${m.userId||''}</td>
+                    <td style="padding:12px; color:${r.color}; font-weight:bold;">${r.name}</td>
+                    <td style="padding:12px; color:${days<5?'#f87171':'#10b981'};">${days} Days</td>
+                </tr>`;
+            }).join('');
+        }
+
+        async function loadMembershipData() {
+            const tb = document.getElementById('membership-list-body');
+            tb.innerHTML = '<tr><td colspan="5" style="padding:30px; text-align:center; color:#64748b;">Loading membership data...</td></tr>';
+
+            try {
+                const r = await fetch('/api/memberships');
+                if (!r.ok) throw new Error('Failed');
+                membersData = await r.json();
+                renderMembersTable();
+            } catch (e) {
+                console.error(e);
+                tb.innerHTML = '<tr><td colspan="5" style="padding:30px; text-align:center; color:#f87171;">Error loading data.</td></tr>';
+            }
+        }
+
+        const POLL_CHANNEL_ID = '1466635718930731113';
+
+        async function loadChannels() {
+            try {
+                const res = await fetch('/api/channels');
+                const chs = await res.json();
+                ['poll_channel','welcome_channel_id'].forEach(id => {
+                    const sel = document.getElementById(id);
+                    if (!sel) return;
+                    sel.innerHTML = '';
+                    if (!chs.length) {
+                        sel.innerHTML = '<option>No channels found</option>';
+                        return;
+                    }
+                    chs.forEach(c => {
+                        const defPoll = id==='poll_channel' && c.id === POLL_CHANNEL_ID;
+                        const defWelcome = id==='welcome_channel_id' && c.name.toLowerCase() === 'poll';
+                        sel.innerHTML += `<option value="${c.id}" ${defPoll||defWelcome?'selected':''}>#${c.name}</option>`;
+                    });
+                });
+            } catch(e) {
+                console.error(e);
+                ['poll_channel','welcome_channel_id'].forEach(id => {
+                    const el = document.getElementById(id);
+                    if (el) el.innerHTML = '<option>Error loading channels</option>';
+                });
+            }
+        }
 
         async function loadSettings() {
             try {
                 const res = await fetch('/api/get-settings');
-                const settings = await res.json();
-                if (settings.welcome_channel_id)
-                    document.getElementById('welcome_channel_id').value = settings.welcome_channel_id;
-                if (settings.welcome_message)
-                    document.getElementById('welcome_message').value = settings.welcome_message;
-            } catch (e) {
+                const s = await res.json();
+                if (s.welcome_channel_id) document.getElementById('welcome_channel_id').value = s.welcome_channel_id;
+                if (s.welcome_message) document.getElementById('welcome_message').value = s.welcome_message;
+            } catch(e) {
                 console.error(e);
                 document.getElementById('greetings-status').innerText = '❌ Error loading settings.';
             }
         }
 
         // ======================================================
-        // INITIAL PAGE LOAD
+        // PAGE LOAD
         // ======================================================
         window.onload = () => {
             switchTab('poll-mgmt');
-            setInterval(loadActivePoll, 10000); // from poll.js
+            setInterval(loadActivePoll, 10000);
             if (typeof initReleases === 'function') initReleases();
+            loadMembershipData();
         };
+
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', () => {
+                initUploadTest();
+            });
+        } else {
+            initUploadTest();
+        }
     </script>
 
-    <!-- External scripts -->
+    <!-- Keep your other external scripts -->
     <script src="/js/queue.js" defer></script>
     <script src="/js/releases.js" defer></script>
     <script src="/js/megalink.js" defer></script>
     <script src="/js/poll.js" defer></script>
-    <script src="/js/uploading.js" defer></script>
-    <script src="/js/toast.js" defer></script>  <!-- NEW toast script -->
+    <script src="/js/toast.js" defer></script>
 </body>
 </html>
