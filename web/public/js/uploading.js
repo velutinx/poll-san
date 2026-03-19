@@ -1,4 +1,4 @@
-// uploading.js – cleaned, no verbose logs, click handlers fixed
+// uploading.js – event delegation, no verbose logs
 
 let testSelectedFile = null;
 let currentImages = [];
@@ -12,7 +12,7 @@ if (typeof window.supporterUploadedFiles === 'undefined') {
     window.supporterUploadedFiles = [];
 }
 
-// Manual reload (optional, can be called from console)
+// Manual reload (optional)
 window.reloadZip = function() {
     document.getElementById('test-file-input')?.click();
 };
@@ -51,6 +51,20 @@ function initUploadTest() {
             if (e.target.files.length > 0) {
                 handleTestFile(e.target.files[0]);
                 uploadTestZip();
+            }
+        });
+    }
+
+    // Event delegation for image grid clicks
+    const imageGrid = document.getElementById('test-image-grid');
+    if (imageGrid) {
+        imageGrid.addEventListener('click', (e) => {
+            const container = e.target.closest('div[data-index]');
+            if (container) {
+                const index = parseInt(container.dataset.index);
+                if (!isNaN(index)) {
+                    toggleSelectImage(index);
+                }
             }
         });
     }
@@ -113,10 +127,6 @@ async function uploadTestZip() {
             imgEl.style.borderRadius = '6px';
             imgEl.style.border = '2px solid #334155';
             imgEl.style.cursor = 'pointer';
-            imgEl.addEventListener('click', (e) => {
-                e.stopPropagation();
-                toggleSelectImage(index);
-            });
             container.appendChild(imgEl);
 
             const overlay = document.createElement('div');
