@@ -12,7 +12,7 @@ const os = require('os');
 
 module.exports = (client) => {
     const app = express();
-    const PORT = process.env.PORT || 8000;
+    const PORT = process.env.PORT || 8080;
 
     // 1. CORS – allow both main domain and subdomain
     app.use(cors({
