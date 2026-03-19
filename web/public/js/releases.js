@@ -1,10 +1,24 @@
 // public/js/releases.js
 
-// Global variables (declared in index.html)
-let uploadedFiles = [];
-let supporterUploadedFiles = [];
-let globalForumPosts = [];
-let globalSupporterPosts = [];
+// ----- Safely declare global variables (avoid redeclaration) -----
+if (typeof window.uploadedFiles === 'undefined') {
+    window.uploadedFiles = [];
+}
+if (typeof window.supporterUploadedFiles === 'undefined') {
+    window.supporterUploadedFiles = [];
+}
+if (typeof window.globalForumPosts === 'undefined') {
+    window.globalForumPosts = [];
+}
+if (typeof window.globalSupporterPosts === 'undefined') {
+    window.globalSupporterPosts = [];
+}
+
+// Use local references for convenience (but they point to the globals)
+let uploadedFiles = window.uploadedFiles;
+let supporterUploadedFiles = window.supporterUploadedFiles;
+let globalForumPosts = window.globalForumPosts;
+let globalSupporterPosts = window.globalSupporterPosts;
 
 // ────────────────────────────────────────────────────────────
 // Fetch posts from the preview forum (for both edit and auto-fill)
@@ -22,7 +36,8 @@ async function fetchForumPosts() {
         if (!res.ok) throw new Error(`Server responded with ${res.status}`);
 
         const data = await res.json();
-        globalForumPosts = Array.isArray(data) ? data : [];
+        globalForumPosts.length = 0; // clear array
+        globalForumPosts.push(...(Array.isArray(data) ? data : []));
 
         console.log(`Loaded ${globalForumPosts.length} preview posts`);
 
@@ -74,7 +89,8 @@ async function fetchSupporterPosts() {
         const res = await fetch('/api/forum-posts?channelId=1465937644394512516');
         if (!res.ok) throw new Error(`Server responded with ${res.status}`);
         const data = await res.json();
-        globalSupporterPosts = Array.isArray(data) ? data : [];
+        globalSupporterPosts.length = 0;
+        globalSupporterPosts.push(...(Array.isArray(data) ? data : []));
         console.log('Loaded supporter posts:', globalSupporterPosts.length);
 
         const drop = document.getElementById('supporterEditDropdown');
@@ -519,7 +535,7 @@ function handleFiles(files) {
 }
 
 function clearImages() {
-    uploadedFiles = [];
+    uploadedFiles.length = 0;
     const previewContainer = document.getElementById('preview-container');
     previewContainer.innerHTML = '';
     const dropText = document.getElementById('drop-text');
@@ -548,7 +564,7 @@ function handleSupporterFiles(files) {
 }
 
 function clearSupporterImages() {
-    supporterUploadedFiles = [];
+    supporterUploadedFiles.length = 0;
     const supPreviewContainer = document.getElementById('sup-preview-container');
     supPreviewContainer.innerHTML = '';
     const supDropText = document.getElementById('sup-drop-text');
