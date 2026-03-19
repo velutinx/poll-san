@@ -1,4 +1,4 @@
-// megalink.js – with debug logs and better recovery
+// megalink.js – with debug logs and recovery
 
 function initMega() {
     console.log('initMega: setting up');
@@ -55,23 +55,33 @@ async function uploadToMega() {
     const filenameInput = document.getElementById('mega-filename');
     const progressBar = document.getElementById('mega-progress');
 
-    // Log current state
-    console.log('window.currentZipFile =', window.currentZipFile);
-    console.log('testSelectedFile (if exists) =', typeof testSelectedFile !== 'undefined' ? testSelectedFile : 'undefined');
-
+    // Try multiple sources for the file
     let fileToUpload = window.currentZipFile;
 
-    // If the global is missing, try to recover from testSelectedFile (if that variable is still in scope)
+    // If not set, check testSelectedFile (if it exists in scope)
     if (!fileToUpload && typeof testSelectedFile !== 'undefined' && testSelectedFile) {
         console.log('Recovering file from testSelectedFile');
         fileToUpload = testSelectedFile;
         window.currentZipFile = fileToUpload; // restore global
     }
 
+    // Last resort: try to get the file from the file input element directly
+    if (!fileToUpload) {
+        const fileInput = document.getElementById('test-file-input');
+        if (fileInput && fileInput.files.length > 0) {
+            console.log('Recovering file from file input element');
+            fileToUpload = fileInput.files[0];
+            window.currentZipFile = fileToUpload;
+            testSelectedFile = fileToUpload;
+        }
+    }
+
+    console.log('window.currentZipFile =', window.currentZipFile ? window.currentZipFile.name : null);
+    console.log('testSelectedFile =', typeof testSelectedFile !== 'undefined' ? testSelectedFile?.name : 'undefined');
+
     if (!fileToUpload) {
         const previewContainer = document.getElementById('test-preview-container');
         if (previewContainer && previewContainer.children.length > 0) {
-            // The filename is displayed, but the actual File object is lost.
             console.error('File reference lost despite preview container having content');
             showToast('Error', 'File reference lost. Please drag the ZIP again.', 'error');
         } else {
@@ -113,8 +123,6 @@ async function uploadToMega() {
                 const data = JSON.parse(xhr.responseText);
                 document.getElementById('supDownload').value = data.link || '';
                 showToast('Upload Complete', 'File uploaded to MEGA');
-                // Optionally clear the file reference after successful upload
-                // window.currentZipFile = null;
                 status.innerText = '';
             } catch (e) {
                 showToast('Error', 'Invalid server response', 'error');
