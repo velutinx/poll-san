@@ -1,6 +1,7 @@
-// megalink.js – Fixed: better file validation and global access
+// megalink.js – with debug logs and better recovery
 
 function initMega() {
+    console.log('initMega: setting up');
     const previewSelect = document.getElementById('supporterPostSelect');
     if (previewSelect) {
         previewSelect.addEventListener('change', generateFilenameFromPost);
@@ -48,26 +49,36 @@ function getCurrentMonth() {
 }
 
 async function uploadToMega() {
+    console.log('uploadToMega called');
     const status = document.getElementById('mega-status');
     const btn = document.getElementById('mega-upload-btn');
     const filenameInput = document.getElementById('mega-filename');
     const progressBar = document.getElementById('mega-progress');
 
-    // Try to get the file from the global reference
+    // Log current state
+    console.log('window.currentZipFile =', window.currentZipFile);
+    console.log('testSelectedFile (if exists) =', typeof testSelectedFile !== 'undefined' ? testSelectedFile : 'undefined');
+
     let fileToUpload = window.currentZipFile;
 
-    // Fallback: check if there's a file in the preview container (maybe not set globally)
+    // If the global is missing, try to recover from testSelectedFile (if that variable is still in scope)
+    if (!fileToUpload && typeof testSelectedFile !== 'undefined' && testSelectedFile) {
+        console.log('Recovering file from testSelectedFile');
+        fileToUpload = testSelectedFile;
+        window.currentZipFile = fileToUpload; // restore global
+    }
+
     if (!fileToUpload) {
         const previewContainer = document.getElementById('test-preview-container');
         if (previewContainer && previewContainer.children.length > 0) {
             // The filename is displayed, but the actual File object is lost.
-            // Prompt user to re-select the file.
+            console.error('File reference lost despite preview container having content');
             showToast('Error', 'File reference lost. Please drag the ZIP again.', 'error');
-            return;
         } else {
+            console.error('No file loaded at all');
             showToast('Error', 'No ZIP file loaded. Please drag a ZIP into the preview area first.', 'error');
-            return;
         }
+        return;
     }
 
     let finalFileName = filenameInput.value.trim();
