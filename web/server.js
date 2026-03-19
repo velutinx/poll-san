@@ -755,22 +755,21 @@ app.get('/api/test-zip', (req, res) => {
     res.json({ message: 'GET works' });
 });
 
-	
 // ────────────────────────────────────────────────
-// NEW: 15. PAYPAL CAPTURE (Place this near your Create Order logic)
+// CAPTURE MEMBERSHIP (correct version with your actual role IDs)
 // ────────────────────────────────────────────────
 app.post('/api/capture-membership-order', async (req, res) => {
-    const { orderId, tier, discordId } = req.body;
-
     try {
-        console.log(`📥 Processing Membership: Order ${orderId} | Tier ${tier} | User ${discordId}`);
+        const { orderId, tier, discordId } = req.body;
 
-        // Calculate expiration (30 days from now)
+        if (!orderId || !tier || !discordId) {
+            return res.status(400).json({ error: "Missing required fields" });
+        }
+
         const now = new Date();
-        const expiresAt = new Date();
-        expiresAt.setDate(now.getDate() + 30);
+        const expirationDate = new Date();
+        expirationDate.setDate(now.getDate() + 30);
 
-        // 1. Update Supabase with explicit expiration
         const { error } = await supabase
             .from('memberships')
             .upsert({ 
@@ -778,23 +777,27 @@ app.post('/api/capture-membership-order', async (req, res) => {
                 tier: parseInt(tier), 
                 order_id: orderId,
                 updated_at: now.toISOString(),
-                expires_at: expiresAt.toISOString() // Store this for the bot!
+                expires_at: expirationDate.toISOString()
             }, { onConflict: 'discord_id' });
 
-        if (error) throw error;
+        if (error) {
+            console.error('Supabase Error:', error);
+            return res.status(500).json({ error: "Database error", details: error.message });
+        }
 
-        // 2. Assign Discord Role
-        // Using a try/catch here so if Discord fails, the DB record still stays saved
+        // Discord role assignment – your actual role IDs
         try {
             const guild = await client.guilds.fetch(process.env.GUILD_ID);
             const member = await guild.members.fetch(discordId).catch(() => null);
             
             if (member) {
                 const tierRoles = {
-                    "1": "1346397089470353408", // Replace with your ACTUAL Bronze ID
-                    "2": "876543210987654321"  // Replace with your ACTUAL Silver ID
+                    "1": "1465444240845963326",  // ✨ Bronze
+                    "2": "1465670134743044139",  // ✨ Copper
+                    "3": "1465904476417163457",  // ✨ Silver
+                    "4": "1465904548320378956",  // ✨ Gold
+                    "5": "1465952085026541804"   // ✨ Platinum
                 };
-
                 const roleId = tierRoles[String(tier)];
                 if (roleId) {
                     await member.roles.add(roleId);
@@ -802,16 +805,61 @@ app.post('/api/capture-membership-order', async (req, res) => {
                 }
             }
         } catch (discordErr) {
-            console.error('⚠️ DB updated, but Discord role failed:', discordErr.message);
+            console.error('⚠️ Membership saved, but Discord role failed:', discordErr);
         }
 
         res.json({ success: true });
     } catch (err) {
-        console.error('❌ Capture error:', err);
-        res.status(500).json({ error: "Failed to process membership", details: err.message });
+        console.error('Crash Error:', err);
+        res.status(500).json({ error: "Server Crash", message: err.message });
     }
 });
-	
+
+// ────────────────────────────────────────────────
+// MEMBERSHIP MONITOR API
+// ────────────────────────────────────────────────
+app.get('/api/memberships', async (req, res) => {
+    try {
+        const { data: subs, error } = await supabase
+            .from('memberships')
+            .select('*');
+
+        if (error) throw error;
+
+        const guild = await client.guilds.fetch(process.env.GUILD_ID);
+
+const membershipData = await Promise.all(subs.map(async (sub) => {
+    const now = new Date();
+    const expiresAt = new Date(sub.expires_at);
+    const daysLeft = Math.max(0, Math.ceil((expiresAt - now) / (1000 * 60 * 60 * 24)));
+
+    try {
+        const member = await guild.members.fetch(sub.discord_id);
+        return {
+            nickname: member.displayName,
+            discordTag: member.user.tag,
+            userId: sub.discord_id,
+            rank: sub.tier.toString(),
+            daysLeft: daysLeft
+        };
+    } catch (err) {
+        return {
+            nickname: "User Left Server",
+            discordTag: "Unknown",
+            userId: sub.discord_id,
+            rank: sub.tier.toString(),
+            daysLeft: daysLeft
+        };
+    }
+}));
+
+        res.json(membershipData);
+    } catch (error) {
+        console.error('Membership API Error:', error);
+        res.status(500).json({ error: 'Internal Server Error' });
+    }
+});
+
     // ────────────────────────────────────────────────
     // SERVE DASHBOARD
     // ────────────────────────────────────────────────
