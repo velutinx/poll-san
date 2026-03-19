@@ -859,8 +859,8 @@ ${download || 'Download link here'}`;
         res.sendFile(path.join(__dirname, 'public', 'index.html'));
     });
 
-    app.listen(PORT, () => {
-        console.log(`🌐 Dashboard running at http://localhost:${PORT}/poll-san`);
+  //  app.listen(PORT, () => {
+    //    console.log(`🌐 Dashboard running at http://localhost:${PORT}/poll-san`);
         // console.log(`🌐 Dashboard running at https://d.velutinx.com/poll-san`);
     });
 };
