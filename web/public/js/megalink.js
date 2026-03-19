@@ -1,4 +1,4 @@
-// megalink.js – with recovery from file input
+// megalink.js – with recovery and manual reload trigger
 
 function initMega() {
     console.log('initMega: setting up');
@@ -53,7 +53,7 @@ async function uploadToMega() {
     const filenameInput = document.getElementById('mega-filename');
     const progressBar = document.getElementById('mega-progress');
 
-    // Try multiple sources for the file
+    // Try to get the file from multiple sources
     let fileToUpload = window.currentZipFile;
 
     if (!fileToUpload && typeof testSelectedFile !== 'undefined' && testSelectedFile) {
@@ -73,18 +73,28 @@ async function uploadToMega() {
     }
 
     console.log('window.currentZipFile =', window.currentZipFile ? window.currentZipFile.name : null);
-    console.log('testSelectedFile =', typeof testSelectedFile !== 'undefined' ? testSelectedFile?.name : 'undefined');
 
     if (!fileToUpload) {
-        const previewContainer = document.getElementById('test-preview-container');
-        if (previewContainer && previewContainer.children.length > 0) {
-            // The file reference is lost but we know a file was loaded.
-            console.warn('File reference lost. Attempting to recover from stored filename...');
-            // We cannot recover the actual File object, so prompt the user.
-            showToast('Error', 'File reference lost. Please drag the ZIP again.', 'error');
-        } else {
-            console.error('No file loaded at all');
-            showToast('Error', 'No ZIP file loaded. Please drag a ZIP into the preview area first.', 'error');
+        // No file found – ask user to select one now
+        console.warn('No file found, prompting user to select a ZIP');
+        showToast('Info', 'Please select a ZIP file to upload', 'info');
+        // Trigger the file picker
+        const fileInput = document.getElementById('test-file-input');
+        if (fileInput) {
+            fileInput.once = true; // hack to run upload after selection
+            fileInput.click();
+            // Wait for file selection and then retry upload
+            fileInput.addEventListener('change', function onFileChange(e) {
+                if (e.target.files.length > 0) {
+                    fileInput.removeEventListener('change', onFileChange);
+                    // Manually set the file and trigger upload again
+                    handleTestFile(e.target.files[0]);
+                    uploadTestZip().then(() => {
+                        // Now that the file is loaded, call uploadToMega again
+                        uploadToMega();
+                    });
+                }
+            }, { once: true });
         }
         return;
     }
