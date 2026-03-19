@@ -1,24 +1,4 @@
-// public/js/releases.js
-
-// ----- Safely declare global variables (avoid redeclaration) -----
-if (typeof window.uploadedFiles === 'undefined') {
-    window.uploadedFiles = [];
-}
-if (typeof window.supporterUploadedFiles === 'undefined') {
-    window.supporterUploadedFiles = [];
-}
-if (typeof window.globalForumPosts === 'undefined') {
-    window.globalForumPosts = [];
-}
-if (typeof window.globalSupporterPosts === 'undefined') {
-    window.globalSupporterPosts = [];
-}
-
-// Use local references for convenience (but they point to the globals)
-let uploadedFiles = window.uploadedFiles;
-let supporterUploadedFiles = window.supporterUploadedFiles;
-let globalForumPosts = window.globalForumPosts;
-let globalSupporterPosts = window.globalSupporterPosts;
+// public/js/releases.js – No variable declarations, always use window.
 
 // ────────────────────────────────────────────────────────────
 // Fetch posts from the preview forum (for both edit and auto-fill)
@@ -36,10 +16,9 @@ async function fetchForumPosts() {
         if (!res.ok) throw new Error(`Server responded with ${res.status}`);
 
         const data = await res.json();
-        globalForumPosts.length = 0; // clear array
-        globalForumPosts.push(...(Array.isArray(data) ? data : []));
+        window.globalForumPosts = Array.isArray(data) ? data : [];
 
-        console.log(`Loaded ${globalForumPosts.length} preview posts`);
+        console.log(`Loaded ${window.globalForumPosts.length} preview posts`);
 
         if (previewDrop) {
             previewDrop.innerHTML = '<option value="">-- Select a post to edit --</option>';
@@ -48,7 +27,7 @@ async function fetchForumPosts() {
             supporterBaseDrop.innerHTML = '<option value="">-- Select a post to base this on --</option>';
         }
 
-        globalForumPosts.forEach(post => {
+        window.globalForumPosts.forEach(post => {
             if (previewDrop) {
                 const option = document.createElement('option');
                 option.value = post.id;
@@ -64,7 +43,7 @@ async function fetchForumPosts() {
         });
 
         // Auto-fill Pack Number and Set Size in Create New Release
-        const packNumbers = globalForumPosts
+        const packNumbers = window.globalForumPosts
             .map(p => p.name.match(/Pack #(\d+)/i))
             .filter(match => match)
             .map(match => parseInt(match[1], 10));
@@ -77,7 +56,7 @@ async function fetchForumPosts() {
         console.error('Error fetching preview forum posts:', error);
         if (previewDrop) previewDrop.innerHTML = '<option value="">Error loading posts</option>';
         if (supporterBaseDrop) supporterBaseDrop.innerHTML = '<option value="">Error loading posts</option>';
-        globalForumPosts = [];
+        window.globalForumPosts = [];
     }
 }
 
@@ -89,14 +68,13 @@ async function fetchSupporterPosts() {
         const res = await fetch('/api/forum-posts?channelId=1465937644394512516');
         if (!res.ok) throw new Error(`Server responded with ${res.status}`);
         const data = await res.json();
-        globalSupporterPosts.length = 0;
-        globalSupporterPosts.push(...(Array.isArray(data) ? data : []));
-        console.log('Loaded supporter posts:', globalSupporterPosts.length);
+        window.globalSupporterPosts = Array.isArray(data) ? data : [];
+        console.log('Loaded supporter posts:', window.globalSupporterPosts.length);
 
         const drop = document.getElementById('supporterEditDropdown');
         if (drop) {
             drop.innerHTML = '<option value="">-- Select a supporter post to edit --</option>';
-            globalSupporterPosts.forEach(p => {
+            window.globalSupporterPosts.forEach(p => {
                 const opt = document.createElement('option');
                 opt.value = p.id;
                 opt.textContent = p.name;
@@ -105,7 +83,7 @@ async function fetchSupporterPosts() {
         }
     } catch (e) {
         console.error("Error fetching supporter posts:", e);
-        globalSupporterPosts = [];
+        window.globalSupporterPosts = [];
         const drop = document.getElementById('supporterEditDropdown');
         if (drop) drop.innerHTML = '<option value="">Error loading posts</option>';
     }
@@ -117,7 +95,7 @@ async function fetchSupporterPosts() {
 async function loadPostData() {
     const drop = document.getElementById('postDropdown');
     const postId = drop.value;
-    const post = globalForumPosts.find(p => p.id === postId);
+    const post = window.globalForumPosts.find(p => p.id === postId);
     if (!post) {
         document.getElementById('editFields').style.display = 'none';
         return;
@@ -170,7 +148,7 @@ async function loadPostData() {
 async function loadSupporterEditData() {
     const drop = document.getElementById('supporterEditDropdown');
     const postId = drop.value;
-    const post = globalSupporterPosts.find(p => p.id === postId);
+    const post = window.globalSupporterPosts.find(p => p.id === postId);
     if (!post) return;
 
     console.log("Loading supporter post:", post.name, "ID:", postId);
@@ -257,7 +235,7 @@ async function loadSupporterEditData() {
 async function loadSupporterPostData() {
     const drop = document.getElementById('supporterPostSelect');
     const postId = drop.value;
-    const post = globalForumPosts.find(p => p.id === postId);
+    const post = window.globalForumPosts.find(p => p.id === postId);
     if (!post) return;
 
     const title = post.name;
@@ -364,7 +342,7 @@ async function submitRelease() {
     formData.append('input', `${document.getElementById('rel-gender').value} ${name}`.trim());
     formData.append('suffix', document.getElementById('rel-suffix').value || '');
 
-    uploadedFiles.forEach(file => {
+    window.uploadedFiles.forEach(file => {
         formData.append('images', file);
     });
 
@@ -434,7 +412,7 @@ async function submitSupporterRelease() {
         formData.append('previewThreadId', previewThreadId);
     }
 
-    supporterUploadedFiles.forEach(file => {
+    window.supporterUploadedFiles.forEach(file => {
         formData.append('images', file);
     });
 
@@ -520,7 +498,7 @@ async function uploadToMega() {
 // ────────────────────────────────────────────────────────────
 function handleFiles(files) {
     for (let file of files) {
-        uploadedFiles.push(file);
+        window.uploadedFiles.push(file);
         const reader = new FileReader();
         reader.onload = (e) => {
             const img = document.createElement('img');
@@ -535,7 +513,7 @@ function handleFiles(files) {
 }
 
 function clearImages() {
-    uploadedFiles.length = 0;
+    window.uploadedFiles.length = 0;
     const previewContainer = document.getElementById('preview-container');
     previewContainer.innerHTML = '';
     const dropText = document.getElementById('drop-text');
@@ -547,7 +525,7 @@ function clearImages() {
 function handleSupporterFiles(files) {
     for (let file of files) {
         if (!file.type.startsWith('image/')) continue;
-        supporterUploadedFiles.push(file);
+        window.supporterUploadedFiles.push(file);
         const reader = new FileReader();
         reader.onload = (e) => {
             const img = document.createElement('img');
@@ -558,13 +536,13 @@ function handleSupporterFiles(files) {
         reader.readAsDataURL(file);
     }
     const supDropText = document.getElementById('sup-drop-text');
-    if (supDropText && supporterUploadedFiles.length > 0) {
+    if (supDropText && window.supporterUploadedFiles.length > 0) {
         supDropText.style.display = 'none';
     }
 }
 
 function clearSupporterImages() {
-    supporterUploadedFiles.length = 0;
+    window.supporterUploadedFiles.length = 0;
     const supPreviewContainer = document.getElementById('sup-preview-container');
     supPreviewContainer.innerHTML = '';
     const supDropText = document.getElementById('sup-drop-text');
