@@ -1,4 +1,4 @@
-// uploading.js – with debug logs and manual file loader
+// uploading.js – with extreme logging and recovery
 
 let testSelectedFile = null;
 let currentImages = [];
@@ -207,7 +207,8 @@ function addToSupporter(index) {
         window.supporterUploadedFiles.push(file);
         console.log('addToSupporter: window.supporterUploadedFiles now length', window.supporterUploadedFiles.length);
     } else {
-        console.warn('addToSupporter: window.supporterUploadedFiles is undefined');
+        console.warn('addToSupporter: window.supporterUploadedFiles is undefined – creating it');
+        window.supporterUploadedFiles = [file];
     }
 
     const container = document.getElementById('sup-preview-container');
@@ -373,7 +374,6 @@ window.clearSelection = function(clearFile = false) {
     rebuildSupporterPreview();
     updateMainGridOverlay();
     if (clearFile) {
-        // Also clear the ZIP file reference and UI
         window.currentZipFile = null;
         testSelectedFile = null;
         document.getElementById('test-preview-container').innerHTML = '';
@@ -382,7 +382,6 @@ window.clearSelection = function(clearFile = false) {
     }
 };
 
-// Expose upload function globally
 window.uploadTestZip = uploadTestZip;
 
 if (document.readyState === 'loading') {
