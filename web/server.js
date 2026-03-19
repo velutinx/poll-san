@@ -12,11 +12,7 @@ const os = require('os');
 
 module.exports = (client) => {
     const app = express();
-const PORT = process.env.PORT;
-
-app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Server running on port ${PORT}`);
-});
+    const PORT = process.env.PORT || 8000;
 
     // 1. CORS – allow both main domain and subdomain
     app.use(cors({
@@ -859,8 +855,8 @@ ${download || 'Download link here'}`;
         res.sendFile(path.join(__dirname, 'public', 'index.html'));
     });
 
-  //  app.listen(PORT, () => {
-    //    console.log(`🌐 Dashboard running at http://localhost:${PORT}/poll-san`);
+    app.listen(PORT, () => {
+        console.log(`🌐 Dashboard running at http://localhost:${PORT}/poll-san`);
         // console.log(`🌐 Dashboard running at https://d.velutinx.com/poll-san`);
     });
 };
