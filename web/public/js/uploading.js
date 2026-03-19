@@ -1,4 +1,4 @@
-// uploading.js – with improved event handling and debugging
+// uploading.js – cleaned, no verbose logs, click handlers fixed
 
 let testSelectedFile = null;
 let currentImages = [];
@@ -7,82 +7,62 @@ let selectedIndices = new Set();
 window.currentZipFile = null;
 window.totalImagesCount = 0;
 
+// Ensure global array exists
+if (typeof window.supporterUploadedFiles === 'undefined') {
+    window.supporterUploadedFiles = [];
+}
+
+// Manual reload (optional, can be called from console)
 window.reloadZip = function() {
-    console.log('reloadZip: opening file picker');
     document.getElementById('test-file-input')?.click();
 };
 
 function initUploadTest() {
-    console.log('initUploadTest: setting up drop zones');
     const dropZone = document.getElementById('test-drop-zone');
     const fileInput = document.getElementById('test-file-input');
     const dropText = document.getElementById('test-drop-text');
     const previewContainer = document.getElementById('test-preview-container');
 
-    if (!dropZone) {
-        console.error('initUploadTest: drop zone element not found!');
-        return;
-    }
-    console.log('initUploadTest: drop zone found, element:', dropZone);
+    if (!dropZone) return;
 
-    // Click on drop zone triggers file input
-    dropZone.addEventListener('click', () => {
-        console.log('dropZone clicked, triggering file input');
-        fileInput?.click();
-    });
+    dropZone.addEventListener('click', () => fileInput?.click());
 
-    // Drag over
     dropZone.addEventListener('dragover', (e) => {
         e.preventDefault();
         dropZone.style.borderColor = 'var(--blue)';
     });
 
-    // Drag leave
     dropZone.addEventListener('dragleave', () => {
         dropZone.style.borderColor = '#475569';
     });
 
-    // Drop event
     dropZone.addEventListener('drop', (e) => {
         e.preventDefault();
         dropZone.style.borderColor = '#475569';
         const files = e.dataTransfer.files;
-        console.log('drop event: files.length =', files.length);
         if (files.length > 0) {
-            console.log('First file:', files[0].name, 'type:', files[0].type);
-            // Call the handler and then upload
             handleTestFile(files[0]);
             uploadTestZip();
-        } else {
-            console.warn('drop event: no files');
         }
     });
 
     if (fileInput) {
-        console.log('initUploadTest: file input found, element:', fileInput);
         fileInput.addEventListener('change', (e) => {
-            console.log('file input change event, files:', e.target.files);
             if (e.target.files.length > 0) {
                 handleTestFile(e.target.files[0]);
                 uploadTestZip();
-            } else {
-                console.warn('file input: no files');
             }
         });
-    } else {
-        console.error('initUploadTest: file input not found!');
     }
 }
 
 function handleTestFile(file) {
-    console.log('handleTestFile called with:', file.name, 'size:', file.size);
     if (!file.name.toLowerCase().endsWith('.zip')) {
         alert('Please select a ZIP file.');
         return;
     }
     testSelectedFile = file;
-    window.currentZipFile = file; // Store globally for mega upload
-    console.log('✅ window.currentZipFile set to:', window.currentZipFile.name);
+    window.currentZipFile = file;
 
     const previewContainer = document.getElementById('test-preview-container');
     const dropText = document.getElementById('test-drop-text');
@@ -95,12 +75,8 @@ function handleTestFile(file) {
 }
 
 async function uploadTestZip() {
-    console.log('uploadTestZip: starting');
     const imageGrid = document.getElementById('test-image-grid');
-    if (!testSelectedFile) {
-        console.warn('uploadTestZip: testSelectedFile is null');
-        return;
-    }
+    if (!testSelectedFile) return;
     imageGrid.innerHTML = '';
     selectedIndices.clear();
 
@@ -108,11 +84,9 @@ async function uploadTestZip() {
     formData.append('zipfile', testSelectedFile);
 
     try {
-        console.log('uploadTestZip: sending to /api/test-zip');
         const res = await fetch('/api/test-zip', { method: 'POST', body: formData });
         if (!res.ok) throw new Error(await res.text());
         const data = await res.json();
-        console.log('uploadTestZip: received', data.images.length, 'images, total:', data.total);
 
         currentImages = data.images.sort((a, b) => {
             const aNum = (a.name.match(/\d+/) || [0])[0];
@@ -139,8 +113,8 @@ async function uploadTestZip() {
             imgEl.style.borderRadius = '6px';
             imgEl.style.border = '2px solid #334155';
             imgEl.style.cursor = 'pointer';
-            imgEl.addEventListener('click', () => {
-                console.log('Image clicked, index:', index);
+            imgEl.addEventListener('click', (e) => {
+                e.stopPropagation();
                 toggleSelectImage(index);
             });
             container.appendChild(imgEl);
@@ -157,7 +131,6 @@ async function uploadTestZip() {
 
             imageGrid.appendChild(container);
         });
-        console.log('uploadTestZip: image grid populated');
     } catch (err) {
         console.error('uploadTestZip error:', err);
         alert(err.message);
@@ -167,7 +140,6 @@ async function uploadTestZip() {
 }
 
 function toggleSelectImage(index) {
-    console.log('toggleSelectImage called with index', index, 'selectedIndices before:', Array.from(selectedIndices));
     if (selectedIndices.has(index)) {
         removeFromSupporter(index);
         selectedIndices.delete(index);
@@ -180,16 +152,11 @@ function toggleSelectImage(index) {
         selectedIndices.add(index);
     }
     updateMainGridOverlay();
-    console.log('toggleSelectImage completed, selectedIndices now:', Array.from(selectedIndices));
 }
 
 function addToSupporter(index) {
     const imgData = currentImages[index];
-    if (!imgData) {
-        console.error('addToSupporter: no image data at index', index);
-        return;
-    }
-    console.log('addToSupporter: adding image', imgData.name);
+    if (!imgData) return;
 
     const byteString = atob(imgData.data.split(',')[1]);
     const mimeString = imgData.data.split(',')[0].split(':')[1].split(';')[0];
@@ -201,11 +168,7 @@ function addToSupporter(index) {
     const blob = new Blob([ab], { type: mimeString });
     const file = new File([blob], imgData.name, { type: mimeString });
 
-    if (typeof window.supporterUploadedFiles === 'undefined') {
-        window.supporterUploadedFiles = [];
-    }
     window.supporterUploadedFiles.push(file);
-    console.log('addToSupporter: window.supporterUploadedFiles now length', window.supporterUploadedFiles.length);
 
     const container = document.getElementById('sup-preview-container');
     const reader = new FileReader();
@@ -229,7 +192,6 @@ function addToSupporter(index) {
         imgContainer.appendChild(imgEl);
 
         container.appendChild(imgContainer);
-        console.log('addToSupporter: thumbnail added to preview container');
 
         if (typeof Sortable !== 'undefined') {
             new Sortable(container, {
@@ -265,20 +227,17 @@ function addToSupporter(index) {
 }
 
 function removeFromSupporter(index) {
-    console.log('removeFromSupporter called for index', index);
     selectedIndices.delete(index);
     rebuildSupporterPreview();
     updateMainGridOverlay();
 }
 
 function rebuildSupporterPreview() {
-    console.log('rebuildSupporterPreview started');
     const container = document.getElementById('sup-preview-container');
     container.innerHTML = '';
     window.supporterUploadedFiles = [];
 
     const indices = Array.from(selectedIndices).sort((a, b) => a - b);
-    console.log('rebuildSupporterPreview: indices to rebuild:', indices);
     indices.forEach(index => {
         const imgData = currentImages[index];
         if (!imgData) return;
@@ -293,7 +252,6 @@ function rebuildSupporterPreview() {
         const blob = new Blob([ab], { type: mimeString });
         const file = new File([blob], imgData.name, { type: mimeString });
 
-        if (!window.supporterUploadedFiles) window.supporterUploadedFiles = [];
         window.supporterUploadedFiles.push(file);
 
         const reader = new FileReader();
@@ -350,7 +308,6 @@ function rebuildSupporterPreview() {
         };
         reader.readAsDataURL(file);
     });
-    console.log('rebuildSupporterPreview completed');
 }
 
 function updateMainGridOverlay() {
@@ -365,7 +322,6 @@ function updateMainGridOverlay() {
 }
 
 window.clearSelection = function(clearFile = false) {
-    console.log('clearSelection called with clearFile=', clearFile);
     selectedIndices.clear();
     rebuildSupporterPreview();
     updateMainGridOverlay();
