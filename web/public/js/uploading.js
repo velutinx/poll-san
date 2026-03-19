@@ -1,14 +1,15 @@
 // uploading.js – final version with event delegation and concurrency lock
+// Must be loaded after releases.js (uses window.supporterUploadedFiles)
 
 let testSelectedFile = null;
 let currentImages = [];
 let selectedIndices = new Set();
 let supporterUploadedFiles = [];
-let isUploading = false; // prevents multiple simultaneous uploadTestZip calls
+let isUploading = false;
 
 window.currentZipFile = null;
 window.totalImagesCount = 0;
-window.supporterUploadedFiles = supporterUploadedFiles; // expose globally
+window.supporterUploadedFiles = supporterUploadedFiles; // sync with global
 
 window.reloadZip = function() {
     document.getElementById('test-file-input')?.click();
