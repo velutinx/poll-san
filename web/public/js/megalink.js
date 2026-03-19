@@ -1,7 +1,6 @@
-// megalink.js
+// megalink.js – Fixed: better file validation and global access
 
 function initMega() {
-    // Watch for changes on the existing preview dropdown (supporterPostSelect)
     const previewSelect = document.getElementById('supporterPostSelect');
     if (previewSelect) {
         previewSelect.addEventListener('change', generateFilenameFromPost);
@@ -11,7 +10,7 @@ function initMega() {
     }
 }
 
-// Generate filename from selected preview post (using supporterPostSelect)
+// Generate filename from selected preview post
 function generateFilenameFromPost() {
     const select = document.getElementById('supporterPostSelect');
     if (!select) return;
@@ -22,7 +21,7 @@ function generateFilenameFromPost() {
         return;
     }
 
-    const post = globalForumPosts.find(p => p.id === postId);
+    const post = window.globalForumPosts?.find(p => p.id === postId);
     if (!post) return;
 
     const title = post.name;
@@ -54,10 +53,21 @@ async function uploadToMega() {
     const filenameInput = document.getElementById('mega-filename');
     const progressBar = document.getElementById('mega-progress');
 
-    const fileToUpload = window.currentZipFile;
+    // Try to get the file from the global reference
+    let fileToUpload = window.currentZipFile;
+
+    // Fallback: check if there's a file in the preview container (maybe not set globally)
     if (!fileToUpload) {
-        showToast('Error', 'No ZIP file loaded in ZIP Preview', 'error');
-        return;
+        const previewContainer = document.getElementById('test-preview-container');
+        if (previewContainer && previewContainer.children.length > 0) {
+            // The filename is displayed, but the actual File object is lost.
+            // Prompt user to re-select the file.
+            showToast('Error', 'File reference lost. Please drag the ZIP again.', 'error');
+            return;
+        } else {
+            showToast('Error', 'No ZIP file loaded. Please drag a ZIP into the preview area first.', 'error');
+            return;
+        }
     }
 
     let finalFileName = filenameInput.value.trim();
@@ -74,6 +84,7 @@ async function uploadToMega() {
     progressBar.value = 0;
 
     const formData = new FormData();
+    // Create a new File with the desired name (the original file data remains intact)
     const renamedFile = new File([fileToUpload], finalFileName, { type: fileToUpload.type });
     formData.append('file', renamedFile);
     formData.append('month', currentMonth);
@@ -91,7 +102,8 @@ async function uploadToMega() {
                 const data = JSON.parse(xhr.responseText);
                 document.getElementById('supDownload').value = data.link || '';
                 showToast('Upload Complete', 'File uploaded to MEGA');
-                clearMegaFile();
+                // Optionally clear the file reference after successful upload
+                // window.currentZipFile = null;
                 status.innerText = '';
             } catch (e) {
                 showToast('Error', 'Invalid server response', 'error');
