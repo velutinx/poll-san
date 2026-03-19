@@ -1,9 +1,8 @@
-// uploading.js – final with cleanup and concurrency lock
+// uploading.js – with click debugging
 
 let testSelectedFile = null;
 let currentImages = [];
 let selectedIndices = new Set();
-let isUploading = false;
 
 window.currentZipFile = null;
 window.totalImagesCount = 0;
@@ -23,16 +22,6 @@ function initUploadTest() {
     const previewContainer = document.getElementById('test-preview-container');
 
     if (!dropZone) return;
-
-    // --- Clean up any old-style images (without data-index) ---
-    const imageGrid = document.getElementById('test-image-grid');
-    if (imageGrid) {
-        Array.from(imageGrid.children).forEach(child => {
-            if (!child.hasAttribute('data-index')) {
-                child.remove();
-            }
-        });
-    }
 
     dropZone.addEventListener('click', () => fileInput?.click());
 
@@ -64,11 +53,14 @@ function initUploadTest() {
         });
     }
 
+    // Event delegation for image grid clicks
+    const imageGrid = document.getElementById('test-image-grid');
     if (imageGrid) {
         imageGrid.addEventListener('click', (e) => {
             const container = e.target.closest('div[data-index]');
             if (container) {
                 const index = parseInt(container.dataset.index);
+                console.log('Image clicked, index:', index); // ← temporary debug
                 if (!isNaN(index)) {
                     toggleSelectImage(index);
                 }
@@ -96,15 +88,9 @@ function handleTestFile(file) {
 }
 
 async function uploadTestZip() {
-    if (isUploading) return; // prevent concurrent runs
-    isUploading = true;
-
     const imageGrid = document.getElementById('test-image-grid');
-    if (!testSelectedFile) {
-        isUploading = false;
-        return;
-    }
-    imageGrid.innerHTML = ''; // clear grid
+    if (!testSelectedFile) return;
+    imageGrid.innerHTML = '';
     selectedIndices.clear();
 
     const formData = new FormData();
@@ -159,7 +145,6 @@ async function uploadTestZip() {
         alert(err.message);
     } finally {
         document.getElementById('test-file-input').value = '';
-        isUploading = false;
     }
 }
 
@@ -181,10 +166,6 @@ function toggleSelectImage(index) {
 function addToSupporter(index) {
     const imgData = currentImages[index];
     if (!imgData) return;
-
-    if (Array.from(document.querySelectorAll('#sup-preview-container > div')).some(div => div.dataset.index == index)) {
-        return; // already in preview
-    }
 
     const byteString = atob(imgData.data.split(',')[1]);
     const mimeString = imgData.data.split(',')[0].split(':')[1].split(';')[0];
