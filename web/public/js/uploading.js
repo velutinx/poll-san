@@ -1,18 +1,16 @@
-// uploading.js – with extreme logging and recovery
+// uploading.js – with manual reload and persistent logging
 
 let testSelectedFile = null;
 let currentImages = [];
 let selectedIndices = new Set();
 
-// Expose the current ZIP file globally
 window.currentZipFile = null;
 window.totalImagesCount = 0;
 
-// Manual file loader – call this from console if drag fails
-window.loadZipManually = function() {
-    console.log('loadZipManually: opening file picker');
-    const fileInput = document.getElementById('test-file-input');
-    if (fileInput) fileInput.click();
+// Manual reload – call this from console to open file picker
+window.reloadZip = function() {
+    console.log('reloadZip: opening file picker');
+    document.getElementById('test-file-input')?.click();
 };
 
 function initUploadTest() {
@@ -79,8 +77,8 @@ function handleTestFile(file) {
         return;
     }
     testSelectedFile = file;
-    window.currentZipFile = file; // Store globally for mega upload
-    console.log('✅ window.currentZipFile set to:', window.currentZipFile.name, 'size:', window.currentZipFile.size);
+    window.currentZipFile = file;
+    console.log('✅ window.currentZipFile set to:', window.currentZipFile.name);
 
     const previewContainer = document.getElementById('test-preview-container');
     const dropText = document.getElementById('test-drop-text');
@@ -112,18 +110,15 @@ async function uploadTestZip() {
         const data = await res.json();
         console.log('uploadTestZip: received', data.images.length, 'images, total:', data.total);
 
-        // Sort images by filename (natural numeric order)
         currentImages = data.images.sort((a, b) => {
             const aNum = (a.name.match(/\d+/) || [0])[0];
             const bNum = (b.name.match(/\d+/) || [0])[0];
             return parseInt(aNum, 10) - parseInt(bNum, 10);
         });
 
-        // ✅ AUTO-FILL SET SIZE FIELD
         const sizeInput = document.getElementById('supSize');
         if (sizeInput) sizeInput.value = data.total;
 
-        // Render images in right grid
         currentImages.forEach((img, index) => {
             const container = document.createElement('div');
             container.style.position = 'relative';
@@ -140,7 +135,6 @@ async function uploadTestZip() {
             imgEl.style.borderRadius = '6px';
             imgEl.style.border = '2px solid #334155';
             imgEl.style.cursor = 'pointer';
-            imgEl.style.transition = 'border 0.2s';
             imgEl.addEventListener('click', () => {
                 console.log('Image clicked, index:', index);
                 toggleSelectImage(index);
@@ -159,7 +153,7 @@ async function uploadTestZip() {
 
             imageGrid.appendChild(container);
         });
-        console.log('uploadTestZip: image grid populated with', currentImages.length, 'images');
+        console.log('uploadTestZip: image grid populated');
     } catch (err) {
         console.error('uploadTestZip error:', err);
         alert(err.message);
