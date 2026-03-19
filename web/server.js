@@ -12,7 +12,11 @@ const os = require('os');
 
 module.exports = (client) => {
     const app = express();
-    const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT;
+
+app.listen(PORT, '0.0.0.0', () => {
+    console.log(`Server running on port ${PORT}`);
+});
 
     // 1. CORS – allow both main domain and subdomain
     app.use(cors({
