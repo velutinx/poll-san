@@ -1,8 +1,5 @@
-// public/js/releases.js – No ZIP handling, uses window globals
+// public/js/releases.js – no logs
 
-// ────────────────────────────────────────────────────────────
-// Fetch posts from the preview forum (for both edit and auto-fill)
-// ────────────────────────────────────────────────────────────
 async function fetchForumPosts() {
     const previewChannelId = '1465938599378812980';
     const previewDrop = document.getElementById('postDropdown');
@@ -14,11 +11,8 @@ async function fetchForumPosts() {
     try {
         const res = await fetch(`/api/forum-posts?channelId=${previewChannelId}`);
         if (!res.ok) throw new Error(`Server responded with ${res.status}`);
-
         const data = await res.json();
         window.globalForumPosts = Array.isArray(data) ? data : [];
-
-        console.log(`Loaded ${window.globalForumPosts.length} preview posts`);
 
         if (previewDrop) {
             previewDrop.innerHTML = '<option value="">-- Select a post to edit --</option>';
@@ -42,7 +36,6 @@ async function fetchForumPosts() {
             }
         });
 
-        // Auto-fill Pack Number and Set Size in Create New Release
         const packNumbers = window.globalForumPosts
             .map(p => p.name.match(/Pack #(\d+)/i))
             .filter(match => match)
@@ -60,16 +53,12 @@ async function fetchForumPosts() {
     }
 }
 
-// ────────────────────────────────────────────────────────────
-// Fetch posts from the supporter forum (for edit dropdown)
-// ────────────────────────────────────────────────────────────
 async function fetchSupporterPosts() {
     try {
         const res = await fetch('/api/forum-posts?channelId=1465937644394512516');
         if (!res.ok) throw new Error(`Server responded with ${res.status}`);
         const data = await res.json();
         window.globalSupporterPosts = Array.isArray(data) ? data : [];
-        console.log('Loaded supporter posts:', window.globalSupporterPosts.length);
 
         const drop = document.getElementById('supporterEditDropdown');
         if (drop) {
@@ -89,9 +78,6 @@ async function fetchSupporterPosts() {
     }
 }
 
-// ────────────────────────────────────────────────────────────
-// Load preview post data into the edit form (Preview tab)
-// ────────────────────────────────────────────────────────────
 async function loadPostData() {
     const drop = document.getElementById('postDropdown');
     const postId = drop.value;
@@ -107,7 +93,6 @@ async function loadPostData() {
         document.getElementById('editSeries').value = match[1];
         let fullName = match[2];
         const appliedTags = post.applied_tags || [];
-        console.log('Applied tags for post ' + postId + ':', appliedTags);
         const hasFemale = appliedTags.includes('1465939310720192637');
         const hasFemboy = appliedTags.includes('1465939329120469095');
         let genderValue = ":male_sign:";
@@ -125,11 +110,9 @@ async function loadPostData() {
             document.getElementById('editSize').value = "XX";
         } else {
             try {
-                console.log('Fetching content for preview post ' + postId);
                 const res = await fetch(`/api/get-post-content?id=${postId}`);
                 if (!res.ok) throw new Error('Failed to fetch content: ' + res.status);
                 const data = await res.json();
-                console.log('Fetched content:', data.content);
                 const content = data.content;
                 const sizeMatch = content.match(/Set size: (\d+) images/);
                 document.getElementById('editSize').value = sizeMatch ? sizeMatch[1] : "";
@@ -141,6 +124,7 @@ async function loadPostData() {
         document.getElementById('editFields').style.display = 'block';
     }
 }
+
 
 // ────────────────────────────────────────────────────────────
 // Load supporter post data into the form (Supporters tab – edit)
