@@ -3,7 +3,8 @@
 let testSelectedFile = null;
 let currentImages = [];
 let selectedIndices = new Set();
-
+let supporterUploadedFiles = [];   // ← THIS WAS MISSING
+window.supporterUploadedFiles = supporterUploadedFiles; // optional – if other files need access
 // Make the current zip file and total image count available globally
 window.currentZipFile = null;
 window.totalImagesCount = 0;  // <-- new global
@@ -147,9 +148,15 @@ function toggleSelectImage(index) {
 }
 
 function addToSupporter(index) {
+    if (selectedIndices.size >= 4) {
+        alert('Maximum 4 images can be selected.');
+        return;
+    }
+
     const imgData = currentImages[index];
     if (!imgData) return;
 
+    // Create File object
     const byteString = atob(imgData.data.split(',')[1]);
     const mimeString = imgData.data.split(',')[0].split(':')[1].split(';')[0];
     const ab = new ArrayBuffer(byteString.length);
@@ -160,78 +167,44 @@ function addToSupporter(index) {
     const blob = new Blob([ab], { type: mimeString });
     const file = new File([blob], imgData.name, { type: mimeString });
 
-    if (typeof supporterUploadedFiles !== 'undefined') {
-        supporterUploadedFiles.push(file);
-    }
+    // Add to array
+    supporterUploadedFiles.push(file);
 
+    // Add visual immediately (no need to wait for FileReader again)
     const container = document.getElementById('sup-preview-container');
-    const reader = new FileReader();
-    reader.onload = (e) => {
-        const imgContainer = document.createElement('div');
-        imgContainer.style.position = 'relative';
-        imgContainer.style.width = '100%';
-        imgContainer.style.aspectRatio = '1/1';
-        imgContainer.dataset.index = index;
+    const imgContainer = document.createElement('div');
+    imgContainer.style.position = 'relative';
+    imgContainer.style.width = '100%';
+    imgContainer.style.aspectRatio = '1/1';
+    imgContainer.dataset.index = index;
 
-        const imgEl = document.createElement('img');
-        imgEl.src = e.target.result;
-        imgEl.className = "preview-img";
-        imgEl.style.width = '100%';
-        imgEl.style.height = '100%';
-        imgEl.style.objectFit = 'cover';
-        imgEl.style.borderRadius = '6px';
-        imgEl.style.border = '2px solid #334155';
-        imgEl.style.cursor = 'pointer';
-        imgEl.addEventListener('click', () => removeFromSupporter(index));
-        imgContainer.appendChild(imgEl);
+    const imgEl = document.createElement('img');
+    imgEl.src = imgData.data;           // ← reuse the already loaded data URL!
+    imgEl.className = "preview-img";
+    imgEl.style.width = '100%';
+    imgEl.style.height = '100%';
+    imgEl.style.objectFit = 'cover';
+    imgEl.style.borderRadius = '6px';
+    imgEl.style.border = '2px solid #334155';
+    imgEl.style.cursor = 'pointer';
+    imgEl.addEventListener('click', () => removeFromSupporter(index));
 
-        container.appendChild(imgContainer);
+    imgContainer.appendChild(imgEl);
+    container.appendChild(imgContainer);
 
-        if (typeof Sortable !== 'undefined') {
-            new Sortable(container, {
-                animation: 150,
-                handle: '.preview-img',
-                onEnd: function(evt) {
-                    const items = Array.from(container.children);
-                    const newOrder = [];
-                    items.forEach(child => {
-                        const idx = child.dataset.index;
-                        if (idx !== undefined) {
-                            const imgData = currentImages[parseInt(idx)];
-                            if (imgData) {
-                                const byteString = atob(imgData.data.split(',')[1]);
-                                const mimeString = imgData.data.split(',')[0].split(':')[1].split(';')[0];
-                                const ab = new ArrayBuffer(byteString.length);
-                                const ia = new Uint8Array(ab);
-                                for (let i = 0; i < byteString.length; i++) {
-                                    ia[i] = byteString.charCodeAt(i);
-                                }
-                                const blob = new Blob([ab], { type: mimeString });
-                                const file = new File([blob], imgData.name, { type: mimeString });
-                                newOrder.push(file);
-                            }
-                        }
-                    });
-                    supporterUploadedFiles = newOrder;
-                }
-            });
-        }
-    };
-    reader.readAsDataURL(file);
-}
-
-function removeFromSupporter(index) {
-    selectedIndices.delete(index);
-    rebuildSupporterPreview();
+    // Re-init Sortable only once (better to move this outside the function – see below)
+    selectedIndices.add(index);
     updateMainGridOverlay();
 }
 
 function rebuildSupporterPreview() {
     const container = document.getElementById('sup-preview-container');
     container.innerHTML = '';
-    supporterUploadedFiles = [];
 
+    // Rebuild files array in sorted index order
+    supporterUploadedFiles = [];
     const indices = Array.from(selectedIndices).sort((a, b) => a - b);
+
     indices.forEach(index => {
         const imgData = currentImages[index];
         if (!imgData) return;
@@ -245,63 +218,57 @@ function rebuildSupporterPreview() {
         }
         const blob = new Blob([ab], { type: mimeString });
         const file = new File([blob], imgData.name, { type: mimeString });
-
         supporterUploadedFiles.push(file);
 
-        const reader = new FileReader();
-        reader.onload = (e) => {
-            const imgContainer = document.createElement('div');
-            imgContainer.style.position = 'relative';
-            imgContainer.style.width = '100%';
-            imgContainer.style.aspectRatio = '1/1';
-            imgContainer.dataset.index = index;
+        // Create preview immediately
+        const imgContainer = document.createElement('div');
+        imgContainer.style.position = 'relative';
+        imgContainer.style.width = '100%';
+        imgContainer.style.aspectRatio = '1/1';
+        imgContainer.dataset.index = index;
 
-            const imgEl = document.createElement('img');
-            imgEl.src = e.target.result;
-            imgEl.className = "preview-img";
-            imgEl.style.width = '100%';
-            imgEl.style.height = '100%';
-            imgEl.style.objectFit = 'cover';
-            imgEl.style.borderRadius = '6px';
-            imgEl.style.border = '2px solid #334155';
-            imgEl.style.cursor = 'pointer';
-            imgEl.addEventListener('click', () => removeFromSupporter(index));
-            imgContainer.appendChild(imgEl);
+        const imgEl = document.createElement('img');
+        imgEl.src = imgData.data;           // reuse data URL again
+        imgEl.className = "preview-img";
+        imgEl.style.width = '100%';
+        imgEl.style.height = '100%';
+        imgEl.style.objectFit = 'cover';
+        imgEl.style.borderRadius = '6px';
+        imgEl.style.border = '2px solid #334155';
+        imgEl.style.cursor = 'pointer';
+        imgEl.addEventListener('click', () => removeFromSupporter(index));
 
-            container.appendChild(imgContainer);
+        imgContainer.appendChild(imgEl);
+        container.appendChild(imgContainer);
+    });
 
-            if (typeof Sortable !== 'undefined') {
-                new Sortable(container, {
-                    animation: 150,
-                    handle: '.preview-img',
-                    onEnd: function(evt) {
-                        const items = Array.from(container.children);
-                        const newOrder = [];
-                        items.forEach(child => {
-                            const idx = child.dataset.index;
-                            if (idx !== undefined) {
-                                const imgData = currentImages[parseInt(idx)];
-                                if (imgData) {
-                                    const byteString = atob(imgData.data.split(',')[1]);
-                                    const mimeString = imgData.data.split(',')[0].split(':')[1].split(';')[0];
-                                    const ab = new ArrayBuffer(byteString.length);
-                                    const ia = new Uint8Array(ab);
-                                    for (let i = 0; i < byteString.length; i++) {
-                                        ia[i] = byteString.charCodeAt(i);
-                                    }
-                                    const blob = new Blob([ab], { type: mimeString });
-                                    const file = new File([blob], imgData.name, { type: mimeString });
-                                    newOrder.push(file);
-                                }
-                            }
-                        });
-                        supporterUploadedFiles = newOrder;
+    // Re-attach Sortable **once** after rebuild
+    if (typeof Sortable !== 'undefined' && container.children.length > 0) {
+        new Sortable(container, {
+            animation: 150,
+            handle: '.preview-img',
+            onEnd: function (evt) {
+                const items = Array.from(container.children);
+                const newOrder = [];
+                items.forEach(child => {
+                    const idx = parseInt(child.dataset.index);
+                    if (!isNaN(idx)) {
+                        const imgData = currentImages[idx];
+                        if (imgData) {
+                            const byteString = atob(imgData.data.split(',')[1]);
+                            const mime = imgData.data.split(',')[0].split(':')[1].split(';')[0];
+                            const ab = new ArrayBuffer(byteString.length);
+                            const ia = new Uint8Array(ab);
+                            for (let i = 0; i < byteString.length; i++) ia[i] = byteString.charCodeAt(i);
+                            const blob = new Blob([ab], { type: mime });
+                            newOrder.push(new File([blob], imgData.name, { type: mime }));
+                        }
                     }
                 });
+                supporterUploadedFiles = newOrder;
             }
-        };
-        reader.readAsDataURL(file);
-    });
+        });
+    }
 }
 
 function updateMainGridOverlay() {
