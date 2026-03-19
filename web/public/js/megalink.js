@@ -1,7 +1,7 @@
-// megalink.js
+// megalink.js – no auto‑prompt, just error message if file missing
 
 function initMega() {
-    // Watch for changes on the existing preview dropdown (supporterPostSelect)
+    console.log('initMega: setting up');
     const previewSelect = document.getElementById('supporterPostSelect');
     if (previewSelect) {
         previewSelect.addEventListener('change', generateFilenameFromPost);
@@ -11,7 +11,6 @@ function initMega() {
     }
 }
 
-// Generate filename from selected preview post (using supporterPostSelect)
 function generateFilenameFromPost() {
     const select = document.getElementById('supporterPostSelect');
     if (!select) return;
@@ -22,7 +21,7 @@ function generateFilenameFromPost() {
         return;
     }
 
-    const post = globalForumPosts.find(p => p.id === postId);
+    const post = window.globalForumPosts?.find(p => p.id === postId);
     if (!post) return;
 
     const title = post.name;
@@ -39,7 +38,6 @@ function generateFilenameFromPost() {
     }
 }
 
-// Helper to get current month in uppercase MMM-YY format
 function getCurrentMonth() {
     const months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
     const now = new Date();
@@ -49,14 +47,20 @@ function getCurrentMonth() {
 }
 
 async function uploadToMega() {
+    console.log('uploadToMega called');
     const status = document.getElementById('mega-status');
     const btn = document.getElementById('mega-upload-btn');
     const filenameInput = document.getElementById('mega-filename');
     const progressBar = document.getElementById('mega-progress');
 
-    const fileToUpload = window.currentZipFile;
+    let fileToUpload = window.currentZipFile;
+
+    console.log('window.currentZipFile =', window.currentZipFile ? window.currentZipFile.name : null);
+
     if (!fileToUpload) {
-        showToast('Error', 'No ZIP file loaded in ZIP Preview', 'error');
+        // No file loaded – show error and do NOT open file picker
+        console.warn('No file loaded');
+        showToast('Error', 'Please load a ZIP file in the preview area first.', 'error');
         return;
     }
 
@@ -91,7 +95,6 @@ async function uploadToMega() {
                 const data = JSON.parse(xhr.responseText);
                 document.getElementById('supDownload').value = data.link || '';
                 showToast('Upload Complete', 'File uploaded to MEGA');
-                clearMegaFile();
                 status.innerText = '';
             } catch (e) {
                 showToast('Error', 'Invalid server response', 'error');
@@ -115,7 +118,6 @@ async function uploadToMega() {
     xhr.send(formData);
 }
 
-// Initialize when DOM is ready
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', initMega);
 } else {
