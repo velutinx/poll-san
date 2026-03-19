@@ -815,9 +815,9 @@ app.get('/api/test-zip', (req, res) => {
 });
 
 	
-    // ────────────────────────────────────────────────
-    // NEW: 15. PAYPAL CAPTURE (Place this near your Create Order logic)
-    // ────────────────────────────────────────────────
+// ────────────────────────────────────────────────
+// NEW: 15. PAYPAL CAPTURE (Place this near your Create Order logic)
+// ────────────────────────────────────────────────
 app.post('/api/capture-membership-order', async (req, res) => {
     const { orderId, tier, discordId } = req.body;
 
@@ -870,53 +870,6 @@ app.post('/api/capture-membership-order', async (req, res) => {
         res.status(500).json({ error: "Failed to process membership", details: err.message });
     }
 });
-
-
-// ────────────────────────────────────────────────
-// MEMBERSHIP MONITOR API
-// ────────────────────────────────────────────────
-app.get('/api/memberships', async (req, res) => {
-    try {
-        const { data: subs, error } = await supabase
-            .from('memberships')
-            .select('*');
-
-        if (error) throw error;
-
-        const guild = await client.guilds.fetch(process.env.GUILD_ID);
-
-const membershipData = await Promise.all(subs.map(async (sub) => {
-    const now = new Date();
-    const expiresAt = new Date(sub.expires_at);
-    const daysLeft = Math.max(0, Math.ceil((expiresAt - now) / (1000 * 60 * 60 * 24)));
-
-    try {
-        const member = await guild.members.fetch(sub.discord_id);
-        return {
-            nickname: member.displayName,
-            discordTag: member.user.tag,
-            userId: sub.discord_id,   // <-- add this
-            rank: sub.tier.toString(),
-            daysLeft: daysLeft
-        };
-    } catch (err) {
-        return {
-            nickname: "User Left Server",
-            discordTag: "Unknown",
-            userId: sub.discord_id,   // <-- add this
-            rank: sub.tier.toString(),
-            daysLeft: daysLeft
-        };
-    }
-}));
-
-        res.json(membershipData);
-    } catch (error) {
-        console.error('Membership API Error:', error);
-        res.status(500).json({ error: 'Internal Server Error' });
-    }
-});
-
 	
     // ────────────────────────────────────────────────
     // SERVE DASHBOARD
