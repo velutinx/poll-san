@@ -759,6 +759,7 @@ app.get('/api/test-zip', (req, res) => {
 // CAPTURE MEMBERSHIP (correct version with your actual role IDs)
 // ────────────────────────────────────────────────
 app.post('/api/capture-membership-order', async (req, res) => {
+    console.log('🔥🔥🔥 CAPTURE ENDPOINT HIT! 🔥🔥🔥'); // <-- ADD THIS LINE
     try {
         const { orderId, tier, discordId } = req.body;
 
