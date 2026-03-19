@@ -1,4 +1,4 @@
-// megalink.js – cleaned, no verbose logs
+// megalink.js – final, no logs, works with window.currentZipFile
 
 function initMega() {
     const previewSelect = document.getElementById('supporterPostSelect');
