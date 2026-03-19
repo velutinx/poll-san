@@ -1,8 +1,9 @@
-// uploading.js – with click debugging
+// uploading.js – final version with concurrency lock and duplicate prevention
 
 let testSelectedFile = null;
 let currentImages = [];
 let selectedIndices = new Set();
+let isUploading = false; // prevents multiple simultaneous uploadTestZip calls
 
 window.currentZipFile = null;
 window.totalImagesCount = 0;
@@ -53,14 +54,12 @@ function initUploadTest() {
         });
     }
 
-    // Event delegation for image grid clicks
     const imageGrid = document.getElementById('test-image-grid');
     if (imageGrid) {
         imageGrid.addEventListener('click', (e) => {
             const container = e.target.closest('div[data-index]');
             if (container) {
                 const index = parseInt(container.dataset.index);
-                console.log('Image clicked, index:', index); // ← temporary debug
                 if (!isNaN(index)) {
                     toggleSelectImage(index);
                 }
@@ -88,8 +87,14 @@ function handleTestFile(file) {
 }
 
 async function uploadTestZip() {
+    if (isUploading) return; // prevent concurrent runs
+    isUploading = true;
+
     const imageGrid = document.getElementById('test-image-grid');
-    if (!testSelectedFile) return;
+    if (!testSelectedFile) {
+        isUploading = false;
+        return;
+    }
     imageGrid.innerHTML = '';
     selectedIndices.clear();
 
@@ -145,6 +150,7 @@ async function uploadTestZip() {
         alert(err.message);
     } finally {
         document.getElementById('test-file-input').value = '';
+        isUploading = false;
     }
 }
 
@@ -166,6 +172,11 @@ function toggleSelectImage(index) {
 function addToSupporter(index) {
     const imgData = currentImages[index];
     if (!imgData) return;
+
+    // Prevent duplicate addition (just in case)
+    if (Array.from(document.querySelectorAll('#sup-preview-container > div')).some(div => div.dataset.index == index)) {
+        return; // already in the preview
+    }
 
     const byteString = atob(imgData.data.split(',')[1]);
     const mimeString = imgData.data.split(',')[0].split(':')[1].split(';')[0];
