@@ -14,12 +14,12 @@ module.exports = (client) => {
     const app = express();
     const PORT = process.env.PORT || 3000;
 
-    // 1. CORS MUST BE THE VERY FIRST MIDDLEWARE
-    app.use(cors({
-        origin: 'https://velutinx.com',
-        methods: ['GET', 'POST', 'OPTIONS'],
-        allowedHeaders: ['Content-Type', 'Authorization']
-    }));
+// 1. CORS – allow both main domain and subdomain
+app.use(cors({
+    origin: ['https://velutinx.com', 'https://d.velutinx.com'],
+    methods: ['GET', 'POST', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization']
+}));
 
     // 2. PARSERS (Only once!)
     app.use(express.json());
