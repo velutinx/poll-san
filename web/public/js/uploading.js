@@ -1,4 +1,4 @@
-// uploading.js – final production version
+// uploading.js – final with cleanup and concurrency lock
 
 let testSelectedFile = null;
 let currentImages = [];
@@ -23,6 +23,16 @@ function initUploadTest() {
     const previewContainer = document.getElementById('test-preview-container');
 
     if (!dropZone) return;
+
+    // --- Clean up any old-style images (without data-index) ---
+    const imageGrid = document.getElementById('test-image-grid');
+    if (imageGrid) {
+        Array.from(imageGrid.children).forEach(child => {
+            if (!child.hasAttribute('data-index')) {
+                child.remove();
+            }
+        });
+    }
 
     dropZone.addEventListener('click', () => fileInput?.click());
 
@@ -54,7 +64,6 @@ function initUploadTest() {
         });
     }
 
-    const imageGrid = document.getElementById('test-image-grid');
     if (imageGrid) {
         imageGrid.addEventListener('click', (e) => {
             const container = e.target.closest('div[data-index]');
@@ -87,7 +96,7 @@ function handleTestFile(file) {
 }
 
 async function uploadTestZip() {
-    if (isUploading) return;
+    if (isUploading) return; // prevent concurrent runs
     isUploading = true;
 
     const imageGrid = document.getElementById('test-image-grid');
@@ -95,7 +104,7 @@ async function uploadTestZip() {
         isUploading = false;
         return;
     }
-    imageGrid.innerHTML = '';
+    imageGrid.innerHTML = ''; // clear grid
     selectedIndices.clear();
 
     const formData = new FormData();
