@@ -1,5 +1,4 @@
-// uploading.js – final version with event delegation and concurrency lock
-// Must be loaded after releases.js (uses window.supporterUploadedFiles)
+// uploading.js – final with fixed click delegation
 
 let testSelectedFile = null;
 let currentImages = [];
@@ -9,7 +8,7 @@ let isUploading = false;
 
 window.currentZipFile = null;
 window.totalImagesCount = 0;
-window.supporterUploadedFiles = supporterUploadedFiles; // sync with global
+window.supporterUploadedFiles = supporterUploadedFiles;
 
 window.reloadZip = function() {
     document.getElementById('test-file-input')?.click();
@@ -53,18 +52,24 @@ function initUploadTest() {
         });
     }
 
-    // Event delegation for image grid clicks
+    // Event delegation for image grid clicks – one listener for all current and future images
     const imageGrid = document.getElementById('test-image-grid');
     if (imageGrid) {
-        imageGrid.addEventListener('click', (e) => {
-            const container = e.target.closest('div[data-index]');
-            if (container) {
-                const index = parseInt(container.dataset.index);
-                if (!isNaN(index)) {
-                    toggleSelectImage(index);
-                }
-            }
-        });
+        // Remove any existing listener to avoid duplicates
+        imageGrid.removeEventListener('click', handleGridClick);
+        imageGrid.addEventListener('click', handleGridClick);
+    }
+}
+
+// Separate handler function for clarity
+function handleGridClick(e) {
+    const container = e.target.closest('div[data-index]');
+    if (container) {
+        const index = parseInt(container.dataset.index);
+        if (!isNaN(index)) {
+            console.log('Grid image clicked, index:', index); // temporary – remove after testing
+            toggleSelectImage(index);
+        }
     }
 }
 
@@ -216,7 +221,7 @@ function addToSupporter(index) {
     imgContainer.appendChild(imgEl);
     container.appendChild(imgContainer);
 
-    // Re-init Sortable only once (better to move outside – but fine here)
+    // Optional: re-init Sortable (kept as is)
     if (typeof Sortable !== 'undefined') {
         new Sortable(container, {
             animation: 150,
@@ -297,7 +302,6 @@ function rebuildSupporterPreview() {
         container.appendChild(imgContainer);
     });
 
-    // Re-attach Sortable once
     if (typeof Sortable !== 'undefined' && container.children.length > 0) {
         new Sortable(container, {
             animation: 150,
