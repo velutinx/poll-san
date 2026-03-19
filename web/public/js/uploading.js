@@ -1,4 +1,4 @@
-// uploading.js – with debug logs and persistent file reference
+// uploading.js – with debug logs and manual file trigger
 
 let testSelectedFile = null;
 let currentImages = [];
@@ -8,6 +8,12 @@ let selectedIndices = new Set();
 window.currentZipFile = null;
 window.totalImagesCount = 0;
 
+// Make the file handler globally accessible for manual testing
+window.manualLoadZip = function(file) {
+    console.log('manualLoadZip called with file:', file?.name);
+    if (file) handleTestFile(file);
+};
+
 function initUploadTest() {
     console.log('initUploadTest: setting up drop zones');
     const dropZone = document.getElementById('test-drop-zone');
@@ -15,7 +21,11 @@ function initUploadTest() {
     const dropText = document.getElementById('test-drop-text');
     const previewContainer = document.getElementById('test-preview-container');
 
-    if (!dropZone) return;
+    if (!dropZone) {
+        console.error('initUploadTest: drop zone element not found!');
+        return;
+    }
+    console.log('initUploadTest: drop zone found');
 
     dropZone.onclick = () => fileInput?.click();
 
@@ -32,31 +42,40 @@ function initUploadTest() {
         e.preventDefault();
         dropZone.style.borderColor = '#475569';
         const files = e.dataTransfer.files;
+        console.log('drop event: files.length =', files.length);
         if (files.length > 0) {
             handleTestFile(files[0]);
             uploadTestZip();
+        } else {
+            console.warn('drop event: no files');
         }
     };
 
     if (fileInput) {
+        console.log('initUploadTest: file input found');
         fileInput.onchange = (e) => {
+            console.log('file input change event');
             if (e.target.files.length > 0) {
                 handleTestFile(e.target.files[0]);
                 uploadTestZip();
+            } else {
+                console.warn('file input: no files');
             }
         };
+    } else {
+        console.error('initUploadTest: file input not found!');
     }
 }
 
 function handleTestFile(file) {
-    console.log('handleTestFile called with:', file.name);
+    console.log('handleTestFile called with:', file.name, 'size:', file.size);
     if (!file.name.toLowerCase().endsWith('.zip')) {
         alert('Please select a ZIP file.');
         return;
     }
     testSelectedFile = file;
     window.currentZipFile = file; // Store globally for mega upload
-    console.log('window.currentZipFile set to:', window.currentZipFile.name);
+    console.log('✅ window.currentZipFile set to:', window.currentZipFile.name, 'size:', window.currentZipFile.size);
 
     const previewContainer = document.getElementById('test-preview-container');
     const dropText = document.getElementById('test-drop-text');
@@ -82,10 +101,11 @@ async function uploadTestZip() {
     formData.append('zipfile', testSelectedFile);
 
     try {
+        console.log('uploadTestZip: sending to /api/test-zip');
         const res = await fetch('/api/test-zip', { method: 'POST', body: formData });
         if (!res.ok) throw new Error(await res.text());
         const data = await res.json();
-        console.log('uploadTestZip: received', data.images.length, 'images');
+        console.log('uploadTestZip: received', data.images.length, 'images, total:', data.total);
 
         // Sort images by filename (natural numeric order)
         currentImages = data.images.sort((a, b) => {
