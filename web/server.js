@@ -180,17 +180,18 @@ module.exports = (client) => {
     // ────────────────────────────────────────────────
     // 5. STOP POLL
     // ────────────────────────────────────────────────
-    app.post('/api/stop-poll', async (req, res) => {
-        try {
-            await supabase.from('auto_resume').delete().neq('id', 0);
-            await supabase.from('final_votes').delete().neq('option_id', 0);
-            await supabase.from('votes_discord').delete().neq('id', 0);
-            res.json({ success: true });
-        } catch (err) {
-            console.error('Stop poll error:', err);
-            res.status(500).json({ error: err.message });
-        }
-    });
+app.post('/api/stop-poll', async (req, res) => {
+    try {
+        await supabase.from('auto_resume').delete().neq('id', 0);
+        await supabase.from('final_votes').delete().neq('id', 0);
+        await supabase.from('votes_discord').delete().neq('id', 0);
+        await supabase.from('website_voting').delete().neq('id', 0);   // <-- added
+        res.json({ success: true });
+    } catch (err) {
+        console.error('Stop poll error:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
 
     // ────────────────────────────────────────────────
     // 6. MARK WINNER
