@@ -22,10 +22,13 @@ module.exports = (client) => {
     }));
 
     // 2. LOGGING MIDDLEWARE – log every request
-    app.use((req, res, next) => {
+app.use((req, res, next) => {
+    // Skip logging for poll-results-data requests to reduce log spam
+    if (req.url !== '/api/poll-results-data') {
         console.log(`${new Date().toISOString()} - ${req.method} ${req.url}`);
-        next();
-    });
+    }
+    next();
+});
 
     // 3. PARSERS (Only once!)
     app.use(express.json());
