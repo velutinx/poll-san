@@ -382,30 +382,33 @@
         // ======================================================
         // TAB & SUB-TAB SWITCHING
         // ======================================================
-        async function switchTab(tabId) {
-            document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
-            document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-            document.getElementById(tabId).classList.add('active');
+async function switchTab(tabId) {
+    document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+    document.getElementById(tabId).classList.add('active');
 
-            document.querySelectorAll('.nav-item').forEach(item => {
-                if (item.innerText.toLowerCase().includes(tabId.split('-')[0])) {
-                    item.classList.add('active');
-                }
-            });
-
-            if (tabId === 'poll-mgmt' && typeof loadActivePoll === 'function') loadActivePoll();
-            if (tabId === 'queue-mgmt' && typeof loadQueueData === 'function') loadQueueData();
-            if (tabId === 'releases-mgmt') {
-                switchSubTab('preview');
-                if (typeof fetchForumPosts === 'function') fetchForumPosts();
-                if (typeof fetchSupporterPosts === 'function') fetchSupporterPosts();
-            }
-            if (tabId === 'greetings') {
-                await loadChannels();
-                await loadSettings();
-            }
-            if (tabId === 'member-mgmt' && typeof loadMembershipData === 'function') loadMembershipData();
+    document.querySelectorAll('.nav-item').forEach(item => {
+        if (item.innerText.toLowerCase().includes(tabId.split('-')[0])) {
+            item.classList.add('active');
         }
+    });
+
+    if (tabId === 'poll-mgmt') {
+        await loadChannels();               // 👈 Added
+        if (typeof loadActivePoll === 'function') loadActivePoll();
+    }
+    if (tabId === 'queue-mgmt' && typeof loadQueueData === 'function') loadQueueData();
+    if (tabId === 'releases-mgmt') {
+        switchSubTab('preview');
+        if (typeof fetchForumPosts === 'function') fetchForumPosts();
+        if (typeof fetchSupporterPosts === 'function') fetchSupporterPosts();
+    }
+    if (tabId === 'greetings') {
+        await loadChannels();
+        await loadSettings();
+    }
+    if (tabId === 'member-mgmt' && typeof loadMembershipData === 'function') loadMembershipData();
+}
 
         function switchSubTab(subId) {
             document.querySelectorAll('.sub-tab-content').forEach(t => t.style.display = 'none');
