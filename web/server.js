@@ -187,7 +187,8 @@ app.post('/api/stop-poll', async (req, res) => {
     try {
         await supabase.from('auto_resume').delete().neq('id', 0);            // if auto_resume has id
         await supabase.from('final_votes').delete().neq('option_id', 0);     // 👈 changed
-        await supabase.from('votes_discord').delete().neq('vote_id', 0);     // 👈 changed
+        const { error: err3 } = await supabase.from('votes_discord').delete();
+        if (err3) console.warn('votes_discord delete warning:', err3.message);
         await supabase.from('website_voting').delete().neq('id', 0);          // if website_voting has id
         res.json({ success: true });
     } catch (err) {
