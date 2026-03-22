@@ -102,6 +102,24 @@ async function generateMessageContent(endTime, resultsText, characters) {
     return header + body + `\nDiscord weighted vote + Website poll results\n\n:point_down: Click the thread below for character images & discussion!`;
 }
 
+/**
+ * Generates the final "Poll ended" message (for manual stop)
+ * @param {string} pollList - The raw character list stored in auto_resume
+ * @returns {Promise<string>} The final message content
+ */
+async function getFinalPollMessageContent(pollList) {
+    // Parse characters from the stored poll list (same as in startpoll.js)
+    const characters = pollList
+        .split(/(?=:female_sign:|:male_sign:|♀️|♂️)/)
+        .map(s => s.trim())
+        .filter(s => s.length > 0);
+
+    // Get the formatted results (scores, spoilers for winners)
+    const resultsString = await getPollResults(null, characters);
+
+    return `🛑 **Poll has ended.**\n\n${resultsString}\n\nDiscord weighted vote + Website poll results\n\n:point_down: Click the thread below for character images & discussion!`;
+}
+
 function runPollInterval(pollMessage, endTime, characters) {
     const timer = setInterval(async () => {
         const now = Date.now();
@@ -131,4 +149,4 @@ function runPollInterval(pollMessage, endTime, characters) {
     }, 10000); // 10s interval
 }
 
-module.exports = { getPollResults, generateMessageContent, runPollInterval };
+module.exports = { getPollResults, generateMessageContent, runPollInterval, getFinalPollMessageContent };
