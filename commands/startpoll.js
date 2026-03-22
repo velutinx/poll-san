@@ -75,7 +75,8 @@ module.exports = async (interaction) => {
     }
     
 await thread.send({ 
-    content: ":point_up_2: Character images for the poll above! <@&1477469835473719466>" 
+await thread.send({ 
+    content: ":point_up_2: Character images for the poll above! <@&1472273843665113139>" 
 });
     // 8. FINALIZE INTERACTION
     if (interaction.editReply) {
