@@ -1,11 +1,15 @@
 const supabase = require('./supabase');
-const { supabaseRetry } = require('../utils/db'); // new
+const { supabaseRetry } = require('../utils/db');
 const { formatTime, emojis, reactIds, weights } = require('../utils/helpers');
 
 // Cache for poll results
 let cachedPollResults = null;
 let cachedPollTimestamp = 0;
 const CACHE_TTL = 60000; // 1 minute
+
+// Throttle cache log messages (once per minute)
+let lastCacheLogTime = 0;
+const CACHE_LOG_INTERVAL = 60000;
 
 /**
  * Calculates scores by summing the weights in the votes_discord table
@@ -18,7 +22,11 @@ async function getPollResults(message, characters) {
 
     // Return fresh cached results if available
     if (cachedPollResults && (Date.now() - cachedPollTimestamp) < CACHE_TTL) {
-        console.log("Using cached poll results");
+        // Log only once per minute to reduce spam
+        if (Date.now() - lastCacheLogTime > CACHE_LOG_INTERVAL) {
+            console.log("Using cached poll results");
+            lastCacheLogTime = Date.now();
+        }
         return cachedPollResults;
     }
 
