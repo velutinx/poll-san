@@ -358,6 +358,7 @@ async function submitRelease() {
 // ────────────────────────────────────────────────────────────
 // Submit Supporter Release (Post/Update to #supporter-releases)
 // ────────────────────────────────────────────────────────────
+
 async function submitSupporterRelease() {
     const status = document.getElementById('supporter-status');
     const btn = document.querySelector('button[onclick="submitSupporterRelease()"]');
@@ -391,7 +392,8 @@ async function submitSupporterRelease() {
         formData.append('supporterThreadId', supporterThreadId);
     }
 
-    const previewThreadId = document.getElementById('postDropdown').value;
+    // FIX: Use the correct dropdown for preview thread ID
+    const previewThreadId = document.getElementById('supporterPostSelect').value;
     if (previewThreadId) {
         formData.append('previewThreadId', previewThreadId);
     }
@@ -406,14 +408,18 @@ async function submitSupporterRelease() {
             body: formData
         });
 
+        const data = await res.json();
         if (res.ok) {
             showToast('Success', 'Supporter release posted/updated');
+            // Show preview update error if any
+            if (data.previewError) {
+                showToast('Preview Update Warning', data.previewError, 'warning');
+            }
             clearSupporterImages();
             await fetchSupporterPosts();
             if (status) status.innerText = '';
         } else {
-            const errData = await res.json();
-            showToast('Error', errData.error || 'Failed', 'error');
+            showToast('Error', data.error || 'Failed', 'error');
             if (status) status.innerText = '';
         }
     } catch (e) {
