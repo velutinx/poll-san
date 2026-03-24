@@ -1,5 +1,11 @@
 const supabase = require('./supabase');
+const { supabaseRetry } = require('../utils/db'); // new
 const { formatTime, emojis, reactIds, weights } = require('../utils/helpers');
+
+// Cache for poll results
+let cachedPollResults = null;
+let cachedPollTimestamp = 0;
+const CACHE_TTL = 60000; // 1 minute
 
 /**
  * Calculates scores by summing the weights in the votes_discord table
@@ -10,29 +16,35 @@ async function getPollResults(message, characters) {
     const displayResults = [];
     const rawDataForDB = [];
 
+    // Return fresh cached results if available
+    if (cachedPollResults && (Date.now() - cachedPollTimestamp) < CACHE_TTL) {
+        console.log("Using cached poll results");
+        return cachedPollResults;
+    }
+
     try {
         // 1. Fetch all current Discord votes for this poll
-        const { data: discordVotes, error: dError } = await supabase
-            .from('votes_discord')
-            .select('option_id, weight')
-            .eq('poll_id', 'character_poll_new');
-
+        const { data: discordVotes, error: dError } = await supabaseRetry(() =>
+            supabase.from('votes_discord')
+                .select('option_id, weight')
+                .eq('poll_id', 'character_poll_new')
+        );
         if (dError) throw dError;
 
         // 2. Fetch all website votes for this poll
-        const { data: websiteVotes, error: wError } = await supabase
-            .from('website_voting')
-            .select('option_id')
-            .eq('poll_id', 'character_poll_new');
-
+        const { data: websiteVotes, error: wError } = await supabaseRetry(() =>
+            supabase.from('website_voting')
+                .select('option_id')
+                .eq('poll_id', 'character_poll_new')
+        );
         if (wError) throw wError;
 
         // 3. Fetch existing winner status from final_votes (selected_at)
-        const { data: winnerData, error: winnerError } = await supabase
-            .from('final_votes')
-            .select('option_id, selected_at')
-            .eq('poll_id', 'character_poll_new');
-
+        const { data: winnerData, error: winnerError } = await supabaseRetry(() =>
+            supabase.from('final_votes')
+                .select('option_id, selected_at')
+                .eq('poll_id', 'character_poll_new')
+        );
         if (winnerError) throw winnerError;
 
         // Build a map for quick lookup of winners
@@ -82,14 +94,26 @@ async function getPollResults(message, characters) {
         }
 
         // Keep final_votes table synced for the web dashboard (scores only, winner status preserved)
-        await supabase.from('final_votes').upsert(rawDataForDB, { onConflict: 'poll_id,option_id' });
+        await supabaseRetry(() =>
+            supabase.from('final_votes').upsert(rawDataForDB, { onConflict: 'poll_id,option_id' })
+        );
+
+        const resultString = displayResults.join('');
+        // Update cache
+        cachedPollResults = resultString;
+        cachedPollTimestamp = Date.now();
+
+        return resultString;
 
     } catch (err) {
         console.error("Error calculating poll results:", err);
+        // If we have cached results, return them (even if stale)
+        if (cachedPollResults) {
+            console.log("Returning cached results due to error");
+            return cachedPollResults;
+        }
         return "Error loading results...";
     }
-
-    return displayResults.join('');
 }
 
 async function generateMessageContent(endTime, resultsText, characters) {
@@ -133,7 +157,13 @@ function runPollInterval(pollMessage, endTime, characters) {
                 console.error("Error ending poll:", e);
             }
             // Cleanup: clear auto_resume but keep votes_discord for history/audit if desired
-            await supabase.from('auto_resume').delete().eq('message_id', pollMessage.id);
+            try {
+                await supabaseRetry(() =>
+                    supabase.from('auto_resume').delete().eq('message_id', pollMessage.id)
+                );
+            } catch (err) {
+                console.error("Error deleting auto_resume record:", err);
+            }
         } else {
             try {
                 const results = await getPollResults(pollMessage, characters);
@@ -142,7 +172,13 @@ function runPollInterval(pollMessage, endTime, characters) {
             } catch (e) {
                 if (e.code === 10008) { // Message deleted
                     clearInterval(timer);
-                    await supabase.from('auto_resume').delete().eq('message_id', pollMessage.id);
+                    try {
+                        await supabaseRetry(() =>
+                            supabase.from('auto_resume').delete().eq('message_id', pollMessage.id)
+                        );
+                    } catch (err) {
+                        console.error("Error deleting auto_resume record:", err);
+                    }
                 }
             }
         }
