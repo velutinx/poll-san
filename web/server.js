@@ -2,8 +2,9 @@ const express = require('express');
 const path = require('path');
 const { ChannelType } = require('discord.js');
 const multer = require('multer');
-const cors = require('cors'); 
+const cors = require('cors');
 const supabase = require('../services/supabase');
+const { supabaseRetry } = require('../utils/db'); // <-- new
 const queueService = require('../services/queueService');
 const { Storage } = require('megajs');
 const AdmZip = require('adm-zip');
@@ -22,15 +23,14 @@ module.exports = (client) => {
     }));
 
     // 2. LOGGING MIDDLEWARE – log every request
-app.use((req, res, next) => {
-    // Skip logging for poll-results-data requests to reduce log spam
-    if (req.url !== '/api/poll-results-data') {
-        console.log(`${new Date().toISOString()} - ${req.method} ${req.url}`);
-    }
-    next();
-});
+    app.use((req, res, next) => {
+        if (req.url !== '/api/poll-results-data') {
+            console.log(`${new Date().toISOString()} - ${req.method} ${req.url}`);
+        }
+        next();
+    });
 
-    // 3. PARSERS (Only once!)
+    // 3. PARSERS
     app.use(express.json());
     app.use(express.static(path.join(__dirname, 'public')));
 
@@ -80,11 +80,12 @@ app.use((req, res, next) => {
     // ────────────────────────────────────────────────
     app.get('/api/get-settings', async (req, res) => {
         try {
-            const { data } = await supabase
-                .from('server_settings')
-                .select('*')
-                .eq('guild_id', String(process.env.GUILD_ID))
-                .single();
+            const { data } = await supabaseRetry(() =>
+                supabase.from('server_settings')
+                    .select('*')
+                    .eq('guild_id', String(process.env.GUILD_ID))
+                    .single()
+            );
             res.json(data || {});
         } catch (e) {
             console.error('Get settings error:', e);
@@ -95,26 +96,29 @@ app.use((req, res, next) => {
     app.post('/api/save-settings', async (req, res) => {
         const { welcome_channel_id, welcome_message } = req.body;
         try {
-            const { data: existing } = await supabase
-                .from('server_settings')
-                .select('guild_id')
-                .eq('guild_id', String(process.env.GUILD_ID))
-                .maybeSingle();
+            const { data: existing } = await supabaseRetry(() =>
+                supabase.from('server_settings')
+                    .select('guild_id')
+                    .eq('guild_id', String(process.env.GUILD_ID))
+                    .maybeSingle()
+            );
 
             let error;
             if (existing) {
-                ({ error } = await supabase
-                    .from('server_settings')
-                    .update({ welcome_channel_id, welcome_message })
-                    .eq('guild_id', String(process.env.GUILD_ID)));
+                ({ error } = await supabaseRetry(() =>
+                    supabase.from('server_settings')
+                        .update({ welcome_channel_id, welcome_message })
+                        .eq('guild_id', String(process.env.GUILD_ID))
+                ));
             } else {
-                ({ error } = await supabase
-                    .from('server_settings')
-                    .insert({
-                        guild_id: String(process.env.GUILD_ID),
-                        welcome_channel_id,
-                        welcome_message
-                    }));
+                ({ error } = await supabaseRetry(() =>
+                    supabase.from('server_settings')
+                        .insert({
+                            guild_id: String(process.env.GUILD_ID),
+                            welcome_channel_id,
+                            welcome_message
+                        })
+                ));
             }
             if (error) throw error;
             res.json({ success: true });
@@ -155,7 +159,10 @@ app.use((req, res, next) => {
                 isChatInputCommand: () => true,
                 isCommand: () => true
             };
-            await supabase.from('final_votes').delete().neq('option_id', 0);
+            // Clear final_votes before starting new poll
+            await supabaseRetry(() =>
+                supabase.from('final_votes').delete().neq('option_id', 0)
+            );
             startPollLogic(mockInteraction);
             res.json({ success: true });
         } catch (err) {
@@ -167,35 +174,52 @@ app.use((req, res, next) => {
     // ────────────────────────────────────────────────
     // 4. DASHBOARD DATA
     // ────────────────────────────────────────────────
+    let cachedPollResultsData = null;
+    let cachedPollResultsTime = 0;
+    const POLL_CACHE_TTL = 60000; // 1 minute
+
     app.get('/api/poll-results-data', async (req, res) => {
         try {
-            const { data } = await supabase
-                .from('final_votes')
-                .select('character_name, score, selected_at')
-                .order('option_id', { ascending: true });
-            res.json(data || []);
+            // Return cached data if fresh
+            if (cachedPollResultsData && (Date.now() - cachedPollResultsTime) < POLL_CACHE_TTL) {
+                return res.json(cachedPollResultsData);
+            }
+
+            const { data } = await supabaseRetry(() =>
+                supabase.from('final_votes')
+                    .select('character_name, score, selected_at')
+                    .order('option_id', { ascending: true })
+            );
+            cachedPollResultsData = data || [];
+            cachedPollResultsTime = Date.now();
+            res.json(cachedPollResultsData);
         } catch (e) {
             console.error('Poll results error:', e);
-            res.json([]);
+            // Fallback to cached data if available
+            if (cachedPollResultsData) {
+                res.json(cachedPollResultsData);
+            } else {
+                res.json([]);
+            }
         }
     });
 
     // ────────────────────────────────────────────────
     // 5. STOP POLL
     // ────────────────────────────────────────────────
-app.post('/api/stop-poll', async (req, res) => {
-    try {
-        await supabase.from('auto_resume').delete().neq('id', 0);            // if auto_resume has id
-        await supabase.from('final_votes').delete().neq('option_id', 0);     // 👈 changed
-        const { error: err3 } = await supabase.from('votes_discord').delete();
-        if (err3) console.warn('votes_discord delete warning:', err3.message);
-        await supabase.from('website_voting').delete().neq('id', 0);          // if website_voting has id
-        res.json({ success: true });
-    } catch (err) {
-        console.error('Stop poll error:', err);
-        res.status(500).json({ error: err.message });
-    }
-});
+    app.post('/api/stop-poll', async (req, res) => {
+        try {
+            await supabaseRetry(() => supabase.from('auto_resume').delete().neq('id', 0));
+            await supabaseRetry(() => supabase.from('final_votes').delete().neq('option_id', 0));
+            const { error: err3 } = await supabaseRetry(() => supabase.from('votes_discord').delete());
+            if (err3) console.warn('votes_discord delete warning:', err3.message);
+            await supabaseRetry(() => supabase.from('website_voting').delete().neq('id', 0));
+            res.json({ success: true });
+        } catch (err) {
+            console.error('Stop poll error:', err);
+            res.status(500).json({ error: err.message });
+        }
+    });
 
     // ────────────────────────────────────────────────
     // 6. MARK WINNER
@@ -203,23 +227,26 @@ app.post('/api/stop-poll', async (req, res) => {
     app.post('/api/mark-winner', async (req, res) => {
         const { winner_name } = req.body;
         try {
-            const { data: poll } = await supabase
-                .from('auto_resume')
-                .select('*')
-                .order('id', { ascending: false })
-                .limit(1)
-                .single();
+            const { data: poll } = await supabaseRetry(() =>
+                supabase.from('auto_resume')
+                    .select('*')
+                    .order('id', { ascending: false })
+                    .limit(1)
+                    .single()
+            );
             if (!poll) return res.status(404).json({ error: "No active poll." });
 
-            await supabase
-                .from('final_votes')
-                .update({ selected_at: new Date().toISOString() })
-                .filter('character_name', 'ilike', `%${winner_name}%`);
+            await supabaseRetry(() =>
+                supabase.from('final_votes')
+                    .update({ selected_at: new Date().toISOString() })
+                    .filter('character_name', 'ilike', `%${winner_name}%`)
+            );
 
-            const { data: voteData } = await supabase
-                .from('final_votes')
-                .select('character_name, score, selected_at')
-                .order('option_id', { ascending: true });
+            const { data: voteData } = await supabaseRetry(() =>
+                supabase.from('final_votes')
+                    .select('character_name, score, selected_at')
+                    .order('option_id', { ascending: true })
+            );
 
             const channel = await client.channels.fetch(poll.channel_id);
             const pollMessage = await channel.messages.fetch(poll.message_id);
@@ -549,7 +576,7 @@ ${download || 'Download link here'}`;
 
                 if (!targetPreviewId && supporterThreadId) {
                     try {
-                        const previewForum = await guild.channels.fetch('1465938599378812980');
+                        const previewForum = await guild.channels.fetch(FORUM_ID);
                         const threads = await previewForum.threads.fetchActive();
                         const seriesUpper = series.toUpperCase();
                         const packPattern = `Pack #${pack}`;
@@ -577,6 +604,12 @@ ${download || 'Download link here'}`;
                             console.warn("Preview thread not found:", targetPreviewId);
                             previewResult = { previewError: "Preview thread not found" };
                         } else {
+                            // Unarchive if archived
+                            if (previewThread.archived) {
+                                await previewThread.setArchived(false);
+                                console.log(`Unarchived preview thread ${targetPreviewId}`);
+                            }
+
                             let newTitle = previewThread.name;
                             if (newTitle.includes(' — SOON')) {
                                 newTitle = newTitle.replace(' — SOON', '');
@@ -751,7 +784,7 @@ ${download || 'Download link here'}`;
     // CAPTURE MEMBERSHIP (correct version with your actual role IDs)
     // ────────────────────────────────────────────────
     app.post('/api/capture-membership-order', async (req, res) => {
-        console.log('🔥🔥🔥 CAPTURE ENDPOINT HIT! 🔥🔥🔥'); // <-- ADD THIS LINE
+        console.log('🔥🔥🔥 CAPTURE ENDPOINT HIT! 🔥🔥🔥');
         try {
             const { orderId, tier, discordId } = req.body;
 
@@ -763,15 +796,16 @@ ${download || 'Download link here'}`;
             const expirationDate = new Date();
             expirationDate.setDate(now.getDate() + 30);
 
-            const { error } = await supabase
-                .from('memberships')
-                .upsert({ 
-                    discord_id: discordId, 
-                    tier: parseInt(tier), 
-                    order_id: orderId,
-                    updated_at: now.toISOString(),
-                    expires_at: expirationDate.toISOString()
-                }, { onConflict: 'discord_id' });
+            const { error } = await supabaseRetry(() =>
+                supabase.from('memberships')
+                    .upsert({ 
+                        discord_id: discordId, 
+                        tier: parseInt(tier), 
+                        order_id: orderId,
+                        updated_at: now.toISOString(),
+                        expires_at: expirationDate.toISOString()
+                    }, { onConflict: 'discord_id' })
+            );
 
             if (error) {
                 console.error('Supabase Error:', error);
@@ -813,9 +847,9 @@ ${download || 'Download link here'}`;
     // ────────────────────────────────────────────────
     app.get('/api/memberships', async (req, res) => {
         try {
-            const { data: subs, error } = await supabase
-                .from('memberships')
-                .select('*');
+            const { data: subs, error } = await supabaseRetry(() =>
+                supabase.from('memberships').select('*')
+            );
 
             if (error) throw error;
 
