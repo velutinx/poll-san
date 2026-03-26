@@ -855,30 +855,33 @@ ${download || 'Download link here'}`;
 
             const guild = await client.guilds.fetch(process.env.GUILD_ID);
 
-            const membershipData = await Promise.all(subs.map(async (sub) => {
-                const now = new Date();
-                const expiresAt = new Date(sub.expires_at);
-                const daysLeft = Math.max(0, Math.ceil((expiresAt - now) / (1000 * 60 * 60 * 24)));
+// In the /api/memberships route
+const membershipData = await Promise.all(subs.map(async (sub) => {
+  const now = new Date();
+  const expiresAt = new Date(sub.expires_at);
+  const daysLeft = Math.max(0, Math.ceil((expiresAt - now) / (1000 * 60 * 60 * 24)));
 
-                try {
-                    const member = await guild.members.fetch(sub.discord_id);
-                    return {
-                        nickname: member.displayName,
-                        discordTag: member.user.tag,
-                        userId: sub.discord_id,
-                        rank: sub.tier.toString(),
-                        daysLeft: daysLeft
-                    };
-                } catch (err) {
-                    return {
-                        nickname: "User Left Server",
-                        discordTag: "Unknown",
-                        userId: sub.discord_id,
-                        rank: sub.tier.toString(),
-                        daysLeft: daysLeft
-                    };
-                }
-            }));
+  try {
+    const member = await guild.members.fetch(sub.discord_id);
+    return {
+      nickname: member.displayName,
+      discordTag: member.user.tag,
+      userId: sub.discord_id,
+      rank: sub.tier.toString(),
+      daysLeft: daysLeft,
+      recurring: sub.recurring || false
+    };
+  } catch (err) {
+    return {
+      nickname: "User Left Server",
+      discordTag: "Unknown",
+      userId: sub.discord_id,
+      rank: sub.tier.toString(),
+      daysLeft: daysLeft,
+      recurring: sub.recurring || false
+    };
+  }
+}));
 
             res.json(membershipData);
         } catch (error) {
