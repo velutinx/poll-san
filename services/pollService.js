@@ -24,7 +24,7 @@ async function getPollResults(message, characters) {
     if (cachedPollResults && (Date.now() - cachedPollTimestamp) < CACHE_TTL) {
         // Log only once per minute to reduce spam
         if (Date.now() - lastCacheLogTime > CACHE_LOG_INTERVAL) {
-            console.log("Using cached poll results");
+   //         console.log("Using cached poll results");
             lastCacheLogTime = Date.now();
         }
         return cachedPollResults;
