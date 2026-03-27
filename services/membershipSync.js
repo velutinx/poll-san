@@ -1,6 +1,5 @@
 // services/membershipSync.js
 const { supabaseRetry } = require('../utils/db'); // adjust path as needed
-const { ChannelType } = require('discord.js'); // not needed but kept for consistency
 
 const TIER_ROLES = {
   1: '1465444240845963326',  // Bronze
@@ -12,8 +11,43 @@ const TIER_ROLES = {
 const SUPPORTER_ROLE = '1466155709547675795';
 
 /**
- * Sync roles for all members based on active memberships
- * @param {Client} client - Discord client instance
+ * Get the last stored active member IDs from sync_state
+ */
+async function getLastActiveSet() {
+  const { data, error } = await supabaseRetry(() =>
+    supabase
+      .from('sync_state')
+      .select('value')
+      .eq('key', 'active_members')
+      .single()
+  );
+  if (error) {
+    console.error('[MembershipSync] Failed to fetch sync state:', error.message);
+    return new Set(); // fallback to empty set
+  }
+  return new Set(data?.value?.ids || []);
+}
+
+/**
+ * Store the current active member IDs in sync_state
+ */
+async function storeCurrentActiveSet(ids) {
+  const { error } = await supabaseRetry(() =>
+    supabase
+      .from('sync_state')
+      .upsert({
+        key: 'active_members',
+        value: { ids: Array.from(ids), updated_at: new Date().toISOString() }
+      }, { onConflict: 'key' })
+  );
+  if (error) {
+    console.error('[MembershipSync] Failed to store sync state:', error.message);
+  }
+}
+
+/**
+ * Sync roles for all members based on active memberships.
+ * Logs only when a new member appears in the active set.
  */
 async function syncMembershipRoles(client) {
   console.log('[MembershipSync] Starting sync...');
@@ -40,7 +74,28 @@ async function syncMembershipRoles(client) {
       }
     }
 
-    // For users with active memberships, ensure they have the correct roles
+    const currentActiveIds = new Set(userBestTier.keys());
+
+    // ---- LOGGING NEW MEMBERS ----
+    const previousActiveIds = await getLastActiveSet();
+    const newIds = [...currentActiveIds].filter(id => !previousActiveIds.has(id));
+
+    if (newIds.length > 0) {
+      const guild = await client.guilds.fetch(process.env.GUILD_ID);
+      for (const discordId of newIds) {
+        try {
+          const member = await guild.members.fetch(discordId).catch(() => null);
+          const tier = userBestTier.get(discordId);
+          const tag = member ? member.user.tag : 'Unknown';
+          console.log(`🎉 [MembershipSync] NEW ACTIVE MEMBER: ${tag} (${discordId}) - Tier ${tier}`);
+        } catch (err) {
+          console.log(`🎉 [MembershipSync] NEW ACTIVE MEMBER: ${discordId} (could not fetch member) - Tier ${userBestTier.get(discordId)}`);
+        }
+      }
+    }
+
+    // ---- ROLE SYNC (as before) ----
+    // For each active user, ensure correct tier role and supporter role
     for (const [discordId, tier] of userBestTier.entries()) {
       try {
         const guild = await client.guilds.fetch(process.env.GUILD_ID);
@@ -50,18 +105,16 @@ async function syncMembershipRoles(client) {
           continue;
         }
 
-        // Determine which tier role should be assigned
         const targetTierRole = TIER_ROLES[tier];
         if (!targetTierRole) {
           console.warn(`[MembershipSync] Unknown tier ${tier} for ${discordId}`);
           continue;
         }
 
-        // Get current roles
         const currentRoleIds = member.roles.cache.map(r => r.id);
         const hasSupporter = currentRoleIds.includes(SUPPORTER_ROLE);
 
-        // Remove any tier roles that are not the target one
+        // Remove other tier roles
         const tierRoleIds = Object.values(TIER_ROLES);
         for (const roleId of tierRoleIds) {
           if (currentRoleIds.includes(roleId) && roleId !== targetTierRole) {
@@ -70,44 +123,25 @@ async function syncMembershipRoles(client) {
           }
         }
 
-        // Add target tier role if not present
+        // Add target tier role if missing
         if (!currentRoleIds.includes(targetTierRole)) {
           await member.roles.add(targetTierRole);
           console.log(`[MembershipSync] Added tier role ${targetTierRole} to ${member.user.tag}`);
         }
 
-        // Add supporter role if not present
+        // Add supporter role if missing
         if (!hasSupporter) {
           await member.roles.add(SUPPORTER_ROLE);
           console.log(`[MembershipSync] Added supporter role to ${member.user.tag}`);
         }
-
       } catch (err) {
         console.error(`[MembershipSync] Error processing user ${discordId}:`, err.message);
       }
     }
 
-    // Now handle users who have no active membership (expired or cancelled)
-    // Fetch all memberships that are NOT active or have expired
-    const { data: inactiveMemberships, error: inactiveError } = await supabaseRetry(() =>
-      supabase
-        .from('memberships')
-        .select('discord_id')
-        .or(`status.neq.ACTIVE,expires_at.lte.${now}`)
-    );
-    if (inactiveError) throw inactiveError;
-
-    // Extract unique user IDs from inactive records
-    const inactiveUserIds = new Set();
-    for (const membership of inactiveMemberships) {
-      inactiveUserIds.add(membership.discord_id);
-    }
-
-    // Remove roles from inactive users
+    // Handle inactive users (remove all membership roles)
+    const inactiveUserIds = [...previousActiveIds].filter(id => !currentActiveIds.has(id));
     for (const discordId of inactiveUserIds) {
-      // Skip if this user also appears in active memberships (they might have another active sub)
-      if (userBestTier.has(discordId)) continue;
-
       try {
         const guild = await client.guilds.fetch(process.env.GUILD_ID);
         const member = await guild.members.fetch(discordId).catch(() => null);
@@ -119,13 +153,11 @@ async function syncMembershipRoles(client) {
         const hasSupporter = currentRoleIds.includes(SUPPORTER_ROLE);
 
         if (hasTierRole || hasSupporter) {
-          // Remove all tier roles
           for (const roleId of tierRoleIds) {
             if (currentRoleIds.includes(roleId)) {
               await member.roles.remove(roleId);
             }
           }
-          // Remove supporter role if present
           if (hasSupporter) {
             await member.roles.remove(SUPPORTER_ROLE);
           }
@@ -135,6 +167,9 @@ async function syncMembershipRoles(client) {
         console.error(`[MembershipSync] Error cleaning roles for user ${discordId}:`, err.message);
       }
     }
+
+    // Store current active set for next sync
+    await storeCurrentActiveSet(currentActiveIds);
 
     console.log('[MembershipSync] Sync completed.');
   } catch (err) {
