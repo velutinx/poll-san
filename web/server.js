@@ -531,8 +531,8 @@ Set size: ${setSize} images
 Content: Explicit (18+)
 
 :inbox_tray: Download:
-${download || 'Download link here'}`;
-
+:link: **[megaLink](${download || 'https://mega.nz'})**`;
+            
             let supporterResult = {};
             if (supporterThreadId) {
                 const thread = await client.channels.fetch(supporterThreadId);
