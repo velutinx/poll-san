@@ -17,6 +17,7 @@ const supabase = require('./services/supabase');
 const { runPollInterval } = require('./services/pollService');
 const { cleanRoles } = require('./services/roleCleaner');
 const XPLib = require('./utils/xputils');
+const { syncMembershipRoles } = require('./services/membershipSync'); // <-- NEW
 
 // Import giveaway command and button handler
 const giveawayCommand = require('./commands/giveaway');
@@ -55,19 +56,14 @@ client.once(Events.ClientReady, async (c) => {
             Routes.applicationGuildCommands(process.env.CLIENT_ID, process.env.GUILD_ID),
             { body: commandsData }
         );
-   //     console.log('✅ Slash commands synced');
-
-        // After commands are synced, restore any active giveaways from the database
-        const { restoreGiveaways } = require('./commands/giveaway');
-        await restoreGiveaways(client).catch(console.error);
-
+        // console.log('✅ Slash commands synced');
     } catch (err) {
         console.error('❌ Failed to sync commands:', err);
     }
 
     const guild = client.guilds.cache.get(process.env.GUILD_ID);
     if (guild) {
-   //     console.log('🧹 Running initial role cleanup sweep...');
+        // console.log('🧹 Running initial role cleanup sweep...');
         cleanRoles(guild);
     }
 
@@ -75,6 +71,19 @@ client.once(Events.ClientReady, async (c) => {
         const activeGuild = client.guilds.cache.get(process.env.GUILD_ID);
         if (activeGuild) cleanRoles(activeGuild);
     }, 3600000);
+
+    // Run membership sync on startup
+    try {
+        await syncMembershipRoles(client);
+        console.log('[MembershipSync] Initial sync completed');
+    } catch (err) {
+        console.error('[MembershipSync] Initial sync failed:', err);
+    }
+
+    // Run membership sync every 5 minutes
+    setInterval(() => {
+        syncMembershipRoles(client).catch(err => console.error('[MembershipSync] Sync interval error:', err));
+    }, 300000);
 
     const { data: activePolls } = await supabase
         .from('auto_resume')
@@ -98,6 +107,10 @@ client.once(Events.ClientReady, async (c) => {
             }
         }
     }
+
+    // After restoring giveaways
+    const { restoreGiveaways } = require('./commands/giveaway');
+    await restoreGiveaways(client).catch(console.error);
 });
 
 // --- 2. INTERACTION HANDLER ---
