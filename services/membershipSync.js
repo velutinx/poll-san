@@ -1,6 +1,7 @@
 // services/membershipSync.js
-const supabase = require('./supabase'); // <-- added
-const { supabaseRetry } = require('../utils/db');
+const supabase = require('./supabase');
+const db = require('../utils/db');
+const supabaseRetry = db.supabaseRetry;
 
 const TIER_ROLES = {
   1: '1465444240845963326',  // Bronze
@@ -41,16 +42,16 @@ async function storeCurrentActiveSet(ids) {
 }
 
 async function syncMembershipRoles(client) {
-  console.log('[MembershipSync] Starting sync...');
+  let changesMade = false; // Track if any role changes occurred
+
   try {
     const now = new Date().toISOString();
 
-    // Fetch all ACTIVE memberships
+    // Fetch all memberships with expires_at > now (regardless of status)
     const { data: activeMemberships, error: activeError } = await supabaseRetry(() =>
       supabase
         .from('memberships')
         .select('*')
-        .eq('status', 'ACTIVE')
         .gt('expires_at', now)
     );
     if (activeError) throw activeError;
@@ -72,6 +73,7 @@ async function syncMembershipRoles(client) {
     const newIds = [...currentActiveIds].filter(id => !previousActiveIds.has(id));
 
     if (newIds.length > 0) {
+      changesMade = true;
       const guild = await client.guilds.fetch(process.env.GUILD_ID);
       for (const discordId of newIds) {
         try {
@@ -110,6 +112,7 @@ async function syncMembershipRoles(client) {
           if (currentRoleIds.includes(roleId) && roleId !== targetTierRole) {
             await member.roles.remove(roleId);
             console.log(`[MembershipSync] Removed old tier role ${roleId} from ${member.user.tag}`);
+            changesMade = true;
           }
         }
 
@@ -117,19 +120,21 @@ async function syncMembershipRoles(client) {
         if (!currentRoleIds.includes(targetTierRole)) {
           await member.roles.add(targetTierRole);
           console.log(`[MembershipSync] Added tier role ${targetTierRole} to ${member.user.tag}`);
+          changesMade = true;
         }
 
         // Add supporter role if missing
         if (!hasSupporter) {
           await member.roles.add(SUPPORTER_ROLE);
           console.log(`[MembershipSync] Added supporter role to ${member.user.tag}`);
+          changesMade = true;
         }
       } catch (err) {
         console.error(`[MembershipSync] Error processing user ${discordId}:`, err.message);
       }
     }
 
-    // Clean up inactive users
+    // Clean up inactive users (those not in currentActiveIds but were previously active)
     const inactiveUserIds = [...previousActiveIds].filter(id => !currentActiveIds.has(id));
     for (const discordId of inactiveUserIds) {
       try {
@@ -152,6 +157,7 @@ async function syncMembershipRoles(client) {
             await member.roles.remove(SUPPORTER_ROLE);
           }
           console.log(`[MembershipSync] Removed all membership roles from ${member.user.tag} (inactive)`);
+          changesMade = true;
         }
       } catch (err) {
         console.error(`[MembershipSync] Error cleaning roles for user ${discordId}:`, err.message);
@@ -159,7 +165,9 @@ async function syncMembershipRoles(client) {
     }
 
     await storeCurrentActiveSet(currentActiveIds);
-    console.log('[MembershipSync] Sync completed.');
+    if (changesMade) {
+      console.log('[MembershipSync] Sync completed with changes.');
+    }
   } catch (err) {
     console.error('[MembershipSync] Fatal error:', err);
   }
