@@ -1,5 +1,5 @@
 // services/roleCleaner.js
-const TARGET_ROLES = ['1468666174102442227', '1467233133362544642'];
+const TARGET_ROLES = ['1468666174102442227', '1467233133362544642', '1487554855068368916'];
 
 async function cleanRoles(guild) {
     try {
