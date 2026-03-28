@@ -824,10 +824,14 @@ app.post('/api/send-message', async (req, res) => {
     const memberMessage = `Hello! You have an active membership (Tier ${membership.tier})! Please contact me for your request. (This is a test message)`;
     await member.send(memberMessage);
 
-    // Send DM to admin (hardcoded ID 1380051214766444617)
-    const admin = await client.users.fetch('1380051214766444617');
-    const adminMessage = `📢 **New membership period started for ${member.user.tag} (${discordId})**\nTier: ${membership.tier}\nExpires: ${membership.expires_at}\nPlease reach out to them.`;
-    await admin.send(adminMessage);
+    // Send DM to admin (hardcoded ID)
+    const admin = await client.users.fetch('1380051214766444617').catch(() => null);
+    if (admin) {
+      const adminMessage = `📢 **New membership period started for ${member.tag} (${discordId})**\nTier: ${membership.tier}\nExpires: ${membership.expires_at}\nPlease reach out to them.`;
+      await admin.send(adminMessage);
+    } else {
+      console.warn('Admin user not found or not reachable');
+    }
 
     // Log the message
     await supabaseRetry(() =>
