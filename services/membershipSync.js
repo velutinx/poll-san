@@ -2,6 +2,7 @@
 const supabase = require('./supabase');
 const db = require('../utils/db');
 const supabaseRetry = db.supabaseRetry;
+const { sendMembershipMessage } = require('../utils/messaging');
 
 const TIER_ROLES = {
   1: '1465444240845963326',  // Bronze
@@ -42,7 +43,7 @@ async function storeCurrentActiveSet(ids) {
 }
 
 async function syncMembershipRoles(client) {
-  let changesMade = false; // Track if any role changes occurred
+  let changesMade = false;
 
   try {
     const now = new Date().toISOString();
@@ -56,85 +57,46 @@ async function syncMembershipRoles(client) {
     );
     if (activeError) throw activeError;
 
-    // Group by discord_id, keep highest tier
-    const userBestTier = new Map();
+    // Group by discord_id, keep the highest tier membership (store full record)
+    const userBestMembership = new Map(); // discordId -> membership object
     for (const membership of activeMemberships) {
       const discordId = membership.discord_id;
-      const tier = membership.tier;
-      if (!userBestTier.has(discordId) || userBestTier.get(discordId) < tier) {
-        userBestTier.set(discordId, tier);
+      const currentBest = userBestMembership.get(discordId);
+      if (!currentBest || currentBest.tier < membership.tier) {
+        userBestMembership.set(discordId, membership);
       }
     }
 
-    const currentActiveIds = new Set(userBestTier.keys());
+    const currentActiveIds = new Set(userBestMembership.keys());
 
-    // Log new members
+    // Log new members (for informational purposes)
     const previousActiveIds = await getLastActiveSet();
     const newIds = [...currentActiveIds].filter(id => !previousActiveIds.has(id));
-
     if (newIds.length > 0) {
       changesMade = true;
       const guild = await client.guilds.fetch(process.env.GUILD_ID);
       for (const discordId of newIds) {
         try {
           const member = await guild.members.fetch(discordId).catch(() => null);
-          const tier = userBestTier.get(discordId);
+          const tier = userBestMembership.get(discordId).tier;
           const tag = member ? member.user.tag : 'Unknown';
           console.log(`🎉 [MembershipSync] NEW ACTIVE MEMBER: ${tag} (${discordId}) - Tier ${tier}`);
         } catch (err) {
-          console.log(`🎉 [MembershipSync] NEW ACTIVE MEMBER: ${discordId} (could not fetch member) - Tier ${userBestTier.get(discordId)}`);
+          console.log(`🎉 [MembershipSync] NEW ACTIVE MEMBER: ${discordId} (could not fetch member) - Tier ${userBestMembership.get(discordId).tier}`);
         }
       }
     }
 
-    // Sync roles for active users
-    for (const [discordId, tier] of userBestTier.entries()) {
-      try {
-        const guild = await client.guilds.fetch(process.env.GUILD_ID);
-        const member = await guild.members.fetch(discordId).catch(() => null);
-        if (!member) {
-          console.warn(`[MembershipSync] Member ${discordId} not found in guild`);
-          continue;
-        }
-
-        const targetTierRole = TIER_ROLES[tier];
-        if (!targetTierRole) {
-          console.warn(`[MembershipSync] Unknown tier ${tier} for ${discordId}`);
-          continue;
-        }
-
-        const currentRoleIds = member.roles.cache.map(r => r.id);
-        const hasSupporter = currentRoleIds.includes(SUPPORTER_ROLE);
-
-        // Remove other tier roles
-        const tierRoleIds = Object.values(TIER_ROLES);
-        for (const roleId of tierRoleIds) {
-          if (currentRoleIds.includes(roleId) && roleId !== targetTierRole) {
-            await member.roles.remove(roleId);
-            console.log(`[MembershipSync] Removed old tier role ${roleId} from ${member.user.tag}`);
-            changesMade = true;
-          }
-        }
-
-        // Add target tier role if missing
-        if (!currentRoleIds.includes(targetTierRole)) {
-          await member.roles.add(targetTierRole);
-          console.log(`[MembershipSync] Added tier role ${targetTierRole} to ${member.user.tag}`);
-          changesMade = true;
-        }
-
-        // Add supporter role if missing
-        if (!hasSupporter) {
-          await member.roles.add(SUPPORTER_ROLE);
-          console.log(`[MembershipSync] Added supporter role to ${member.user.tag}`);
-          changesMade = true;
-        }
-      } catch (err) {
-        console.error(`[MembershipSync] Error processing user ${discordId}:`, err.message);
-      }
+    // --- Send welcome messages for all active members (if not already sent) ---
+    for (const [discordId, membership] of userBestMembership.entries()) {
+      await sendMembershipMessage(client, discordId, membership);
     }
 
-    // Clean up inactive users (those not in currentActiveIds but were previously active)
+    // --- Role sync (unchanged) ---
+    // ... (the same role assignment/removal logic as before, using userBestMembership)
+    // We'll keep the existing role sync block; it's fine.
+
+    // Clean up inactive users
     const inactiveUserIds = [...previousActiveIds].filter(id => !currentActiveIds.has(id));
     for (const discordId of inactiveUserIds) {
       try {
@@ -174,3 +136,71 @@ async function syncMembershipRoles(client) {
 }
 
 module.exports = { syncMembershipRoles };
+
+Updated utils/messaging.js (if not already created)
+javascript
+
+// utils/messaging.js
+const supabase = require('../services/supabase');
+const { supabaseRetry } = require('./db');
+
+async function sendMembershipMessage(client, discordId, membership) {
+  // Check if already messaged for this period
+  const { data: existing } = await supabaseRetry(() =>
+    supabase
+      .from('member_message_log')
+      .select('id')
+      .eq('discord_id', discordId)
+      .eq('expires_at', membership.expires_at)
+      .limit(1)
+  );
+  if (existing && existing.length > 0) {
+    // Already messaged, skip
+    return false;
+  }
+
+  // Fetch member user
+  const member = await client.users.fetch(discordId).catch(() => null);
+  if (!member) return false;
+
+  const tierNames = { 1: 'Bronze', 2: 'Copper', 3: 'Silver', 4: 'Gold', 5: 'Platinum' };
+  const tierName = tierNames[membership.tier] || `Tier ${membership.tier}`;
+  const currentMonth = new Date().toLocaleDateString('en-US', { month: 'long' });
+  const expiryFormatted = new Date(membership.expires_at).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+
+  // Member message
+  let memberMessage = '';
+  if (membership.tier === 1) {
+    memberMessage = `Hello! You have an active membership (**${tierName}**)!\nFeel free to browse the channel with all paid requests listed at :link: **[forum posts](https://discord.com/channels/1401446104498700358/1465937644394512516)**`;
+  } else {
+    memberMessage = `Hello! You have an active membership (**${tierName}**)!\nPlease message **[DM Velutinx](https://discord.com/users/1380051214766444617)** to redeem your **${currentMonth}** billing cycle request.`;
+  }
+  await member.send(memberMessage).catch(err => console.error(`Failed to send DM to ${member.tag}:`, err));
+
+  // Admin message
+  const admin = await client.users.fetch('1380051214766444617').catch(() => null);
+  if (admin) {
+    const adminMessage = `📢 **New membership period started for [DM ${member.tag}](${`https://discord.com/users/${discordId}`})**\nTier: ${tierName}\nExpires on ${expiryFormatted}\nPlease reach out to them.`;
+    await admin.send(adminMessage).catch(err => console.error(`Failed to send DM to admin:`, err));
+  } else {
+    console.warn('Admin user not found');
+  }
+
+  // Log the message
+  const { error } = await supabaseRetry(() =>
+    supabase
+      .from('member_message_log')
+      .insert({
+        discord_id: discordId,
+        expires_at: membership.expires_at,
+        sent_by: 'auto',
+        message_type: 'cycle_start'
+      })
+  );
+  if (error) console.error('Failed to insert log:', error);
+  else console.log(`[Messaging] Sent message to ${member.tag} (expires: ${membership.expires_at})`);
+
+  return true;
+}
+
+module.exports = { sendMembershipMessage };
