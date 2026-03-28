@@ -202,7 +202,7 @@ Set size: ${setSize} images
 Content: Explicit (18+)
 
 :inbox_tray: Download:
-:link: **[megaLink](${download || 'https://mega.nz'})**`; 
+:link: [megaLink](${download || 'https://mega.nz'})`;   // <-- no bold, clean parentheses
       
       let supporterResult = {};
       if (supporterThreadId) {
