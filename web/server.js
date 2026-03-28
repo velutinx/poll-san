@@ -845,59 +845,14 @@ Content: Explicit (18+)
     });
 
     // ────────────────────────────────────────────────
-    // MEMBERSHIP MONITOR API
-    // ────────────────────────────────────────────────
-    app.get('/api/memberships', async (req, res) => {
-        try {
-            const { data: subs, error } = await supabaseRetry(() =>
-                supabase.from('memberships').select('*')
-            );
-
-            if (error) throw error;
-
-            const guild = await client.guilds.fetch(process.env.GUILD_ID);
-
-// In the /api/memberships route
-const membershipData = await Promise.all(subs.map(async (sub) => {
-  const now = new Date();
-  const expiresAt = new Date(sub.expires_at);
-  const daysLeft = Math.max(0, Math.ceil((expiresAt - now) / (1000 * 60 * 60 * 24)));
-
-  try {
-    const member = await guild.members.fetch(sub.discord_id);
-    return {
-      nickname: member.displayName,
-      discordTag: member.user.tag,
-      userId: sub.discord_id,
-      rank: sub.tier.toString(),
-      daysLeft: daysLeft,
-      recurring: sub.recurring || false
-    };
-  } catch (err) {
-    return {
-      nickname: "User Left Server",
-      discordTag: "Unknown",
-      userId: sub.discord_id,
-      rank: sub.tier.toString(),
-      daysLeft: daysLeft,
-      recurring: sub.recurring || false
-    };
-  }
-}));
-
-            res.json(membershipData);
-        } catch (error) {
-            console.error('Membership API Error:', error);
-            res.status(500).json({ error: 'Internal Server Error' });
-        }
-    });
-
-    // ────────────────────────────────────────────────
     // SERVE DASHBOARD
     // ────────────────────────────────────────────────
     app.get('/poll-san', (req, res) => {
         res.sendFile(path.join(__dirname, 'public', 'index.html'));
     });
+
+const setupMembershipsRoute = require('./routes/memberships');
+setupMembershipsRoute(app, client, supabase, supabaseRetry);
 
 const setupSendMessageRoute = require('./routes/sendMessage');
 setupSendMessageRoute(app, client, supabase, supabaseRetry);
