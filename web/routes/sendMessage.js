@@ -21,11 +21,14 @@ module.exports = function setupSendMessageRoute(app, client, supabase, supabaseR
         return res.status(404).json({ error: 'No active membership found' });
       }
 
+      // Log the membership object to see its structure
+      console.log('Membership object:', JSON.stringify(membership, null, 2));
+
       // Determine the correct primary key column
-      const membershipId = membership.idx || membership.id;
-      if (!membershipId) {
-        console.error('Membership has no idx or id:', membership);
-        return res.status(500).json({ error: 'Invalid membership record' });
+      const membershipId = membership.idx !== undefined ? membership.idx : membership.id;
+      if (membershipId === undefined) {
+        console.error('Membership object missing idx and id:', membership);
+        return res.status(500).json({ error: 'Invalid membership record (no ID field)' });
       }
 
       // Check if already messaged for this membership period
