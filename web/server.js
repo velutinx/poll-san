@@ -23,21 +23,34 @@ module.exports = (client) => {
     }));
 
     // 2. LOGGING MIDDLEWARE – log every request
+
+    
     app.use((req, res, next) => {
-        if (req.url !== '/api/poll-results-data') {
+        const url = req.url;
+        const skipPaths = [
+            '/poll-san',
+            '/js/',
+            '/css/',
+            '/favicon.ico',
+            '/api/channels',
+            '/api/memberships',
+            '/api/get-queue',
+            '/api/forum-posts',
+            '/api/get-settings',
+            '/api/poll-results-data'
+        ];
+        const shouldSkip = skipPaths.some(prefix => url.startsWith(prefix));
+        if (!shouldSkip) {
             console.log(`${new Date().toISOString()} - ${req.method} ${req.url}`);
         }
         next();
     });
 
-    // 3. PARSERS
     app.use(express.json());
     app.use(express.static(path.join(__dirname, 'public')));
 
-    // 4. MULTER
     const upload = multer({ storage: multer.memoryStorage() });
 
-    // Polyfill for crypto.getRandomValues
     if (typeof global.crypto === 'undefined') {
         global.crypto = require('crypto');
     }
@@ -47,9 +60,6 @@ module.exports = (client) => {
         };
     }
 
-    // ────────────────────────────────────────────────
-    // CONFIG
-    // ────────────────────────────────────────────────
     const FORUM_ID = '1465938599378812980';
     const SUPPORTER_FORUM_ID = '1465937644394512516';
 
