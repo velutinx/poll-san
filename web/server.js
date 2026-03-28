@@ -780,6 +780,73 @@ Content: Explicit (18+)
         res.json({ message: 'GET works' });
     });
 
+
+    // ────────────────────────────────────────────────
+// 15. SEND MESSAGE TO MEMBER (Manual)
+// ────────────────────────────────────────────────
+app.post('/api/send-message', async (req, res) => {
+  const { discordId } = req.body;
+  try {
+    const now = new Date().toISOString();
+    
+    // Fetch the most recent active membership for this user
+    const { data: membership, error } = await supabaseRetry(() =>
+      supabase
+        .from('memberships')
+        .select('*')
+        .eq('discord_id', discordId)
+        .gt('expires_at', now)
+        .order('expires_at', { ascending: false })
+        .limit(1)
+        .single()
+    );
+    if (error || !membership) {
+      return res.status(404).json({ error: 'No active membership found' });
+    }
+
+    // Check if already messaged for this membership period
+    const { data: existing } = await supabaseRetry(() =>
+      supabase
+        .from('member_message_log')
+        .select('id')
+        .eq('membership_idx', membership.idx)
+        .limit(1)
+    );
+    if (existing && existing.length > 0) {
+      return res.status(400).json({ error: 'Already messaged for this period' });
+    }
+
+    // Send DM to member
+    const member = await client.users.fetch(discordId).catch(() => null);
+    if (!member) {
+      return res.status(404).json({ error: 'Discord user not found' });
+    }
+    const memberMessage = `Hello! You have an active membership (Tier ${membership.tier})! Please contact me for your request. (This is a test message)`;
+    await member.send(memberMessage);
+
+    // Send DM to admin (hardcoded ID 1380051214766444617)
+    const admin = await client.users.fetch('1380051214766444617');
+    const adminMessage = `📢 **New membership period started for ${member.user.tag} (${discordId})**\nTier: ${membership.tier}\nExpires: ${membership.expires_at}\nPlease reach out to them.`;
+    await admin.send(adminMessage);
+
+    // Log the message
+    await supabaseRetry(() =>
+      supabase
+        .from('member_message_log')
+        .insert({
+          membership_idx: membership.idx,
+          discord_id: discordId,
+          sent_by: 'manual',
+          message_type: 'cycle_start'
+        })
+    );
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Send message error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
     // ────────────────────────────────────────────────
     // CAPTURE MEMBERSHIP (correct version with your actual role IDs)
     // ────────────────────────────────────────────────
