@@ -366,7 +366,7 @@
 
     <script>
         // ======================================================
-        // GLOBAL STATE (declared only once)
+        // GLOBAL STATE
         // ======================================================
         window.uploadedFiles = [];
         window.supporterUploadedFiles = [];
@@ -375,7 +375,6 @@
         window.currentImages = [];
         window.selectedIndices = new Set();
         window.testSelectedFile = null;
-
         window.currentZipFile = null;
         window.totalImagesCount = 0;
 
@@ -394,6 +393,7 @@ async function switchTab(tabId) {
     });
 
     if (tabId === 'poll-mgmt') {
+        const POLL_CHANNEL_ID = '1466635718930731113';
         await loadChannels();
         if (typeof loadActivePoll === 'function') loadActivePoll();
     }
@@ -417,6 +417,41 @@ async function switchTab(tabId) {
             document.querySelector(`.sub-nav span[onclick="switchSubTab('${subId}')"]`)?.classList.add('active');
         }
 
+
+                // ======================================================
+        // CHANNEL LOADER (FIXED)
+        // ======================================================
+        const POLL_CHANNEL_ID = '1466635718930731113'; // <-- must be before loadChannels
+
+        async function loadChannels() {
+            try {
+                const res = await fetch('/api/channels');
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                const chs = await res.json();
+
+                ['poll_channel', 'welcome_channel_id'].forEach(id => {
+                    const sel = document.getElementById(id);
+                    if (!sel) return;
+                    sel.innerHTML = '';
+                    if (!chs.length) {
+                        sel.innerHTML = '<option>No channels found</option>';
+                        return;
+                    }
+                    chs.forEach(c => {
+                        const defPoll = (id === 'poll_channel' && c.id === POLL_CHANNEL_ID);
+                        const defWelcome = (id === 'welcome_channel_id' && c.name.toLowerCase() === 'poll');
+                        sel.innerHTML += `<option value="${c.id}" ${defPoll || defWelcome ? 'selected' : ''}>#${c.name}</option>`;
+                    });
+                });
+            } catch (e) {
+                console.error('Error loading channels:', e);
+                ['poll_channel', 'welcome_channel_id'].forEach(id => {
+                    const sel = document.getElementById(id);
+                    if (sel) sel.innerHTML = '<option>Error loading channels</option>';
+                });
+            }
+        }
+        
         // ======================================================
         // GREETINGS
         // ======================================================
