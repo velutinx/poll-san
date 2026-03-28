@@ -1,15 +1,14 @@
-// services/membershipSync.js
 const supabase = require('./supabase');
 const db = require('../utils/db');
 const supabaseRetry = db.supabaseRetry;
 const { sendMembershipMessage } = require('../utils/messaging');
 
 const TIER_ROLES = {
-  1: '1465444240845963326',  // Bronze
-  2: '1465670134743044139',  // Copper
-  3: '1465904476417163457',  // Silver
-  4: '1465904548320378956',  // Gold
-  5: '1465952085026541804'   // Platinum
+  1: '1465444240845963326',
+  2: '1465670134743044139',
+  3: '1465904476417163457',
+  4: '1465904548320378956',
+  5: '1465952085026541804'
 };
 const SUPPORTER_ROLE = '1466155709547675795';
 
@@ -136,71 +135,3 @@ async function syncMembershipRoles(client) {
 }
 
 module.exports = { syncMembershipRoles };
-
-Updated utils/messaging.js (if not already created)
-javascript
-
-// utils/messaging.js
-const supabase = require('../services/supabase');
-const { supabaseRetry } = require('./db');
-
-async function sendMembershipMessage(client, discordId, membership) {
-  // Check if already messaged for this period
-  const { data: existing } = await supabaseRetry(() =>
-    supabase
-      .from('member_message_log')
-      .select('id')
-      .eq('discord_id', discordId)
-      .eq('expires_at', membership.expires_at)
-      .limit(1)
-  );
-  if (existing && existing.length > 0) {
-    // Already messaged, skip
-    return false;
-  }
-
-  // Fetch member user
-  const member = await client.users.fetch(discordId).catch(() => null);
-  if (!member) return false;
-
-  const tierNames = { 1: 'Bronze', 2: 'Copper', 3: 'Silver', 4: 'Gold', 5: 'Platinum' };
-  const tierName = tierNames[membership.tier] || `Tier ${membership.tier}`;
-  const currentMonth = new Date().toLocaleDateString('en-US', { month: 'long' });
-  const expiryFormatted = new Date(membership.expires_at).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
-
-  // Member message
-  let memberMessage = '';
-  if (membership.tier === 1) {
-    memberMessage = `Hello! You have an active membership (**${tierName}**)!\nFeel free to browse the channel with all paid requests listed at :link: **[forum posts](https://discord.com/channels/1401446104498700358/1465937644394512516)**`;
-  } else {
-    memberMessage = `Hello! You have an active membership (**${tierName}**)!\nPlease message **[DM Velutinx](https://discord.com/users/1380051214766444617)** to redeem your **${currentMonth}** billing cycle request.`;
-  }
-  await member.send(memberMessage).catch(err => console.error(`Failed to send DM to ${member.tag}:`, err));
-
-  // Admin message
-  const admin = await client.users.fetch('1380051214766444617').catch(() => null);
-  if (admin) {
-    const adminMessage = `📢 **New membership period started for [DM ${member.tag}](${`https://discord.com/users/${discordId}`})**\nTier: ${tierName}\nExpires on ${expiryFormatted}\nPlease reach out to them.`;
-    await admin.send(adminMessage).catch(err => console.error(`Failed to send DM to admin:`, err));
-  } else {
-    console.warn('Admin user not found');
-  }
-
-  // Log the message
-  const { error } = await supabaseRetry(() =>
-    supabase
-      .from('member_message_log')
-      .insert({
-        discord_id: discordId,
-        expires_at: membership.expires_at,
-        sent_by: 'auto',
-        message_type: 'cycle_start'
-      })
-  );
-  if (error) console.error('Failed to insert log:', error);
-  else console.log(`[Messaging] Sent message to ${member.tag} (expires: ${membership.expires_at})`);
-
-  return true;
-}
-
-module.exports = { sendMembershipMessage };
