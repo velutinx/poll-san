@@ -194,7 +194,7 @@ Set size: ${setSize} images
 
       const suffixStr = suffix ? ` — ${suffix}` : '';
       const threadTitle = `[${series.toUpperCase()}] ${charName} — Pack #${pack}${suffixStr}`;
-      const messageBody = `:underage: NEW SUPPORTER RELEASE
+const messageBody = `:underage: NEW SUPPORTER RELEASE
 ${roleMention || ''}
 ━━━━━━━━━━━━━━
 Character: ${charName}
@@ -202,7 +202,7 @@ Set size: ${setSize} images
 Content: Explicit (18+)
 
 :inbox_tray: Download:
-:link: **[megaLink](${download || 'https://mega.nz'})**`;
+:link: **[megaLink](${download || 'https://mega.nz'})**`; 
       
       let supporterResult = {};
       if (supporterThreadId) {
@@ -227,12 +227,11 @@ Content: Explicit (18+)
         }
         supporterResult = { updated: true };
       } else {
-        const newThread = await forumChannel.threads.create({
-          name: threadTitle,
-          appliedTags: appliedTags.length > 0 ? appliedTags : undefined,
-          message: { content: messageBody, files: files.map(f => ({ attachment: f.buffer, name: f.originalname })) }
-        });
-
+const newThread = await forumChannel.threads.create({
+    name: threadTitle,
+    appliedTags: appliedTags.length > 0 ? appliedTags : undefined,
+    message: { content: messageBody, files: files.map(f => ({ attachment: f.buffer, name: f.originalname })) }
+});
         const starter = await newThread.fetchStarterMessage();
         if (starter) {
           await starter.edit({ flags: ["SuppressEmbeds"] });
