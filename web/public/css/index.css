@@ -415,6 +415,15 @@ button:disabled {
     flex: 1.2 1 0;  /* left column gets a bit more space */
 }
 
+.winner-btn.highest-score {
+    background-color: #fbbf24 !important;  /* warm yellow */
+    border-color: #f59e0b;
+    color: #1f2937;
+}
+.winner-btn.highest-score:hover {
+    background-color: #f59e0b !important;
+}
+
 /* Selected overlay (already defined in JS style, but you can adjust) */
 .selected-overlay {
     background-color: rgba(128, 128, 128, 0.5);
