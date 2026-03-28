@@ -781,95 +781,7 @@ Content: Explicit (18+)
     });
 
 
-    // ────────────────────────────────────────────────
-// 15. SEND MESSAGE TO MEMBER (Manual)
-// ────────────────────────────────────────────────
-app.post('/api/send-message', async (req, res) => {
-  const { discordId } = req.body;
-  try {
-    const now = new Date().toISOString();
-    
-    // Fetch the most recent active membership for this user
-    const { data: membership, error } = await supabaseRetry(() =>
-      supabase
-        .from('memberships')
-        .select('*')
-        .eq('discord_id', discordId)
-        .gt('expires_at', now)
-        .order('expires_at', { ascending: false })
-        .limit(1)
-        .single()
-    );
-    if (error || !membership) {
-      console.error('Membership fetch error:', error);
-      return res.status(404).json({ error: 'No active membership found' });
-    }
 
-    // Check if already messaged for this membership period
-    const { data: existing, error: logError } = await supabaseRetry(() =>
-      supabase
-        .from('member_message_log')
-        .select('id')
-        .eq('membership_idx', membership.idx)
-        .limit(1)
-    );
-    if (logError) {
-      console.error('Log check error:', logError);
-    }
-    if (existing && existing.length > 0) {
-      return res.status(400).json({ error: 'Already messaged for this period' });
-    }
-
-    // Send DM to member
-    const member = await client.users.fetch(discordId).catch(() => null);
-    if (!member) {
-      return res.status(404).json({ error: 'Discord user not found' });
-    }
-
-    // Format expiry date (e.g., "28 April 2026")
-    const expiryDate = new Date(membership.expires_at);
-    const expiryFormatted = expiryDate.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
-
-    // Current month for member message
-    const currentMonth = new Date().toLocaleDateString('en-US', { month: 'long' });
-
-    // Member message with clickable admin link
-    const memberMessage = `Hello! You have an active membership (Tier ${membership.tier})! \nPlease message **[DM Velutinx](https://discord.com/users/1380051214766444617)** to redeem your **${currentMonth}** billing cycle request.`;
-    await member.send(memberMessage);
-
-    // Admin message with clickable user link
-    const admin = await client.users.fetch('1380051214766444617').catch(() => null);
-    if (admin) {
-      const adminMessage = `📢 **New membership period started for [DM ${member.tag}](${`https://discord.com/users/${discordId}`})**\nTier: ${membership.tier}\nExpires on ${expiryFormatted}\nPlease reach out to them.`;
-      await admin.send(adminMessage);
-    } else {
-      console.warn('Admin user not found or not reachable');
-    }
-
-    // Log the message
-    const { error: insertError } = await supabaseRetry(() =>
-      supabase
-        .from('member_message_log')
-        .insert({
-          membership_idx: membership.idx,
-          discord_id: discordId,
-          sent_by: 'manual',
-          message_type: 'cycle_start'
-        })
-    );
-    if (insertError) {
-      console.error('Failed to insert log:', insertError);
-      // Don't return error; message was already sent, just warn
-    } else {
-      console.log(`Logged message for member ${discordId} (idx: ${membership.idx})`);
-    }
-
-    res.json({ success: true });
-  } catch (err) {
-    console.error('Send message error:', err);
-    res.status(500).json({ error: err.message });
-  }
-});
     // ────────────────────────────────────────────────
     // CAPTURE MEMBERSHIP (correct version with your actual role IDs)
     // ────────────────────────────────────────────────
@@ -987,6 +899,9 @@ const membershipData = await Promise.all(subs.map(async (sub) => {
         res.sendFile(path.join(__dirname, 'public', 'index.html'));
     });
 
+const setupSendMessageRoute = require('./routes/sendMessage');
+setupSendMessageRoute(app, client, supabase, supabaseRetry);
+    
     app.listen(PORT, () => {
         console.log(`🌐 Dashboard running at http://localhost:${PORT}/poll-san`);
         // console.log(`🌐 Dashboard running at https://d.velutinx.com/poll-san`);
