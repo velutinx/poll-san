@@ -22,30 +22,24 @@ module.exports = (client) => {
         allowedHeaders: ['Content-Type', 'Authorization']
     }));
 
-    // 2. LOGGING MIDDLEWARE – log every request
+// 2. LOGGING MIDDLEWARE – log every request (clean version)
+app.use((req, res, next) => {
+    const url = req.url;
+    // Skip dashboard UI, static files, and all API endpoints you don't care about
+    if (
+        url === '/' ||
+        url.startsWith('/poll-san') ||
+        url.startsWith('/js/') ||
+        url.startsWith('/css/') ||
+        url.startsWith('/api/') ||   // ← skips ALL /api/* at once
+        url === '/favicon.ico'
+    ) {
+        return next();
+    }
 
-    
-    app.use((req, res, next) => {
-        const url = req.url;
-const skipPaths = [
-    '/',
-    '/poll-san',
-    '/js/',
-    '/css/',
-    '/favicon.ico',
-    '/api/channels',
-    '/api/memberships',
-    '/api/get-queue',
-    '/api/forum-posts',
-    '/api/get-settings',
-    '/api/poll-results-data'
-];
-        const shouldSkip = skipPaths.some(prefix => url.startsWith(prefix));
-        if (!shouldSkip) {
-            console.log(`${new Date().toISOString()} - ${req.method} ${req.url}`);
-        }
-        next();
-    });
+    console.log(`${new Date().toISOString()} - ${req.method} ${req.url}`);
+    next();
+});
 
     app.use(express.json());
     app.use(express.static(path.join(__dirname, 'public')));
