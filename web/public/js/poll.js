@@ -4,8 +4,6 @@
 // POLL FUNCTIONS
 // ======================================================
 
-// poll.js
-
 async function loadActivePoll() {
     const listArea = document.getElementById('winner-list');
     if (!listArea) return;
@@ -21,14 +19,38 @@ async function loadActivePoll() {
         document.getElementById('launch-btn').disabled = true;
         document.getElementById('stop-btn').disabled = false;
         listArea.innerHTML = '';
+
+        // Store buttons to later find highest score
+        const buttons = [];
+        let highestScore = -Infinity;
+
         data.forEach(item => {
             const btn = document.createElement('button');
-            btn.className = 'winner-btn' + (item.selected_at ? ' selected' : '');
-            btn.innerText = `${item.character_name} (${parseFloat(item.score).toFixed(1)})`;
-            btn.onclick = item.selected_at ? null : () => markWinner(item.character_name);
+            const score = parseFloat(item.score);
+            const hasWinner = !!item.selected_at;
+            btn.className = 'winner-btn' + (hasWinner ? ' selected' : '');
+            btn.innerText = `${item.character_name} (${score.toFixed(1)})`;
+            btn.onclick = hasWinner ? null : () => markWinner(item.character_name);
+            btn.setAttribute('data-score', score);
             listArea.appendChild(btn);
+            buttons.push(btn);
+
+            // Track highest score among unselected
+            if (!hasWinner && score > highestScore) {
+                highestScore = score;
+            }
         });
+
+        // Apply 'highest-score' class to all unselected buttons with that score
+        if (highestScore > -Infinity) {
+            buttons.forEach(btn => {
+                if (!btn.classList.contains('selected') && parseFloat(btn.getAttribute('data-score')) === highestScore) {
+                    btn.classList.add('highest-score');
+                }
+            });
+        }
     } catch (e) {
+        console.error(e);
         listArea.innerHTML = 'Error loading characters.';
     }
 }
