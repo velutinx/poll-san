@@ -27,18 +27,19 @@ module.exports = (client) => {
     
     app.use((req, res, next) => {
         const url = req.url;
-        const skipPaths = [
-            '/poll-san',
-            '/js/',
-            '/css/',
-            '/favicon.ico',
-            '/api/channels',
-            '/api/memberships',
-            '/api/get-queue',
-            '/api/forum-posts',
-            '/api/get-settings',
-            '/api/poll-results-data'
-        ];
+const skipPaths = [
+    '/',
+    '/poll-san',
+    '/js/',
+    '/css/',
+    '/favicon.ico',
+    '/api/channels',
+    '/api/memberships',
+    '/api/get-queue',
+    '/api/forum-posts',
+    '/api/get-settings',
+    '/api/poll-results-data'
+];
         const shouldSkip = skipPaths.some(prefix => url.startsWith(prefix));
         if (!shouldSkip) {
             console.log(`${new Date().toISOString()} - ${req.method} ${req.url}`);
