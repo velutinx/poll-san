@@ -349,6 +349,7 @@
                                 <th style="padding: 12px; cursor: pointer;" onclick="sortMembers('userId')">User ID <span id="sort-userId"></span></th>
                                 <th style="padding: 12px; cursor: pointer;" onclick="sortMembers('rank')">Rank <span id="sort-rank"></span></th>
                                 <th style="padding: 12px; cursor: pointer;" onclick="sortMembers('daysLeft')">Days Left <span id="sort-daysLeft"></span></th>
+                                <th style="padding: 12px;">Actions</th>
                             </tr>
                         </thead>
                         <tbody id="membership-list-body">
@@ -469,7 +470,7 @@ function escapeHtml(str) {
 function renderMembersTable() {
   const tb = document.getElementById('membership-list-body');
   if (!membersData.length) {
-    tb.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:20px;">No active subscribers found.</td></tr>';
+    tb.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:20px;">No active subscribers found.</td></tr>';
     return;
   }
 
@@ -511,6 +512,12 @@ function renderMembersTable() {
       <td style="padding:12px; color:${r.color}; font-weight:bold;">${escapeHtml(r.name)}</td>
       <td style="padding:12px; color:${days<5?'#f87171':'#10b981'};">
         ${days} Days${recurringIcon}
+      </td>
+      <td style="padding:12px;">
+        <button onclick="sendMessage('${escapeHtml(m.userId)}')" 
+          style="background: #3b82f6; border: none; padding: 6px 12px; border-radius: 6px; color: white; cursor: pointer; font-size: 0.8rem;">
+          📨 Message
+        </button>
       </td>
     </tr>`;
   }).join('');
@@ -581,6 +588,25 @@ function renderMembersTable() {
             if (typeof initReleases === 'function') initReleases();
             loadMembershipData();
         };
+
+        async function sendMessage(userId) {
+  try {
+    const response = await fetch('/api/send-message', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ discordId: userId })
+    });
+    const data = await response.json();
+    if (response.ok) {
+      showToast('Success', 'Message sent to member and admin!', 'success');
+    } else {
+      showToast('Error', data.error || 'Failed to send message', 'error');
+    }
+  } catch (err) {
+    console.error(err);
+    showToast('Error', 'Network error. Please try again.', 'error');
+  }
+}
     </script>
 
     <!-- External scripts – order matters -->
