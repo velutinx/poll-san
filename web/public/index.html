@@ -418,10 +418,10 @@ async function switchTab(tabId) {
         }
 
 
-                // ======================================================
+        // ======================================================
         // CHANNEL LOADER (FIXED)
         // ======================================================
-        const POLL_CHANNEL_ID = '1466635718930731113'; // <-- must be before loadChannels
+        const POLL_CHANNEL_ID = '1466635718930731113';
 
         async function loadChannels() {
             try {
@@ -451,10 +451,30 @@ async function switchTab(tabId) {
                 });
             }
         }
-        
+
         // ======================================================
-        // GREETINGS
+        // GREETINGS SETTINGS
         // ======================================================
+        async function loadSettings() {
+            try {
+                const res = await fetch('/api/get-settings');
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                const s = await res.json();
+                if (s.welcome_channel_id) {
+                    const welcomeSelect = document.getElementById('welcome_channel_id');
+                    if (welcomeSelect) welcomeSelect.value = s.welcome_channel_id;
+                }
+                if (s.welcome_message) {
+                    const welcomeTextarea = document.getElementById('welcome_message');
+                    if (welcomeTextarea) welcomeTextarea.value = s.welcome_message;
+                }
+            } catch(e) {
+                console.error('Error loading settings:', e);
+                const statusDiv = document.getElementById('greetings-status');
+                if (statusDiv) statusDiv.innerText = '❌ Error loading settings.';
+            }
+        }
+
         async function saveGreetings() {
             const channel = document.getElementById('welcome_channel_id').value;
             const message = document.getElementById('welcome_message').value;
@@ -465,11 +485,12 @@ async function switchTab(tabId) {
             });
             if (res.ok) {
                 if (typeof showToast === 'function') showToast('Success!', 'Settings applied');
+                await loadSettings(); // refresh the displayed values
             } else {
                 if (typeof showToast === 'function') showToast('Error!', 'Failed to save', 'error');
             }
         }
-
+        
         const MEMBERSHIP_MAP = {
             "1": { name: "🥉 Bronze", color: "#cd7f32" },
             "2": { name: "✨ Copper", color: "#b87333" },
