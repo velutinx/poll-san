@@ -25,10 +25,10 @@ async function sendMembershipMessage(client, discordId, membership) {
       .limit(1)
   );
   if (logError) console.error('Log check error:', logError);
-  if (existing && existing.length > 0) {
-    console.log(`Already messaged for membership period ${membership.expires_at} for ${discordId}`);
+if (existing && existing.length > 0) {
+    // console.debug(`Already messaged for membership period ${membership.expires_at} for ${discordId}`);
     return false; // Already messaged
-  }
+}
 
   // Send DM to member
   const member = await client.users.fetch(discordId).catch(() => null);
