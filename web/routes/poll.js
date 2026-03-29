@@ -71,22 +71,21 @@ module.exports = function setupPollRoutes(app, client, supabase, supabaseRetry) 
 // ────────────────────────────────────────────────
 app.post('/api/stop-poll', async (req, res) => {
     try {
-        // 1. Clear auto_resume (all rows)
-        const { error: autoError } = await supabaseRetry(() => supabase.from('auto_resume').delete().neq('id', 0));
-        if (autoError) throw autoError;
+        // 1. Clear auto_resume (has 'id' column)
+        await supabaseRetry(() => supabase.from('auto_resume').delete().neq('id', 0));
         console.log('Cleared auto_resume');
 
-        // 2. Clear final_votes (all rows)
-        const { error: finalError } = await supabaseRetry(() => supabase.from('final_votes').delete().neq('option_id', 0));
-        if (finalError) throw finalError;
+        // 2. Clear final_votes (has 'option_id' column)
+        await supabaseRetry(() => supabase.from('final_votes').delete().neq('option_id', 0));
         console.log('Cleared final_votes');
 
-        // 3. Clear votes_discord (all rows)
-        const { error: votesError } = await supabaseRetry(() => supabase.from('votes_discord').delete().neq('id', 0));
+        // 3. Clear votes_discord – use a column that exists (e.g., 'user_id') with a condition that matches all
+        //    Since we don't have an 'id', we can delete where user_id != '' (all rows have non-empty user_id)
+        const { error: votesError } = await supabaseRetry(() => supabase.from('votes_discord').delete().neq('user_id', ''));
         if (votesError) throw votesError;
         console.log('Cleared votes_discord');
 
-        // 4. Clear website_voting (all rows)
+        // 4. Clear website_voting – has 'id' column
         const { error: websiteError } = await supabaseRetry(() => supabase.from('website_voting').delete().neq('id', 0));
         if (websiteError) throw websiteError;
         console.log('Cleared website_voting');
