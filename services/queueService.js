@@ -1,7 +1,20 @@
 const supabase = require('./supabase');
 const QUEUE_CHANNEL_ID = '1473730427318435860';
 // Updated with your custom emojis for 11 and 12
-const EMOJIS = [':one:', ':two:', ':three:', ':four:', ':five:', ':six:', ':seven:', ':eight:', ':nine:', ':keycap_ten:', '<:eleven:1472456579742961744>', '<:twelve:1472456610457718845>'];
+const EMOJIS = [
+    '<:one:1485655941520167062>',
+    '<:two:1485655967436767252>',
+    '<:three:1485655981194215505>',
+    '<:four:1485655990501117953>',
+    '<:five:1485656000479494394>',
+    '<:six:1485656011040620654>',
+    '<:seven:1485656023061627060>',
+    '<:eight:1485656039918665930>',
+    '<:nine:1485656051037769758>',
+    '<:ten:1485656068943253786>',
+    '<:eleven:1485656186060542104>',
+    '<:twelve:1485656217194991667>'
+];
 
 async function getQueueData() {
     // Explicitly fetching by the ID you used in your table
