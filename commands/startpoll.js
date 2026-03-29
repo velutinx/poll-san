@@ -4,19 +4,17 @@ const supabase = require('../services/supabase');
 
 module.exports = async (interaction) => {
     // 1. ALLOW DASHBOARD TO BYPASS DISCORD-ONLY CHECKS
-    // If it's a real Discord interaction, check if it's a Chat Input Command.
-    // If it's from our Dashboard (mock), it won't have the normal Discord internal flags.
     if (typeof interaction.isChatInputCommand === 'function') {
         if (!interaction.isChatInputCommand() && !interaction.isDashboard) return;
     }
 
-    // 2. DEFER REPLY (Safe for both Discord and Dashboard)
+    // 2. DEFER REPLY
     if (interaction.deferReply) {
         await interaction.deferReply({ flags: 64 }).catch(() => {});
     }
 
     // 3. EXTRACT DATA
-    const days = interaction.options.getInteger('days') || 7; // Default to 7 if missing
+    const days = interaction.options.getInteger('days') || 7;
     const listRaw = interaction.options.getString('list');
 
     if (!listRaw) {
@@ -32,16 +30,15 @@ module.exports = async (interaction) => {
         .filter(s => s.length > 0);
 
     // 4. GENERATE POLL MESSAGE
-    // We use interaction.channel.send so it works even if interaction.reply fails
     const pollMessage = await interaction.channel.send({ 
         content: await generateMessageContent(endTime, null, characters) 
     });
 
-    // 5. RECORD TO SUPABASE (This is what populates your Dashboard Refresh List)
+    // 5. RECORD TO SUPABASE
     try {
         await supabase.from('auto_resume').upsert({
             message_id: pollMessage.id,
-            channel_id: interaction.channel.id, // Use .id directly for reliability
+            channel_id: interaction.channel.id,
             ends_at: new Date(endTime).toISOString(),
             poll_list: listRaw
         });
@@ -68,21 +65,21 @@ module.exports = async (interaction) => {
         characterChunks[i].forEach((name, idx) => {
             const globalIdx = (i * 4) + idx + 1;
             content += `${emojis[globalIdx - 1]} ${name}\n`;
-            // Image URL logic from your website
             files.push(`https://www.velutinx.com/images/poll/${globalIdx}.jpg`);
         });
         await thread.send({ content, files }).catch(e => console.error("Thread Image Error:", e.message));
     }
     
-await thread.send({ 
-await thread.send({ 
-    content: ":point_up_2: Character images for the poll above! <@&1472273843665113139>" 
-});
-    // 8. FINALIZE INTERACTION
+    // 8. SEND NOTIFICATION (fixed duplicate line)
+    await thread.send({ 
+        content: ":point_up_2: Character images for the poll above! <@&1472273843665113139>" 
+    });
+
+    // 9. FINALIZE INTERACTION
     if (interaction.editReply) {
         await interaction.editReply({ content: '✅ Poll Live!' }).catch(() => {});
     }
 
-    // 9. START BACKGROUND TIMER
+    // 10. START BACKGROUND TIMER
     runPollInterval(pollMessage, endTime, characters);
 };
