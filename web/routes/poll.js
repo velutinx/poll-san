@@ -66,44 +66,36 @@ module.exports = function setupPollRoutes(app, client, supabase, supabaseRetry) 
         }
     });
 
-// ────────────────────────────────────────────────
-// STOP POLL
-// ────────────────────────────────────────────────
-let cachedPollResultsData = null;      // keep this at module level
-let cachedPollResultsTime = 0;
-const POLL_CACHE_TTL = 60000;
+    // ────────────────────────────────────────────────
+    // STOP POLL
+    // ────────────────────────────────────────────────
+    app.post('/api/stop-poll', async (req, res) => {
+        try {
+            await supabaseRetry(() => supabase.from('auto_resume').delete().neq('id', 0));
+            console.log('Cleared auto_resume');
 
-app.post('/api/stop-poll', async (req, res) => {
-    try {
-        // 1. Clear auto_resume (has id)
-        await supabaseRetry(() => supabase.from('auto_resume').delete().neq('id', 0));
-        console.log('Cleared auto_resume');
+            await supabaseRetry(() => supabase.from('final_votes').delete().neq('option_id', 0));
+            console.log('Cleared final_votes');
 
-        // 2. Clear final_votes (has option_id, use neq for safety)
-        await supabaseRetry(() => supabase.from('final_votes').delete().neq('option_id', 0));
-        console.log('Cleared final_votes');
+            const { error: votesError } = await supabaseRetry(() => supabase.from('votes_discord').delete());
+            if (votesError) throw votesError;
+            console.log('Cleared votes_discord');
 
-        // 3. Clear votes_discord (no id column – delete all rows)
-        const { error: votesError } = await supabaseRetry(() => supabase.from('votes_discord').delete());
-        if (votesError) throw votesError;
-        console.log('Cleared votes_discord');
+            const { error: websiteError } = await supabaseRetry(() => supabase.from('website_voting').delete().neq('id', 0));
+            if (websiteError) throw websiteError;
+            console.log('Cleared website_voting');
 
-        // 4. Clear website_voting (has id)
-        const { error: websiteError } = await supabaseRetry(() => supabase.from('website_voting').delete().neq('id', 0));
-        if (websiteError) throw websiteError;
-        console.log('Cleared website_voting');
+            // Invalidate cache
+            cachedPollResultsData = null;
+            cachedPollResultsTime = 0;
 
-        // 5. Invalidate dashboard cache
-        cachedPollResultsData = null;
-        cachedPollResultsTime = 0;
-
-        console.log('All poll tables cleared and cache invalidated');
-        res.json({ success: true });
-    } catch (err) {
-        console.error('Stop poll error:', err);
-        res.status(500).json({ error: err.message });
-    }
-});
+            console.log('All poll tables cleared and cache invalidated');
+            res.json({ success: true });
+        } catch (err) {
+            console.error('Stop poll error:', err);
+            res.status(500).json({ error: err.message });
+        }
+    });
 
     // ────────────────────────────────────────────────
     // MARK WINNER
