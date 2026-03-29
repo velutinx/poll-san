@@ -28,10 +28,6 @@ module.exports = async (interaction) => {
     const lines = listRaw.split(/\r?\n/).filter(line => line.trim().length > 0);
     const characters = lines.map(line => line.trim());
 
-    // DEBUG: log the order to console
-//    console.log('Characters in order:');
-  //  characters.forEach((c, i) => console.log(`${i+1}: ${c}`));
-
     const endTime = Date.now() + (days * 24 * 60 * 60 * 1000);
 
     // Send poll message
@@ -57,7 +53,7 @@ module.exports = async (interaction) => {
         await pollMessage.react(id).catch(() => {});
     }
 
-    // Create discussion thread and attach images
+    // Create discussion thread
     const thread = await pollMessage.startThread({
         name: `Character Discussion - ${new Date().toLocaleDateString()}`,
         autoArchiveDuration: 1440
@@ -68,17 +64,29 @@ module.exports = async (interaction) => {
 
     for (let i = 0; i < characterChunks.length; i++) {
         let content = "";
-        const files = [];
+        const embeds = [];
+        
+        // Using a shared URL helps Discord group these into a visual grid
+        const sharedUrl = "https://www.velutinx.com/poll"; 
+
         characterChunks[i].forEach((name, idx) => {
             const globalIdx = (i * 4) + idx + 1;
             content += `${emojis[globalIdx - 1]} ${name}\n`;
-            // Explicitly set filename to force order (optional)
-            files.push({
-                attachment: `https://www.velutinx.com/images/poll/${globalIdx}.jpg`,
-                name: `${globalIdx}.jpg`
+            
+            // Push an individual embed for each image to guarantee order
+            embeds.push({
+                url: sharedUrl,
+                image: {
+                    url: `https://www.velutinx.com/images/poll/${globalIdx}.jpg`
+                }
             });
         });
-        await thread.send({ content, files }).catch(e => console.error("Thread Image Error:", e.message));
+
+        // Send the names and the images together
+        await thread.send({ 
+            content: content, 
+            embeds: embeds 
+        }).catch(e => console.error("Thread Image Error:", e.message));
     }
 
     // Final thread message (mention role)
