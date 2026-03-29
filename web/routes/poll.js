@@ -79,14 +79,14 @@ app.post('/api/stop-poll', async (req, res) => {
         await supabaseRetry(() => supabase.from('final_votes').delete().neq('option_id', 0));
         console.log('Cleared final_votes');
 
-        // 3. Clear votes_discord – use poll_id column which always equals 'character_poll_new'
+        // 3. Clear votes_discord – condition matches all rows
         const { error: votesError } = await supabaseRetry(() =>
-            supabase.from('votes_discord').delete().neq('poll_id', 'character_poll_new')
+            supabase.from('votes_discord').delete().neq('poll_id', 'dummy')
         );
         if (votesError) throw votesError;
         console.log('Cleared votes_discord');
 
-        // 4. Clear website_voting – use id column
+        // 4. Clear website_voting – condition matches all rows
         const { error: websiteError } = await supabaseRetry(() =>
             supabase.from('website_voting').delete().neq('id', 0)
         );
