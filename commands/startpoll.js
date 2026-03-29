@@ -24,15 +24,14 @@ module.exports = async (interaction) => {
         return;
     }
 
-const files = characterChunks[i].map((name, idx) => {
-    const globalIdx = (i * 4) + idx + 1;
-    return {
-        attachment: `https://www.velutinx.com/images/poll/${globalIdx}.jpg`,
-        name: `${globalIdx}.jpg`
-    };
-});
+    // Split by line (preserve exact order)
+    const lines = listRaw.split(/\r?\n/).filter(line => line.trim().length > 0);
+    const characters = lines.map(line => line.trim());
 
-   
+    // DEBUG: log the order to console
+    console.log('Characters in order:');
+    characters.forEach((c, i) => console.log(`${i+1}: ${c}`));
+
     const endTime = Date.now() + (days * 24 * 60 * 60 * 1000);
 
     // Send poll message
@@ -64,14 +63,20 @@ const files = characterChunks[i].map((name, idx) => {
         autoArchiveDuration: 1440
     });
 
+    // Split characters into chunks of 4
     const characterChunks = chunkArray(characters, 4);
+
     for (let i = 0; i < characterChunks.length; i++) {
         let content = "";
         const files = [];
         characterChunks[i].forEach((name, idx) => {
             const globalIdx = (i * 4) + idx + 1;
             content += `${emojis[globalIdx - 1]} ${name}\n`;
-            files.push(`https://www.velutinx.com/images/poll/${globalIdx}.jpg`);
+            // Explicitly set filename to force order (optional)
+            files.push({
+                attachment: `https://www.velutinx.com/images/poll/${globalIdx}.jpg`,
+                name: `${globalIdx}.jpg`
+            });
         });
         await thread.send({ content, files }).catch(e => console.error("Thread Image Error:", e.message));
     }
