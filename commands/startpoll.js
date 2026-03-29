@@ -70,17 +70,21 @@ module.exports = async (interaction) => {
         characterChunks[i].forEach((name, idx) => {
             const globalIdx = (i * 4) + idx + 1;
             content += `${emojis[globalIdx - 1]} ${name}\n`;
-            files.push(`https://www.velutinx.com/images/poll/${globalIdx}.jpg`);
+            
+            // Push as object with filename to force correct order
+            files.push({
+                attachment: `https://www.velutinx.com/images/poll/${globalIdx}.jpg`,
+                name: `${globalIdx}.jpg`   // ← This helps Discord keep the order
+            });
         });
 
-        // Debug log to see exact order being sent
-        console.log(`📸 Sending chunk ${i + 1}/${characterChunks.length} → Files:`, 
-            files.map(f => f.split('/').pop()));
+        console.log(`📸 Sending chunk ${i + 1}/${characterChunks.length} →`, 
+            files.map(f => f.name));
 
         await thread.send({ content, files })
             .catch(e => console.error("Thread Image Error:", e.message));
     }
-
+    
     // 8. SEND NOTIFICATION
     await thread.send({
         content: ":point_up_2: Character images for the poll above! <@&1472273843665113139>"
