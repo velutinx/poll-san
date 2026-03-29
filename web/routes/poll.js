@@ -87,10 +87,18 @@ module.exports = function setupPollRoutes(app, client, supabase, supabaseRetry) 
             if (votesError) throw votesError;
             console.log('Cleared votes_discord');
 
-            // 4. Clear website_voting – condition always true (id never 0)
-            const { error: websiteError } = await supabaseRetry(() =>
-                supabase.from('website_voting').delete().neq('id', 0)
-            );
+            // 4. Clear website_voting - more reliable way
+const { error: websiteError, count: deletedCount } = await supabaseRetry(() =>
+    supabase
+        .from('website_voting')
+        .delete({ count: 'exact' })   // ask for count
+        .neq('id', 0)
+);
+
+if (websiteError) throw websiteError;
+
+console.log(`Cleared website_voting - ${deletedCount || 0} rows deleted`);
+            
             if (websiteError) throw websiteError;
             console.log('Cleared website_voting');
 
