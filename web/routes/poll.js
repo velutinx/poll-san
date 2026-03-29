@@ -71,16 +71,18 @@ module.exports = function setupPollRoutes(app, client, supabase, supabaseRetry) 
 // ────────────────────────────────────────────────
 app.post('/api/stop-poll', async (req, res) => {
     try {
-        // 1. Clear auto_resume
-        await supabaseRetry(() => supabase.from('auto_resume').delete().neq('id', 0));
+        // 1. Clear auto_resume (all rows)
+        const { error: autoError } = await supabaseRetry(() => supabase.from('auto_resume').delete().neq('id', 0));
+        if (autoError) throw autoError;
         console.log('Cleared auto_resume');
 
-        // 2. Clear final_votes
-        await supabaseRetry(() => supabase.from('final_votes').delete().neq('option_id', 0));
+        // 2. Clear final_votes (all rows)
+        const { error: finalError } = await supabaseRetry(() => supabase.from('final_votes').delete().neq('option_id', 0));
+        if (finalError) throw finalError;
         console.log('Cleared final_votes');
 
         // 3. Clear votes_discord (all rows)
-        const { error: votesError } = await supabaseRetry(() => supabase.from('votes_discord').delete());
+        const { error: votesError } = await supabaseRetry(() => supabase.from('votes_discord').delete().neq('id', 0));
         if (votesError) throw votesError;
         console.log('Cleared votes_discord');
 
