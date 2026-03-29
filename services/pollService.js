@@ -131,7 +131,7 @@ async function generateMessageContent(endTime, resultsText, characters) {
         return `${emojis[i]} \`    0.00   ${name.padEnd(30)} \` \n`;
     }).join('');
     
-    return header + body + `\nDiscord weighted vote + Website poll results\n\n:point_down: Click the thread below for character images & discussion!`;
+    return header + body + `\nDiscord weighted vote + :link: **[Website poll results](https://velutinx.com/poll)** (Click to vote there too!)\n\n:point_down: Click the thread below for character images & discussion!`;
 }
 
 /**
