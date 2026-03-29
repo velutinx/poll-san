@@ -149,7 +149,7 @@ async function getFinalPollMessageContent(pollList) {
     // Get the formatted results (scores, spoilers for winners)
     const resultsString = await getPollResults(null, characters);
 
-    return `🛑 **Poll has ended.**\n\n${resultsString}\n\nDiscord weighted vote + Website poll results\n\n:point_down: Click the thread below for character images & discussion!`;
+    return `🛑 **Poll has ended.**\n\n${resultsString}\n\nDiscord weighted vote + :link: **[Website poll results](https://velutinx.com/poll)**\n\n:point_down: Click the thread below for character images & discussion!`;
 }
 
 function runPollInterval(pollMessage, endTime, characters) {
