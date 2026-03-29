@@ -75,7 +75,7 @@ client.once(Events.ClientReady, async (c) => {
     // Run membership sync on startup
     try {
         await syncMembershipRoles(client);
-        console.log('[MembershipSync] Initial sync completed');
+//      console.log('[MembershipSync] Initial sync completed');
     } catch (err) {
         console.error('[MembershipSync] Initial sync failed:', err);
     }
