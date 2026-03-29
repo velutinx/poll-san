@@ -24,10 +24,15 @@ module.exports = async (interaction) => {
         return;
     }
 
-    // Split by line (preserve exact order)
-    const lines = listRaw.split(/\r?\n/).filter(line => line.trim().length > 0);
-    const characters = lines.map(line => line.trim());
+// Split by any kind of newline (CR, LF, CRLF)
+const lines = listRaw.split(/\r?\n/).filter(line => line.trim().length > 0);
+const characters = lines.map(line => line.trim());
 
+// DEBUG: log the order to console (check your bot logs)
+console.log('Characters in order:');
+characters.forEach((c, i) => console.log(`${i+1}: ${c}`));
+
+   
     const endTime = Date.now() + (days * 24 * 60 * 60 * 1000);
 
     // Send poll message
