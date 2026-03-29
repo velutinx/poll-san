@@ -29,8 +29,8 @@ module.exports = async (interaction) => {
     const characters = lines.map(line => line.trim());
 
     // DEBUG: log the order to console
-    console.log('Characters in order:');
-    characters.forEach((c, i) => console.log(`${i+1}: ${c}`));
+//    console.log('Characters in order:');
+  //  characters.forEach((c, i) => console.log(`${i+1}: ${c}`));
 
     const endTime = Date.now() + (days * 24 * 60 * 60 * 1000);
 
