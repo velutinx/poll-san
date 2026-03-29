@@ -1,5 +1,10 @@
 // web/routes/poll.js
 module.exports = function setupPollRoutes(app, client, supabase, supabaseRetry) {
+    // Cache for poll results (shared between endpoints)
+    let cachedPollResultsData = null;
+    let cachedPollResultsTime = 0;
+    const POLL_CACHE_TTL = 60000; // 1 minute
+
     // ────────────────────────────────────────────────
     // START POLL
     // ────────────────────────────────────────────────
@@ -43,10 +48,6 @@ module.exports = function setupPollRoutes(app, client, supabase, supabaseRetry) 
     // ────────────────────────────────────────────────
     // POLL RESULTS DATA (for dashboard)
     // ────────────────────────────────────────────────
-    let cachedPollResultsData = null;
-    let cachedPollResultsTime = 0;
-    const POLL_CACHE_TTL = 60000; // 1 minute
-
     app.get('/api/poll-results-data', async (req, res) => {
         try {
             if (cachedPollResultsData && (Date.now() - cachedPollResultsTime) < POLL_CACHE_TTL) {
@@ -69,41 +70,41 @@ module.exports = function setupPollRoutes(app, client, supabase, supabaseRetry) 
     // ────────────────────────────────────────────────
     // STOP POLL
     // ────────────────────────────────────────────────
-app.post('/api/stop-poll', async (req, res) => {
-    try {
-        // 1. Clear auto_resume
-        await supabaseRetry(() => supabase.from('auto_resume').delete().neq('id', 0));
-        console.log('Cleared auto_resume');
+    app.post('/api/stop-poll', async (req, res) => {
+        try {
+            // 1. Clear auto_resume (has id)
+            await supabaseRetry(() => supabase.from('auto_resume').delete().neq('id', 0));
+            console.log('Cleared auto_resume');
 
-        // 2. Clear final_votes
-        await supabaseRetry(() => supabase.from('final_votes').delete().neq('option_id', 0));
-        console.log('Cleared final_votes');
+            // 2. Clear final_votes (has option_id)
+            await supabaseRetry(() => supabase.from('final_votes').delete().neq('option_id', 0));
+            console.log('Cleared final_votes');
 
-        // 3. Clear votes_discord – condition matches all rows
-        const { error: votesError } = await supabaseRetry(() =>
-            supabase.from('votes_discord').delete().neq('poll_id', 'dummy')
-        );
-        if (votesError) throw votesError;
-        console.log('Cleared votes_discord');
+            // 3. Clear votes_discord – condition always true (poll_id is never 'dummy')
+            const { error: votesError } = await supabaseRetry(() =>
+                supabase.from('votes_discord').delete().neq('poll_id', 'dummy')
+            );
+            if (votesError) throw votesError;
+            console.log('Cleared votes_discord');
 
-        // 4. Clear website_voting – condition matches all rows
-        const { error: websiteError } = await supabaseRetry(() =>
-            supabase.from('website_voting').delete().neq('id', 0)
-        );
-        if (websiteError) throw websiteError;
-        console.log('Cleared website_voting');
+            // 4. Clear website_voting – condition always true (id never 0)
+            const { error: websiteError } = await supabaseRetry(() =>
+                supabase.from('website_voting').delete().neq('id', 0)
+            );
+            if (websiteError) throw websiteError;
+            console.log('Cleared website_voting');
 
-        // 5. Invalidate dashboard cache
-        cachedPollResultsData = null;
-        cachedPollResultsTime = 0;
+            // 5. Invalidate dashboard cache
+            cachedPollResultsData = null;
+            cachedPollResultsTime = 0;
 
-        console.log('All poll tables cleared and cache invalidated');
-        res.json({ success: true });
-    } catch (err) {
-        console.error('Stop poll error:', err);
-        res.status(500).json({ error: err.message });
-    }
-});
+            console.log('All poll tables cleared and cache invalidated');
+            res.json({ success: true });
+        } catch (err) {
+            console.error('Stop poll error:', err);
+            res.status(500).json({ error: err.message });
+        }
+    });
 
     // ────────────────────────────────────────────────
     // MARK WINNER
@@ -137,7 +138,6 @@ app.post('/api/stop-poll', async (req, res) => {
             const thread = pollMessage.thread;
             if (!thread) return res.status(404).json({ error: "Thread not found." });
 
-            // Updated emojis (replace with your custom ones)
             const emojisArr = [
                 '<:one:1485655941520167062>',
                 '<:two:1485655967436767252>',
