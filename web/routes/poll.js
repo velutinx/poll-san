@@ -67,52 +67,34 @@ module.exports = function setupPollRoutes(app, client, supabase, supabaseRetry) 
         }
     });
 
-    // ────────────────────────────────────────────────
-    // STOP POLL
-    // ────────────────────────────────────────────────
-    app.post('/api/stop-poll', async (req, res) => {
-        try {
-            // 1. Clear auto_resume (has id)
-            await supabaseRetry(() => supabase.from('auto_resume').delete().neq('id', 0));
-            console.log('Cleared auto_resume');
+// ────────────────────────────────────────────────
+// STOP POLL - Clean version with RPC
+// ────────────────────────────────────────────────
+app.post('/api/stop-poll', async (req, res) => {
+    try {
+        // Use RPC - this runs as SECURITY DEFINER and bypasses RLS issues
+        const { error: rpcError } = await supabaseRetry(() =>
+            supabase.rpc('truncate_poll_tables')
+        );
 
-            // 2. Clear final_votes (has option_id)
-            await supabaseRetry(() => supabase.from('final_votes').delete().neq('option_id', 0));
-            console.log('Cleared final_votes');
-
-            // 3. Clear votes_discord – condition always true (poll_id is never 'dummy')
-            const { error: votesError } = await supabaseRetry(() =>
-                supabase.from('votes_discord').delete().neq('poll_id', 'dummy')
-            );
-            if (votesError) throw votesError;
-            console.log('Cleared votes_discord');
-
-            // 4. Clear website_voting - more reliable way
-const { error: websiteError, count: deletedCount } = await supabaseRetry(() =>
-    supabase
-        .from('website_voting')
-        .delete({ count: 'exact' })   // ask for count
-        .neq('id', 0)
-);
-
-if (websiteError) throw websiteError;
-
-console.log(`Cleared website_voting - ${deletedCount || 0} rows deleted`);
-            
-            if (websiteError) throw websiteError;
-            console.log('Cleared website_voting');
-
-            // 5. Invalidate dashboard cache
-            cachedPollResultsData = null;
-            cachedPollResultsTime = 0;
-
-            console.log('All poll tables cleared and cache invalidated');
-            res.json({ success: true });
-        } catch (err) {
-            console.error('Stop poll error:', err);
-            res.status(500).json({ error: err.message });
+        if (rpcError) {
+            console.error('RPC truncate error:', rpcError);
+            throw rpcError;
         }
-    });
+
+        console.log('All poll tables truncated via RPC');
+
+        // Invalidate dashboard cache
+        cachedPollResultsData = null;
+        cachedPollResultsTime = 0;
+
+        console.log('All poll tables cleared and cache invalidated');
+        res.json({ success: true });
+    } catch (err) {
+        console.error('Stop poll error:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
 
     // ────────────────────────────────────────────────
     // MARK WINNER
