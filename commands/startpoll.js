@@ -24,14 +24,17 @@ module.exports = async (interaction) => {
     }
 
     const endTime = Date.now() + (days * 24 * 60 * 60 * 1000);
+
     const characters = listRaw
         .split(/(?=:female_sign:|:male_sign:|♀️|♂️)/)
         .map(s => s.trim())
         .filter(s => s.length > 0);
 
+    console.log(`📋 Starting poll with ${characters.length} characters`);
+
     // 4. GENERATE POLL MESSAGE
-    const pollMessage = await interaction.channel.send({ 
-        content: await generateMessageContent(endTime, null, characters) 
+    const pollMessage = await interaction.channel.send({
+        content: await generateMessageContent(endTime, null, characters)
     });
 
     // 5. RECORD TO SUPABASE
@@ -53,27 +56,35 @@ module.exports = async (interaction) => {
     }
 
     // 7. THREAD & IMAGES
-    const thread = await pollMessage.startThread({ 
-        name: `Character Discussion - ${new Date().toLocaleDateString()}`, 
-        autoArchiveDuration: 1440 
+    const thread = await pollMessage.startThread({
+        name: `Character Discussion - ${new Date().toLocaleDateString()}`,
+        autoArchiveDuration: 1440
     });
-    
+
     const characterChunks = chunkArray(characters, 4);
+
     for (let i = 0; i < characterChunks.length; i++) {
         let content = "";
         const files = [];
+
         characterChunks[i].forEach((name, idx) => {
             const globalIdx = (i * 4) + idx + 1;
             content += `${emojis[globalIdx - 1]} ${name}\n`;
             files.push(`https://www.velutinx.com/images/poll/${globalIdx}.jpg`);
         });
-        await thread.send({ content, files }).catch(e => console.error("Thread Image Error:", e.message));
+
+        // Debug log to see exact order being sent
+        console.log(`📸 Sending chunk ${i + 1}/${characterChunks.length} → Files:`, 
+            files.map(f => f.split('/').pop()));
+
+        await thread.send({ content, files })
+            .catch(e => console.error("Thread Image Error:", e.message));
     }
-    
-    // 8. SEND NOTIFICATION (fixed duplicate line)
-    await thread.send({ 
-        content: ":point_up_2: Character images for the poll above! <@&1472273843665113139>" 
-    });
+
+    // 8. SEND NOTIFICATION
+    await thread.send({
+        content: ":point_up_2: Character images for the poll above! <@&1472273843665113139>"
+    }).catch(() => {});
 
     // 9. FINALIZE INTERACTION
     if (interaction.editReply) {
