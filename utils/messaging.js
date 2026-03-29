@@ -65,11 +65,13 @@ if (existing && existing.length > 0) {
   const { error: insertError } = await supabaseRetry(() =>
     supabase
       .from('member_message_log')
-      .insert({
-        discord_id: discordId,
-        expires_at: membership.expires_at,
-        sent_by: 'auto',
-        message_type: 'cycle_start'
+        .insert({
+            discord_id: discordId,
+            discord_name: member.tag,           // full Discord tag (e.g., "username#1234")
+            tier: tierName,                     // e.g., "Silver"
+            expires_at: membership.expires_at,
+            sent_by: 'auto',
+            message_type: 'cycle_start'
       })
   );
   if (insertError) {
