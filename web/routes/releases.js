@@ -319,89 +319,104 @@ const newThread = await forumChannel.threads.create({
   // ────────────────────────────────────────────────
   // 13. MEGA UPLOAD (with month folder and progress)
   // ────────────────────────────────────────────────
-  app.post('/api/upload-to-mega', upload.single('file'), async (req, res) => {
-    if (!req.file) {
-      return res.status(400).json({ error: 'No file uploaded' });
+app.post('/api/upload-to-mega', upload.single('file'), async (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ error: 'No file uploaded' });
+  }
+  if (!req.file.originalname.toLowerCase().endsWith('.zip')) {
+    return res.status(400).json({ error: 'Only ZIP files are allowed' });
+  }
+  if (req.file.size > 100 * 1024 * 1024) {
+    return res.status(400).json({ error: 'File exceeds 100MB limit' });
+  }
+
+  const megaEmail = process.env.MEGA_EMAIL;
+  const megaPassword = process.env.MEGA_PASSWORD;
+  if (!megaEmail || !megaPassword) {
+    return res.status(500).json({ error: 'MEGA credentials missing' });
+  }
+
+  // --- NEW: allow custom filename for Mega (and local download) ---
+  const desiredFileName = req.body.desiredName || req.file.originalname;
+  const month = req.body.month;
+  if (!month) return res.status(400).json({ error: 'Month folder not provided' });
+
+  const yearShort = month.slice(-2);
+  const year = `20${yearShort}`;
+  const folderPath = ['Packs', year, month];
+
+  async function getOrCreateFolder(node, pathParts) {
+    let current = node;
+    for (const part of pathParts) {
+      let child = current.children.find(c => c.name === part && c.directory);
+      if (!child) child = await current.mkdir(part);
+      current = child;
     }
+    return current;
+  }
 
-    if (!req.file.originalname.toLowerCase().endsWith('.zip')) {
-      return res.status(400).json({ error: 'Only ZIP files are allowed' });
-    }
+  const tempDir = os.tmpdir();
+  const tempFilePath = path.join(tempDir, `mega-upload-${Date.now()}-${desiredFileName}`);
 
-    if (req.file.size > 100 * 1024 * 1024) {
-      return res.status(400).json({ error: 'File exceeds 100MB limit' });
-    }
+  try {
+    // Write buffer to temp file
+    fs.writeFileSync(tempFilePath, req.file.buffer);
 
-    const megaEmail = process.env.MEGA_EMAIL;
-    const megaPassword = process.env.MEGA_PASSWORD;
-    if (!megaEmail || !megaPassword) {
-      console.error('MEGA credentials not set in environment');
-      return res.status(500).json({ error: 'Server configuration error' });
-    }
+    const storage = await new Storage({ email: megaEmail, password: megaPassword }).ready;
+    const targetFolder = await getOrCreateFolder(storage.root, folderPath);
+    const readStream = fs.createReadStream(tempFilePath);
 
-    const desiredFileName = req.file.originalname;
-    const month = req.body.month; // e.g., "MAR-26"
-    if (!month) {
-      return res.status(400).json({ error: 'Month folder not provided' });
-    }
+    // Upload to Mega
+    const uploadResult = await new Promise((resolve, reject) => {
+      const upload = targetFolder.upload({ name: desiredFileName, size: req.file.size }, readStream);
+      upload.on('error', reject);
+      upload.on('complete', resolve);
+    });
 
-    const yearShort = month.slice(-2);
-    const year = `20${yearShort}`;
-    const folderPath = ['Packs', year, month];
+    const megaLink = await uploadResult.link();
+    console.log(`✅ Uploaded to Mega: ${megaLink}`);
 
-    async function getOrCreateFolder(node, pathParts) {
-      let current = node;
-      for (const part of pathParts) {
-        let child = current.children.find(c => c.name === part && c.directory);
-        if (!child) {
-          child = await current.mkdir(part);
-        }
-        current = child;
-      }
-      return current;
-    }
+    // --- NEW: automatically download the file from Mega (if requested) ---
+    let localPath = null;
+    if (req.body.downloadAfterUpload === 'true') {
+      const downloadDir = req.body.localDownloadPath || './downloads/';
+      if (!fs.existsSync(downloadDir)) fs.mkdirSync(downloadDir, { recursive: true });
 
-    const tempDir = os.tmpdir();
-    const tempFilePath = path.join(tempDir, `mega-upload-${Date.now()}-${desiredFileName}`);
+      // Use megajs to download the file via its link
+      const { File } = require('megajs');
+      const megaFile = File.fromURL(megaLink);
 
-    try {
-      fs.writeFileSync(tempFilePath, req.file.buffer);
-
-      const storage = await new Storage({
-        email: megaEmail,
-        password: megaPassword
-      }).ready;
-
-      const targetFolder = await getOrCreateFolder(storage.root, folderPath);
-
-      const readStream = fs.createReadStream(tempFilePath);
-
-      const uploadResult = await new Promise((resolve, reject) => {
-        const upload = targetFolder.upload({
-          name: desiredFileName,
-          size: req.file.size
-        }, readStream);
-
-        upload.on('error', reject);
-        upload.on('complete', (file) => resolve(file));
+      await new Promise((resolve, reject) => {
+        const localFileStream = fs.createWriteStream(path.join(downloadDir, desiredFileName));
+        megaFile.download((err, data) => {
+          if (err) return reject(err);
+          localFileStream.write(data);
+          localFileStream.end();
+          localFileStream.on('finish', resolve);
+          localFileStream.on('error', reject);
+        });
       });
-
-      console.log('📤️[MEGA] Upload complete');
-
-      const link = await uploadResult.link();
-
-      fs.unlinkSync(tempFilePath);
-      storage.close();
-
-      res.json({ success: true, link });
-    } catch (error) {
-      console.error('MEGA upload error:', error);
-      if (fs.existsSync(tempFilePath)) {
-        fs.unlinkSync(tempFilePath);
-      }
-      res.status(500).json({ error: error.message || 'Upload failed' });
+      localPath = path.join(downloadDir, desiredFileName);
+      console.log(`📥 Downloaded from Mega to ${localPath}`);
     }
-  });
+
+    // Cleanup temp file
+    fs.unlinkSync(tempFilePath);
+    storage.close();
+
+    res.json({
+      success: true,
+      link: megaLink,
+      localPath: localPath,     // only if downloadAfterUpload was true
+      fileName: desiredFileName
+    });
+
+  } catch (error) {
+    console.error('MEGA operation error:', error);
+    if (fs.existsSync(tempFilePath)) fs.unlinkSync(tempFilePath);
+    res.status(500).json({ error: error.message || 'Upload failed' });
+  }
+});
 
   // ────────────────────────────────────────────────
   // 14. TEST ZIP (extract first 10 images, sorted by embedded number)
