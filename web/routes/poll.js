@@ -66,22 +66,35 @@ module.exports = function setupPollRoutes(app, client, supabase, supabaseRetry) 
         }
     });
 
-    // ────────────────────────────────────────────────
-    // STOP POLL
-    // ────────────────────────────────────────────────
-    app.post('/api/stop-poll', async (req, res) => {
-        try {
-            await supabaseRetry(() => supabase.from('auto_resume').delete().neq('id', 0));
-            await supabaseRetry(() => supabase.from('final_votes').delete().neq('option_id', 0));
-            const { error: err3 } = await supabaseRetry(() => supabase.from('votes_discord').delete());
-            if (err3) console.warn('votes_discord delete warning:', err3.message);
-            await supabaseRetry(() => supabase.from('website_voting').delete().neq('id', 0));
-            res.json({ success: true });
-        } catch (err) {
-            console.error('Stop poll error:', err);
-            res.status(500).json({ error: err.message });
-        }
-    });
+// ────────────────────────────────────────────────
+// STOP POLL
+// ────────────────────────────────────────────────
+app.post('/api/stop-poll', async (req, res) => {
+    try {
+        // 1. Clear auto_resume
+        await supabaseRetry(() => supabase.from('auto_resume').delete().neq('id', 0));
+        console.log('Cleared auto_resume');
+
+        // 2. Clear final_votes
+        await supabaseRetry(() => supabase.from('final_votes').delete().neq('option_id', 0));
+        console.log('Cleared final_votes');
+
+        // 3. Clear votes_discord (all rows)
+        const { error: votesError } = await supabaseRetry(() => supabase.from('votes_discord').delete());
+        if (votesError) throw votesError;
+        console.log('Cleared votes_discord');
+
+        // 4. Clear website_voting (all rows)
+        const { error: websiteError } = await supabaseRetry(() => supabase.from('website_voting').delete().neq('id', 0));
+        if (websiteError) throw websiteError;
+        console.log('Cleared website_voting');
+
+        res.json({ success: true });
+    } catch (err) {
+        console.error('Stop poll error:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
 
     // ────────────────────────────────────────────────
     // MARK WINNER
