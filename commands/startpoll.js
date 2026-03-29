@@ -55,7 +55,7 @@ module.exports = async (interaction) => {
         await pollMessage.react(id).catch(() => {});
     }
 
-    // 7. THREAD & IMAGES
+    // 7. THREAD & IMAGES - FIXED ORDER VERSION (using buffers)
     const thread = await pollMessage.startThread({
         name: `Character Discussion - ${new Date().toLocaleDateString()}`,
         autoArchiveDuration: 1440
@@ -67,19 +67,32 @@ module.exports = async (interaction) => {
         let content = "";
         const files = [];
 
-        characterChunks[i].forEach((name, idx) => {
+        for (let idx = 0; idx < characterChunks[i].length; idx++) {
+            const name = characterChunks[i][idx];
             const globalIdx = (i * 4) + idx + 1;
+
             content += `${emojis[globalIdx - 1]} ${name}\n`;
-            
-            // Push as object with filename to force correct order
-            files.push({
-                attachment: `https://www.velutinx.com/images/poll/${globalIdx}.jpg`,
-                name: `${globalIdx}.jpg`   // ← This helps Discord keep the order
-            });
-        });
+
+            try {
+                // Download the image as buffer → forces Discord to respect order
+                const response = await fetch(`https://www.velutinx.com/images/poll/${globalIdx}.jpg`);
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                
+                const buffer = await response.arrayBuffer();   // or .buffer() in older node-fetch
+
+                files.push({
+                    attachment: Buffer.from(buffer),
+                    name: `${globalIdx}.jpg`   // Explicit filename helps a lot
+                });
+            } catch (err) {
+                console.error(`❌ Failed to fetch image ${globalIdx}.jpg:`, err.message);
+                // Fallback to URL (less reliable for order)
+                files.push(`https://www.velutinx.com/images/poll/${globalIdx}.jpg`);
+            }
+        }
 
         console.log(`📸 Sending chunk ${i + 1}/${characterChunks.length} →`, 
-            files.map(f => f.name));
+            files.map(f => f.name || f.split('/').pop()));
 
         await thread.send({ content, files })
             .catch(e => console.error("Thread Image Error:", e.message));
