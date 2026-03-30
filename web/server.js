@@ -22,65 +22,82 @@ module.exports = (client) => {
         allowedHeaders: ['Content-Type', 'Authorization']
     }));
 
-    // 2. QUICK PROBE BLOCKER - Return 404 fast for common scanner paths
-    app.use((req, res, next) => {
-        const url = req.url.toLowerCase();
+// ====================== MIDDLEWARE SETUP ======================
 
-        const probePatterns = [
-            /\.env/i,
-            /\.git/i,
-            /actuator/i,
-            /swagger/i,
-            /api-docs/i,
-            /v[2-3]\/api/i,
-            /php(info|myadmin|unit|adminer)/i,
-            /\.ht(access|passwd)/i,
-            /web\.config/i,
-            /nginx\.conf/i,
-            /docker-compose/i,
-            /Dockerfile/i,
-            /composer\.(json|lock)/i,
-            /package\.json/i,
-            /requirements\.txt/i,
-            /backup|dump|db\.sql|database\.sql/i,
-            /config\.(php|yml|yaml|json|xml)/i,
-            /settings\.(json|yml)/i,
-            /secrets|credentials/i,
-            /robots\.txt/i,
-            /sitemap\.xml/i,
-            /crossdomain\.xml/i,
-            /\.\.\//,                    // path traversal
-            /%3Cscript/i,                // XSS
-            /union\+select/i,            // SQLi
-            /server-status|server-info|trace/i,
-            /graphql/i
-        ];
+// 1. QUICK PROBE BLOCKER - Return 404 fast for common scanner paths
+app.use((req, res, next) => {
+    const url = req.url.toLowerCase();
 
-        if (probePatterns.some(pattern => pattern.test(url))) {
-            return res.status(404).send('Not Found');
-        }
-        next();
-    });
+    const probePatterns = [
+        /\.env/i,
+        /\.git/i,
+        /actuator/i,
+        /swagger/i,
+        /api-docs/i,
+        /v[2-3]\/api/i,
+        /php(info|myadmin|unit|adminer)/i,
+        /\.ht(access|passwd)/i,
+        /web\.config/i,
+        /nginx\.conf/i,
+        /docker-compose/i,
+        /Dockerfile/i,
+        /composer\.(json|lock)/i,
+        /package\.json/i,
+        /requirements\.txt/i,
+        /backup|dump|db\.sql|database\.sql/i,
+        /config\.(php|yml|yaml|json|xml)/i,
+        /settings\.(json|yml)/i,
+        /secrets|credentials/i,
+        /robots\.txt/i,
+        /sitemap\.xml/i,
+        /crossdomain\.xml/i,
+        /\.\.\//,                    // path traversal
+        /%3Cscript/i,                // XSS
+        /union\+select/i,            // SQLi
+        /server-status|server-info|trace/i,
+        /graphql/i,
+        /wp-(admin|content|includes)/i,   // Added common WordPress scans
+        /\.bak|\.old|\.backup/i
+    ];
 
-    // 3. IMPROVED LOGGING MIDDLEWARE - Only log real traffic
-    app.use((req, res, next) => {
-        const url = req.url.toLowerCase();
+    if (probePatterns.some(pattern => pattern.test(url))) {
+        return res.status(404).send('Not Found');
+    }
+    next();
+});
 
-        // Skip logging for clean dashboard paths and static files
-        const skipLog = 
-            url === '/' ||
-            url.startsWith('/poll-san') ||
-            url.startsWith('/js/') ||
-            url.startsWith('/css/') ||
-            url.startsWith('/api/') ||
-            url === '/favicon.ico';
+// 2. STATIC ASSETS SERVING
+app.use('/assets', express.static('public/assets', { 
+    maxAge: '1d',
+    etag: true 
+}));
+app.use('/static', express.static('public/static', { 
+    maxAge: '1d',
+    etag: true 
+}));
 
-        if (!skipLog) {
-            console.log(`${new Date().toISOString()} - ${req.method} ${req.url}`);
-        }
+// 3. SILENCE LOG SPAM FOR STATIC FILES & COMMON ASSETS
+app.use((req, res, next) => {
+    const url = req.url.toLowerCase();
 
-        next();
-    });
+    const staticPatterns = [
+        /^\/assets\//,
+        /^\/static\//,
+        /^\/bot-connect\.js$/,
+        /^\/favicon\.ico$/,
+        /^\/manifest\.json$/,
+        /\.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|map|json|webmanifest)$/i
+    ];
+
+    if (staticPatterns.some(pattern => pattern.test(url))) {
+        // Skip logging but continue to serve the file
+        return next();
+    }
+
+    next();
+});
+
+
 
     // 4. Body parsers
     app.use(express.json());
