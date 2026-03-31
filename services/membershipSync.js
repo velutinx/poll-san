@@ -13,7 +13,7 @@ const SUPPORTER_ROLE = '1466155709547675795';
 
 // Translation dictionary for user messages
 const MESSAGES = {
-  en: {
+  en: {1
     welcome: "🎉 Welcome to the {tierName} tier! Your membership is active until **{expiryDate}**. You can now access exclusive content and perks.\n\n",
     recurring: "Your subscription is recurring and will automatically renew each month. You can cancel anytime from your PayPal account.\n\n",
     joinDiscord: "**Join our Discord server:** {inviteLink}\nMake sure to link your Discord account (you already did!) to get your role.",
@@ -113,17 +113,16 @@ async function sendMembershipMessage(client, discordId, membership) {
   const lang = await getLanguageForOrder(orderId);
   const t = MESSAGES[lang] || MESSAGES.en;
 
-  let message = t.welcome
+  // Choose template based on tier
+  const messageTemplate = (tier === 1) ? t.welcome_tier1 : t.welcome_tier2_5;
+
+  // Get current month name for the placeholder (e.g., "March")
+  const currentMonth = new Date().toLocaleString(lang, { month: 'long' });
+
+  let message = messageTemplate
     .replace('{tierName}', tierName)
-    .replace('{expiryDate}', formatDate(expiresAt));
-
-  if (membership.recurring) {
-    message += t.recurring;
-  }
-
-  const inviteLink = 'https://discord.gg/your-invite'; // Replace with your actual invite
-  message += t.joinDiscord.replace('{inviteLink}', inviteLink);
-  message += '\n\n' + t.footer;
+    .replace('{expiryDate}', formatDate(expiresAt))
+    .replace('{currentMonth}', currentMonth);
 
   try {
     const guild = await client.guilds.fetch(process.env.GUILD_ID);
