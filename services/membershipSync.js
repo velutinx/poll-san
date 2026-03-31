@@ -98,7 +98,7 @@ async function sendMembershipMessage(client, discordId, membership) {
 
   const alreadySent = await hasMessageBeenSent(discordId, orderId);
   if (alreadySent) {
-    console.log(`[MembershipSync] Message already sent for ${discordId} order ${orderId}, skipping.`);
+ //   console.log(`[MembershipSync] Message already sent for ${discordId} order ${orderId}, skipping.`);
     return;
   }
 
