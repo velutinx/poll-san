@@ -11,31 +11,23 @@ const TIER_ROLES = {
 };
 const SUPPORTER_ROLE = '1466155709547675795';
 
-// Translation dictionary for user messages
+// Translation dictionary for user messages (updated with new templates)
 const MESSAGES = {
-  en: {1
-    welcome: "🎉 Welcome to the {tierName} tier! Your membership is active until **{expiryDate}**. You can now access exclusive content and perks.\n\n",
-    recurring: "Your subscription is recurring and will automatically renew each month. You can cancel anytime from your PayPal account.\n\n",
-    joinDiscord: "**Join our Discord server:** {inviteLink}\nMake sure to link your Discord account (you already did!) to get your role.",
-    footer: "Thank you for your support! 🖤"
+  en: {
+    welcome_tier1: "🎉 Welcome to the {tierName} tier!\nYour membership is active until **{expiryDate}**.\n\nFeel free to explore the packs on **[this channel](https://discord.com/channels/1401446104498700358/1465937644394512516)** and **[join the server](https://discord.gg/XF363uYfSh)** if you haven't.\n\nPlease message **[DM dorem](https://discord.com/users/842917477977161739)** if you have any questions.",
+    welcome_tier2_5: "🎉 Welcome to the {tierName} tier!\nYour membership is active until **{expiryDate}**.\n\nFeel free to explore the packs on **[this channel](https://discord.com/channels/1401446104498700358/1465937644394512516)** and **[join the server](https://discord.gg/XF363uYfSh)** if you haven't.\n\nPlease message **[DM dorem](https://discord.com/users/842917477977161739)** to redeem your {currentMonth} billing cycle request."
   },
   ja: {
-    welcome: "🎉 {tierName} ティアへようこそ！あなたのメンバーシップは **{expiryDate}** まで有効です。これで限定コンテンツや特典にアクセスできます。\n\n",
-    recurring: "サブスクリプションは毎月自動更新されます。いつでもPayPalアカウントから解約できます。\n\n",
-    joinDiscord: "**Discordサーバーに参加:** {inviteLink}\nあなたのDiscordアカウントはすでに連携されています。ロールが自動で付与されます。",
-    footer: "ご支援ありがとうございます！ 🖤"
+    welcome_tier1: "🎉 {tierName} ティアへようこそ！\nメンバーシップは **{expiryDate}** まで有効です。\n\nこちらの **[チャンネル](https://discord.com/channels/1401446104498700358/1465937644394512516)** でパックを探索したり、**[サーバーに参加](https://discord.gg/XF363uYfSh)** したりできます（まだの場合）。\n\nご質問があれば、**[DM dorem](https://discord.com/users/842917477977161739)** までお問い合わせください。",
+    welcome_tier2_5: "🎉 {tierName} ティアへようこそ！\nメンバーシップは **{expiryDate}** まで有効です。\n\nこちらの **[チャンネル](https://discord.com/channels/1401446104498700358/1465937644394512516)** でパックを探索したり、**[サーバーに参加](https://discord.gg/XF363uYfSh)** したりできます（まだの場合）。\n\n{currentMonth}のリクエストをご利用になるには、**[DM dorem](https://discord.com/users/842917477977161739)** までメッセージを送ってください。"
   },
   zh: {
-    welcome: "🎉 欢迎加入 {tierName} 等级！您的会员资格有效至 **{expiryDate}**。您现在可以访问独家内容和特权。\n\n",
-    recurring: "订阅每月自动续费。您可以随时从 PayPal 账户取消。\n\n",
-    joinDiscord: "**加入我们的 Discord 服务器:** {inviteLink}\n您的 Discord 账号已关联，角色将自动分配。",
-    footer: "感谢您的支持！ 🖤"
+    welcome_tier1: "🎉 欢迎加入 {tierName} 等级！\n您的会员资格有效至 **{expiryDate}**。\n\n请随时在此 **[频道](https://discord.com/channels/1401446104498700358/1465937644394512516)** 探索图包，并 **[加入服务器](https://discord.gg/XF363uYfSh)**（如果尚未加入）。\n\n如有任何问题，请 **[私信 dorem](https://discord.com/users/842917477977161739)**。",
+    welcome_tier2_5: "🎉 欢迎加入 {tierName} 等级！\n您的会员资格有效至 **{expiryDate}**。\n\n请随时在此 **[频道](https://discord.com/channels/1401446104498700358/1465937644394512516)** 探索图包，并 **[加入服务器](https://discord.gg/XF363uYfSh)**（如果尚未加入）。\n\n如需使用 {currentMonth} 的请求额度，请 **[私信 dorem](https://discord.com/users/842917477977161739)**。"
   },
   es: {
-    welcome: "🎉 ¡Bienvenido al nivel {tierName}! Tu membresía está activa hasta el **{expiryDate}**. Ahora puedes acceder a contenido exclusivo y beneficios.\n\n",
-    recurring: "Tu suscripción se renueva automáticamente cada mes. Puedes cancelarla en cualquier momento desde tu cuenta de PayPal.\n\n",
-    joinDiscord: "**Únete a nuestro servidor de Discord:** {inviteLink}\nTu cuenta de Discord ya está vinculada. El rol se asignará automáticamente.",
-    footer: "¡Gracias por tu apoyo! 🖤"
+    welcome_tier1: "🎉 ¡Bienvenido al nivel {tierName}!\nTu membresía está activa hasta el **{expiryDate}**.\n\nExplora los packs en **[este canal](https://discord.com/channels/1401446104498700358/1465937644394512516)** y **[únete al servidor](https://discord.gg/XF363uYfSh)** si aún no lo has hecho.\n\nSi tienes alguna pregunta, envíame un **[DM a dorem](https://discord.com/users/842917477977161739)**.",
+    welcome_tier2_5: "🎉 ¡Bienvenido al nivel {tierName}!\nTu membresía está activa hasta el **{expiryDate}**.\n\nExplora los packs en **[este canal](https://discord.com/channels/1401446104498700358/1465937644394512516)** y **[únete al servidor](https://discord.gg/XF363uYfSh)** si aún no lo has hecho.\n\nPara canjear tu solicitud del ciclo de facturación de {currentMonth}, envíame un **[DM a dorem](https://discord.com/users/842917477977161739)**."
   }
 };
 
@@ -215,6 +207,7 @@ async function syncMembershipRoles(client) {
     }
 
     // --- Send messages to ALL active members that haven't been messaged yet ---
+    // The hasMessageBeenSent check prevents duplicates.
     for (const [discordId, membership] of userBestMembership.entries()) {
       await sendMembershipMessage(client, discordId, membership);
     }
