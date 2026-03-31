@@ -61,25 +61,64 @@ async function getLanguageForOrder(orderId) {
   return data.language || 'en';
 }
 
+// Helper: check if a message has already been sent for this order
+async function hasMessageBeenSent(discordId, orderId) {
+  const { data, error } = await supabaseRetry(() =>
+    supabase
+      .from('member_messages')
+      .select('id')
+      .eq('discord_id', discordId)
+      .eq('order_id', orderId)
+      .maybeSingle()
+  );
+  if (error) {
+    console.error('[MembershipSync] Failed to check message sent status:', error.message);
+    return false;
+  }
+  return !!data;
+}
+
+// Helper: record that a message was sent
+async function recordMessageSent(discordId, orderId, language) {
+  const { error } = await supabaseRetry(() =>
+    supabase
+      .from('member_messages')
+      .insert({ discord_id: discordId, order_id: orderId, language, sent_at: new Date().toISOString() })
+  );
+  if (error) {
+    console.error('[MembershipSync] Failed to record message sent:', error.message);
+  }
+}
+
 // Helper: send a DM to a user
 async function sendDM(member, content) {
   try {
     await member.send(content);
-    console.log(`[MembershipSync] DM sent to ${member.user.tag}`);
+    console.log(`[MembershipSync] ✅ DM sent to ${member.user.tag}`);
+    return true;
   } catch (err) {
-    console.error(`[MembershipSync] Failed to send DM to ${member.user.tag}:`, err.message);
+    console.error(`[MembershipSync] ❌ Failed to send DM to ${member.user.tag}:`, err.message);
+    return false;
   }
 }
 
-// Main function to send welcome message
+// Main function to send welcome message (if not already sent)
 async function sendMembershipMessage(client, discordId, membership) {
   const tier = membership.tier;
   const expiresAt = new Date(membership.expires_at);
+  const orderId = membership.order_id;
   const tierNames = { 1: 'Bronze', 2: 'Copper', 3: 'Silver', 4: 'Gold', 5: 'Platinum' };
   const tierName = tierNames[tier] || `Tier ${tier}`;
 
-  // Fetch language from the order
-  const lang = await getLanguageForOrder(membership.order_id);
+  // Check if already messaged for this order
+  const alreadySent = await hasMessageBeenSent(discordId, orderId);
+  if (alreadySent) {
+    console.log(`[MembershipSync] Message already sent for ${discordId} order ${orderId}, skipping.`);
+    return;
+  }
+
+  // Fetch language
+  const lang = await getLanguageForOrder(orderId);
   const t = MESSAGES[lang] || MESSAGES.en;
 
   // Build message
@@ -91,21 +130,27 @@ async function sendMembershipMessage(client, discordId, membership) {
     message += t.recurring;
   }
 
-  const inviteLink = 'https://discord.gg/your-invite'; // Replace with your server invite
+  const inviteLink = 'https://discord.gg/your-invite'; // Replace with your actual invite
   message += t.joinDiscord.replace('{inviteLink}', inviteLink);
   message += '\n\n' + t.footer;
 
-  // Send DM
+  // Attempt to send DM
   try {
     const guild = await client.guilds.fetch(process.env.GUILD_ID);
     const member = await guild.members.fetch(discordId);
-    await sendDM(member, message);
+    const success = await sendDM(member, message);
+    if (success) {
+      await recordMessageSent(discordId, orderId, lang);
+      console.log(`[MembershipSync] Welcome message recorded for ${discordId} order ${orderId} (lang: ${lang})`);
+    } else {
+      console.error(`[MembershipSync] Failed to send DM to ${discordId} for order ${orderId}`);
+    }
   } catch (err) {
     console.error(`[MembershipSync] Could not send DM to ${discordId}:`, err.message);
   }
 }
 
-// Existing syncMembershipRoles function (unchanged except the call to sendMembershipMessage)
+// Existing syncMembershipRoles function (only the send‑message part modified)
 async function getLastActiveSet() {
   const { data, error } = await supabaseRetry(() =>
     supabase
@@ -141,7 +186,7 @@ async function syncMembershipRoles(client) {
   try {
     const now = new Date().toISOString();
 
-    // Fetch all memberships with expires_at > now (regardless of status)
+    // Fetch all memberships with expires_at > now
     const { data: activeMemberships, error: activeError } = await supabaseRetry(() =>
       supabase
         .from('memberships')
@@ -150,8 +195,8 @@ async function syncMembershipRoles(client) {
     );
     if (activeError) throw activeError;
 
-    // Group by discord_id, keep the highest tier membership (store full record)
-    const userBestMembership = new Map(); // discordId -> membership object
+    // Group by discord_id, keep highest tier membership
+    const userBestMembership = new Map();
     for (const membership of activeMemberships) {
       const discordId = membership.discord_id;
       const currentBest = userBestMembership.get(discordId);
@@ -162,9 +207,11 @@ async function syncMembershipRoles(client) {
 
     const currentActiveIds = new Set(userBestMembership.keys());
 
-    // Log new members (for informational purposes)
+    // Get previous active set
     const previousActiveIds = await getLastActiveSet();
     const newIds = [...currentActiveIds].filter(id => !previousActiveIds.has(id));
+
+    // Log new members
     if (newIds.length > 0) {
       changesMade = true;
       const guild = await client.guilds.fetch(process.env.GUILD_ID);
@@ -180,16 +227,13 @@ async function syncMembershipRoles(client) {
       }
     }
 
-    // --- Send welcome messages for all active members (if not already sent) ---
-    // We should only send once per membership. Using a flag in the database would be better,
-    // but for simplicity, we can check if the member is new (by comparing to previous set)
-    // and only send to those new members. We'll send only to newly added users.
+    // --- Send welcome messages only to new members ---
     for (const discordId of newIds) {
       const membership = userBestMembership.get(discordId);
       await sendMembershipMessage(client, discordId, membership);
     }
 
-    // --- Role sync (assign roles based on best tier) ---
+    // --- Role sync (unchanged from your existing code) ---
     const guild = await client.guilds.fetch(process.env.GUILD_ID);
     for (const [discordId, membership] of userBestMembership.entries()) {
       const member = await guild.members.fetch(discordId).catch(() => null);
@@ -200,21 +244,18 @@ async function syncMembershipRoles(client) {
       const hasTargetRole = currentRoleIds.includes(targetRoleId);
       const hasSupporter = currentRoleIds.includes(SUPPORTER_ROLE);
 
-      // Add target role if missing
       if (!hasTargetRole) {
         await member.roles.add(targetRoleId);
         console.log(`[MembershipSync] Added role ${targetRoleId} to ${member.user.tag} (tier ${membership.tier})`);
         changesMade = true;
       }
 
-      // Add supporter role if missing (only for tier >= 1? Actually for all members)
       if (!hasSupporter) {
         await member.roles.add(SUPPORTER_ROLE);
         console.log(`[MembershipSync] Added supporter role to ${member.user.tag}`);
         changesMade = true;
       }
 
-      // Remove any other tier roles that are not the highest
       for (const roleId of Object.values(TIER_ROLES)) {
         if (roleId !== targetRoleId && currentRoleIds.includes(roleId)) {
           await member.roles.remove(roleId);
@@ -256,6 +297,8 @@ async function syncMembershipRoles(client) {
     await storeCurrentActiveSet(currentActiveIds);
     if (changesMade) {
       console.log('[MembershipSync] Sync completed with changes.');
+    } else {
+      console.log('[MembershipSync] Sync completed, no changes.');
     }
   } catch (err) {
     console.error('[MembershipSync] Fatal error:', err);
