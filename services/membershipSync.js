@@ -95,7 +95,7 @@ async function sendMembershipMessage(client, discordId, membership) {
 
   const alreadySent = await hasMessageBeenSent(discordId, orderId);
   if (alreadySent) {
-    console.log(`[MembershipSync] Message already sent for ${discordId} order ${orderId}, skipping.`);
+//    console.log(`[MembershipSync] Message already sent for ${discordId} order ${orderId}, skipping.`);
     return;
   }
 
@@ -273,7 +273,7 @@ async function syncMembershipRoles(client) {
     if (changesMade) {
       console.log('[MembershipSync] Sync completed with changes.');
     } else {
-      console.log('[MembershipSync] Sync completed, no changes.');
+//      console.log('[MembershipSync] Sync completed, no changes.');
     }
   } catch (err) {
     console.error('[MembershipSync] Fatal error:', err);
