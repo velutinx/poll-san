@@ -11,7 +11,7 @@ const TIER_ROLES = {
 };
 const SUPPORTER_ROLE = '1466155709547675795';
 
-// Translation dictionary for user messages (updated with new templates)
+// Translation dictionary for user messages
 const MESSAGES = {
   en: {
     welcome_tier1: "🎉 Welcome to the {tierName} tier!\nYour membership is active until **{expiryDate}**.\n\nFeel free to explore the packs on **[this channel](https://discord.com/channels/1401446104498700358/1465937644394512516)** and **[join the server](https://discord.gg/XF363uYfSh)** if you haven't.\n\nPlease message **[DM dorem](https://discord.com/users/842917477977161739)** if you have any questions.",
@@ -86,6 +86,17 @@ async function recordMessageSent(discordId, orderId, language, membership, disco
   }
 }
 
+async function sendDM(member, content) {
+  try {
+    await member.send(content);
+    console.log(`[MembershipSync] ✅ DM sent to ${member.user.tag}`);
+    return true;
+  } catch (err) {
+    console.error(`[MembershipSync] ❌ Failed to send DM to ${member.user.tag}:`, err.message);
+    return false;
+  }
+}
+
 async function sendMembershipMessage(client, discordId, membership) {
   const tier = membership.tier;
   const expiresAt = new Date(membership.expires_at);
@@ -95,7 +106,7 @@ async function sendMembershipMessage(client, discordId, membership) {
 
   const alreadySent = await hasMessageBeenSent(discordId, orderId);
   if (alreadySent) {
-//    console.log(`[MembershipSync] Message already sent for ${discordId} order ${orderId}, skipping.`);
+ //  console.log(`[MembershipSync] Message already sent for ${discordId} order ${orderId}, skipping.`);
     return;
   }
 
@@ -164,7 +175,6 @@ async function syncMembershipRoles(client) {
   try {
     const now = new Date().toISOString();
 
-    // Fetch all memberships with expires_at > now
     const { data: activeMemberships, error: activeError } = await supabaseRetry(() =>
       supabase
         .from('memberships')
@@ -173,7 +183,6 @@ async function syncMembershipRoles(client) {
     );
     if (activeError) throw activeError;
 
-    // Group by discord_id, keep highest tier membership
     const userBestMembership = new Map();
     for (const membership of activeMemberships) {
       const discordId = membership.discord_id;
@@ -202,13 +211,12 @@ async function syncMembershipRoles(client) {
       }
     }
 
-    // --- Send messages to ALL active members that haven't been messaged yet ---
-    // The hasMessageBeenSent check prevents duplicates.
+    // Send messages to all active members that haven't been messaged yet
     for (const [discordId, membership] of userBestMembership.entries()) {
       await sendMembershipMessage(client, discordId, membership);
     }
 
-    // --- Role sync (unchanged) ---
+    // Role sync (assign highest tier and supporter role)
     const guild = await client.guilds.fetch(process.env.GUILD_ID);
     for (const [discordId, membership] of userBestMembership.entries()) {
       const member = await guild.members.fetch(discordId).catch(() => null);
