@@ -59,7 +59,6 @@ async function getLanguageForOrder(orderId) {
   return data.language || 'en';
 }
 
-// Check if message already sent for this order
 async function hasMessageBeenSent(discordId, orderId) {
   const { data, error } = await supabaseRetry(() =>
     supabase
@@ -76,7 +75,6 @@ async function hasMessageBeenSent(discordId, orderId) {
   return !!data;
 }
 
-// Record that a message was sent
 async function recordMessageSent(discordId, orderId, language) {
   const { error } = await supabaseRetry(() =>
     supabase
@@ -88,7 +86,6 @@ async function recordMessageSent(discordId, orderId, language) {
   }
 }
 
-// Send DM
 async function sendDM(member, content) {
   try {
     await member.send(content);
@@ -100,7 +97,6 @@ async function sendDM(member, content) {
   }
 }
 
-// Send welcome message (only if not already sent)
 async function sendMembershipMessage(client, discordId, membership) {
   const tier = membership.tier;
   const expiresAt = new Date(membership.expires_at);
@@ -144,7 +140,7 @@ async function sendMembershipMessage(client, discordId, membership) {
   }
 }
 
-// ========== The rest of syncMembershipRoles (unchanged except function name) ==========
+// ========== Helper functions for sync state ==========
 async function getLastActiveSet() {
   const { data, error } = await supabaseRetry(() =>
     supabase
@@ -174,12 +170,14 @@ async function storeCurrentActiveSet(ids) {
   }
 }
 
+// ========== Main sync function ==========
 async function syncMembershipRoles(client) {
   let changesMade = false;
 
   try {
     const now = new Date().toISOString();
 
+    // Fetch all memberships with expires_at > now
     const { data: activeMemberships, error: activeError } = await supabaseRetry(() =>
       supabase
         .from('memberships')
@@ -188,6 +186,7 @@ async function syncMembershipRoles(client) {
     );
     if (activeError) throw activeError;
 
+    // Group by discord_id, keep highest tier membership
     const userBestMembership = new Map();
     for (const membership of activeMemberships) {
       const discordId = membership.discord_id;
@@ -216,13 +215,12 @@ async function syncMembershipRoles(client) {
       }
     }
 
-    // Send messages to new members
-    for (const discordId of newIds) {
-      const membership = userBestMembership.get(discordId);
+    // --- Send messages to ALL active members that haven't been messaged yet ---
+    for (const [discordId, membership] of userBestMembership.entries()) {
       await sendMembershipMessage(client, discordId, membership);
     }
 
-    // Role sync (unchanged)
+    // --- Role sync (unchanged) ---
     const guild = await client.guilds.fetch(process.env.GUILD_ID);
     for (const [discordId, membership] of userBestMembership.entries()) {
       const member = await guild.members.fetch(discordId).catch(() => null);
