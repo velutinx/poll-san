@@ -11,7 +11,7 @@ const TIER_ROLES = {
 };
 const SUPPORTER_ROLE = '1466155709547675795';
 
-// Translation dictionary for user messages (updated with new templates)
+// Translation dictionary for user messages
 const MESSAGES = {
   en: {
     welcome_tier1: "🎉 Welcome to the {tierName} tier!\nYour membership is active until **{expiryDate}**.\n\nFeel free to explore the packs on **[this channel](https://discord.com/channels/1401446104498700358/1465937644394512516)** and **[join the server](https://discord.gg/XF363uYfSh)** if you haven't.\n\nPlease message **[DM dorem](https://discord.com/users/842917477977161739)** if you have any questions.",
@@ -67,11 +67,18 @@ async function hasMessageBeenSent(discordId, orderId) {
   return !!data;
 }
 
-async function recordMessageSent(discordId, orderId, language) {
+async function recordMessageSent(discordId, orderId, language, membership) {
   const { error } = await supabaseRetry(() =>
     supabase
       .from('member_message_log')
-      .insert({ discord_id: discordId, order_id: orderId, language, sent_at: new Date().toISOString() })
+      .insert({
+        discord_id: discordId,
+        order_id: orderId,
+        language,
+        sent_at: new Date().toISOString(),
+        tier: membership.tier,               // <-- fill tier
+        expires_at: membership.expires_at,   // <-- fill expiry date
+      })
   );
   if (error) {
     console.error('[MembershipSync] Failed to record message sent:', error.message);
@@ -121,7 +128,7 @@ async function sendMembershipMessage(client, discordId, membership) {
     const member = await guild.members.fetch(discordId);
     const success = await sendDM(member, message);
     if (success) {
-      await recordMessageSent(discordId, orderId, lang);
+      await recordMessageSent(discordId, orderId, lang, membership);
       console.log(`[MembershipSync] Welcome message recorded for ${discordId} order ${orderId} (lang: ${lang})`);
     } else {
       console.error(`[MembershipSync] Failed to send DM to ${discordId} for order ${orderId}`);
@@ -207,7 +214,6 @@ async function syncMembershipRoles(client) {
     }
 
     // --- Send messages to ALL active members that haven't been messaged yet ---
-    // The hasMessageBeenSent check prevents duplicates.
     for (const [discordId, membership] of userBestMembership.entries()) {
       await sendMembershipMessage(client, discordId, membership);
     }
@@ -277,7 +283,7 @@ async function syncMembershipRoles(client) {
     if (changesMade) {
       console.log('[MembershipSync] Sync completed with changes.');
     } else {
-      console.log('[MembershipSync] Sync completed, no changes.');
+ //     console.log('[MembershipSync] Sync completed, no changes.');
     }
   } catch (err) {
     console.error('[MembershipSync] Fatal error:', err);
