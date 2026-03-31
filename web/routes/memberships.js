@@ -1,6 +1,6 @@
 // web/routes/memberships.js
 module.exports = function setupMembershipsRoute(app, client, supabase, supabaseRetry) {
-  // GET endpoint (existing)
+  // GET endpoint – now updates discord_tag in DB
   app.get('/api/memberships', async (req, res) => {
     try {
       const { data: subs, error } = await supabaseRetry(() =>
@@ -15,26 +15,39 @@ module.exports = function setupMembershipsRoute(app, client, supabase, supabaseR
         const expiresAt = new Date(sub.expires_at);
         const daysLeft = Math.max(0, Math.ceil((expiresAt - now) / (1000 * 60 * 60 * 24)));
 
+        let nickname = "User Left Server";
+        let discordTag = sub.discord_tag || "Unknown"; // use stored tag if present
+        let userId = sub.discord_id;
+
         try {
           const member = await guild.members.fetch(sub.discord_id);
-          return {
-            nickname: member.displayName,
-            discordTag: member.user.tag,
-            userId: sub.discord_id,
-            rank: sub.tier.toString(),
-            daysLeft: daysLeft,
-            recurring: sub.recurring || false
-          };
+          nickname = member.displayName;
+          discordTag = member.user.tag;
+          userId = member.user.id;
+
+          // Update stored tag if missing or changed
+          if (sub.discord_tag !== discordTag) {
+            await supabaseRetry(() =>
+              supabase.from('memberships')
+                .update({ discord_tag: discordTag })
+                .eq('discord_id', sub.discord_id)
+            );
+            console.log(`✅ Updated discord_tag for ${sub.discord_id} to ${discordTag}`);
+          }
         } catch (err) {
-          return {
-            nickname: "User Left Server",
-            discordTag: "Unknown",
-            userId: sub.discord_id,
-            rank: sub.tier.toString(),
-            daysLeft: daysLeft,
-            recurring: sub.recurring || false
-          };
+          // Member not in server – use stored tag if any
+          discordTag = sub.discord_tag || "Unknown";
+          userId = sub.discord_id;
         }
+
+        return {
+          nickname,
+          discordTag,
+          userId,
+          rank: sub.tier.toString(),
+          daysLeft,
+          recurring: sub.recurring || false
+        };
       }));
 
       res.json(membershipData);
@@ -44,7 +57,7 @@ module.exports = function setupMembershipsRoute(app, client, supabase, supabaseR
     }
   });
 
-  // POST endpoint: capture membership order
+  // POST endpoint: capture membership order (unchanged, but now respects existing tag)
   app.post('/api/capture-membership-order', async (req, res) => {
     console.log('🔥🔥🔥 CAPTURE ENDPOINT HIT! 🔥🔥🔥');
     try {
@@ -58,14 +71,16 @@ module.exports = function setupMembershipsRoute(app, client, supabase, supabaseR
       const expirationDate = new Date();
       expirationDate.setDate(now.getDate() + 30);
 
+      // Note: we don't have the tag here – it will be filled by the GET endpoint later
       const { error } = await supabaseRetry(() =>
         supabase.from('memberships')
-          .upsert({ 
-            discord_id: discordId, 
-            tier: parseInt(tier), 
+          .upsert({
+            discord_id: discordId,
+            tier: parseInt(tier),
             order_id: orderId,
             updated_at: now.toISOString(),
             expires_at: expirationDate.toISOString()
+            // discord_tag is omitted; will be updated on next dashboard load
           }, { onConflict: 'discord_id' })
       );
 
@@ -78,7 +93,7 @@ module.exports = function setupMembershipsRoute(app, client, supabase, supabaseR
       try {
         const guild = await client.guilds.fetch(process.env.GUILD_ID);
         const member = await guild.members.fetch(discordId).catch(() => null);
-        
+
         if (member) {
           const tierRoles = {
             "1": "1465444240845963326",  // ✨ Bronze
