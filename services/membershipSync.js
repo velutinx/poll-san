@@ -39,12 +39,10 @@ const MESSAGES = {
   }
 };
 
-// Helper: format date to user‑friendly string
 function formatDate(date) {
   return date.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
 }
 
-// Helper: get language for a given order ID from successs table
 async function getLanguageForOrder(orderId) {
   if (!orderId) return 'en';
   const { data, error } = await supabaseRetry(() =>
@@ -61,11 +59,11 @@ async function getLanguageForOrder(orderId) {
   return data.language || 'en';
 }
 
-// Helper: check if a message has already been sent for this order
+// Check if message already sent for this order
 async function hasMessageBeenSent(discordId, orderId) {
   const { data, error } = await supabaseRetry(() =>
     supabase
-      .from('member_messages')
+      .from('member_message_log')
       .select('id')
       .eq('discord_id', discordId)
       .eq('order_id', orderId)
@@ -78,11 +76,11 @@ async function hasMessageBeenSent(discordId, orderId) {
   return !!data;
 }
 
-// Helper: record that a message was sent
+// Record that a message was sent
 async function recordMessageSent(discordId, orderId, language) {
   const { error } = await supabaseRetry(() =>
     supabase
-      .from('member_messages')
+      .from('member_message_log')
       .insert({ discord_id: discordId, order_id: orderId, language, sent_at: new Date().toISOString() })
   );
   if (error) {
@@ -90,7 +88,7 @@ async function recordMessageSent(discordId, orderId, language) {
   }
 }
 
-// Helper: send a DM to a user
+// Send DM
 async function sendDM(member, content) {
   try {
     await member.send(content);
@@ -102,7 +100,7 @@ async function sendDM(member, content) {
   }
 }
 
-// Main function to send welcome message (if not already sent)
+// Send welcome message (only if not already sent)
 async function sendMembershipMessage(client, discordId, membership) {
   const tier = membership.tier;
   const expiresAt = new Date(membership.expires_at);
@@ -110,18 +108,15 @@ async function sendMembershipMessage(client, discordId, membership) {
   const tierNames = { 1: 'Bronze', 2: 'Copper', 3: 'Silver', 4: 'Gold', 5: 'Platinum' };
   const tierName = tierNames[tier] || `Tier ${tier}`;
 
-  // Check if already messaged for this order
   const alreadySent = await hasMessageBeenSent(discordId, orderId);
   if (alreadySent) {
     console.log(`[MembershipSync] Message already sent for ${discordId} order ${orderId}, skipping.`);
     return;
   }
 
-  // Fetch language
   const lang = await getLanguageForOrder(orderId);
   const t = MESSAGES[lang] || MESSAGES.en;
 
-  // Build message
   let message = t.welcome
     .replace('{tierName}', tierName)
     .replace('{expiryDate}', formatDate(expiresAt));
@@ -134,7 +129,6 @@ async function sendMembershipMessage(client, discordId, membership) {
   message += t.joinDiscord.replace('{inviteLink}', inviteLink);
   message += '\n\n' + t.footer;
 
-  // Attempt to send DM
   try {
     const guild = await client.guilds.fetch(process.env.GUILD_ID);
     const member = await guild.members.fetch(discordId);
@@ -150,7 +144,7 @@ async function sendMembershipMessage(client, discordId, membership) {
   }
 }
 
-// Existing syncMembershipRoles function (only the send‑message part modified)
+// ========== The rest of syncMembershipRoles (unchanged except function name) ==========
 async function getLastActiveSet() {
   const { data, error } = await supabaseRetry(() =>
     supabase
@@ -186,7 +180,6 @@ async function syncMembershipRoles(client) {
   try {
     const now = new Date().toISOString();
 
-    // Fetch all memberships with expires_at > now
     const { data: activeMemberships, error: activeError } = await supabaseRetry(() =>
       supabase
         .from('memberships')
@@ -195,7 +188,6 @@ async function syncMembershipRoles(client) {
     );
     if (activeError) throw activeError;
 
-    // Group by discord_id, keep highest tier membership
     const userBestMembership = new Map();
     for (const membership of activeMemberships) {
       const discordId = membership.discord_id;
@@ -206,12 +198,9 @@ async function syncMembershipRoles(client) {
     }
 
     const currentActiveIds = new Set(userBestMembership.keys());
-
-    // Get previous active set
     const previousActiveIds = await getLastActiveSet();
     const newIds = [...currentActiveIds].filter(id => !previousActiveIds.has(id));
 
-    // Log new members
     if (newIds.length > 0) {
       changesMade = true;
       const guild = await client.guilds.fetch(process.env.GUILD_ID);
@@ -227,13 +216,13 @@ async function syncMembershipRoles(client) {
       }
     }
 
-    // --- Send welcome messages only to new members ---
+    // Send messages to new members
     for (const discordId of newIds) {
       const membership = userBestMembership.get(discordId);
       await sendMembershipMessage(client, discordId, membership);
     }
 
-    // --- Role sync (unchanged from your existing code) ---
+    // Role sync (unchanged)
     const guild = await client.guilds.fetch(process.env.GUILD_ID);
     for (const [discordId, membership] of userBestMembership.entries()) {
       const member = await guild.members.fetch(discordId).catch(() => null);
