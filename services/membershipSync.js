@@ -89,7 +89,7 @@ async function recordMessageSent(discordId, orderId, language, membership, disco
 async function sendDM(member, content) {
   try {
     await member.send(content);
-    console.log(`[MembershipSync] ✅ DM sent to ${member.user.tag}`);
+    console.log(`[MembershipSync] ✅ DM sent to ${member.user.tag} (lang: ${lang})`);
     return true;
   } catch (err) {
     console.error(`[MembershipSync] ❌ Failed to send DM to ${member.user.tag}:`, err.message);
@@ -129,7 +129,7 @@ async function sendMembershipMessage(client, discordId, membership) {
     const success = await sendDM(member, message);
     if (success) {
       await recordMessageSent(discordId, orderId, lang, membership, discordName);
-      console.log(`[MembershipSync] Welcome message recorded for ${discordId} order ${orderId} (lang: ${lang})`);
+     // console.log(`[MembershipSync] Welcome message recorded for ${discordId} order ${orderId} (lang: ${lang})`);
     } else {
       console.error(`[MembershipSync] Failed to send DM to ${discordId} for order ${orderId}`);
     }
