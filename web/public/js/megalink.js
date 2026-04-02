@@ -3,14 +3,12 @@
 function initMega() {
     const previewSelect = document.getElementById('supporterPostSelect');
     if (previewSelect) {
-        // Generate when selection changes
         previewSelect.addEventListener('change', generateFilenameFromPost);
-        // Also try to generate now if a post is already selected
         if (previewSelect.value) {
-            // But posts may not be loaded yet – wait a bit
             setTimeout(generateFilenameFromPost, 500);
         }
     }
+    console.log('Mega module initialized');
 }
 
 function generateFilenameFromPost() {
@@ -23,10 +21,8 @@ function generateFilenameFromPost() {
         return;
     }
 
-    // Try to get posts from window.globalForumPosts (set by releases.js)
     const posts = window.globalForumPosts;
     if (!posts || posts.length === 0) {
-        // Posts not loaded yet, retry after a short delay
         console.log('Posts not ready, retrying...');
         setTimeout(generateFilenameFromPost, 300);
         return;
@@ -47,8 +43,10 @@ function generateFilenameFromPost() {
         const pack = match[3];
         const filename = `[Pack ${pack}] ${name} - ${series}.zip`;
         document.getElementById('mega-filename').value = filename;
+        console.log(`Generated filename: ${filename}`);
     } else {
         document.getElementById('mega-filename').value = title + '.zip';
+        console.log(`Fallback filename: ${title}.zip`);
     }
 }
 
@@ -70,16 +68,19 @@ async function uploadToMega() {
 
     if (!fileToUpload) {
         if (typeof showToast === 'function') showToast('Error', 'Please load a ZIP file in the preview area first.', 'error');
+        console.error('No ZIP file loaded');
         return;
     }
 
     let finalFileName = filenameInput.value.trim();
     if (!finalFileName) {
         if (typeof showToast === 'function') showToast('Error', 'Please enter a filename', 'error');
+        console.error('No filename provided');
         return;
     }
 
     const currentMonth = getCurrentMonth();
+    console.log(`Uploading file: ${finalFileName}, month folder: ${currentMonth}`);
 
     btn.disabled = true;
     status.innerText = '⏳ Uploading...';
@@ -90,27 +91,40 @@ async function uploadToMega() {
     const renamedFile = new File([fileToUpload], finalFileName, { type: fileToUpload.type });
     formData.append('file', renamedFile);
     formData.append('month', currentMonth);
-    formData.append('downloadAfterUpload', 'true');
-    
+    formData.append('downloadAfterUpload', 'true'); // Always request local download
+
     const xhr = new XMLHttpRequest();
     xhr.open('POST', '/api/upload-to-mega', true);
 
     xhr.upload.onprogress = (e) => {
-        if (e.lengthComputable) progressBar.value = (e.loaded / e.total) * 100;
+        if (e.lengthComputable) {
+            progressBar.value = (e.loaded / e.total) * 100;
+            console.log(`Upload progress: ${Math.round(progressBar.value)}%`);
+        }
     };
 
     xhr.onload = () => {
+        console.log(`Server response status: ${xhr.status}`);
         if (xhr.status === 200) {
             try {
                 const data = JSON.parse(xhr.responseText);
+                console.log('Server response data:', data);
                 document.getElementById('supDownload').value = data.link || '';
-                if (typeof showToast === 'function') showToast('Upload Complete', 'File uploaded to MEGA');
+                if (data.localPath) {
+                    console.log(`Local file saved at: ${data.localPath}`);
+                    if (typeof showToast === 'function') showToast('Upload Complete', `File uploaded to MEGA and saved locally as ${data.localPath}`);
+                } else {
+                    console.log('No localPath in response – download may have failed');
+                    if (typeof showToast === 'function') showToast('Upload Complete', 'File uploaded to MEGA (local download skipped)');
+                }
                 status.innerText = '';
             } catch (e) {
+                console.error('Error parsing response:', e);
                 if (typeof showToast === 'function') showToast('Error', 'Invalid server response', 'error');
                 status.innerText = '';
             }
         } else {
+            console.error(`Upload failed with status ${xhr.status}: ${xhr.responseText}`);
             if (typeof showToast === 'function') showToast('Error', `Upload failed: ${xhr.status}`, 'error');
             status.innerText = '';
         }
@@ -119,6 +133,7 @@ async function uploadToMega() {
     };
 
     xhr.onerror = () => {
+        console.error('Network error during upload');
         if (typeof showToast === 'function') showToast('Error', 'Network error', 'error');
         btn.disabled = false;
         progressBar.style.display = 'none';
