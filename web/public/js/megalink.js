@@ -103,22 +103,30 @@ async function uploadToMega() {
         }
     };
 
-    xhr.onload = () => {
-        console.log(`Server response status: ${xhr.status}`);
-        if (xhr.status === 200) {
-            try {
-                const data = JSON.parse(xhr.responseText);
-                console.log('Server response data:', data);
-                document.getElementById('supDownload').value = data.link || '';
-                if (data.localPath) {
-                    console.log(`Local file saved at: ${data.localPath}`);
-                    if (typeof showToast === 'function') showToast('Upload Complete', `File uploaded to MEGA and saved locally as ${data.localPath}`);
-                } else {
-                    console.log('No localPath in response – download may have failed');
-                    if (typeof showToast === 'function') showToast('Upload Complete', 'File uploaded to MEGA (local download skipped)');
-                }
-                status.innerText = '';
-            } catch (e) {
+xhr.onload = () => {
+    if (xhr.status === 200) {
+        try {
+            const data = JSON.parse(xhr.responseText);
+            document.getElementById('supDownload').value = data.link || '';
+            
+            // Trigger download of the local copy
+            if (data.localPath) {
+                // Extract just the filename from the path
+                const filename = data.localPath.split('/').pop();
+                // Use the download endpoint
+                const downloadUrl = `/api/download-file?filename=${encodeURIComponent(filename)}`;
+                const a = document.createElement('a');
+                a.href = downloadUrl;
+                a.download = filename; // optional, but helps
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                console.log(`Download triggered: ${downloadUrl}`);
+            }
+            
+            if (typeof showToast === 'function') showToast('Upload Complete', 'File uploaded to MEGA');
+            status.innerText = '';
+        } catch (e) {
                 console.error('Error parsing response:', e);
                 if (typeof showToast === 'function') showToast('Error', 'Invalid server response', 'error');
                 status.innerText = '';
