@@ -86,7 +86,7 @@ async function recordMessageSent(discordId, orderId, language, membership, disco
   }
 }
 
-async function sendDM(member, content) {
+async function sendDM(member, content, lang) { // <--- Add 'lang' here
   try {
     await member.send(content);
     console.log(`[MembershipSync] ✅ DM sent to ${member.user.tag} (lang: ${lang})`);
