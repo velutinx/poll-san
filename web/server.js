@@ -216,7 +216,7 @@ app.use((req, res, next) => {
     setupReleasesRoutes(app, client, upload, FORUM_ID, SUPPORTER_FORUM_ID);
 
     // ────────────────────────────────────────────────
-    // MONITORING ROUTES (Kick new accounts manually)
+    // MONITORING ROUTES (Kick + clear poll votes)
     // ────────────────────────────────────────────────
 
     // GET /api/monitoring/members?days=10
@@ -241,7 +241,6 @@ app.use((req, res, next) => {
                     });
                 }
             }
-            // sort by newest first
             suspicious.sort((a,b) => new Date(b.joinedAt) - new Date(a.joinedAt));
             res.json(suspicious);
         } catch (err) {
@@ -255,16 +254,52 @@ app.use((req, res, next) => {
         const { userId } = req.body;
         if (!userId) return res.status(400).json({ error: 'Missing userId' });
 
+        let deletedVotes = 0;
+        let kickError = null;
+
+        try {
+            // 1. Delete all poll votes by this user from Supabase (active poll only)
+            const { error: deleteError, count } = await supabaseRetry(() =>
+                supabase
+                    .from('votes_discord')
+                    .delete({ count: 'exact' })
+                    .eq('user_id', userId)
+                    .eq('poll_id', 'character_poll_new')
+            );
+            if (deleteError) {
+                console.error(`Failed to delete votes for ${userId}:`, deleteError);
+            } else {
+                deletedVotes = count || 0;
+                console.log(`🗑️ Deleted ${deletedVotes} poll vote(s) for user ${userId}`);
+            }
+        } catch (err) {
+            console.error(`Error while deleting votes for ${userId}:`, err);
+        }
+
+        // 2. Kick the member (even if vote deletion failed)
         try {
             const guild = await client.guilds.fetch(process.env.GUILD_ID);
             const member = await guild.members.fetch(userId);
-            if (!member) return res.status(404).json({ error: 'Member not found' });
-
-            await member.kick('Flagged as suspicious new account');
-            res.json({ success: true, message: `Kicked ${member.user.tag}` });
+            if (!member) {
+                return res.status(404).json({ error: 'Member not found' });
+            }
+            await member.kick('Flagged as suspicious new account – poll votes removed');
+            // 3. Respond success
+            res.json({
+                success: true,
+                message: `Kicked ${member.user.tag} and removed ${deletedVotes} poll vote(s)`
+            });
         } catch (err) {
             console.error('Kick error:', err);
-            res.status(500).json({ error: err.message });
+            kickError = err.message;
+            // If kick fails but votes were deleted, still report partial success
+            if (deletedVotes > 0) {
+                res.status(500).json({
+                    error: `Kick failed: ${kickError} (but ${deletedVotes} votes were removed)`
+                });
+            } else {
+                res.status(500).json({ error: kickError });
+            }
         }
     });
 
