@@ -35,7 +35,7 @@ app.use((req, res, next) => {
         /swagger/i,
         /api-docs/i,
         /v[2-3]\/api/i,
-        /php(info|myadmin|unit|adminer)/i,
+        /php(info|myadmin|phpunit|adminer)/i,
         /\.ht(access|passwd)/i,
         /web\.config/i,
         /nginx\.conf/i,
@@ -56,7 +56,7 @@ app.use((req, res, next) => {
         /union\+select/i,            // SQLi
         /server-status|server-info|trace/i,
         /graphql/i,
-        /wp-(admin|content|includes)/i,   // Added common WordPress scans
+        /wp-(admin|content|includes)/i,
         /\.bak|\.old|\.backup/i
     ];
 
@@ -90,14 +90,11 @@ app.use((req, res, next) => {
     ];
 
     if (staticPatterns.some(pattern => pattern.test(url))) {
-        // Skip logging but continue to serve the file
         return next();
     }
 
     next();
 });
-
-
 
     // 4. Body parsers
     app.use(express.json());
@@ -218,9 +215,61 @@ app.use((req, res, next) => {
     const setupReleasesRoutes = require('./routes/releases');
     setupReleasesRoutes(app, client, upload, FORUM_ID, SUPPORTER_FORUM_ID);
 
+    // ────────────────────────────────────────────────
+    // MONITORING ROUTES (Kick new accounts manually)
+    // ────────────────────────────────────────────────
+
+    // GET /api/monitoring/members?days=10
+    app.get('/api/monitoring/members', async (req, res) => {
+        try {
+            const days = parseInt(req.query.days) || 10;
+            const guild = await client.guilds.fetch(process.env.GUILD_ID);
+            await guild.members.fetch(); // fetch all members
+            const now = Date.now();
+            const cutoff = now - (days * 24 * 60 * 60 * 1000);
+
+            const suspicious = [];
+            for (const [id, member] of guild.members.cache) {
+                const joinedAt = member.joinedTimestamp;
+                if (joinedAt && joinedAt > cutoff) {
+                    suspicious.push({
+                        userId: id,
+                        username: member.user.username,
+                        nickname: member.nickname || member.user.username,
+                        joinedAt: new Date(joinedAt).toISOString(),
+                        daysSince: Math.floor((now - joinedAt) / (24 * 60 * 60 * 1000))
+                    });
+                }
+            }
+            // sort by newest first
+            suspicious.sort((a,b) => new Date(b.joinedAt) - new Date(a.joinedAt));
+            res.json(suspicious);
+        } catch (err) {
+            console.error('Monitoring fetch error:', err);
+            res.status(500).json({ error: 'Failed to fetch members' });
+        }
+    });
+
+    // POST /api/monitoring/kick
+    app.post('/api/monitoring/kick', async (req, res) => {
+        const { userId } = req.body;
+        if (!userId) return res.status(400).json({ error: 'Missing userId' });
+
+        try {
+            const guild = await client.guilds.fetch(process.env.GUILD_ID);
+            const member = await guild.members.fetch(userId);
+            if (!member) return res.status(404).json({ error: 'Member not found' });
+
+            await member.kick('Flagged as suspicious new account');
+            res.json({ success: true, message: `Kicked ${member.user.tag}` });
+        } catch (err) {
+            console.error('Kick error:', err);
+            res.status(500).json({ error: err.message });
+        }
+    });
+
     // Start server
     app.listen(PORT, () => {
         console.log(`🌐 Dashboard running at http://localhost:${PORT}/poll-san`);
-        // console.log(`🌐 Dashboard running at https://d.velutinx.com/poll-san`);
     });
 };
