@@ -22,79 +22,79 @@ module.exports = (client) => {
         allowedHeaders: ['Content-Type', 'Authorization']
     }));
 
-// ====================== MIDDLEWARE SETUP ======================
+    // ====================== MIDDLEWARE SETUP ======================
 
-// 1. QUICK PROBE BLOCKER - Return 404 fast for common scanner paths
-app.use((req, res, next) => {
-    const url = req.url.toLowerCase();
+    // 1. QUICK PROBE BLOCKER - Return 404 fast for common scanner paths
+    app.use((req, res, next) => {
+        const url = req.url.toLowerCase();
 
-    const probePatterns = [
-        /\.env/i,
-        /\.git/i,
-        /actuator/i,
-        /swagger/i,
-        /api-docs/i,
-        /v[2-3]\/api/i,
-        /php(info|myadmin|phpunit|adminer)/i,
-        /\.ht(access|passwd)/i,
-        /web\.config/i,
-        /nginx\.conf/i,
-        /docker-compose/i,
-        /Dockerfile/i,
-        /composer\.(json|lock)/i,
-        /package\.json/i,
-        /requirements\.txt/i,
-        /backup|dump|db\.sql|database\.sql/i,
-        /config\.(php|yml|yaml|json|xml)/i,
-        /settings\.(json|yml)/i,
-        /secrets|credentials/i,
-        /robots\.txt/i,
-        /sitemap\.xml/i,
-        /crossdomain\.xml/i,
-        /\.\.\//,                    // path traversal
-        /%3Cscript/i,                // XSS
-        /union\+select/i,            // SQLi
-        /server-status|server-info|trace/i,
-        /graphql/i,
-        /wp-(admin|content|includes)/i,
-        /\.bak|\.old|\.backup/i
-    ];
+        const probePatterns = [
+            /\.env/i,
+            /\.git/i,
+            /actuator/i,
+            /swagger/i,
+            /api-docs/i,
+            /v[2-3]\/api/i,
+            /php(info|myadmin|phpunit|adminer)/i,
+            /\.ht(access|passwd)/i,
+            /web\.config/i,
+            /nginx\.conf/i,
+            /docker-compose/i,
+            /Dockerfile/i,
+            /composer\.(json|lock)/i,
+            /package\.json/i,
+            /requirements\.txt/i,
+            /backup|dump|db\.sql|database\.sql/i,
+            /config\.(php|yml|yaml|json|xml)/i,
+            /settings\.(json|yml)/i,
+            /secrets|credentials/i,
+            /robots\.txt/i,
+            /sitemap\.xml/i,
+            /crossdomain\.xml/i,
+            /\.\.\//,                    // path traversal
+            /%3Cscript/i,                // XSS
+            /union\+select/i,            // SQLi
+            /server-status|server-info|trace/i,
+            /graphql/i,
+            /wp-(admin|content|includes)/i,
+            /\.bak|\.old|\.backup/i
+        ];
 
-    if (probePatterns.some(pattern => pattern.test(url))) {
-        return res.status(404).send('Not Found');
-    }
-    next();
-});
+        if (probePatterns.some(pattern => pattern.test(url))) {
+            return res.status(404).send('Not Found');
+        }
+        next();
+    });
 
-// 2. STATIC ASSETS SERVING
-app.use('/assets', express.static('public/assets', { 
-    maxAge: '1d',
-    etag: true 
-}));
-app.use('/static', express.static('public/static', { 
-    maxAge: '1d',
-    etag: true 
-}));
+    // 2. STATIC ASSETS SERVING
+    app.use('/assets', express.static('public/assets', { 
+        maxAge: '1d',
+        etag: true 
+    }));
+    app.use('/static', express.static('public/static', { 
+        maxAge: '1d',
+        etag: true 
+    }));
 
-// 3. SILENCE LOG SPAM FOR STATIC FILES & COMMON ASSETS
-app.use((req, res, next) => {
-    const url = req.url.toLowerCase();
+    // 3. SILENCE LOG SPAM FOR STATIC FILES & COMMON ASSETS
+    app.use((req, res, next) => {
+        const url = req.url.toLowerCase();
 
-    const staticPatterns = [
-        /^\/assets\//,
-        /^\/static\//,
-        /^\/bot-connect\.js$/,
-        /^\/favicon\.ico$/,
-        /^\/manifest\.json$/,
-        /\.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|map|json|webmanifest)$/i
-    ];
+        const staticPatterns = [
+            /^\/assets\//,
+            /^\/static\//,
+            /^\/bot-connect\.js$/,
+            /^\/favicon\.ico$/,
+            /^\/manifest\.json$/,
+            /\.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|map|json|webmanifest)$/i
+        ];
 
-    if (staticPatterns.some(pattern => pattern.test(url))) {
-        return next();
-    }
+        if (staticPatterns.some(pattern => pattern.test(url))) {
+            return next();
+        }
 
-    next();
-});
+        next();
+    });
 
     // 4. Body parsers
     app.use(express.json());
@@ -215,8 +215,10 @@ app.use((req, res, next) => {
     const setupReleasesRoutes = require('./routes/releases');
     setupReleasesRoutes(app, client, upload, FORUM_ID, SUPPORTER_FORUM_ID);
 
-    // ---------------------- MONITORING ROUTES (enhanced) ----------------------
-    
+    // ────────────────────────────────────────────────
+    // MONITORING ROUTES (Kick + clear poll votes + show vote info)
+    // ────────────────────────────────────────────────
+
     // Helper: parse character list from poll_list (same format as startpoll.js)
     function parseCharacterList(pollList) {
         const lines = pollList.split(/\r?\n/).filter(line => line.trim().length > 0);
@@ -245,6 +247,7 @@ app.use((req, res, next) => {
                     });
                 }
             }
+
             if (suspicious.length === 0) {
                 return res.json([]);
             }
@@ -300,7 +303,7 @@ app.use((req, res, next) => {
         }
     });
 
-    // POST /api/monitoring/kick (unchanged – already deletes votes)
+    // POST /api/monitoring/kick
     app.post('/api/monitoring/kick', async (req, res) => {
         const { userId } = req.body;
         if (!userId) return res.status(400).json({ error: 'Missing userId' });
@@ -309,30 +312,45 @@ app.use((req, res, next) => {
         let kickError = null;
 
         try {
+            // 1. Delete all poll votes by this user from Supabase (active poll only)
             const { error: deleteError, count } = await supabaseRetry(() =>
-                supabase.from('votes_discord')
+                supabase
+                    .from('votes_discord')
                     .delete({ count: 'exact' })
                     .eq('user_id', userId)
                     .eq('poll_id', 'character_poll_new')
             );
-            if (deleteError) console.error(`Failed to delete votes for ${userId}:`, deleteError);
-            else {
+            if (deleteError) {
+                console.error(`Failed to delete votes for ${userId}:`, deleteError);
+            } else {
                 deletedVotes = count || 0;
                 console.log(`🗑️ Deleted ${deletedVotes} poll vote(s) for user ${userId}`);
             }
-        } catch (err) { console.error(err); }
+        } catch (err) {
+            console.error(`Error while deleting votes for ${userId}:`, err);
+        }
 
+        // 2. Kick the member (even if vote deletion failed)
         try {
             const guild = await client.guilds.fetch(process.env.GUILD_ID);
             const member = await guild.members.fetch(userId);
-            if (!member) return res.status(404).json({ error: 'Member not found' });
+            if (!member) {
+                return res.status(404).json({ error: 'Member not found' });
+            }
             await member.kick('Flagged as suspicious new account – poll votes removed');
-            res.json({ success: true, message: `Kicked ${member.user.tag} and removed ${deletedVotes} poll vote(s)` });
+            // 3. Respond success
+            res.json({
+                success: true,
+                message: `Kicked ${member.user.tag} and removed ${deletedVotes} poll vote(s)`
+            });
         } catch (err) {
             console.error('Kick error:', err);
             kickError = err.message;
+            // If kick fails but votes were deleted, still report partial success
             if (deletedVotes > 0) {
-                res.status(500).json({ error: `Kick failed: ${kickError} (but ${deletedVotes} votes were removed)` });
+                res.status(500).json({
+                    error: `Kick failed: ${kickError} (but ${deletedVotes} votes were removed)`
+                });
             } else {
                 res.status(500).json({ error: kickError });
             }
