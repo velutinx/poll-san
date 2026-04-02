@@ -90,7 +90,8 @@ async function uploadToMega() {
     const renamedFile = new File([fileToUpload], finalFileName, { type: fileToUpload.type });
     formData.append('file', renamedFile);
     formData.append('month', currentMonth);
-
+    formData.append('downloadAfterUpload', 'true');
+    
     const xhr = new XMLHttpRequest();
     xhr.open('POST', '/api/upload-to-mega', true);
 
