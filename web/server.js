@@ -51,9 +51,9 @@ module.exports = (client) => {
             /robots\.txt/i,
             /sitemap\.xml/i,
             /crossdomain\.xml/i,
-            /\.\.\//,                    // path traversal
-            /%3Cscript/i,                // XSS
-            /union\+select/i,            // SQLi
+            /\.\.\//,
+            /%3Cscript/i,
+            /union\+select/i,
             /server-status|server-info|trace/i,
             /graphql/i,
             /wp-(admin|content|includes)/i,
@@ -216,7 +216,7 @@ module.exports = (client) => {
     setupReleasesRoutes(app, client, upload, FORUM_ID, SUPPORTER_FORUM_ID);
 
     // ────────────────────────────────────────────────
-    // MONITORING ROUTES (Kick + clear poll votes + show vote info)
+    // MONITORING ROUTES (Kick + clear poll votes)
     // ────────────────────────────────────────────────
 
     // Helper: parse character list from poll_list (same format as startpoll.js)
@@ -234,24 +234,6 @@ module.exports = (client) => {
             const now = Date.now();
             const cutoff = now - (days * 24 * 60 * 60 * 1000);
 
-            const suspicious = [];
-            for (const [id, member] of guild.members.cache) {
-                const joinedAt = member.joinedTimestamp;
-                if (joinedAt && joinedAt > cutoff) {
-                    suspicious.push({
-                        userId: id,
-                        username: member.user.username,
-                        nickname: member.nickname || member.user.username,
-                        joinedAt: new Date(joinedAt).toISOString(),
-                        daysSince: Math.floor((now - joinedAt) / (24 * 60 * 60 * 1000))
-                    });
-                }
-            }
-
-            if (suspicious.length === 0) {
-                return res.json([]);
-            }
-
             // ---- Fetch active poll character list ----
             const { data: activePoll } = await supabaseRetry(() =>
                 supabase.from('auto_resume')
@@ -265,13 +247,11 @@ module.exports = (client) => {
                 characterList = parseCharacterList(activePoll.poll_list);
             }
 
-            // ---- Fetch votes for these users ----
-            const userIds = suspicious.map(u => u.userId);
+            // ---- Fetch votes for the active poll ----
             const { data: votes, error: voteError } = await supabaseRetry(() =>
                 supabase.from('votes_discord')
                     .select('user_id, option_id')
                     .eq('poll_id', 'character_poll_new')
-                    .in('user_id', userIds)
             );
             if (voteError) console.error('Error fetching votes:', voteError);
 
@@ -288,15 +268,41 @@ module.exports = (client) => {
                 }
             }
 
-            // Attach vote info to each suspicious member
-            const result = suspicious.map(m => ({
-                ...m,
-                voted: voteMap[m.userId] ? true : false,
-                voteCharacter: voteMap[m.userId] ? voteMap[m.userId].characterName : null,
-                voteOptionId: voteMap[m.userId] ? voteMap[m.userId].option_id : null
-            }));
+            // ---- Iterate over all members ----
+            const membersList = [];
+            for (const [id, member] of guild.members.cache) {
+                const joinedAt = member.joinedTimestamp;
+                const accountCreatedAt = member.user.createdTimestamp;
+                const daysSinceJoin = joinedAt ? Math.floor((now - joinedAt) / (24 * 60 * 60 * 1000)) : null;
+                const accountAge = accountCreatedAt ? Math.floor((now - accountCreatedAt) / (24 * 60 * 60 * 1000)) : null;
 
-            res.json(result);
+                // Apply filter: accountAge <= days OR daysSinceJoin <= days
+                const isNew = (accountAge !== null && accountAge <= days) || (daysSinceJoin !== null && daysSinceJoin <= days);
+                if (!isNew) continue;
+
+                const vote = voteMap[id] || null;
+                membersList.push({
+                    userId: id,
+                    username: member.user.username,
+                    nickname: member.nickname || member.user.username,
+                    accountCreatedAt: accountCreatedAt ? new Date(accountCreatedAt).toISOString() : null,
+                    accountAge: accountAge,
+                    joinedAt: joinedAt ? new Date(joinedAt).toISOString() : null,
+                    daysSinceJoin: daysSinceJoin,
+                    voted: !!vote,
+                    voteCharacter: vote ? vote.characterName : null,
+                    voteOptionId: vote ? vote.option_id : null
+                });
+            }
+
+            // Sort by newest account creation or join (latest first)
+            membersList.sort((a,b) => {
+                const aRecent = Math.max(a.accountAge ?? 0, a.daysSinceJoin ?? 0);
+                const bRecent = Math.max(b.accountAge ?? 0, b.daysSinceJoin ?? 0);
+                return aRecent - bRecent;
+            });
+
+            res.json(membersList);
         } catch (err) {
             console.error('Monitoring fetch error:', err);
             res.status(500).json({ error: 'Failed to fetch members' });
