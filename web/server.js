@@ -215,9 +215,13 @@ app.use((req, res, next) => {
     const setupReleasesRoutes = require('./routes/releases');
     setupReleasesRoutes(app, client, upload, FORUM_ID, SUPPORTER_FORUM_ID);
 
-    // ────────────────────────────────────────────────
-    // MONITORING ROUTES (Kick + clear poll votes)
-    // ────────────────────────────────────────────────
+    // ---------------------- MONITORING ROUTES (enhanced) ----------------------
+    
+    // Helper: parse character list from poll_list (same format as startpoll.js)
+    function parseCharacterList(pollList) {
+        const lines = pollList.split(/\r?\n/).filter(line => line.trim().length > 0);
+        return lines.map(line => line.trim().replace(/:female_sign:|:male_sign:/g, m => m === ':female_sign:' ? '♀️' : '♂️'));
+    }
 
     // GET /api/monitoring/members?days=10
     app.get('/api/monitoring/members', async (req, res) => {
@@ -241,15 +245,62 @@ app.use((req, res, next) => {
                     });
                 }
             }
-            suspicious.sort((a,b) => new Date(b.joinedAt) - new Date(a.joinedAt));
-            res.json(suspicious);
+            if (suspicious.length === 0) {
+                return res.json([]);
+            }
+
+            // ---- Fetch active poll character list ----
+            const { data: activePoll } = await supabaseRetry(() =>
+                supabase.from('auto_resume')
+                    .select('poll_list')
+                    .order('id', { ascending: false })
+                    .limit(1)
+                    .single()
+            );
+            let characterList = [];
+            if (activePoll && activePoll.poll_list) {
+                characterList = parseCharacterList(activePoll.poll_list);
+            }
+
+            // ---- Fetch votes for these users ----
+            const userIds = suspicious.map(u => u.userId);
+            const { data: votes, error: voteError } = await supabaseRetry(() =>
+                supabase.from('votes_discord')
+                    .select('user_id, option_id')
+                    .eq('poll_id', 'character_poll_new')
+                    .in('user_id', userIds)
+            );
+            if (voteError) console.error('Error fetching votes:', voteError);
+
+            // Build map: userId -> { option_id, characterName }
+            const voteMap = {};
+            if (votes) {
+                for (const v of votes) {
+                    const optId = v.option_id;
+                    let characterName = null;
+                    if (characterList.length >= optId && optId >= 1) {
+                        characterName = characterList[optId - 1];
+                    }
+                    voteMap[v.user_id] = { option_id: optId, characterName };
+                }
+            }
+
+            // Attach vote info to each suspicious member
+            const result = suspicious.map(m => ({
+                ...m,
+                voted: voteMap[m.userId] ? true : false,
+                voteCharacter: voteMap[m.userId] ? voteMap[m.userId].characterName : null,
+                voteOptionId: voteMap[m.userId] ? voteMap[m.userId].option_id : null
+            }));
+
+            res.json(result);
         } catch (err) {
             console.error('Monitoring fetch error:', err);
             res.status(500).json({ error: 'Failed to fetch members' });
         }
     });
 
-    // POST /api/monitoring/kick
+    // POST /api/monitoring/kick (unchanged – already deletes votes)
     app.post('/api/monitoring/kick', async (req, res) => {
         const { userId } = req.body;
         if (!userId) return res.status(400).json({ error: 'Missing userId' });
@@ -258,45 +309,30 @@ app.use((req, res, next) => {
         let kickError = null;
 
         try {
-            // 1. Delete all poll votes by this user from Supabase (active poll only)
             const { error: deleteError, count } = await supabaseRetry(() =>
-                supabase
-                    .from('votes_discord')
+                supabase.from('votes_discord')
                     .delete({ count: 'exact' })
                     .eq('user_id', userId)
                     .eq('poll_id', 'character_poll_new')
             );
-            if (deleteError) {
-                console.error(`Failed to delete votes for ${userId}:`, deleteError);
-            } else {
+            if (deleteError) console.error(`Failed to delete votes for ${userId}:`, deleteError);
+            else {
                 deletedVotes = count || 0;
                 console.log(`🗑️ Deleted ${deletedVotes} poll vote(s) for user ${userId}`);
             }
-        } catch (err) {
-            console.error(`Error while deleting votes for ${userId}:`, err);
-        }
+        } catch (err) { console.error(err); }
 
-        // 2. Kick the member (even if vote deletion failed)
         try {
             const guild = await client.guilds.fetch(process.env.GUILD_ID);
             const member = await guild.members.fetch(userId);
-            if (!member) {
-                return res.status(404).json({ error: 'Member not found' });
-            }
+            if (!member) return res.status(404).json({ error: 'Member not found' });
             await member.kick('Flagged as suspicious new account – poll votes removed');
-            // 3. Respond success
-            res.json({
-                success: true,
-                message: `Kicked ${member.user.tag} and removed ${deletedVotes} poll vote(s)`
-            });
+            res.json({ success: true, message: `Kicked ${member.user.tag} and removed ${deletedVotes} poll vote(s)` });
         } catch (err) {
             console.error('Kick error:', err);
             kickError = err.message;
-            // If kick fails but votes were deleted, still report partial success
             if (deletedVotes > 0) {
-                res.status(500).json({
-                    error: `Kick failed: ${kickError} (but ${deletedVotes} votes were removed)`
-                });
+                res.status(500).json({ error: `Kick failed: ${kickError} (but ${deletedVotes} votes were removed)` });
             } else {
                 res.status(500).json({ error: kickError });
             }
