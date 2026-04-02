@@ -397,7 +397,7 @@ app.post('/api/upload-to-mega', upload.single('file'), async (req, res) => {
         });
       });
       localPath = path.join(downloadDir, desiredFileName);
-      console.log(`📥 Downloaded from Mega to ${localPath}`);
+//      console.log(`📥 Downloaded from Mega to ${localPath}`);
     }
 
     // Cleanup temp file
