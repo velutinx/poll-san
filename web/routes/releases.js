@@ -460,6 +460,31 @@ app.post('/api/upload-to-mega', upload.single('file'), async (req, res) => {
     }
   });
 
+// ────────────────────────────────────────────────
+// 15. DOWNLOAD FILE (for browser download after upload)
+// ────────────────────────────────────────────────
+app.get('/api/download-file', (req, res) => {
+  const filename = req.query.filename;
+  if (!filename) {
+    return res.status(400).send('Missing filename');
+  }
+
+  // Construct absolute path to the downloads folder (relative to project root)
+  const downloadsDir = path.join(process.cwd(), 'downloads');
+  const filePath = path.join(downloadsDir, filename);
+
+  // Security: prevent directory traversal
+  if (filePath.indexOf(downloadsDir) !== 0) {
+    return res.status(403).send('Forbidden');
+  }
+
+  if (!fs.existsSync(filePath)) {
+    return res.status(404).send('File not found');
+  }
+
+  res.download(filePath, filename);
+});
+
   // Temporary GET for testing – remove after debugging
   app.get('/api/test-zip', (req, res) => {
     res.json({ message: 'GET works' });
