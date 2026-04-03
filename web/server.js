@@ -15,19 +15,16 @@ module.exports = (client) => {
     const app = express();
     const PORT = process.env.PORT || 8080;
 
-    // 1. CORS
     app.use(cors({
         origin: ['https://velutinx.com', 'https://d.velutinx.com'],
         methods: ['GET', 'POST', 'OPTIONS'],
         allowedHeaders: ['Content-Type', 'Authorization']
     }));
 
-    // ====================== MIDDLEWARE SETUP ======================
-
     // 1. QUICK PROBE BLOCKER
     app.use((req, res, next) => {
         const url = req.url.toLowerCase();
-        const probePatterns = [
+        const probePatterns [
             /\.env/i, /\.git/i, /actuator/i, /swagger/i, /api-docs/i, /v[2-3]\/api/i,
             /php(info|myadmin|phpunit|adminer)/i, /\.ht(access|passwd)/i, /web\.config/i,
             /nginx\.conf/i, /docker-compose/i, /Dockerfile/i, /composer\.(json|lock)/i,
@@ -43,149 +40,17 @@ module.exports = (client) => {
         next();
     });
 
-    // 2. STATIC ASSETS SERVING
-    app.use('/assets', express.static('public/assets', { maxAge: '1d', etag: true }));
-    app.use('/static', express.static('public/static', { maxAge: '1d', etag: true }));
-
-    // 3. EXPLICIT ROUTES FOR JS FILES with fallback content
-    const jsFiles = {
-        greetings: `// public/js/greetings.js – handles welcome channel and message settings
-async function loadSettings() {
-    try {
-        const res = await fetch('/api/get-settings');
-        if (!res.ok) throw new Error(\`HTTP \${res.status}\`);
-        const s = await res.json();
-        if (s.welcome_channel_id) {
-            const welcomeSelect = document.getElementById('welcome_channel_id');
-            if (welcomeSelect) welcomeSelect.value = s.welcome_channel_id;
-        }
-        if (s.welcome_message) {
-            const welcomeTextarea = document.getElementById('welcome_message');
-            if (welcomeTextarea) welcomeTextarea.value = s.welcome_message;
-        }
-    } catch(e) {
-        console.error('Error loading settings:', e);
-        const statusDiv = document.getElementById('greetings-status');
-        if (statusDiv) statusDiv.innerText = '❌ Error loading settings.';
-    }
-}
-async function saveGreetings() {
-    const channel = document.getElementById('welcome_channel_id').value;
-    const message = document.getElementById('welcome_message').value;
-    const res = await fetch('/api/save-settings', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ welcome_channel_id: channel, welcome_message: message })
-    });
-    if (res.ok) {
-        if (typeof showToast === 'function') showToast('Success!', 'Settings applied');
-        await loadSettings();
-    } else {
-        if (typeof showToast === 'function') showToast('Error!', 'Failed to save', 'error');
-    }
-}
-window.loadSettings = loadSettings;
-window.saveGreetings = saveGreetings;`,
-        toast: `// toast.js
-(function() {
-    const style = document.createElement('style');
-    style.textContent = \`
-        .toast-container {
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            z-index: 9999;
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-            pointer-events: none;
-        }
-        .toast {
-            background: #4caf50;
-            color: white;
-            border-radius: 6px;
-            padding: 12px 20px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            min-width: 250px;
-            max-width: 350px;
-            animation: slideInRight 0.3s ease, fadeOut 0.3s ease 2.7s forwards;
-            pointer-events: auto;
-            opacity: 0.95;
-        }
-        .toast.error { background: #f44336; }
-        .toast .title { font-weight: 600; font-size: 1rem; }
-        .toast .message { font-size: 0.9rem; opacity: 0.9; }
-        @keyframes slideInRight {
-            from { transform: translateX(100%); opacity: 0; }
-            to { transform: translateX(0); opacity: 1; }
-        }
-        @keyframes fadeOut {
-            from { opacity: 1; }
-            to { opacity: 0; }
-        }
-    \`;
-    document.head.appendChild(style);
-    let container = document.querySelector('.toast-container');
-    if (!container) {
-        container = document.createElement('div');
-        container.className = 'toast-container';
-        document.body.appendChild(container);
-    }
-    window.showToast = function(title, message, type = 'success') {
-        const toast = document.createElement('div');
-        toast.className = \`toast \${type}\`;
-        toast.innerHTML = \`<div class="title">\${title}</div><div class="message">\${message}</div>\`;
-        container.appendChild(toast);
-        setTimeout(() => toast.remove(), 3000);
-    };
-})();`,
-        queue: `// queue.js placeholder\nconsole.log("queue.js loaded");`,
-        poll: `// poll.js placeholder\nconsole.log("poll.js loaded");`,
-        releases: `// releases.js placeholder\nconsole.log("releases.js loaded");`,
-        uploading: `// uploading.js placeholder\nconsole.log("uploading.js loaded");`,
-        megalink: `// megalink.js placeholder\nconsole.log("megalink.js loaded");`
-    };
-
-    for (const [file, content] of Object.entries(jsFiles)) {
-        app.get(`/js/${file}.js`, (req, res) => {
-            res.setHeader('Content-Type', 'application/javascript');
-            const filePath = path.join(__dirname, 'public', 'js', `${file}.js`);
-            if (fs.existsSync(filePath)) {
-                res.sendFile(filePath);
-            } else {
-                res.send(content);
-            }
-        });
-    }
-
-    // 4. SILENCE LOG SPAM FOR STATIC FILES
-    app.use((req, res, next) => {
-        const url = req.url.toLowerCase();
-        const staticPatterns = [
-            /^\/assets\//, /^\/static\//, /^\/js\//,
-            /^\/bot-connect\.js$/, /^\/favicon\.ico$/,
-            /\.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|map|json|webmanifest)$/i
-        ];
-        if (staticPatterns.some(pattern => pattern.test(url))) return next();
-        next();
-    });
-
-    // 5. Body parsers
+    // 2. STATIC ASSETS & BODY PARSING
     app.use(express.json());
+    // This serves everything in your public folder automatically
     app.use(express.static(path.join(__dirname, 'public')));
+    
+    // 3. REMOVED: Manual JS File Mocking
+    // Since you have the real files in public/js/toast.js, 
+    // Express.static above will serve them naturally. 
+    // You don't need that long 'jsFiles' loop anymore.
 
     const upload = multer({ storage: multer.memoryStorage() });
-
-    // Crypto polyfill
-    if (typeof global.crypto === 'undefined') global.crypto = require('crypto');
-    if (typeof global.crypto.getRandomValues === 'undefined') {
-        global.crypto.getRandomValues = function(array) {
-            return require('crypto').randomBytes(array.length);
-        };
-    }
 
     const FORUM_ID = '1465938599378812980';
     const SUPPORTER_FORUM_ID = '1465937644394512516';
@@ -288,19 +153,20 @@ window.saveGreetings = saveGreetings;`,
         res.sendFile(path.join(__dirname, 'public', 'index.html'));
     });
 
-    // External route files
+    // ====================== EXTERNAL ROUTES ======================
+    // FIXED PATHS: Since server.js is in /web, routes are in ./routes/
     const setupQueueRoutes = require('./routes/queue');
-    setupQueueRoutes(app, client, queueService);
     const setupPollRoutes = require('./routes/poll');
-    setupPollRoutes(app, client, supabase, supabaseRetry);
     const setupMembershipsRoute = require('./routes/memberships');
-    setupMembershipsRoute(app, client, supabase, supabaseRetry);
     const setupSendMessageRoute = require('./routes/sendMessage');
-    setupSendMessageRoute(app, client, supabase, supabaseRetry);
     const setupReleasesRoutes = require('./routes/releases');
-    setupReleasesRoutes(app, client, upload, FORUM_ID, SUPPORTER_FORUM_ID);
-    const setupMonitoringRoutes = require('./web/routes/monitoring');
+    const setupMonitoringRoutes = require('./routes/monitoring'); // Fixed path
+
+    setupQueueRoutes(app, client, queueService);
+    setupPollRoutes(app, client, supabase, supabaseRetry);
     setupMembershipsRoute(app, client, supabase, supabaseRetry);
+    setupSendMessageRoute(app, client, supabase, supabaseRetry);
+    setupReleasesRoutes(app, client, upload, FORUM_ID, SUPPORTER_FORUM_ID);
     setupMonitoringRoutes(app, client, supabase, supabaseRetry, getGuildMembers);
 
     app.listen(PORT, () => {
