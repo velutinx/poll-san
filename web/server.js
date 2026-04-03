@@ -6,10 +6,6 @@ const cors = require('cors');
 const supabase = require('../services/supabase');
 const { supabaseRetry } = require('../utils/db');
 const queueService = require('../services/queueService');
-const { Storage } = require('megajs');
-const AdmZip = require('adm-zip');
-const fs = require('fs');
-const os = require('os');
 
 module.exports = (client) => {
     const app = express();
@@ -22,7 +18,7 @@ module.exports = (client) => {
         allowedHeaders: ['Content-Type', 'Authorization']
     }));
 
-    // 1. QUICK PROBE BLOCKER
+    // Quick probe blocker (keep as before)
     app.use((req, res, next) => {
         const url = req.url.toLowerCase();
         const probePatterns = [
@@ -41,134 +37,15 @@ module.exports = (client) => {
         next();
     });
 
-    // 2. STATIC ASSETS (will serve existing files)
+    // Serve static files from 'public' folder (this will serve /js/*.js, /css/*.css, etc.)
     app.use(express.static(path.join(__dirname, 'public')));
 
-    // 3. EXPLICIT ROUTES FOR JS FILES (fix MIME errors)
-    // Content for greetings.js
-    const greetingsJs = `
-async function loadSettings() {
-    try {
-        const res = await fetch('/api/get-settings');
-        if (!res.ok) throw new Error(\`HTTP \${res.status}\`);
-        const s = await res.json();
-        if (s.welcome_channel_id) {
-            const welcomeSelect = document.getElementById('welcome_channel_id');
-            if (welcomeSelect) welcomeSelect.value = s.welcome_channel_id;
-        }
-        if (s.welcome_message) {
-            const welcomeTextarea = document.getElementById('welcome_message');
-            if (welcomeTextarea) welcomeTextarea.value = s.welcome_message;
-        }
-    } catch(e) {
-        console.error('Error loading settings:', e);
-        const statusDiv = document.getElementById('greetings-status');
-        if (statusDiv) statusDiv.innerText = '❌ Error loading settings.';
-    }
-}
-async function saveGreetings() {
-    const channel = document.getElementById('welcome_channel_id').value;
-    const message = document.getElementById('welcome_message').value;
-    const res = await fetch('/api/save-settings', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ welcome_channel_id: channel, welcome_message: message })
-    });
-    if (res.ok) {
-        if (typeof showToast === 'function') showToast('Success!', 'Settings applied');
-        await loadSettings();
-    } else {
-        if (typeof showToast === 'function') showToast('Error!', 'Failed to save', 'error');
-    }
-}
-window.loadSettings = loadSettings;
-window.saveGreetings = saveGreetings;
-`;
-    // Content for toast.js
-    const toastJs = `
-(function() {
-    const style = document.createElement('style');
-    style.textContent = \`
-        .toast-container {
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            z-index: 9999;
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-            pointer-events: none;
-        }
-        .toast {
-            background: #4caf50;
-            color: white;
-            border-radius: 6px;
-            padding: 12px 20px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            min-width: 250px;
-            max-width: 350px;
-            animation: slideInRight 0.3s ease, fadeOut 0.3s ease 2.7s forwards;
-            pointer-events: auto;
-            opacity: 0.95;
-        }
-        .toast.error { background: #f44336; }
-        .toast .title { font-weight: 600; font-size: 1rem; }
-        .toast .message { font-size: 0.9rem; opacity: 0.9; }
-        @keyframes slideInRight {
-            from { transform: translateX(100%); opacity: 0; }
-            to { transform: translateX(0); opacity: 1; }
-        }
-        @keyframes fadeOut {
-            from { opacity: 1; }
-            to { opacity: 0; }
-        }
-    \`;
-    document.head.appendChild(style);
-    let container = document.querySelector('.toast-container');
-    if (!container) {
-        container = document.createElement('div');
-        container.className = 'toast-container';
-        document.body.appendChild(container);
-    }
-    window.showToast = function(title, message, type = 'success') {
-        const toast = document.createElement('div');
-        toast.className = \`toast \${type}\`;
-        toast.innerHTML = \`<div class="title">\${title}</div><div class="message">\${message}</div>\`;
-        container.appendChild(toast);
-        setTimeout(() => toast.remove(), 3000);
-    };
-})();
-`;
-    // Placeholders for other JS files (empty or minimal)
-    const placeholderJs = `console.log("${path.basename(__filename)} loaded");`;
-
-    // Serve all JS files with explicit content
-    app.get('/js/greetings.js', (req, res) => {
-        res.setHeader('Content-Type', 'application/javascript');
-        res.send(greetingsJs);
-    });
-    app.get('/js/toast.js', (req, res) => {
-        res.setHeader('Content-Type', 'application/javascript');
-        res.send(toastJs);
-    });
-    ['queue', 'poll', 'releases', 'uploading', 'megalink'].forEach(file => {
-        app.get(`/js/${file}.js`, (req, res) => {
-            res.setHeader('Content-Type', 'application/javascript');
-            res.send(placeholderJs);
-        });
-    });
-
-    // 4. Body parser
+    // Body parser
     app.use(express.json());
 
     const upload = multer({ storage: multer.memoryStorage() });
-
     const FORUM_ID = '1465938599378812980';
     const SUPPORTER_FORUM_ID = '1465937644394512516';
-    const SUPPORTER_ROLE_ID = '1466155709547675795';
 
     // ====================== MEMBER CACHE ======================
     let cachedMembers = null;
@@ -193,7 +70,7 @@ window.saveGreetings = saveGreetings;
     }
 
     // ────────────────────────────────────────────────
-    // API ROUTES
+    // API ROUTES (existing)
     // ────────────────────────────────────────────────
     app.get('/api/channels', async (req, res) => {
         try {
@@ -267,130 +144,20 @@ window.saveGreetings = saveGreetings;
         res.sendFile(path.join(__dirname, 'public', 'index.html'));
     });
 
-    // External route files (ensure these files exist)
+    // Load external route files (including monitoring)
     const setupQueueRoutes = require('./routes/queue');
     const setupPollRoutes = require('./routes/poll');
     const setupMembershipsRoute = require('./routes/memberships');
     const setupSendMessageRoute = require('./routes/sendMessage');
     const setupReleasesRoutes = require('./routes/releases');
+    const setupMonitoringRoutes = require('./routes/monitoring');
 
     setupQueueRoutes(app, client, queueService);
     setupPollRoutes(app, client, supabase, supabaseRetry);
     setupMembershipsRoute(app, client, supabase, supabaseRetry);
     setupSendMessageRoute(app, client, supabase, supabaseRetry);
     setupReleasesRoutes(app, client, upload, FORUM_ID, SUPPORTER_FORUM_ID);
-
-    // ────────────────────────────────────────────────
-    // MONITORING ROUTES (inlined)
-    // ────────────────────────────────────────────────
-    function parseCharacterList(pollList) {
-        const lines = pollList.split(/\r?\n/).filter(line => line.trim().length > 0);
-        return lines.map(line => line.trim().replace(/:female_sign:|:male_sign:/g, m => m === ':female_sign:' ? '♀️' : '♂️'));
-    }
-
-    app.get('/api/monitoring/members', async (req, res) => {
-        try {
-            const days = parseInt(req.query.days) || 10;
-            const guild = await client.guilds.fetch(process.env.GUILD_ID);
-            const members = await getGuildMembers(guild);
-            const now = Date.now();
-
-            const { data: activePoll } = await supabaseRetry(() =>
-                supabase.from('auto_resume')
-                    .select('poll_list')
-                    .order('id', { ascending: false })
-                    .limit(1)
-                    .single()
-            );
-            let characterList = [];
-            if (activePoll && activePoll.poll_list) {
-                characterList = parseCharacterList(activePoll.poll_list);
-            }
-
-            const { data: votes, error: voteError } = await supabaseRetry(() =>
-                supabase.from('votes_discord')
-                    .select('user_id, option_id')
-                    .eq('poll_id', 'character_poll_new')
-            );
-            if (voteError) console.error('Error fetching votes:', voteError);
-
-            const voteMap = {};
-            if (votes) {
-                for (const v of votes) {
-                    const optId = v.option_id;
-                    let characterName = null;
-                    if (characterList.length >= optId && optId >= 1) {
-                        characterName = characterList[optId - 1];
-                    }
-                    voteMap[v.user_id] = { option_id: optId, characterName };
-                }
-            }
-
-            const membersList = [];
-            for (const [id, member] of members) {
-                if (member.roles.cache.has(SUPPORTER_ROLE_ID)) continue;
-
-                const joinedAt = member.joinedTimestamp;
-                const accountCreatedAt = member.user.createdTimestamp;
-                const daysSinceJoin = joinedAt ? Math.floor((now - joinedAt) / (24 * 60 * 60 * 1000)) : null;
-                const accountAge = accountCreatedAt ? Math.floor((now - accountCreatedAt) / (24 * 60 * 60 * 1000)) : null;
-
-                const isNew = (accountAge !== null && accountAge <= days) || (daysSinceJoin !== null && daysSinceJoin <= days);
-                if (!isNew) continue;
-
-                const vote = voteMap[id] || null;
-                membersList.push({
-                    userId: id,
-                    username: member.user.username,
-                    nickname: member.nickname || member.user.username,
-                    accountCreatedAt: accountCreatedAt ? new Date(accountCreatedAt).toISOString() : null,
-                    accountAge: accountAge,
-                    joinedAt: joinedAt ? new Date(joinedAt).toISOString() : null,
-                    daysSinceJoin: daysSinceJoin,
-                    voted: !!vote,
-                    voteCharacter: vote ? vote.characterName : null,
-                    voteOptionId: vote ? vote.option_id : null
-                });
-            }
-
-            membersList.sort((a,b) => {
-                const aRecent = Math.min(a.accountAge ?? Infinity, a.daysSinceJoin ?? Infinity);
-                const bRecent = Math.min(b.accountAge ?? Infinity, b.daysSinceJoin ?? Infinity);
-                return aRecent - bRecent;
-            });
-
-            res.json(membersList);
-        } catch (err) {
-            console.error('Monitoring fetch error:', err);
-            res.status(500).json({ error: 'Failed to fetch members: ' + err.message });
-        }
-    });
-
-    app.post('/api/monitoring/kick', async (req, res) => {
-        const { userId } = req.body;
-        if (!userId) return res.status(400).json({ error: 'Missing userId' });
-
-        let deletedVotes = 0;
-        try {
-            const { error: deleteError, count } = await supabaseRetry(() =>
-                supabase.from('votes_discord')
-                    .delete({ count: 'exact' })
-                    .eq('user_id', userId)
-                    .eq('poll_id', 'character_poll_new')
-            );
-            if (!deleteError) deletedVotes = count || 0;
-        } catch (err) { console.error(err); }
-
-        try {
-            const guild = await client.guilds.fetch(process.env.GUILD_ID);
-            const member = await guild.members.fetch(userId);
-            if (!member) return res.status(404).json({ error: 'Member not found' });
-            await member.kick('Flagged as suspicious new account – poll votes removed');
-            res.json({ success: true, message: `Kicked ${member.user.tag} and removed ${deletedVotes} poll vote(s)` });
-        } catch (err) {
-            res.status(500).json({ error: err.message });
-        }
-    });
+    setupMonitoringRoutes(app, client, supabase, supabaseRetry, getGuildMembers);
 
     // Start server
     app.listen(PORT, () => {
