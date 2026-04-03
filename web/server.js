@@ -24,41 +24,94 @@ module.exports = (client) => {
 
     // ====================== MIDDLEWARE SETUP ======================
 
-    // 1. QUICK PROBE BLOCKER
+    // 1. QUICK PROBE BLOCKER - full patterns
     app.use((req, res, next) => {
         const url = req.url.toLowerCase();
-        const probePatterns = [ /* ... same as before ... */ ];
+        const probePatterns = [
+            /\.env/i,
+            /\.git/i,
+            /actuator/i,
+            /swagger/i,
+            /api-docs/i,
+            /v[2-3]\/api/i,
+            /php(info|myadmin|phpunit|adminer)/i,
+            /\.ht(access|passwd)/i,
+            /web\.config/i,
+            /nginx\.conf/i,
+            /docker-compose/i,
+            /Dockerfile/i,
+            /composer\.(json|lock)/i,
+            /package\.json/i,
+            /requirements\.txt/i,
+            /backup|dump|db\.sql|database\.sql/i,
+            /config\.(php|yml|yaml|json|xml)/i,
+            /settings\.(json|yml)/i,
+            /secrets|credentials/i,
+            /robots\.txt/i,
+            /sitemap\.xml/i,
+            /crossdomain\.xml/i,
+            /\.\.\//,
+            /%3Cscript/i,
+            /union\+select/i,
+            /server-status|server-info|trace/i,
+            /graphql/i,
+            /wp-(admin|content|includes)/i,
+            /\.bak|\.old|\.backup/i
+        ];
         if (probePatterns.some(pattern => pattern.test(url))) {
             return res.status(404).send('Not Found');
         }
         next();
     });
 
-    // 2. STATIC ASSETS SERVING – include /js
+    // 2. STATIC ASSETS SERVING
     app.use('/assets', express.static('public/assets', { maxAge: '1d', etag: true }));
     app.use('/static', express.static('public/static', { maxAge: '1d', etag: true }));
-    app.use('/js', express.static('public/js', { maxAge: '1d', etag: true })); // ✅ FIX: serve JS files
 
-    // 3. SILENCE LOG SPAM
+    // 3. EXPLICIT ROUTES FOR JS FILES (fix MIME type errors)
+    const jsFiles = ['greetings', 'toast', 'queue', 'poll', 'releases', 'uploading', 'megalink'];
+    jsFiles.forEach(file => {
+        app.get(`/js/${file}.js`, (req, res) => {
+            res.setHeader('Content-Type', 'application/javascript');
+            const filePath = path.join(__dirname, 'public', 'js', `${file}.js`);
+            res.sendFile(filePath, err => {
+                if (err) {
+                    console.error(`Failed to serve /js/${file}.js:`, err);
+                    res.status(404).send(`// ${file}.js not found`);
+                }
+            });
+        });
+    });
+
+    // 4. SILENCE LOG SPAM FOR STATIC FILES
     app.use((req, res, next) => {
         const url = req.url.toLowerCase();
         const staticPatterns = [
-            /^\/assets\//, /^\/static\//, /^\/js\//,
-            /^\/bot-connect\.js$/, /^\/favicon\.ico$/,
+            /^\/assets\//,
+            /^\/static\//,
+            /^\/js\//,
+            /^\/bot-connect\.js$/,
+            /^\/favicon\.ico$/,
+            /^\/manifest\.json$/,
             /\.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|map|json|webmanifest)$/i
         ];
-        if (staticPatterns.some(pattern => pattern.test(url))) return next();
+        if (staticPatterns.some(pattern => pattern.test(url))) {
+            return next();
+        }
         next();
     });
 
-    // 4. Body parsers
+    // 5. Body parsers
     app.use(express.json());
     app.use(express.static(path.join(__dirname, 'public')));
 
+    // Multer setup
     const upload = multer({ storage: multer.memoryStorage() });
 
     // Crypto polyfill
-    if (typeof global.crypto === 'undefined') global.crypto = require('crypto');
+    if (typeof global.crypto === 'undefined') {
+        global.crypto = require('crypto');
+    }
     if (typeof global.crypto.getRandomValues === 'undefined') {
         global.crypto.getRandomValues = function(array) {
             return require('crypto').randomBytes(array.length);
@@ -69,7 +122,7 @@ module.exports = (client) => {
     const SUPPORTER_FORUM_ID = '1465937644394512516';
     const SUPPORTER_ROLE_ID = '1466155709547675795';
 
-    // ====================== MEMBER CACHE (avoids rate limits) ======================
+    // ====================== MEMBER CACHE ======================
     let cachedMembers = null;
     let lastMemberFetch = 0;
     const MEMBER_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
@@ -86,14 +139,15 @@ module.exports = (client) => {
             return members;
         } catch (err) {
             console.error('Failed to fetch members:', err);
-            if (cachedMembers) return cachedMembers; // fallback to stale cache
+            if (cachedMembers) return cachedMembers;
             throw err;
         }
     }
 
     // ────────────────────────────────────────────────
-    // API ROUTES (unchanged)
+    // API ROUTES
     // ────────────────────────────────────────────────
+
     app.get('/api/channels', async (req, res) => {
         try {
             const guild = await client.guilds.fetch(process.env.GUILD_ID);
@@ -166,7 +220,7 @@ module.exports = (client) => {
         res.sendFile(path.join(__dirname, 'public', 'index.html'));
     });
 
-    // External routes
+    // External route files
     const setupQueueRoutes = require('./routes/queue');
     setupQueueRoutes(app, client, queueService);
     const setupPollRoutes = require('./routes/poll');
@@ -179,7 +233,7 @@ module.exports = (client) => {
     setupReleasesRoutes(app, client, upload, FORUM_ID, SUPPORTER_FORUM_ID);
 
     // ────────────────────────────────────────────────
-    // MONITORING ROUTES (with caching)
+    // MONITORING ROUTES
     // ────────────────────────────────────────────────
     function parseCharacterList(pollList) {
         const lines = pollList.split(/\r?\n/).filter(line => line.trim().length > 0);
@@ -190,10 +244,9 @@ module.exports = (client) => {
         try {
             const days = parseInt(req.query.days) || 10;
             const guild = await client.guilds.fetch(process.env.GUILD_ID);
-            const members = await getGuildMembers(guild); // ✅ use cache
+            const members = await getGuildMembers(guild);
             const now = Date.now();
 
-            // Active poll character list
             const { data: activePoll } = await supabaseRetry(() =>
                 supabase.from('auto_resume')
                     .select('poll_list')
@@ -206,7 +259,6 @@ module.exports = (client) => {
                 characterList = parseCharacterList(activePoll.poll_list);
             }
 
-            // Votes
             const { data: votes, error: voteError } = await supabaseRetry(() =>
                 supabase.from('votes_discord')
                     .select('user_id, option_id')
