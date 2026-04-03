@@ -21,10 +21,10 @@ module.exports = (client) => {
         allowedHeaders: ['Content-Type', 'Authorization']
     }));
 
-    // 1. QUICK PROBE BLOCKER
+// 1. QUICK PROBE BLOCKER
     app.use((req, res, next) => {
         const url = req.url.toLowerCase();
-        const probePatterns [
+        const probePatterns = [ // <--- The "=" was missing here
             /\.env/i, /\.git/i, /actuator/i, /swagger/i, /api-docs/i, /v[2-3]\/api/i,
             /php(info|myadmin|phpunit|adminer)/i, /\.ht(access|passwd)/i, /web\.config/i,
             /nginx\.conf/i, /docker-compose/i, /Dockerfile/i, /composer\.(json|lock)/i,
