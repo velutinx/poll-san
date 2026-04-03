@@ -115,6 +115,7 @@ module.exports = (client) => {
 
     const FORUM_ID = '1465938599378812980';
     const SUPPORTER_FORUM_ID = '1465937644394512516';
+    const SUPPORTER_ROLE_ID = '1466155709547675795'; // role to exclude from monitoring
 
     // ────────────────────────────────────────────────
     // API ROUTES
@@ -268,9 +269,12 @@ module.exports = (client) => {
                 }
             }
 
-            // ---- Iterate over all members ----
+            // ---- Iterate over all members, excluding Supporters ----
             const membersList = [];
             for (const [id, member] of guild.members.cache) {
+                // Skip members with the Supporter role
+                if (member.roles.cache.has(SUPPORTER_ROLE_ID)) continue;
+
                 const joinedAt = member.joinedTimestamp;
                 const accountCreatedAt = member.user.createdTimestamp;
                 const daysSinceJoin = joinedAt ? Math.floor((now - joinedAt) / (24 * 60 * 60 * 1000)) : null;
@@ -297,8 +301,8 @@ module.exports = (client) => {
 
             // Sort by newest account creation or join (latest first)
             membersList.sort((a,b) => {
-                const aRecent = Math.max(a.accountAge ?? 0, a.daysSinceJoin ?? 0);
-                const bRecent = Math.max(b.accountAge ?? 0, b.daysSinceJoin ?? 0);
+                const aRecent = Math.min(a.accountAge ?? Infinity, a.daysSinceJoin ?? Infinity);
+                const bRecent = Math.min(b.accountAge ?? Infinity, b.daysSinceJoin ?? Infinity);
                 return aRecent - bRecent;
             });
 
