@@ -126,16 +126,24 @@ async function sendMembershipMessage(client, discordId, membership) {
     const member = await guild.members.fetch(discordId);
     const discordName = member.user.tag;
 
-    const success = await sendDM(member, message);
+
+const success = await sendDM(member, message, lang);
     if (success) {
       await recordMessageSent(discordId, orderId, lang, membership, discordName);
-     // console.log(`[MembershipSync] Welcome message recorded for ${discordId} order ${orderId} (lang: ${lang})`);
-    } else {
-      console.error(`[MembershipSync] Failed to send DM to ${discordId} for order ${orderId}`);
-    }
-  } catch (err) {
-    console.error(`[MembershipSync] Could not send DM to ${discordId}:`, err.message);
-  }
+
+      // --- RESTORED ADMIN NOTIFICATION ---
+      try {
+        const dorem = await client.users.fetch('842917477977161739');
+        const adminNotifyMsg = `🔔 **New membership period started for** ${discordName}\n` +
+                               `**Tier:** ${tierName}\n` +
+                               `**Expires on:** ${formatDate(expiresAt)}\n` +
+                               `*Please reach out to them.*`;
+        
+        await dorem.send(adminNotifyMsg);
+        console.log(`[MembershipSync] Admin notified about ${discordName}`);
+      } catch (err) {
+        console.error('[MembershipSync] Failed to send admin notification:', err.message);
+      }
 }
 
 // ========== Helper functions for sync state ==========
