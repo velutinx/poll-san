@@ -364,13 +364,13 @@
             </div>
         </div>
 
-        <!-- Monitoring Tab (fixed with Vote column) -->
+        <!-- Monitoring Tab (enhanced: account creation & join ages) -->
         <div id="monitoring" class="tab-content">
             <h1>Account Monitoring</h1>
             <div class="card">
                 <div style="display: flex; gap: 10px; align-items: flex-end; margin-bottom: 20px;">
                     <div class="form-group" style="flex: 1;">
-                        <label>Show accounts joined within (days)</label>
+                        <label>Show accounts where account age OR join age ≤ (days)</label>
                         <input type="number" id="monitor-days" value="10" step="1" min="1">
                     </div>
                     <button onclick="loadMonitoringData()" style="background: var(--accent); padding: 8px 20px;">🔍 Refresh</button>
@@ -384,14 +384,16 @@
                                 <th>User ID</th>
                                 <th>Username</th>
                                 <th>Nickname</th>
-                                <th>Joined At (UTC)</th>
-                                <th>Days Ago</th>
+                                <th>Account Created (UTC)</th>
+                                <th>Account Age (days)</th>
+                                <th>Joined Server (UTC)</th>
+                                <th>Days Since Join</th>
                                 <th>Vote</th>
                                 <th>Action</th>
                             </tr>
                         </thead>
                         <tbody id="monitoring-table-body">
-                            <tr><td colspan="8" style="text-align: center; padding: 20px;">Click Refresh to load members</td></tr>
+                            <tr><td colspan="10" style="text-align: center; padding: 20px;">Click Refresh to load members</td></tr>
                         </tbody>
                     </table>
                 </div>
@@ -526,7 +528,7 @@
         function renderMembersTable() {
             const tb = document.getElementById('membership-list-body');
             if (!membersData.length) {
-                tb.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:20px;">No active subscribers found.</td></tr>';
+                tb.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:20px;">No active subscribers found.</td></table>';
                 return;
             }
 
@@ -592,14 +594,14 @@
         }
 
         // ======================================================
-        // MONITORING (with vote display)
+        // MONITORING (updated: account creation & join ages)
         // ======================================================
         async function loadMonitoringData() {
             const days = document.getElementById('monitor-days').value;
             const tbody = document.getElementById('monitoring-table-body');
             const statusDiv = document.getElementById('monitoring-status');
 
-            tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;">Loading members...</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;">Loading members...</td></tr>';
             statusDiv.innerHTML = '';
 
             try {
@@ -608,7 +610,7 @@
                 const members = await res.json();
 
                 if (members.length === 0) {
-                    tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;">No members joined in the last ${days} days.</td></tr>`;
+                    tbody.innerHTML = `<tr><td colspan="10" style="text-align:center;">No members with account or join age ≤ ${days} days.</td></tr>`;
                     return;
                 }
 
@@ -629,8 +631,10 @@
                             <td style="padding: 8px;">${escapeHtml(m.userId)}</td>
                             <td style="padding: 8px;">${escapeHtml(m.username)}</td>
                             <td style="padding: 8px;">${escapeHtml(m.nickname)}</td>
-                            <td style="padding: 8px;">${new Date(m.joinedAt).toLocaleString()}</td>
-                            <td style="padding: 8px;">${m.daysSince}</td>
+                            <td style="padding: 8px;">${m.accountCreatedAt ? new Date(m.accountCreatedAt).toLocaleString() : 'Unknown'}</td>
+                            <td style="padding: 8px;">${m.accountAge !== null ? m.accountAge : '?'}</td>
+                            <td style="padding: 8px;">${m.joinedAt ? new Date(m.joinedAt).toLocaleString() : 'Unknown'}</td>
+                            <td style="padding: 8px;">${m.daysSinceJoin !== null ? m.daysSinceJoin : '?'}</td>
                             <td style="padding: 8px;">${voteDisplay}</td>
                             <td style="padding: 8px;"><button class="kick-single" data-id="${m.userId}" style="background:#ef4444; padding:4px 12px;">Kick</button></td>
                         </tr>
@@ -655,7 +659,7 @@
 
             } catch (err) {
                 console.error(err);
-                tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; color:#f87171;">Error loading data</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="10" style="text-align:center; color:#f87171;">Error loading data</td></tr>';
                 statusDiv.innerHTML = 'Error: ' + err.message;
             }
         }
