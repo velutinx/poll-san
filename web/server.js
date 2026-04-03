@@ -15,11 +15,13 @@ module.exports = (client) => {
     const app = express();
     const PORT = process.env.PORT || 8080;
 
-    app.use(cors({
-        origin: ['https://velutinx.com', 'https://d.velutinx.com'],
-        methods: ['GET', 'POST', 'OPTIONS'],
-        allowedHeaders: ['Content-Type', 'Authorization']
-    }));
+// server.js
+app.use(cors({
+    // Add both the apex and the subdomain
+    origin: ['https://velutinx.com', 'https://d.velutinx.com', 'http://localhost:8080'],
+    methods: ['GET', 'POST', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization']
+}));
 
 // 1. QUICK PROBE BLOCKER
     app.use((req, res, next) => {
