@@ -70,7 +70,7 @@ module.exports = (client) => {
     }
 
     // Load external route files (including monitoring)
-    const setupDashboardRoutes = require('./web/routes/dashboard');
+    const setupDashboardRoutes = require('./routes/dashboard');
     const setupQueueRoutes = require('./routes/queue');
     const setupPollRoutes = require('./routes/poll');
     const setupMembershipsRoute = require('./routes/memberships');
