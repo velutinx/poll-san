@@ -38,7 +38,8 @@ module.exports = (client) => {
     });
 
     // Serve static files from 'public' folder (this will serve /js/*.js, /css/*.css, etc.)
-app.use(express.static(path.join(__dirname, 'public')));    
+    app.use(express.static(path.join(__dirname, 'public')));
+
     // Body parser
     app.use(express.json());
 
