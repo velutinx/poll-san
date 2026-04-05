@@ -61,30 +61,32 @@ module.exports = function setupGiveawayRoutes(app, client, supabase, supabaseRet
                 }
             }
 
-for (const userId of entrants) {
+// Inside app.get('/api/giveaway/active') – replace the entrants loop with:
 
-let member = null;
-try {
-    member = await guild.members.fetch(userId).catch(() => null);
-} catch (err) {
-    console.warn(`Failed to fetch member ${userId}:`, err.message);
-}
+for (const userId of entrants) {
+    let member = null;
+    let leftServer = false;
     let isSupporter = false;
     let nickname = userId;
     let username = userId;
     let accountAge = null;
-    let leftServer = false;
 
-    if (member) {
-        nickname = member.nickname || member.user.username;
-        username = member.user.username;
-        accountAge = member.user.createdTimestamp
-            ? Math.floor((Date.now() - member.user.createdTimestamp) / (24 * 60 * 60 * 1000))
-            : null;
-        isSupporter = member.roles.cache.has(SUPPORTER_ROLE_ID);
-    } else {
-        leftServer = true; // member no longer in server
-        // Keep username/nickname as userId for clarity
+    try {
+        // Fetch the member directly (no cache) to get live nickname
+        member = await guild.members.fetch(userId).catch(() => null);
+        if (!member) {
+            leftServer = true;
+        } else {
+            nickname = member.nickname || member.user.username;
+            username = member.user.username;
+            accountAge = member.user.createdTimestamp
+                ? Math.floor((Date.now() - member.user.createdTimestamp) / (24 * 60 * 60 * 1000))
+                : null;
+            isSupporter = member.roles.cache.has(SUPPORTER_ROLE_ID);
+        }
+    } catch (err) {
+        console.warn(`Failed to fetch member ${userId}:`, err.message);
+        leftServer = true;
     }
 
     const vote = voteMap[userId] || null;
@@ -100,7 +102,6 @@ try {
         leftServer
     });
 }
-
             res.json({
                 active: true,
                 prize: giveaway.prize,
