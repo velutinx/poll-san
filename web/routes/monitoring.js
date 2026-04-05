@@ -3,8 +3,32 @@ const SUPPORTER_ROLE_ID = '1466155709547675795';
 
 function parseCharacterList(pollList) {
     if (!pollList) return [];
-    const lines = pollList.split(/\r?\n/).filter(line => line.trim(). length > 0);
+    const lines = pollList.split(/\r?\n/).filter(line => line.trim().length > 0);
     return lines.map(line => line.trim().replace(/:female_sign:|:male_sign:/g, m => m === ':female_sign:' ? '♀️' : '♂️'));
+}
+
+// Helper: retry member fetch with exponential backoff
+async function fetchMembersWithRetry(getGuildMembers, guild, maxRetries = 3) {
+    let lastError;
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+        try {
+            return await getGuildMembers(guild);
+        } catch (err) {
+            lastError = err;
+            // Check for Gateway rate limit (code 50001 or message includes "rate limited")
+            const isRateLimit = err.code === 50001 || 
+                                (err.message && err.message.includes('rate limited')) ||
+                                (err.name === 'GatewayRateLimitError');
+            if (isRateLimit && attempt < maxRetries - 1) {
+                const delay = Math.pow(2, attempt) * 1000; // 1s, 2s, 4s
+                console.log(`Rate limited, retrying in ${delay}ms (attempt ${attempt + 1}/${maxRetries})`);
+                await new Promise(resolve => setTimeout(resolve, delay));
+                continue;
+            }
+            throw err;
+        }
+    }
+    throw lastError;
 }
 
 module.exports = function setupMonitoringRoutes(app, client, supabase, supabaseRetry, getGuildMembers) {
@@ -14,12 +38,21 @@ module.exports = function setupMonitoringRoutes(app, client, supabase, supabaseR
             const days = parseInt(req.query.days) || 10;
             const guild = await client.guilds.fetch(process.env.GUILD_ID);
             
-            // Use the passed getGuildMembers or fallback to direct fetch
+            // Fetch members with retry
             let members;
-            if (typeof getGuildMembers === 'function') {
-                members = await getGuildMembers(guild);
-            } else {
-                members = await guild.members.fetch({ withPresences: false });
+            try {
+                if (typeof getGuildMembers === 'function') {
+                    members = await fetchMembersWithRetry(getGuildMembers, guild);
+                } else {
+                    members = await guild.members.fetch({ withPresences: false });
+                }
+            } catch (err) {
+                console.error('Member fetch failed after retries:', err);
+                // Check if it's a rate limit error to send appropriate response
+                if (err.name === 'GatewayRateLimitError' || (err.message && err.message.includes('rate limited'))) {
+                    return res.status(429).json({ error: 'Discord API rate limited. Please wait a moment and try again.' });
+                }
+                throw err;
             }
             
             const now = Date.now();
