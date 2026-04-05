@@ -366,40 +366,40 @@
         </div>
 
         <!-- Monitoring Tab (enhanced: account creation & join ages) -->
-        <div id="monitoring" class="tab-content">
-            <h1>Account Monitoring</h1>
-            <div class="card">
-                <div style="display: flex; gap: 10px; align-items: flex-end; margin-bottom: 20px;">
-                    <div class="form-group" style="flex: 1;">
-                        <label>Show accounts where account age OR join age ≤ (days)</label>
-                        <input type="number" id="monitor-days" value="10" step="1" min="1">
-                    </div>
-                    <button onclick="loadMonitoringData()" style="background: var(--accent); padding: 8px 20px;">🔍 Refresh</button>
-                    <button onclick="kickAllSelected()" style="background: #ef4444; padding: 8px 20px;" id="kick-all-btn">🚨 Kick All Selected</button>
-                </div>
-                <div style="overflow-x: auto;">
-                    <table style="width: 100%; border-collapse: collapse;">
-<thead>
-    <tr style="text-align: left; border-bottom: 2px solid #334155;">
-        <th style="padding: 8px;"><input type="checkbox" id="monitor-select-all"></th>
-        <th style="padding: 8px; cursor: pointer;" onclick="sortMonitoringData('userId')">User ID</th>
-        <th style="padding: 8px; cursor: pointer;" onclick="sortMonitoringData('username')">Discord Username</th>
-        <th style="padding: 8px; cursor: pointer;" onclick="sortMonitoringData('accountCreatedAt')">Account Created (UTC)</th>
-        <th style="padding: 8px; cursor: pointer;" onclick="sortMonitoringData('accountAge')">Account Age (days)</th>
-        <th style="padding: 8px; cursor: pointer;" onclick="sortMonitoringData('joinedAt')">Joined Server (UTC)</th>
-        <th style="padding: 8px; cursor: pointer;" onclick="sortMonitoringData('daysSinceJoin')">Days Since Join</th>
-        <th style="padding: 8px; cursor: pointer;" onclick="sortMonitoringData('voteCharacter')">Vote</th>
-        <th style="padding: 8px;">Action</th>
-    </table>
-</thead>
-                        <tbody id="monitoring-table-body">
-                            <tr><td colspan="10" style="text-align: center; padding: 20px;">Click Refresh to load members</td></tr>
-                        </tbody>
-                    </table>
-                </div>
-                <div id="monitoring-status" class="status" style="margin-top: 12px;"></div>
+<div id="monitoring" class="tab-content">
+    <h1>Account Monitoring</h1>
+    <div class="card">
+        <div style="display: flex; gap: 10px; align-items: flex-end; margin-bottom: 20px;">
+            <div class="form-group" style="flex: 1;">
+                <label>Show accounts where account age OR join age ≤ (days)</label>
+                <input type="number" id="monitor-days" value="10" step="1" min="1">
             </div>
+            <button onclick="loadMonitoringData()" style="background: var(--accent); padding: 8px 20px;">🔍 Refresh</button>
+            <button onclick="kickAllSelected()" style="background: #ef4444; padding: 8px 20px;" id="kick-all-btn">🚨 Kick All Selected</button>
         </div>
+        <div style="overflow-x: auto;">
+            <table style="width: 100%; border-collapse: collapse;">
+                <thead>
+                    <tr style="text-align: left; border-bottom: 2px solid #334155;">
+                        <th style="padding: 8px;"><input type="checkbox" id="monitor-select-all"></th>
+                        <th style="padding: 8px; cursor: pointer;" onclick="sortMonitoringData('userId')">User ID</th>
+                        <th style="padding: 8px; cursor: pointer;" onclick="sortMonitoringData('username')">Discord Username</th>
+                        <th style="padding: 8px; cursor: pointer;" onclick="sortMonitoringData('accountCreatedAt')">Account Created (UTC)</th>
+                        <th style="padding: 8px; cursor: pointer;" onclick="sortMonitoringData('accountAge')">Account Age (days)</th>
+                        <th style="padding: 8px; cursor: pointer;" onclick="sortMonitoringData('joinedAt')">Joined Server (UTC)</th>
+                        <th style="padding: 8px; cursor: pointer;" onclick="sortMonitoringData('daysSinceJoin')">Days Since Join</th>
+                        <th style="padding: 8px; cursor: pointer;" onclick="sortMonitoringData('voteCharacter')">Vote</th>
+                        <th style="padding: 8px;">Action</th>
+                    </tr>
+                </thead>
+                <tbody id="monitoring-table-body">
+                    <tr><td colspan="9" style="text-align: center; padding: 20px;">Click Refresh to load members</td></tr>
+                </tbody>
+            </table>
+        </div>
+        <div id="monitoring-status" class="status" style="margin-top: 12px;"></div>
+    </div>
+</div>
 
         <!-- Giveaway tab -->
 <div id="giveaway-mgmt" class="tab-content">
@@ -412,17 +412,17 @@
     <div class="card">
         <div style="overflow-x: auto;">
             <table style="width: 100%; border-collapse: collapse;">
-<thead>
-    <tr style="text-align: left; border-bottom: 2px solid #334155;">
-        <th style="padding: 8px; cursor: pointer;" onclick="sortGiveawayTable('username')">Discord Username</th>
-        <th style="padding: 8px; cursor: pointer;" onclick="sortGiveawayTable('userId')">Discord ID</th>
-        <th style="padding: 8px; cursor: pointer;" onclick="sortGiveawayTable('accountAge')">Account Age (days)</th>
-        <th style="padding: 8px; cursor: pointer;" onclick="sortGiveawayTable('voteCharacter')">Current Vote</th>
-        <th style="padding: 8px;">Action</th>
-    </tr>
-</thead>
+                <thead>
+                    <tr style="text-align: left; border-bottom: 2px solid #334155;">
+                        <th style="padding: 8px; cursor: pointer;" onclick="sortGiveawayTable('username')">Discord Username</th>
+                        <th style="padding: 8px; cursor: pointer;" onclick="sortGiveawayTable('userId')">Discord ID</th>
+                        <th style="padding: 8px; cursor: pointer;" onclick="sortGiveawayTable('accountAge')">Account Age (days)</th>
+                        <th style="padding: 8px; cursor: pointer;" onclick="sortGiveawayTable('voteCharacter')">Current Vote</th>
+                        <th style="padding: 8px;">Action</th>
+                    </tr>
+                </thead>
                 <tbody id="giveaway-table-body">
-                    <tr><td colspan="6" style="text-align:center;">No active giveaway or loading...</td></tr>
+                    <tr><td colspan="5" style="text-align:center;">No active giveaway or loading...</td></tr>
                 </tbody>
             </table>
         </div>
@@ -670,79 +670,84 @@
         }
 
         function renderMonitoringTable(data) {
-            const tbody = document.getElementById('monitoring-table-body');
-            if (!data.length) {
-                tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;">No members found</td></tr>';
-                return;
-            }
-            tbody.innerHTML = data.map(m => {
-                let voteDisplay = 'None';
-                if (m.voted) {
-                    if (m.voteCharacter) voteDisplay = escapeHtml(m.voteCharacter);
-                    else if (m.voteOptionId) voteDisplay = `Option ${m.voteOptionId}`;
-                    else voteDisplay = 'Yes (unknown)';
-                }
-return `
-    <tr data-user-id="${m.userId}">
-        <td style="padding: 8px;"><input type="checkbox" class="monitor-user-checkbox" data-id="${m.userId}"></td>
-        <td style="padding: 8px;">${escapeHtml(m.userId)}</td>
-        <td style="padding: 8px;">${escapeHtml(m.username)}</td>
-        <td style="padding: 8px;">${m.accountCreatedAt ? new Date(m.accountCreatedAt).toLocaleString() : 'Unknown'}</td>
-        <td style="padding: 8px;">${m.accountAge !== null ? m.accountAge : '?'}</td>
-        <td style="padding: 8px;">${m.joinedAt ? new Date(m.joinedAt).toLocaleString() : 'Unknown'}</td>
-        <td style="padding: 8px;">${m.daysSinceJoin !== null ? m.daysSinceJoin : '?'}</td>
-        <td style="padding: 8px;">${voteDisplay}</td>
-        <td style="padding: 8px;"><button class="kick-single" data-id="${m.userId}" style="background:#ef4444; padding:4px 12px;">Kick</button></td>
-    </tr>
-`;
-            }).join('');
-            
-            // Re-attach kick events
-            document.querySelectorAll('.kick-single').forEach(btn => {
-                btn.addEventListener('click', (e) => {
-                    const userId = btn.dataset.id;
-                    kickMember(userId);
-                });
-            });
-            
-            // Select all checkbox
-            const selectAll = document.getElementById('monitor-select-all');
-            if (selectAll) {
-                selectAll.onclick = (e) => {
-                    document.querySelectorAll('.monitor-user-checkbox').forEach(cb => cb.checked = e.target.checked);
-                };
-            }
+    const tbody = document.getElementById('monitoring-table-body');
+    if (!tbody) return;
+    if (!data.length) {
+        tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;">No members found</td></tr>';
+        return;
+    }
+    tbody.innerHTML = data.map(m => {
+        let voteDisplay = 'None';
+        if (m.voted) {
+            if (m.voteCharacter) voteDisplay = escapeHtml(m.voteCharacter);
+            else if (m.voteOptionId) voteDisplay = `Option ${m.voteOptionId}`;
+            else voteDisplay = 'Yes (unknown)';
         }
+        return `
+            <tr data-user-id="${m.userId}">
+                <td style="padding: 8px;"><input type="checkbox" class="monitor-user-checkbox" data-id="${m.userId}"></td>
+                <td style="padding: 8px;">${escapeHtml(m.userId)}</td>
+                <td style="padding: 8px;">${escapeHtml(m.username)}</td>
+                <td style="padding: 8px;">${m.accountCreatedAt ? new Date(m.accountCreatedAt).toLocaleString() : 'Unknown'}</td>
+                <td style="padding: 8px;">${m.accountAge !== null ? m.accountAge : '?'}</td>
+                <td style="padding: 8px;">${m.joinedAt ? new Date(m.joinedAt).toLocaleString() : 'Unknown'}</td>
+                <td style="padding: 8px;">${m.daysSinceJoin !== null ? m.daysSinceJoin : '?'}</td>
+                <td style="padding: 8px;">${voteDisplay}</td>
+                <td style="padding: 8px;"><button class="kick-single" data-id="${m.userId}" style="background:#ef4444; padding:4px 12px;">Kick</button></td>
+            `,
+    }).join('');
+    // Re-attach kick events
+    document.querySelectorAll('.kick-single').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            const userId = btn.dataset.id;
+            kickMember(userId);
+        });
+    });
+    // Select all checkbox
+    const selectAll = document.getElementById('monitor-select-all');
+    if (selectAll) {
+        selectAll.onclick = (e) => {
+            document.querySelectorAll('.monitor-user-checkbox').forEach(cb => cb.checked = e.target.checked);
+        };
+    }
+}
 
-        async function loadMonitoringData() {
-            const btn = document.querySelector('#monitoring button[onclick="loadMonitoringData()"]');
-            if (btn && btn.disabled) return;
-            if (btn) btn.disabled = true;
+async function loadMonitoringData() {
+    const btn = document.querySelector('#monitoring button[onclick="loadMonitoringData()"]');
+    if (btn && btn.disabled) return;
+    if (btn) btn.disabled = true;
 
-            const days = document.getElementById('monitor-days').value;
-            const tbody = document.getElementById('monitoring-table-body');
-            const statusDiv = document.getElementById('monitoring-status');
+    const days = document.getElementById('monitor-days').value;
+    const tbody = document.getElementById('monitoring-table-body');
+    const statusDiv = document.getElementById('monitoring-status');
 
-            tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;">Loading members...</td></tr>';
-            statusDiv.innerHTML = '';
+    if (!tbody) {
+        console.error('monitoring-table-body not found');
+        if (statusDiv) statusDiv.innerHTML = 'Table body missing – check HTML';
+        if (btn) btn.disabled = false;
+        return;
+    }
 
-            try {
-                const res = await fetch(`/api/monitoring/members?days=${days}`);
-                if (!res.ok) throw new Error('Failed to fetch');
-                currentMonitoringData = await res.json();
-                monitoringSortColumn = null;
-                renderMonitoringTable(currentMonitoringData);
-            } catch (err) {
-                console.error(err);
-                tbody.innerHTML = '<tr><td colspan="10" style="text-align:center; color:#f87171;">Error loading data</td></tr>';
-                statusDiv.innerHTML = 'Error: ' + err.message;
-            } finally {
-                if (monitoringRefreshTimeout) clearTimeout(monitoringRefreshTimeout);
-                monitoringRefreshTimeout = setTimeout(() => {
-                    if (btn) btn.disabled = false;
-                    }, 10000); // 10 seconds
-            }
-        }
+    tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;">Loading members...</td></tr>';
+    if (statusDiv) statusDiv.innerHTML = '';
+
+    try {
+        const res = await fetch(`/api/monitoring/members?days=${days}`);
+        if (!res.ok) throw new Error('Failed to fetch');
+        currentMonitoringData = await res.json();
+        monitoringSortColumn = null;
+        renderMonitoringTable(currentMonitoringData);
+    } catch (err) {
+        console.error(err);
+        tbody.innerHTML = '<tr><td colspan="9" style="text-align:center; color:#f87171;">Error loading data</td></tr>';
+        if (statusDiv) statusDiv.innerHTML = 'Error: ' + err.message;
+    } finally {
+        if (monitoringRefreshTimeout) clearTimeout(monitoringRefreshTimeout);
+        monitoringRefreshTimeout = setTimeout(() => {
+            if (btn) btn.disabled = false;
+        }, 10000);
+    }
+}
 
         async function kickMember(userId) {
             const statusDiv = document.getElementById('monitoring-status');
