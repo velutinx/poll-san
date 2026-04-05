@@ -142,7 +142,7 @@ async function sendMembershipMessage(client, discordId, membership) {
                          `**Expires on:** ${formatDate(expiresAt)}\n` +
                          `*Please reach out to them.*`;
         await owner.send({ content: adminMsg, flags: ["SuppressEmbeds"] });
-        console.log(`[MembershipSync] Admin (owner) notified for ${discordName} (${discordId})`);
+//        console.log(`[MembershipSync] Admin (owner) notified for ${discordName} (${discordId})`);
       } catch (adminErr) {
         console.error('[MembershipSync] Could not notify owner:', adminErr.message);
       }
