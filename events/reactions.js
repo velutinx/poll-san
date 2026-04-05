@@ -80,17 +80,31 @@ module.exports = async (reaction, user, action = 'add') => {
             }
         }
 
-        // 4. Record/Update Vote in Supabase
+        // 4. Record/Update Vote in Supabase with character_name
+        const { data: charData, error: charError } = await supabase
+            .from('final_votes')
+            .select('character_name')
+            .eq('poll_id', 'character_poll_new')
+            .eq('option_id', optionId)
+            .maybeSingle();
+
+        if (charError) {
+            console.error('Error fetching character name:', charError);
+        }
+
+        const characterName = charData?.character_name || null;
+
         await supabase.from('votes_discord').upsert({
             user_id: user.id,
             poll_id: 'character_poll_new',
             option_id: optionId,
             weight: parseFloat(weight.toFixed(2)),
             discord_username: user.username,
-            time_voted: new Date().toISOString()
+            time_voted: new Date().toISOString(),
+            character_name: characterName
         });
 
-        console.log(`🗳️ Vote Recorded: ${user.username} for Option ${optionId} (Weight: ${weight.toFixed(2)})`);
+        console.log(`🗳️ Vote Recorded: ${user.username} for Option ${optionId} (Weight: ${weight.toFixed(2)}) - Character: ${characterName || 'unknown'}`);
 
         // 5. Cleanup other reactions visually
         const otherReactions = message.reactions.cache.filter(r => {
