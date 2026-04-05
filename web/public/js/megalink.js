@@ -8,7 +8,7 @@ function initMega() {
             setTimeout(generateFilenameFromPost, 500);
         }
     }
-    console.log('Mega module initialized');
+ //   console.log('Mega module initialized');
 }
 
 function generateFilenameFromPost() {
