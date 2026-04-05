@@ -82,10 +82,6 @@ module.exports = function setupGiveawayRoutes(app, client, supabase, supabaseRet
                         isSupporter = member.roles.cache.has(SUPPORTER_ROLE_ID);
                     }
 
-if (member) {
-    console.log(`Member ${userId}: nickname="${member.nickname}", username="${member.user.username}"`);
-    nickname = member.nickname || member.user.username;
-}
                 } catch (err) {
                     console.warn(`Failed to fetch member ${userId}:`, err.message);
                     leftServer = true;
