@@ -86,9 +86,10 @@ async function recordMessageSent(discordId, orderId, language, membership, disco
   }
 }
 
-async function sendDM(member, content, lang) { // <--- Add 'lang' here
+async function sendDM(member, content, lang) {
   try {
-    await member.send(content);
+    // Add flags to suppress link embeds
+    await member.send({ content, flags: ["SuppressEmbeds"] });
     console.log(`[MembershipSync] ✅ DM sent to ${member.user.tag} (lang: ${lang})`);
     return true;
   } catch (err) {
