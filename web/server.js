@@ -50,24 +50,33 @@ module.exports = (client) => {
     // ====================== MEMBER CACHE ======================
     let cachedMembers = null;
     let lastMemberFetch = 0;
-    const MEMBER_CACHE_TTL = 5 * 60 * 1000;
+    const MEMBER_CACHE_TTL = 10 * 60 * 1000; // 10 minutes
+    
+// In server.js, replace the existing getGuildMembers with:
 
-    async function getGuildMembers(guild) {
-        const now = Date.now();
-        if (cachedMembers && (now - lastMemberFetch) < MEMBER_CACHE_TTL) {
-            return cachedMembers;
-        }
+let memberFetchPromise = null;
+
+async function getGuildMembers(guild) {
+    const now = Date.now();
+    if (cachedMembers && (now - lastMemberFetch) < MEMBER_CACHE_TTL) {
+        return cachedMembers;
+    }
+    if (memberFetchPromise) {
+        // Wait for ongoing fetch
+        return memberFetchPromise;
+    }
+    memberFetchPromise = (async () => {
         try {
             const members = await guild.members.fetch({ withPresences: false });
             cachedMembers = members;
-            lastMemberFetch = now;
+            lastMemberFetch = Date.now();
             return members;
-        } catch (err) {
-            console.error('Failed to fetch members:', err);
-            if (cachedMembers) return cachedMembers;
-            throw err;
+        } finally {
+            memberFetchPromise = null;
         }
-    }
+    })();
+    return memberFetchPromise;
+}
 
     // ────────────────────────────────────────────────
     // API ROUTES (existing)
