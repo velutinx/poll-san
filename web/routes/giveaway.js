@@ -62,13 +62,13 @@ module.exports = function setupGiveawayRoutes(app, client, supabase, supabaseRet
             }
 
 for (const userId of entrants) {
-    let member = null;
-    try {
-        member = await guild.members.fetch(userId).catch(() => null);
-    } catch (err) {
-        // ignore
-    }
 
+let member = null;
+try {
+    member = await guild.members.fetch(userId).catch(() => null);
+} catch (err) {
+    console.warn(`Failed to fetch member ${userId}:`, err.message);
+}
     let isSupporter = false;
     let nickname = userId;
     let username = userId;
