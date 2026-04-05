@@ -50,7 +50,7 @@ module.exports = (client) => {
     // ====================== MEMBER CACHE ======================
     let cachedMembers = null;
     let lastMemberFetch = 0;
-    const MEMBER_CACHE_TTL = 10 * 60 * 1000; // 10 minutes
+    const MEMBER_CACHE_TTL = 15 * 60 * 1000; // 15 minutes (was 10)
     
 // In server.js, replace the existing getGuildMembers with:
 
