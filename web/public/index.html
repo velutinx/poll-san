@@ -743,7 +743,7 @@
                 if (monitoringRefreshTimeout) clearTimeout(monitoringRefreshTimeout);
                 monitoringRefreshTimeout = setTimeout(() => {
                     if (btn) btn.disabled = false;
-                }, 5000);
+                    }, 10000); // 10 seconds
             }
         }
 
