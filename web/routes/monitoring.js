@@ -93,34 +93,43 @@ module.exports = function setupMonitoringRoutes(app, client, supabase, supabaseR
                 }
             }
 
-            const membersList = [];
-            for (const [id, member] of members) {
-                // Skip supporters
-                if (member.roles.cache.has(SUPPORTER_ROLE_ID)) continue;
+// Inside app.get('/api/monitoring/members') – replace the membersList building loop
 
-                const joinedAt = member.joinedTimestamp;
-                const accountCreatedAt = member.user.createdTimestamp;
-                const daysSinceJoin = joinedAt ? Math.floor((now - joinedAt) / (24 * 60 * 60 * 1000)) : null;
-                const accountAge = accountCreatedAt ? Math.floor((now - accountCreatedAt) / (24 * 60 * 60 * 1000)) : null;
+const membersList = [];
+for (const [id, member] of members) {
+    // Skip supporters
+    if (member.roles.cache.has(SUPPORTER_ROLE_ID)) continue;
 
-                // Filter by age
-                const isNew = (accountAge !== null && accountAge <= days) || (daysSinceJoin !== null && daysSinceJoin <= days);
-                if (!isNew) continue;
+    // Force-fetch the member to get latest nickname (cached but ensures we have nickname)
+    let freshMember = member;
+    try {
+        freshMember = await guild.members.fetch({ user: id, force: false }); // false to use cache if available
+    } catch (err) {
+        console.warn(`Failed to refresh member ${id}:`, err.message);
+    }
+    
+    const joinedAt = freshMember.joinedTimestamp;
+    const accountCreatedAt = freshMember.user.createdTimestamp;
+    const daysSinceJoin = joinedAt ? Math.floor((now - joinedAt) / (24 * 60 * 60 * 1000)) : null;
+    const accountAge = accountCreatedAt ? Math.floor((now - accountCreatedAt) / (24 * 60 * 60 * 1000)) : null;
 
-                const vote = voteMap[id] || null;
-                membersList.push({
-                    userId: id,
-                    username: member.user.username,
-                    nickname: member.nickname || member.user.username,
-                    accountCreatedAt: accountCreatedAt ? new Date(accountCreatedAt).toISOString() : null,
-                    accountAge: accountAge,
-                    joinedAt: joinedAt ? new Date(joinedAt).toISOString() : null,
-                    daysSinceJoin: daysSinceJoin,
-                    voted: !!vote,
-                    voteCharacter: vote ? vote.characterName : null,
-                    voteOptionId: vote ? vote.option_id : null
-                });
-            }
+    const isNew = (accountAge !== null && accountAge <= days) || (daysSinceJoin !== null && daysSinceJoin <= days);
+    if (!isNew) continue;
+
+    const vote = voteMap[id] || null;
+    membersList.push({
+        userId: id,
+        username: freshMember.user.username,
+        nickname: freshMember.nickname || freshMember.user.username, // now nickname should be correct
+        accountCreatedAt: accountCreatedAt ? new Date(accountCreatedAt).toISOString() : null,
+        accountAge: accountAge,
+        joinedAt: joinedAt ? new Date(joinedAt).toISOString() : null,
+        daysSinceJoin: daysSinceJoin,
+        voted: !!vote,
+        voteCharacter: vote ? vote.characterName : null,
+        voteOptionId: vote ? vote.option_id : null
+    });
+}
 
             // Sort by newest (smallest age first)
             membersList.sort((a, b) => {
