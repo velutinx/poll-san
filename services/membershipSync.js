@@ -14,20 +14,20 @@ const SUPPORTER_ROLE = '1466155709547675795';
 // Translation dictionary for user messages
 const MESSAGES = {
   en: {
-    welcome_tier1: "🎉 Welcome to the {tierName} tier!\nYour membership is active until **{expiryDate}**.\n\nFeel free to explore the packs on **[this channel](https://discord.com/channels/1401446104498700358/1465937644394512516)** and **[join the server](https://discord.gg/XF363uYfSh)** if you haven't.\n\nPlease message **[DM dorem](https://discord.com/users/842917477977161739)** if you have any questions.",
-    welcome_tier2_5: "🎉 Welcome to the {tierName} tier!\nYour membership is active until **{expiryDate}**.\n\nFeel free to explore the packs on **[this channel](https://discord.com/channels/1401446104498700358/1465937644394512516)** and **[join the server](https://discord.gg/XF363uYfSh)** if you haven't.\n\nPlease message **[DM dorem](https://discord.com/users/842917477977161739)** to redeem your {currentMonth} billing cycle request."
+    welcome_tier1: "🎉 Welcome to the {tierName} tier!\nYour membership is active until **{expiryDate}**.\n\nFeel free to explore the packs on **[this channel](https://discord.com/channels/1401446104498700358/1465937644394512516)** and **[join the server](https://discord.gg/XF363uYfSh)** if you haven't.\n\nPlease message DM dorem if you have any questions.",
+    welcome_tier2_5: "🎉 Welcome to the {tierName} tier!\nYour membership is active until **{expiryDate}**.\n\nFeel free to explore the packs on **[this channel](https://discord.com/channels/1401446104498700358/1465937644394512516)** and **[join the server](https://discord.gg/XF363uYfSh)** if you haven't.\n\nPlease message DM dorem to redeem your {currentMonth} billing cycle request."
   },
   ja: {
-    welcome_tier1: "🎉 {tierName} ティアへようこそ！\nメンバーシップは **{expiryDate}** まで有効です。\n\nこちらの **[チャンネル](https://discord.com/channels/1401446104498700358/1465937644394512516)** でパックを探索したり、**[サーバーに参加](https://discord.gg/XF363uYfSh)** したりできます（まだの場合）。\n\nご質問があれば、**[DM dorem](https://discord.com/users/842917477977161739)** までお問い合わせください。",
-    welcome_tier2_5: "🎉 {tierName} ティアへようこそ！\nメンバーシップは **{expiryDate}** まで有効です。\n\nこちらの **[チャンネル](https://discord.com/channels/1401446104498700358/1465937644394512516)** でパックを探索したり、**[サーバーに参加](https://discord.gg/XF363uYfSh)** したりできます（まだの場合）。\n\n{currentMonth}のリクエストをご利用になるには、**[DM dorem](https://discord.com/users/842917477977161739)** までメッセージを送ってください。"
+    welcome_tier1: "🎉 {tierName} ティアへようこそ！\nメンバーシップは **{expiryDate}** まで有効です。\n\nこちらの **[チャンネル](https://discord.com/channels/1401446104498700358/1465937644394512516)** でパックを探索したり、**[サーバーに参加](https://discord.gg/XF363uYfSh)** したりできます（まだの場合）。\n\nご質問があれば、DM dorem までお問い合わせください。",
+    welcome_tier2_5: "🎉 {tierName} ティアへようこそ！\nメンバーシップは **{expiryDate}** まで有効です。\n\nこちらの **[チャンネル](https://discord.com/channels/1401446104498700358/1465937644394512516)** でパックを探索したり、**[サーバーに参加](https://discord.gg/XF363uYfSh)** したりできます（まだの場合）。\n\n{currentMonth}のリクエストをご利用になるには、DM dorem までメッセージを送ってください。"
   },
   zh: {
-    welcome_tier1: "🎉 欢迎加入 {tierName} 等级！\n您的会员资格有效至 **{expiryDate}**。\n\n请随时在此 **[频道](https://discord.com/channels/1401446104498700358/1465937644394512516)** 探索图包，并 **[加入服务器](https://discord.gg/XF363uYfSh)**（如果尚未加入）。\n\n如有任何问题，请 **[私信 dorem](https://discord.com/users/842917477977161739)**。",
-    welcome_tier2_5: "🎉 欢迎加入 {tierName} 等级！\n您的会员资格有效至 **{expiryDate}**。\n\n请随时在此 **[频道](https://discord.com/channels/1401446104498700358/1465937644394512516)** 探索图包，并 **[加入服务器](https://discord.gg/XF363uYfSh)**（如果尚未加入）。\n\n如需使用 {currentMonth} 的请求额度，请 **[私信 dorem](https://discord.com/users/842917477977161739)**。"
+    welcome_tier1: "🎉 欢迎加入 {tierName} 等级！\n您的会员资格有效至 **{expiryDate}**。\n\n请随时在此 **[频道](https://discord.com/channels/1401446104498700358/1465937644394512516)** 探索图包，并 **[加入服务器](https://discord.gg/XF363uYfSh)**（如果尚未加入）。\n\n如有任何问题，请 DM dorem。",
+    welcome_tier2_5: "🎉 欢迎加入 {tierName} 等级！\n您的会员资格有效至 **{expiryDate}**。\n\n请随时在此 **[频道](https://discord.com/channels/1401446104498700358/1465937644394512516)** 探索图包，并 **[加入服务器](https://discord.gg/XF363uYfSh)**（如果尚未加入）。\n\n如需使用 {currentMonth} 的请求额度，请 DM dorem。"
   },
   es: {
-    welcome_tier1: "🎉 ¡Bienvenido al nivel {tierName}!\nTu membresía está activa hasta el **{expiryDate}**.\n\nExplora los packs en **[este canal](https://discord.com/channels/1401446104498700358/1465937644394512516)** y **[únete al servidor](https://discord.gg/XF363uYfSh)** si aún no lo has hecho.\n\nSi tienes alguna pregunta, envíame un **[DM a dorem](https://discord.com/users/842917477977161739)**.",
-    welcome_tier2_5: "🎉 ¡Bienvenido al nivel {tierName}!\nTu membresía está activa hasta el **{expiryDate}**.\n\nExplora los packs en **[este canal](https://discord.com/channels/1401446104498700358/1465937644394512516)** y **[únete al servidor](https://discord.gg/XF363uYfSh)** si aún no lo has hecho.\n\nPara canjear tu solicitud del ciclo de facturación de {currentMonth}, envíame un **[DM a dorem](https://discord.com/users/842917477977161739)**."
+    welcome_tier1: "🎉 ¡Bienvenido al nivel {tierName}!\nTu membresía está activa hasta el **{expiryDate}**.\n\nExplora los packs en **[este canal](https://discord.com/channels/1401446104498700358/1465937644394512516)** y **[únete al servidor](https://discord.gg/XF363uYfSh)** si aún no lo has hecho.\n\nSi tienes alguna pregunta, envía un DM dorem.",
+    welcome_tier2_5: "🎉 ¡Bienvenido al nivel {tierName}!\nTu membresía está activa hasta el **{expiryDate}**.\n\nExplora los packs en **[este canal](https://discord.com/channels/1401446104498700358/1465937644394512516)** y **[únete al servidor](https://discord.gg/XF363uYfSh)** si aún no lo has hecho.\n\nPara canjear tu solicitud del ciclo de facturación de {currentMonth}, envía un DM dorem."
   }
 };
 
@@ -111,19 +111,18 @@ async function sendMembershipMessage(client, discordId, membership) {
   const lang = await getLanguageForOrder(orderId);
   const t = MESSAGES[lang] || MESSAGES.en;
 
-  // NEW: Owner ID (change this if you use an environment variable)
   const OWNER_ID = '1380051214766444617';
-  // Create a clickable Discord DM link to the owner
   const ownerDmLink = `[DM dorem](https://discord.com/users/${OWNER_ID})`;
 
   const messageTemplate = (tier === 1) ? t.welcome_tier1 : t.welcome_tier2_5;
   const currentMonth = new Date().toLocaleString(lang, { month: 'long' });
 
+  // Replace placeholders and then replace the plain text "DM dorem"
   let message = messageTemplate
     .replace('{tierName}', tierName)
     .replace('{expiryDate}', formatDate(expiresAt))
     .replace('{currentMonth}', currentMonth)
-    .replace('DM dorem', ownerDmLink);   // replace plain text with markdown link
+    .replace(/DM dorem/g, ownerDmLink);   // now template must have plain "DM dorem"
 
   try {
     const guild = await client.guilds.fetch(process.env.GUILD_ID);
@@ -134,15 +133,16 @@ async function sendMembershipMessage(client, discordId, membership) {
     if (success) {
       await recordMessageSent(discordId, orderId, lang, membership, discordName);
 
-      // --- Admin notification sent to OWNER, not to the user ---
+      // Admin notification: link to the user's profile
       try {
         const owner = await client.users.fetch(OWNER_ID);
-        const adminMsg = `🔔 **New membership period started for** ${discordName}\n` +
+        const userLink = `[${discordName}](https://discord.com/users/${discordId})`;
+        const adminMsg = `🔔 **New membership period started for** ${userLink}\n` +
                          `**Tier:** ${tierName}\n` +
                          `**Expires on:** ${formatDate(expiresAt)}\n` +
                          `*Please reach out to them.*`;
         await owner.send({ content: adminMsg, flags: ["SuppressEmbeds"] });
-        console.log(`[MembershipSync] Admin (owner) notified for ${discordName}`);
+        console.log(`[MembershipSync] Admin (owner) notified for ${discordName} (${discordId})`);
       } catch (adminErr) {
         console.error('[MembershipSync] Could not notify owner:', adminErr.message);
       }
