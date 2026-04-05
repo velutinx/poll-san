@@ -482,6 +482,9 @@
             if (tabId === 'monitoring') {
                 loadMonitoringData();
             }
+            if (tabId === 'giveaway-mgmt') {
+            if (typeof loadGiveawayData === 'function') loadGiveawayData();
+        }
         }
 
         function switchSubTab(subId) {
