@@ -106,13 +106,15 @@ async function sendMembershipMessage(client, discordId, membership) {
   const tierName = tierNames[tier] || `Tier ${tier}`;
 
   const alreadySent = await hasMessageBeenSent(discordId, orderId);
-  if (alreadySent) {
- //  console.log(`[MembershipSync] Message already sent for ${discordId} order ${orderId}, skipping.`);
-    return;
-  }
+  if (alreadySent) return;
 
   const lang = await getLanguageForOrder(orderId);
   const t = MESSAGES[lang] || MESSAGES.en;
+
+  // NEW: Owner ID (change this if you use an environment variable)
+  const OWNER_ID = '1380051214766444617';
+  // Create a clickable Discord DM link to the owner
+  const ownerDmLink = `[DM dorem](https://discord.com/users/${OWNER_ID})`;
 
   const messageTemplate = (tier === 1) ? t.welcome_tier1 : t.welcome_tier2_5;
   const currentMonth = new Date().toLocaleString(lang, { month: 'long' });
@@ -120,31 +122,30 @@ async function sendMembershipMessage(client, discordId, membership) {
   let message = messageTemplate
     .replace('{tierName}', tierName)
     .replace('{expiryDate}', formatDate(expiresAt))
-    .replace('{currentMonth}', currentMonth);
+    .replace('{currentMonth}', currentMonth)
+    .replace('DM dorem', ownerDmLink);   // replace plain text with markdown link
 
   try {
     const guild = await client.guilds.fetch(process.env.GUILD_ID);
     const member = await guild.members.fetch(discordId);
     const discordName = member.user.tag;
 
-    const success = await sendDM(member, message, lang); 
+    const success = await sendDM(member, message, lang);
     if (success) {
       await recordMessageSent(discordId, orderId, lang, membership, discordName);
-      
-      // RESTORED: Admin notification for .dorem
+
+      // --- Admin notification sent to OWNER, not to the user ---
       try {
-        const dorem = await client.users.fetch('842917477977161739');
+        const owner = await client.users.fetch(OWNER_ID);
         const adminMsg = `🔔 **New membership period started for** ${discordName}\n` +
                          `**Tier:** ${tierName}\n` +
                          `**Expires on:** ${formatDate(expiresAt)}\n` +
                          `*Please reach out to them.*`;
-        
-        await dorem.send(adminMsg);
-        console.log(`[MembershipSync] Admin (.dorem) notified for ${discordName}`);
+        await owner.send({ content: adminMsg, flags: ["SuppressEmbeds"] });
+        console.log(`[MembershipSync] Admin (owner) notified for ${discordName}`);
       } catch (adminErr) {
-        console.error('[MembershipSync] Could not notify admin:', adminErr.message);
+        console.error('[MembershipSync] Could not notify owner:', adminErr.message);
       }
-
     } else {
       console.error(`[MembershipSync] Failed to send DM to ${discordId} for order ${orderId}`);
     }
