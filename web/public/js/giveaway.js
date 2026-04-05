@@ -60,7 +60,7 @@ function renderGiveawayTable(entrants) {
         tbody.innerHTML = '<tr><td colspan="6">No entrants yet.</td></tr>';
         return;
     }
-    // Sort
+    // Sort (same as before)
     let sorted = [...entrants];
     if (giveawaySortColumn) {
         sorted.sort((a,b) => {
@@ -80,21 +80,31 @@ function renderGiveawayTable(entrants) {
     }
     tbody.innerHTML = sorted.map(e => {
         const voteDisplay = e.voted ? (e.voteCharacter || `Option ${e.voteOptionId || '?'}`) : 'None';
-        const rowStyle = e.isSupporter ? 'style="background-color: #4a0e4e;"' : '';
+        // Determine row style: purple for supporter, gray for left server, normal otherwise
+        let rowStyle = '';
+        if (e.isSupporter) {
+            rowStyle = 'style="background-color: #4a0e4e;"';
+        } else if (e.leftServer) {
+            rowStyle = 'style="background-color: #3a3a3a; opacity:0.7;"';
+        }
+        // For left server, show a disabled-looking button or keep it active (you can still remove them)
+        const removeButton = e.leftServer
+            ? `<button class="giveaway-remove" data-id="${e.userId}" style="background:#ef4444; padding:4px 12px; opacity:0.6;">✕ Remove (Left)</button>`
+            : `<button class="giveaway-remove" data-id="${e.userId}" style="background:#ef4444; padding:4px 12px;">✕ Remove</button>`;
         return `<tr ${rowStyle}>
             <td style="padding:8px;">${escapeHtml(e.nickname)}</td>
             <td style="padding:8px;">${escapeHtml(e.username)}</td>
             <td style="padding:8px;">${escapeHtml(e.userId)}</td>
             <td style="padding:8px;">${e.accountAge !== null ? e.accountAge : '?'}</td>
             <td style="padding:8px;">${escapeHtml(voteDisplay)}</td>
-            <td style="padding:8px;"><button class="giveaway-remove" data-id="${e.userId}" style="background:#ef4444; padding:4px 12px;">✕ Remove</button></td>
-        </tr>`;
+            <td style="padding:8px;">${removeButton}</td>
+        </td>`;
     }).join('');
-    // Attach remove events
+    // Re-attach event listeners for remove buttons
     document.querySelectorAll('.giveaway-remove').forEach(btn => {
         btn.addEventListener('click', async (e) => {
             const userId = btn.dataset.id;
-            if (confirm(`Remove user ${userId} from giveaway?`)) {
+            if (confirm(`Remove user ${userId} from giveaway? This will also delete their poll votes.`)) {
                 await removeFromGiveaway(userId);
             }
         });
