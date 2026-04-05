@@ -61,31 +61,45 @@ module.exports = function setupGiveawayRoutes(app, client, supabase, supabaseRet
                 }
             }
 
-            for (const userId of entrants) {
-                try {
-                    const member = await guild.members.fetch(userId).catch(() => null);
-                    if (!member) continue; // member left, skip (will be cleaned up later)
+for (const userId of entrants) {
+    let member = null;
+    try {
+        member = await guild.members.fetch(userId).catch(() => null);
+    } catch (err) {
+        // ignore
+    }
 
-                    const accountAge = member.user.createdTimestamp
-                        ? Math.floor((Date.now() - member.user.createdTimestamp) / (24 * 60 * 60 * 1000))
-                        : null;
-                    const vote = voteMap[userId] || null;
-                    const isSupporter = member.roles.cache.has(SUPPORTER_ROLE_ID);
+    let isSupporter = false;
+    let nickname = userId;
+    let username = userId;
+    let accountAge = null;
+    let leftServer = false;
 
-                    entrantsDetails.push({
-                        userId,
-                        username: member.user.username,
-                        nickname: member.nickname || member.user.username,
-                        accountAge,
-                        voted: !!vote,
-                        voteCharacter: vote ? vote.characterName : null,
-                        isSupporter
-                    });
-                } catch (err) {
-                    console.error(`Failed to fetch member ${userId}:`, err);
-                    // Remove from entrants if member no longer exists? We'll do cleanup on a separate endpoint or on leave event.
-                }
-            }
+    if (member) {
+        nickname = member.nickname || member.user.username;
+        username = member.user.username;
+        accountAge = member.user.createdTimestamp
+            ? Math.floor((Date.now() - member.user.createdTimestamp) / (24 * 60 * 60 * 1000))
+            : null;
+        isSupporter = member.roles.cache.has(SUPPORTER_ROLE_ID);
+    } else {
+        leftServer = true; // member no longer in server
+        // Keep username/nickname as userId for clarity
+    }
+
+    const vote = voteMap[userId] || null;
+
+    entrantsDetails.push({
+        userId,
+        username: leftServer ? `[LEFT] ${userId}` : username,
+        nickname: leftServer ? `[LEFT] ${userId}` : nickname,
+        accountAge,
+        voted: !!vote,
+        voteCharacter: vote ? vote.characterName : null,
+        isSupporter,
+        leftServer
+    });
+}
 
             res.json({
                 active: true,
@@ -100,43 +114,51 @@ module.exports = function setupGiveawayRoutes(app, client, supabase, supabaseRet
         }
     });
 
-    // Remove a user from the active giveaway entrants
-    app.post('/api/giveaway/remove', async (req, res) => {
-        const { userId } = req.body;
-        if (!userId) return res.status(400).json({ error: 'Missing userId' });
+app.post('/api/giveaway/remove', async (req, res) => {
+    const { userId } = req.body;
+    if (!userId) return res.status(400).json({ error: 'Missing userId' });
 
-        try {
-            const now = new Date().toISOString();
-            const { data: giveaway, error } = await supabaseRetry(() =>
-                supabase.from('giveaways')
-                    .select('*')
-                    .eq('ended', false)
-                    .gt('end_time', now)
-                    .order('end_time', { ascending: true })
-                    .limit(1)
-                    .single()
-            );
-            if (error || !giveaway) {
-                return res.status(404).json({ error: 'No active giveaway found' });
-            }
-
-            let entrants = giveaway.entrants || [];
-            if (!entrants.includes(userId)) {
-                return res.status(400).json({ error: 'User is not in this giveaway' });
-            }
-
-            entrants = entrants.filter(id => id !== userId);
-            const { error: updateError } = await supabaseRetry(() =>
-                supabase.from('giveaways')
-                    .update({ entrants })
-                    .eq('message_id', giveaway.message_id)
-            );
-            if (updateError) throw updateError;
-
-            res.json({ success: true, message: `Removed ${userId} from giveaway` });
-        } catch (err) {
-            console.error('Giveaway remove error:', err);
-            res.status(500).json({ error: err.message });
+    try {
+        const now = new Date().toISOString();
+        const { data: giveaway, error } = await supabaseRetry(() =>
+            supabase.from('giveaways')
+                .select('*')
+                .eq('ended', false)
+                .gt('end_time', now)
+                .order('end_time', { ascending: true })
+                .limit(1)
+                .single()
+        );
+        if (error || !giveaway) {
+            return res.status(404).json({ error: 'No active giveaway found' });
         }
-    });
+
+        let entrants = giveaway.entrants || [];
+        if (!entrants.includes(userId)) {
+            return res.status(400).json({ error: 'User is not in this giveaway' });
+        }
+
+        entrants = entrants.filter(id => id !== userId);
+        const { error: updateError } = await supabaseRetry(() =>
+            supabase.from('giveaways')
+                .update({ entrants })
+                .eq('message_id', giveaway.message_id)
+        );
+        if (updateError) throw updateError;
+
+        // --- Optional: delete their poll votes ---
+        await supabaseRetry(() =>
+            supabase.from('votes_discord')
+                .delete()
+                .eq('user_id', userId)
+                .eq('poll_id', 'character_poll_new')
+        );
+        // -----------------------------------------
+
+        res.json({ success: true, message: `Removed ${userId} from giveaway and deleted their poll votes` });
+    } catch (err) {
+        console.error('Giveaway remove error:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
 };
