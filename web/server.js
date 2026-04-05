@@ -162,7 +162,7 @@ async function getGuildMembers(guild) {
     const setupMonitoringRoutes = require('./routes/monitoring');
     const setupGiveawayRoutes = require('./routes/giveaway');
     
-    setupGiveawayRoutes(app, client, supabase, supabaseRetry);
+    setupGiveawayRoutes(app, client, supabase, supabaseRetry, getGuildMembers);
     setupQueueRoutes(app, client, queueService);
     setupPollRoutes(app, client, supabase, supabaseRetry);
     setupMembershipsRoute(app, client, supabase, supabaseRetry);
