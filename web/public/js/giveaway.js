@@ -32,7 +32,6 @@ async function loadGiveawayData() {
             <strong>Entrants:</strong> ${data.entrants.length}
         `;
         currentGiveawayData = data.entrants;
-        // Update timer every second
         if (window.giveawayTimer) clearInterval(window.giveawayTimer);
         window.giveawayTimer = setInterval(() => {
             const remaining = endTime - Date.now();
@@ -98,7 +97,6 @@ function renderGiveawayTable(entrants) {
             <td style="padding:8px;">${removeButton}<\/td>
          <\/tr>`;
     }).join('');
-    // Re-attach event listeners
     document.querySelectorAll('.giveaway-remove').forEach(btn => {
         btn.addEventListener('click', async (e) => {
             const userId = btn.dataset.id;
@@ -138,11 +136,4 @@ async function removeFromGiveaway(userId) {
         if (typeof showSnackbar === 'function') showSnackbar(err.message, true);
         else alert(err.message);
     }
-}
-
-// When switching to giveaway tab, load data and set up timer
-// Modify switchTab function to include giveaway
-// In the existing switchTab function, add:
-if (tabId === 'giveaway-mgmt') {
-    loadGiveawayData();
 }
