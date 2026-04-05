@@ -144,6 +144,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
 client.on(Events.GuildMemberAdd, (member) => require('./events/guildMemberAdd')(member));
 client.on(Events.MessageReactionAdd, (reaction, user) => require('./events/reactions')(reaction, user, 'add'));
 client.on(Events.MessageReactionRemove, (reaction, user) => require('./events/reactions')(reaction, user, 'remove'));
+client.on('guildMemberRemove', require('./events/guildMemberPollRemove'));
 
 // --- 4. XP SYSTEM ---
 client.on(Events.MessageCreate, async (message) => {
