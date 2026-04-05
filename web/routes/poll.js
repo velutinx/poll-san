@@ -82,7 +82,7 @@ app.post('/api/stop-poll', async (req, res) => {
             throw rpcError;
         }
 
-        console.log('All poll tables truncated via RPC');
+ //       console.log('All poll tables truncated via RPC');
 
         // Invalidate dashboard cache
         cachedPollResultsData = null;
