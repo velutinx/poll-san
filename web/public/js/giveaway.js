@@ -56,8 +56,9 @@ async function loadGiveawayData() {
 
 function renderGiveawayTable(entrants) {
     const tbody = document.getElementById('giveaway-table-body');
+    if (!tbody) return;
     if (!entrants.length) {
-        tbody.innerHTML = '<tr><td colspan="6">No entrants yet.<\/td><\/tr>';
+        tbody.innerHTML = '<tr><td colspan="5">No entrants yet.</td></tr>';
         return;
     }
     let sorted = [...entrants];
@@ -88,13 +89,13 @@ function renderGiveawayTable(entrants) {
         const removeButton = e.leftServer
             ? `<button class="giveaway-remove" data-id="${e.userId}" style="background:#ef4444; padding:4px 12px; opacity:0.6;">✕ Remove (Left)</button>`
             : `<button class="giveaway-remove" data-id="${e.userId}" style="background:#ef4444; padding:4px 12px;">✕ Remove</button>`;
-return `<tr ${rowStyle}>
-    <td style="padding:8px;">${escapeHtml(e.username)}</td>
-    <td style="padding:8px;">${escapeHtml(e.userId)}</td>
-    <td style="padding:8px;">${e.accountAge !== null ? e.accountAge : '?'}</td>
-    <td style="padding:8px;">${escapeHtml(voteDisplay)}</td>
-    <td style="padding:8px;">${removeButton}</td>
- </tr>`;
+        return `<tr ${rowStyle}>
+            <td style="padding:8px;">${escapeHtml(e.username)}</td>
+            <td style="padding:8px;">${escapeHtml(e.userId)}</td>
+            <td style="padding:8px;">${e.accountAge !== null ? e.accountAge : '?'}</td>
+            <td style="padding:8px;">${escapeHtml(voteDisplay)}</td>
+            <td style="padding:8px;">${removeButton}</td>
+         <\/tr>`;
     }).join('');
     document.querySelectorAll('.giveaway-remove').forEach(btn => {
         btn.addEventListener('click', async (e) => {
