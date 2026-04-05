@@ -70,7 +70,7 @@ module.exports = function setupGiveawayRoutes(app, client, supabase, supabaseRet
                 let accountAge = null;
 
                 try {
-                    member = await guild.members.fetch(userId).catch(() => null);
+                    member = await guild.members.fetch({ user: userId, force: true }).catch(() => null);
                     if (!member) {
                         leftServer = true;
                     } else {
@@ -81,6 +81,10 @@ module.exports = function setupGiveawayRoutes(app, client, supabase, supabaseRet
                             : null;
                         isSupporter = member.roles.cache.has(SUPPORTER_ROLE_ID);
                     }
+
+                    if (member) {
+    console.log(`Member ${userId}: nickname="${member.nickname}", username="${member.user.username}"`);
+}
                 } catch (err) {
                     console.warn(`Failed to fetch member ${userId}:`, err.message);
                     leftServer = true;
