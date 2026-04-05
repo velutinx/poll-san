@@ -712,7 +712,15 @@ function renderMonitoringTable(data) {
     }
 }
 
+async function loadMonitoringData() {// Add this near the top of the <script> block (with other global state)
+let monitoringRefreshTimeout = null;
+
+// Then replace the existing loadMonitoringData function with:
 async function loadMonitoringData() {
+    const btn = document.querySelector('#monitoring button[onclick="loadMonitoringData()"]');
+    if (btn && btn.disabled) return;
+    if (btn) btn.disabled = true;
+
     const days = document.getElementById('monitor-days').value;
     const tbody = document.getElementById('monitoring-table-body');
     const statusDiv = document.getElementById('monitoring-status');
@@ -730,6 +738,11 @@ async function loadMonitoringData() {
         console.error(err);
         tbody.innerHTML = '<tr><td colspan="10" style="text-align:center; color:#f87171;">Error loading data</td></tr>';
         statusDiv.innerHTML = 'Error: ' + err.message;
+    } finally {
+        if (monitoringRefreshTimeout) clearTimeout(monitoringRefreshTimeout);
+        monitoringRefreshTimeout = setTimeout(() => {
+            if (btn) btn.disabled = false;
+        }, 5000); // Re-enable after 5 seconds
     }
 }
 
