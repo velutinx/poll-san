@@ -95,17 +95,20 @@ module.exports = function setupMonitoringRoutes(app, client, supabase, supabaseR
 
 // Inside app.get('/api/monitoring/members') – replace the membersList building loop
 
+// Inside app.get('/api/monitoring/members') – replace the membersList building loop
+
 const membersList = [];
 for (const [id, member] of members) {
     // Skip supporters
     if (member.roles.cache.has(SUPPORTER_ROLE_ID)) continue;
 
-    // Force-fetch the member to get latest nickname (cached but ensures we have nickname)
-    let freshMember = member;
+    // Force fresh fetch for this member to get live nickname
+    let freshMember;
     try {
-        freshMember = await guild.members.fetch({ user: id, force: false }); // false to use cache if available
+        freshMember = await guild.members.fetch({ user: id, force: true });
     } catch (err) {
-        console.warn(`Failed to refresh member ${id}:`, err.message);
+        console.warn(`Failed to fetch member ${id}:`, err.message);
+        continue;
     }
     
     const joinedAt = freshMember.joinedTimestamp;
@@ -117,10 +120,11 @@ for (const [id, member] of members) {
     if (!isNew) continue;
 
     const vote = voteMap[id] || null;
+    const nickname = freshMember.nickname || freshMember.user.username;
     membersList.push({
         userId: id,
         username: freshMember.user.username,
-        nickname: freshMember.nickname || freshMember.user.username, // now nickname should be correct
+        nickname: nickname,
         accountCreatedAt: accountCreatedAt ? new Date(accountCreatedAt).toISOString() : null,
         accountAge: accountAge,
         joinedAt: joinedAt ? new Date(joinedAt).toISOString() : null,
