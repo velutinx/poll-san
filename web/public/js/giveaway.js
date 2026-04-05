@@ -2,6 +2,7 @@
 let currentGiveawayData = null;
 let giveawaySortColumn = null;
 let giveawaySortDirection = 'asc';
+let giveawayRefreshTimeout = null;
 
 async function loadGiveawayData() {
     const infoDiv = document.getElementById('giveaway-info');
@@ -49,7 +50,7 @@ async function loadGiveawayData() {
     } catch (err) {
         console.error(err);
         infoDiv.innerHTML = '<p style="color:#f87171;">Error loading giveaway</p>';
-        tbody.innerHTML = '<tr><td colspan="6">Error loading data</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="6">Error loading data<\/td><\/tr>';
         statusDiv.innerHTML = 'Error: ' + err.message;
     }
 }
@@ -57,10 +58,9 @@ async function loadGiveawayData() {
 function renderGiveawayTable(entrants) {
     const tbody = document.getElementById('giveaway-table-body');
     if (!entrants.length) {
-        tbody.innerHTML = '<tr><td colspan="6">No entrants yet.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="6">No entrants yet.<\/td><\/tr>';
         return;
     }
-    // Sort (same as before)
     let sorted = [...entrants];
     if (giveawaySortColumn) {
         sorted.sort((a,b) => {
@@ -80,14 +80,12 @@ function renderGiveawayTable(entrants) {
     }
     tbody.innerHTML = sorted.map(e => {
         const voteDisplay = e.voted ? (e.voteCharacter || `Option ${e.voteOptionId || '?'}`) : 'None';
-        // Determine row style: purple for supporter, gray for left server, normal otherwise
         let rowStyle = '';
         if (e.isSupporter) {
             rowStyle = 'style="background-color: #4a0e4e;"';
         } else if (e.leftServer) {
             rowStyle = 'style="background-color: #3a3a3a; opacity:0.7;"';
         }
-        // For left server, show a disabled-looking button or keep it active (you can still remove them)
         const removeButton = e.leftServer
             ? `<button class="giveaway-remove" data-id="${e.userId}" style="background:#ef4444; padding:4px 12px; opacity:0.6;">✕ Remove (Left)</button>`
             : `<button class="giveaway-remove" data-id="${e.userId}" style="background:#ef4444; padding:4px 12px;">✕ Remove</button>`;
@@ -98,9 +96,9 @@ function renderGiveawayTable(entrants) {
             <td style="padding:8px;">${e.accountAge !== null ? e.accountAge : '?'}</td>
             <td style="padding:8px;">${escapeHtml(voteDisplay)}</td>
             <td style="padding:8px;">${removeButton}</td>
-        </td>`;
+        </tr>`;
     }).join('');
-    // Re-attach event listeners for remove buttons
+    // Re-attach event listeners
     document.querySelectorAll('.giveaway-remove').forEach(btn => {
         btn.addEventListener('click', async (e) => {
             const userId = btn.dataset.id;
@@ -132,7 +130,6 @@ async function removeFromGiveaway(userId) {
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'Remove failed');
         statusDiv.innerHTML = `<span style="color:#4ade80;">✅ ${data.message}</span>`;
-        // Refresh data
         await loadGiveawayData();
         if (typeof showSnackbar === 'function') showSnackbar(data.message, false);
         else alert(data.message);
