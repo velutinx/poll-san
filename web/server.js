@@ -151,7 +151,9 @@ module.exports = (client) => {
     const setupSendMessageRoute = require('./routes/sendMessage');
     const setupReleasesRoutes = require('./routes/releases');
     const setupMonitoringRoutes = require('./routes/monitoring');
-
+    const setupGiveawayRoutes = require('./routes/giveaway');
+    
+    setupGiveawayRoutes(app, client, supabase, supabaseRetry);
     setupQueueRoutes(app, client, queueService);
     setupPollRoutes(app, client, supabase, supabaseRetry);
     setupMembershipsRoute(app, client, supabase, supabaseRetry);
