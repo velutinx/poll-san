@@ -1,4 +1,5 @@
-// web/routes/memberships.js
+// this is poll-san/web/routes/memberships.js
+
 module.exports = function setupMembershipsRoute(app, client, supabase, supabaseRetry) {
   // GET endpoint – now updates discord_tag in DB
   app.get('/api/memberships', async (req, res) => {
