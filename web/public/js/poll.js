@@ -1,4 +1,4 @@
-// poll.js
+// this is poll-san/web/public/js/poll.js
 
 // ======================================================
 // POLL FUNCTIONS
