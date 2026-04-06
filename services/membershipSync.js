@@ -1,4 +1,4 @@
-// this is poll-san/web/services/membershipSync.js
+// this is poll-san/services/membershipSync.js
 
 const supabase = require('./supabase');
 const db = require('../utils/db');
