@@ -1,4 +1,4 @@
-// this is poll-san/web/services/queueService.js
+// this is poll-san/services/queueService.js
 
 const supabase = require('./supabase');
 const QUEUE_CHANNEL_ID = '1473730427318435860';
