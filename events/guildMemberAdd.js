@@ -1,3 +1,5 @@
+// this is poll-san/events/guildMemberAdd.js
+
 const supabase = require('../services/supabase');
 const { parseMessage } = require('../services/parserService');
 const { TARGET_ROLES } = require('../services/roleCleaner');
