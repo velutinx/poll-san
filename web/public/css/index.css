@@ -35,10 +35,12 @@ nav {
     position: sticky;
     top: 0;
 }
+
 nav h2 {
     color: var(--accent);
     margin-bottom: 30px;
 }
+
 .nav-item {
     padding: 12px;
     cursor: pointer;
@@ -46,9 +48,11 @@ nav h2 {
     margin-bottom: 5px;
     transition: 0.2s;
 }
+
 .nav-item:hover {
     background: #1e293b;
 }
+
 .nav-item.active {
     background: var(--accent);
 }
@@ -69,11 +73,12 @@ main {
     display: none;
     width: 100%;
 }
+
 .tab-content.active {
     display: flex;
     flex: 1 1 auto;
     flex-direction: column;
-    min-height: 0;
+    min-height: 0; /* CRITICAL: allows children to shrink/scroll */
 }
 
 /* ---------------- MANAGEMENT LAYOUT ---------------- */
@@ -82,15 +87,16 @@ main {
     flex-direction: row;
     align-items: stretch;
     gap: 30px;
-    max-width: 2000px;
+    max-width: 2000px;  /* increased from 1200px */
     width: 100%;
     flex: 1 1 auto;
-    min-height: 0;
+    min-height: 0; /* CRITICAL */
 }
+
 .mgmt-column {
     flex: 1 1 auto;
     min-width: 0;
-    min-height: 0;
+    min-height: 0; /* CRITICAL */
 }
 
 /* ---------------- CARD ---------------- */
@@ -101,6 +107,7 @@ main {
     box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
     margin-bottom: 20px;
 }
+
 .card-header-label {
     font-size: 1.1rem;
     font-weight: bold;
@@ -115,13 +122,17 @@ main {
 .form-group {
     margin-bottom: 20px;
 }
+
 label {
     display: block;
     margin-bottom: 8px;
     font-weight: 600;
     color: #94a3b8;
 }
-input, select, textarea {
+
+input,
+select,
+textarea {
     width: 100%;
     padding: 10px;
     background: #0f172a;
@@ -131,11 +142,15 @@ input, select, textarea {
     box-sizing: border-box;
     transition: border-color 0.2s;
 }
-input:focus, select:focus, textarea:focus {
+
+input:focus,
+select:focus,
+textarea:focus {
     outline: none;
     border-color: var(--blue);
     box-shadow: 0 0 0 3px rgba(59,130,246,0.2);
 }
+
 textarea {
     height: 120px;
     resize: vertical;
@@ -146,6 +161,7 @@ textarea {
     display: flex;
     gap: 10px;
 }
+
 button {
     border: none;
     padding: 12px 24px;
@@ -155,17 +171,21 @@ button {
     transition: 0.2s;
     color: white;
 }
+
 button:hover:not(:disabled) {
     filter: brightness(1.1);
 }
+
 button:disabled {
     opacity: 0.6;
     cursor: not-allowed;
 }
+
 #launch-btn {
     background: var(--success-green);
     flex: 2;
 }
+
 #launch-btn:hover {
     background: #16a34a;
 }
@@ -178,6 +198,7 @@ button:disabled {
     border-bottom: 1px solid #334155;
     padding-bottom: 10px;
 }
+
 .sub-nav span {
     cursor: pointer;
     color: #94a3b8;
@@ -186,17 +207,20 @@ button:disabled {
     border-radius: 4px;
     transition: all 0.2s;
 }
+
 .sub-nav span:hover {
     background: #1e293b;
 }
+
 .sub-nav span.active {
     color: white;
     background: var(--blue);
 }
 
 /* ---------------- DROP ZONES ---------------- */
-#drop-zone, #sup-drop-zone, #test-drop-zone {
-    border: 2px dashed #475569;
+#drop-zone,
+#sup-drop-zone {
+    border: 2px dashed #334155;
     border-radius: 12px;
     min-height: 160px;
     display: flex;
@@ -210,19 +234,23 @@ button:disabled {
     padding: 20px;
     box-sizing: border-box;
 }
-#drop-zone:hover, #sup-drop-zone:hover, #test-drop-zone:hover {
+
+#drop-zone:hover,
+#sup-drop-zone:hover {
     border-color: var(--blue);
     background: #1e293b;
 }
 
 /* ---------------- IMAGE PREVIEW ---------------- */
-#preview-container, #sup-preview-container {
+#preview-container,
+#sup-preview-container {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
     gap: 12px;
     width: 100%;
     margin-top: 10px;
 }
+
 .preview-img {
     width: 100%;
     aspect-ratio: 1;
@@ -244,6 +272,7 @@ button:disabled {
     box-sizing: border-box;
     overflow-y: auto;
 }
+
 .queue-item {
     min-height: 48px !important;
     height: auto !important;
@@ -256,11 +285,34 @@ button:disabled {
     cursor: grab;
     box-sizing: border-box;
 }
-.queue-item:active { cursor: grabbing; }
-.drag-handle { color: #475569; margin-right: 15px; font-size: 1.2rem; }
-.queue-ghost { opacity: 0.4; background: var(--accent) !important; }
-.queue-input-group { display: flex; gap: 10px; margin-bottom: 20px; }
-.remove-btn { background: transparent; color: #ef4444; padding: 5px; cursor: pointer; }
+
+.queue-item:active {
+    cursor: grabbing;
+}
+
+.drag-handle {
+    color: #475569;
+    margin-right: 15px;
+    font-size: 1.2rem;
+}
+
+.queue-ghost {
+    opacity: 0.4;
+    background: var(--accent) !important;
+}
+
+.queue-input-group {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 20px;
+}
+
+.remove-btn {
+    background: transparent;
+    color: #ef4444;
+    padding: 5px;
+    cursor: pointer;
+}
 
 /* ---------------- WINNER GRID ---------------- */
 .winner-grid {
@@ -269,6 +321,7 @@ button:disabled {
     gap: 10px;
     margin-top: 15px;
 }
+
 .winner-btn {
     background: #334155;
     font-size: 0.85rem;
@@ -282,59 +335,26 @@ button:disabled {
     text-overflow: ellipsis;
     white-space: nowrap;
 }
-.winner-btn:hover { background: #475569; }
+
+.winner-btn:hover {
+    background: #475569;
+}
+
 .winner-btn.selected {
     background: var(--winner-red);
     border-color: white;
     cursor: not-allowed;
     opacity: 0.8;
 }
-.winner-btn.highest-score {
-    background-color: #fbbf24 !important;
-    border-color: #f59e0b;
-    color: #1f2937;
-}
 
-/* ---------------- STATUS ---------------- */
+/* ---------------- STATUS TEXT ---------------- */
 .status {
     margin-top: 10px;
     font-size: 0.9rem;
     text-align: center;
 }
 
-/* ---------------- UTILITY CLASSES (NEW) ---------------- */
-.flex-row { display: flex; gap: 10px; }
-.flex-row.wrap { flex-wrap: wrap; }
-.flex-1 { flex: 1; }
-.flex-80px { flex: 0 0 80px; }
-.min-w-320 { min-width: 320px; }
-
-/* ---------------- RELEASES TAB SPECIFIC (NEW) ---------------- */
-.edit-forum-card {
-    border-top: 4px solid var(--warning-orange) !important;
-}
-.warning-label {
-    color: var(--warning-orange) !important;
-}
-#supporter-existing-images {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 10px;
-    margin-top: 10px;
-    min-height: 100px;
-    border: 1px dashed #475569;
-    border-radius: 8px;
-    padding: 10px;
-    background: #0f172a;
-}
-#test-image-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
-    gap: 10px;
-    margin-top: 20px;
-}
-
-/* Toggle switch */
+/* ---------------- TOGGLE SWITCH ---------------- */
 .toggle-container {
     display: flex;
     align-items: center;
@@ -344,16 +364,19 @@ button:disabled {
     font-size: 1rem;
     color: #e2e8f0;
 }
+
 .toggle-switch {
     position: relative;
     width: 54px;
     height: 28px;
 }
+
 .toggle-switch input {
     opacity: 0;
     width: 0;
     height: 0;
 }
+
 .toggle-slider {
     position: absolute;
     cursor: pointer;
@@ -362,6 +385,7 @@ button:disabled {
     transition: .4s;
     border-radius: 28px;
 }
+
 .toggle-slider:before {
     content: "";
     position: absolute;
@@ -373,58 +397,36 @@ button:disabled {
     transition: .4s;
     border-radius: 50%;
 }
+
 .toggle-switch input:checked + .toggle-slider {
     background: var(--toggle-on);
 }
+
 .toggle-switch input:checked + .toggle-slider:before {
     transform: translateX(26px);
 }
 
-/* Specific button overrides */
-#rel-submit-btn,
-#edit-submit-btn {
-    width: 100%;
-    padding: 12px;
-    font-size: 1rem;
-}
-#rel-submit-btn { background: var(--blue); }
-#edit-submit-btn { background: var(--warning-orange) !important; }
-#supporter-release-btn { 
-    background: var(--success-green); 
-    width: 100%; 
-    margin-top: 20px; 
-    padding: 14px; 
-    font-size: 1.1rem; 
-    font-weight: bold; 
+/* Ensure columns have equal width and can grow */
+.mgmt-column {
+    flex: 1 1 0;
+    min-width: 400px;  /* minimum width to keep them readable */
 }
 
-/* Status alignment */
-#release-status, #edit-status, #supporter-status, #mega-status {
-    margin-top: 12px;
-    text-align: center;
-    min-height: 24px;
+/* Optional: if you want the right column to be slightly smaller */
+.mgmt-column:first-child {
+    flex: 1.2 1 0;  /* left column gets a bit more space */
 }
 
-#drop-text, #sup-drop-text, #test-drop-text {
-    color: #94a3b8;
-    user-select: none;
+.winner-btn.highest-score {
+    background-color: #fbbf24 !important;  /* warm yellow */
+    border-color: #f59e0b;
+    color: #1f2937;
+}
+.winner-btn.highest-score:hover {
+    background-color: #f59e0b !important;
 }
 
-/* Table styles (moved from HTML) */
-table {
-    width: 100%;
-    border-collapse: collapse;
-    color: #e2e8f0;
-}
-th, td {
-    padding: 12px;
-}
-thead tr {
-    text-align: left;
-    border-bottom: 2px solid #334155;
-    color: #94a3b8;
-    font-size: 0.9rem;
-}
-tr {
-    border-bottom: 1px solid #1e293b;
+/* Selected overlay (already defined in JS style, but you can adjust) */
+.selected-overlay {
+    background-color: rgba(128, 128, 128, 0.5);
 }
