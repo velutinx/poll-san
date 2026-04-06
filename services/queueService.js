@@ -1,3 +1,5 @@
+// this is poll-san/web/services/queueService.js
+
 const supabase = require('./supabase');
 const QUEUE_CHANNEL_ID = '1473730427318435860';
 // Updated with your custom emojis for 11 and 12
