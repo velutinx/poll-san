@@ -1,4 +1,4 @@
-// uploading.js – final, no logs
+// this is poll-san/web/public/js/uploading.js
 
 let testSelectedFile = null;
 let currentImages = [];
