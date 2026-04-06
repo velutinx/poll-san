@@ -1,3 +1,5 @@
+// this is poll-san/commands/giveaway.js
+
 const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, PermissionsBitField, AttachmentBuilder, MessageFlags } = require('discord.js');
 const path = require('path');
 const fs = require('fs');
