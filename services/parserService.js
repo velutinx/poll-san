@@ -1,3 +1,5 @@
+// this is poll-san/web/services/parserService.js
+
 module.exports = {
     parseMessage: (text, member) => {
         if (!text) return "";
