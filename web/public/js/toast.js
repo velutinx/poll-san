@@ -1,4 +1,4 @@
-// toast.js
+// this is poll-san/web/public/js/toast.js
 
 (function() {
     // Create and inject CSS once
