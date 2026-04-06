@@ -1,4 +1,5 @@
-// commands/startpoll.js
+// this is poll-san/commands/startpoll.js
+
 const { chunkArray, emojis, reactIds } = require('../utils/helpers');
 const { generateMessageContent, runPollInterval } = require('../services/pollService');
 const supabase = require('../services/supabase');
