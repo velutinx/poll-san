@@ -1,3 +1,5 @@
+// this is poll-san/events/guildMemberPollRemove.js
+
 const supabase = require('../services/supabase');
 const { supabaseRetry } = require('../utils/db');
 
