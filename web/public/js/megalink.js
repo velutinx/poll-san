@@ -1,4 +1,4 @@
-// megalink.js – fixed filename generation, waits for posts
+// this is poll-san/web/public/js/megalink.js
 
 function initMega() {
     const previewSelect = document.getElementById('supporterPostSelect');
