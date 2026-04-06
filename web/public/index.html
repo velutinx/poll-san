@@ -20,7 +20,6 @@
         <div class="nav-item" onclick="switchTab('monitoring')">👮 Monitoring</div>
         <div class="nav-item" onclick="switchTab('giveaway-mgmt')">🎁 Giveaway</div>
     </nav>
-
     <main>
         <!-- Polls tab -->
         <div id="poll-mgmt" class="tab-content active">
@@ -42,7 +41,7 @@
                         </div>
                         <div class="btn-row">
                             <button id="launch-btn" onclick="triggerPoll()">Launch Poll</button>
-                            <button id="stop-btn" onclick="stopPoll()" style="background: var(--disabled-gray); flex:1;" disabled>Stop Poll</button>
+                            <button id="stop-btn" onclick="stopPoll()" disabled>Stop Poll</button>
                         </div>
                         <div id="poll-status" class="status"></div>
                     </div>
@@ -71,7 +70,7 @@
             <div id="preview" class="sub-tab-content active">
                 <div class="mgmt-container">
                     <div class="mgmt-column">
-                        <!-- Create New Release card -->
+                        <!-- Create New Release -->
                         <div class="card">
                             <span class="card-header-label">Create New Release</span>
                             <div class="form-group">
@@ -84,12 +83,12 @@
                             </div>
                             <div class="form-group">
                                 <label>Sex & Name</label>
-                                <div style="display: flex; gap: 10px;">
-                                    <select id="rel-gender" style="flex: 0 0 80px;">
+                                <div class="flex-row">
+                                    <select id="rel-gender" class="flex-80px">
                                         <option value=":female_sign:">♀️</option>
                                         <option value=":male_sign:">♂️</option>
                                     </select>
-                                    <input type="text" id="rel-name" placeholder="Nico Robin" style="flex: 1;">
+                                    <input type="text" id="rel-name" placeholder="Nico Robin" class="flex-1">
                                 </div>
                             </div>
                             <div class="form-group">
@@ -104,13 +103,13 @@
                                     <option value="Request">Request</option>
                                 </select>
                             </div>
-                            <button onclick="submitRelease()" id="rel-submit-btn" style="background: var(--blue); width: 100%;">🚀 Post Release Preview</button>
+                            <button onclick="submitRelease()" id="rel-submit-btn">🚀 Post Release Preview</button>
                             <div id="release-status" class="status"></div>
                         </div>
 
-                        <!-- Edit Existing Forum Post card -->
-                        <div class="card" style="border-top: 4px solid var(--warning-orange);">
-                            <span class="card-header-label" style="color: var(--warning-orange);">Edit Existing Forum Post</span>
+                        <!-- Edit Existing Forum Post -->
+                        <div class="card edit-forum-card">
+                            <span class="card-header-label warning-label">Edit Existing Forum Post</span>
                             <div class="form-group">
                                 <label>Select Post</label>
                                 <select id="postDropdown" onchange="loadPostData()">
@@ -118,24 +117,24 @@
                                 </select>
                             </div>
                             <div id="editFields" style="display:none;">
-                                <div style="display: flex; gap: 10px;">
-                                    <div class="form-group" style="flex:1;">
+                                <div class="flex-row">
+                                    <div class="form-group flex-1">
                                         <label>Pack #</label>
                                         <input type="text" id="editPack">
                                     </div>
-                                    <div class="form-group" style="flex:1;">
+                                    <div class="form-group flex-1">
                                         <label>Size</label>
                                         <input type="text" id="editSize">
                                     </div>
                                 </div>
                                 <div class="form-group">
                                     <label>Sex & Name</label>
-                                    <div style="display: flex; gap: 10px;">
-                                        <select id="editGender" style="flex: 0 0 80px;">
+                                    <div class="flex-row">
+                                        <select id="editGender" class="flex-80px">
                                             <option value=":female_sign:">♀️</option>
                                             <option value=":male_sign:">♂️</option>
                                         </select>
-                                        <input type="text" id="editName" style="flex: 1;">
+                                        <input type="text" id="editName" class="flex-1">
                                     </div>
                                 </div>
                                 <div class="form-group">
@@ -150,20 +149,20 @@
                                         <option value="Request">Request</option>
                                     </select>
                                 </div>
-                                <button onclick="submitEdit()" id="edit-submit-btn" style="background: var(--warning-orange); width: 100%;">💾 Apply Changes</button>
+                                <button onclick="submitEdit()" id="edit-submit-btn">💾 Apply Changes</button>
                                 <div id="edit-status" class="status"></div>
                             </div>
                         </div>
                     </div>
 
-                    <!-- Right column: SFW Previews -->
+                    <!-- SFW Previews -->
                     <div class="mgmt-column">
                         <div style="display:flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
                             <label style="margin:0;">SFW Previews (For New Releases Only)</label>
                             <span onclick="clearImages()" style="color: var(--accent); font-size: 0.8rem; cursor: pointer; font-weight: bold;">✕ Clear All</span>
                         </div>
                         <div id="drop-zone">
-                            <span id="drop-text" style="color: #94a3b8; text-align: center;">Drag images here or click to browse</span>
+                            <span id="drop-text">Drag images here or click to browse</span>
                             <div id="preview-container"></div>
                             <input type="file" id="file-input" multiple accept="image/*" style="display: none;">
                         </div>
@@ -174,7 +173,6 @@
             <!-- Supporters sub-tab -->
             <div id="supporters" class="sub-tab-content" style="display:none;">
                 <div class="mgmt-container">
-                    <!-- LEFT COLUMN -->
                     <div class="mgmt-column">
                         <div class="card">
                             <span class="card-header-label">Create Supporter Release</span>
@@ -184,19 +182,20 @@
                                     <option value="">-- Select a post to base this on --</option>
                                 </select>
                             </div>
-                            <div class="form-group" style="margin-top: 20px;">
+                            <div class="form-group">
                                 <label>Select Supporter Post to Edit</label>
                                 <select id="supporterEditDropdown" onchange="loadSupporterEditData()">
                                     <option value="">-- Select a supporter post to edit --</option>
                                 </select>
                             </div>
+
                             <div style="margin-top: 20px;">
                                 <label>Existing Images in Selected Post</label>
-                                <div id="supporter-existing-images" style="display: flex; flex-wrap: wrap; gap: 10px; margin-top: 10px; min-height: 100px; border: 1px dashed #475569; border-radius: 8px; padding: 10px; background: #0f172a;"></div>
+                                <div id="supporter-existing-images"></div>
                             </div>
 
-                            <div style="display: flex; gap: 20px; flex-wrap: wrap; margin-top: 30px;">
-                                <div style="flex: 1; min-width: 320px;">
+                            <div class="flex-row wrap" style="margin-top: 30px;">
+                                <div class="flex-1 min-w-320">
                                     <div class="form-group">
                                         <label>Pack Number</label>
                                         <input type="text" id="supPack" placeholder="e.g. 183">
@@ -207,12 +206,12 @@
                                     </div>
                                     <div class="form-group">
                                         <label>Sex & Name</label>
-                                        <div style="display: flex; gap: 10px;">
-                                            <select id="supGender" style="flex: 0 0 80px;">
+                                        <div class="flex-row">
+                                            <select id="supGender" class="flex-80px">
                                                 <option value=":female_sign:">♀️</option>
                                                 <option value=":male_sign:">♂️</option>
                                             </select>
-                                            <input type="text" id="supName" placeholder="Hayasaka Ai" style="flex: 1;">
+                                            <input type="text" id="supName" placeholder="Hayasaka Ai" class="flex-1">
                                         </div>
                                     </div>
                                     <div class="form-group">
@@ -233,58 +232,66 @@
                                     </div>
                                 </div>
 
-                                <div style="flex: 1; min-width: 320px;">
+                                <div class="flex-1 min-w-320">
                                     <div style="display:flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
                                         <label style="margin:0;">New Images (will replace existing if posted)</label>
                                         <span onclick="clearSupporterImages()" style="color: var(--accent); font-size: 0.8rem; cursor: pointer; font-weight: bold;">✕ Clear All</span>
                                     </div>
-                                    <div id="sup-drop-zone" style="border: 2px dashed #475569; border-radius: 8px; padding: 20px; background: #0f172a; min-height: 160px; text-align: center; cursor: pointer;">
-                                        <span id="sup-drop-text" style="color: #94a3b8; user-select: none;">Drag images here or click to select</span>
-                                        <div id="sup-preview-container" style="display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; justify-content: center;"></div>
+                                    <div id="sup-drop-zone">
+                                        <span id="sup-drop-text">Drag images here or click to select</span>
+                                        <div id="sup-preview-container"></div>
                                         <input type="file" id="sup-file-input" multiple accept="image/*" style="display: none;">
                                     </div>
                                 </div>
                             </div>
 
-                            <button onclick="submitSupporterRelease()" style="background: var(--success-green); width: 100%; margin-top: 20px; padding: 14px; font-size: 1.1rem; font-weight: bold;">📤 Post / Update to #supporter-releases</button>
+                            <button onclick="submitSupporterRelease()" id="supporter-release-btn">📤 Post / Update to #supporter-releases</button>
 
-                            <div style="margin-top: 16px; display: flex; align-items: center; justify-content: center; gap: 12px; font-size: 1rem; color: #e2e8f0;">
-                                <label for="edit-preview-toggle" style="cursor: pointer; user-select: none;">
-                                    Edit Preview too
-                                </label>
+                            <div class="toggle-container">
+                                <label for="edit-preview-toggle" style="cursor: pointer; user-select: none;">Edit Preview too</label>
                                 <label class="toggle-switch">
                                     <input type="checkbox" id="edit-preview-toggle" checked>
                                     <span class="toggle-slider"></span>
                                 </label>
                             </div>
-
-                            <div id="supporter-status" class="status" style="margin-top: 12px; text-align: center; min-height: 24px;"></div>
+                            <div id="supporter-status" class="status"></div>
                         </div>
                     </div>
 
-                    <!-- RIGHT COLUMN: ZIP Preview + MEGA Upload -->
+                    <!-- Right column: ZIP + MEGA -->
                     <div class="mgmt-column">
-                        <!-- ZIP Preview card -->
                         <div class="card">
                             <span class="card-header-label">ZIP Preview</span>
-
                             <div style="margin-top: 20px;">
                                 <label>ZIP File (max 100MB)</label>
-                                <div id="test-drop-zone" style="border: 2px dashed #475569; border-radius: 8px; padding: 20px; background: #0f172a; min-height: 160px; text-align: center; cursor: pointer;">
-                                    <span id="test-drop-text" style="color: #94a3b8; user-select: none;">Drag ZIP file here or click to select</span>
-                                    <div id="test-preview-container" style="display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; justify-content: center;"></div>
+                                <div id="test-drop-zone">
+                                    <span id="test-drop-text">Drag ZIP file here or click to select</span>
+                                    <div id="test-preview-container"></div>
                                     <input type="file" id="test-file-input" accept=".zip" style="display: none;">
                                 </div>
                             </div>
-
-                            <div id="test-image-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 10px; margin-top: 20px;"></div>
-
+                            <div id="test-image-grid"></div>
                             <div style="margin-top: 30px; border-top: 2px solid #334155; padding-top: 20px;">
-                                <div style="display: flex; justify-content: space-between; align-items: center;">
-                                    <span onclick="clearSelection()" style="color: var(--accent); font-size: 0.9rem; cursor: pointer; font-weight: bold;">✕ Clear All</span>
-                                </div>
+                                <span onclick="clearSelection()" style="color: var(--accent); font-size: 0.9rem; cursor: pointer; font-weight: bold;">✕ Clear All</span>
                             </div>
                         </div>
+
+                        <div class="card" style="margin-top: 20px;">
+                            <span class="card-header-label">Upload ZIP to MEGA</span>
+                            <div class="form-group">
+                                <label>Filename (will be uploaded as)</label>
+                                <input type="text" id="mega-filename" placeholder="[Pack 184] Himari Akeboshi - BLUE ARCHIVE.zip">
+                            </div>
+                            <div style="margin-top: 20px;">
+                                <progress id="mega-progress" value="0" max="100" style="width:100%; height:20px; display:none;"></progress>
+                            </div>
+                            <button onclick="uploadToMega()" id="mega-upload-btn">⬆️ Upload to MEGA</button>
+                            <div id="mega-status" class="status"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>                        </div>
 
                         <!-- MEGA Upload card -->
                         <div class="card" style="margin-top: 20px;">
@@ -307,7 +314,7 @@
         </div>
 
         <!-- Queue Management -->
-        <div id="queue-mgmt" class="tab-content">
+<div id="queue-mgmt" class="tab-content">
             <h1>Queue Management</h1>
             <div class="card" style="max-width: 600px;">
                 <div class="queue-input-group">
@@ -319,7 +326,6 @@
             </div>
         </div>
 
-        <!-- Greetings -->
         <div id="greetings" class="tab-content">
             <h1>Welcome Settings</h1>
             <div class="card">
@@ -336,31 +342,25 @@
             </div>
         </div>
 
-        <!-- Membership tab -->
         <div id="member-mgmt" class="tab-content">
             <h1>Membership Monitor</h1>
             <div class="card">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
                     <span class="card-header-label">Active Subscribers</span>
                 </div>
-
                 <div style="overflow-x: auto;">
-                    <table style="width: 100%; border-collapse: collapse; color: #e2e8f0;">
+                    <table>
                         <thead>
-                            <tr style="text-align: left; border-bottom: 2px solid #334155; color: #94a3b8; font-size: 0.9rem;">
-                                <th style="padding: 12px; cursor: pointer;" onclick="sortMembers('nickname')">Server Nickname <span id="sort-nickname"></span></th>
-                                <th style="padding: 12px; cursor: pointer;" onclick="sortMembers('discordTag')">Discord Tag <span id="sort-discordTag"></span></th>
-                                <th style="padding: 12px; cursor: pointer;" onclick="sortMembers('userId')">User ID <span id="sort-userId"></span></th>
-                                <th style="padding: 12px; cursor: pointer;" onclick="sortMembers('rank')">Rank <span id="sort-rank"></span></th>
-                                <th style="padding: 12px; cursor: pointer;" onclick="sortMembers('daysLeft')">Days Left <span id="sort-daysLeft"></span></th>
+                            <tr>
+                                <th onclick="sortMembers('nickname')">Server Nickname <span id="sort-nickname"></span></th>
+                                <th onclick="sortMembers('discordTag')">Discord Tag <span id="sort-discordTag"></span></th>
+                                <th onclick="sortMembers('userId')">User ID <span id="sort-userId"></span></th>
+                                <th onclick="sortMembers('rank')">Rank <span id="sort-rank"></span></th>
+                                <th onclick="sortMembers('daysLeft')">Days Left <span id="sort-daysLeft"></span></th>
                             </tr>
                         </thead>
                         <tbody id="membership-list-body">
-                            <tr>
-                                <td colspan="5" style="padding: 30px; text-align: center; color: #64748b;">
-                                    Loading membership data...
-                                </td>
-                            </tr>
+                            <tr><td colspan="5" style="padding: 30px; text-align: center; color: #64748b;">Loading membership data...</td></tr>
                         </tbody>
                     </table>
                 </div>
