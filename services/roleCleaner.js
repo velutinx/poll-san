@@ -1,4 +1,4 @@
-// this is poll-san/services/queueService.js
+// this is poll-san/services/roleCleaner.js
 
 roleCleaner.js
 const TARGET_ROLES = ['1468666174102442227', '1467233133362544642', '1487554855068368916'];
