@@ -1,3 +1,5 @@
+// this is poll-san/web/routes/giveaway.js
+
 const SUPPORTER_ROLE_ID = '1466155709547675795';
 
 function parseCharacterList(pollList) {
