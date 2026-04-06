@@ -42,7 +42,7 @@
                         </div>
                         <div class="btn-row">
                             <button id="launch-btn" onclick="triggerPoll()">Launch Poll</button>
-                            <button id="stop-btn" onclick="stopPoll()" class="btn-secondary" disabled>Stop Poll</button>
+                            <button id="stop-btn" onclick="stopPoll()" style="background: var(--disabled-gray); flex:1;" disabled>Stop Poll</button>
                         </div>
                         <div id="poll-status" class="status"></div>
                     </div>
@@ -84,12 +84,12 @@
                             </div>
                             <div class="form-group">
                                 <label>Sex & Name</label>
-                                <div class="flex gap-2">
+                                <div style="display: flex; gap: 10px;">
                                     <select id="rel-gender" style="flex: 0 0 80px;">
                                         <option value=":female_sign:">♀️</option>
                                         <option value=":male_sign:">♂️</option>
                                     </select>
-                                    <input type="text" id="rel-name" placeholder="Nico Robin" class="flex-1">
+                                    <input type="text" id="rel-name" placeholder="Nico Robin" style="flex: 1;">
                                 </div>
                             </div>
                             <div class="form-group">
@@ -104,38 +104,38 @@
                                     <option value="Request">Request</option>
                                 </select>
                             </div>
-                            <button onclick="submitRelease()" id="rel-submit-btn" class="btn-primary">🚀 Post Release Preview</button>
+                            <button onclick="submitRelease()" id="rel-submit-btn" style="background: var(--blue); width: 100%;">🚀 Post Release Preview</button>
                             <div id="release-status" class="status"></div>
                         </div>
 
                         <!-- Edit Existing Forum Post card -->
-                        <div class="card border-t-warning">
-                            <span class="card-header-label text-warning">Edit Existing Forum Post</span>
+                        <div class="card" style="border-top: 4px solid var(--warning-orange);">
+                            <span class="card-header-label" style="color: var(--warning-orange);">Edit Existing Forum Post</span>
                             <div class="form-group">
                                 <label>Select Post</label>
                                 <select id="postDropdown" onchange="loadPostData()">
                                     <option value="">-- Select a post to edit --</option>
                                 </select>
                             </div>
-                            <div id="editFields" class="hidden">
-                                <div class="flex gap-2">
-                                    <div class="form-group flex-1">
+                            <div id="editFields" style="display:none;">
+                                <div style="display: flex; gap: 10px;">
+                                    <div class="form-group" style="flex:1;">
                                         <label>Pack #</label>
                                         <input type="text" id="editPack">
                                     </div>
-                                    <div class="form-group flex-1">
+                                    <div class="form-group" style="flex:1;">
                                         <label>Size</label>
                                         <input type="text" id="editSize">
                                     </div>
                                 </div>
                                 <div class="form-group">
                                     <label>Sex & Name</label>
-                                    <div class="flex gap-2">
+                                    <div style="display: flex; gap: 10px;">
                                         <select id="editGender" style="flex: 0 0 80px;">
                                             <option value=":female_sign:">♀️</option>
                                             <option value=":male_sign:">♂️</option>
                                         </select>
-                                        <input type="text" id="editName" class="flex-1">
+                                        <input type="text" id="editName" style="flex: 1;">
                                     </div>
                                 </div>
                                 <div class="form-group">
@@ -150,7 +150,7 @@
                                         <option value="Request">Request</option>
                                     </select>
                                 </div>
-                                <button onclick="submitEdit()" id="edit-submit-btn" class="btn-warning">💾 Apply Changes</button>
+                                <button onclick="submitEdit()" id="edit-submit-btn" style="background: var(--warning-orange); width: 100%;">💾 Apply Changes</button>
                                 <div id="edit-status" class="status"></div>
                             </div>
                         </div>
@@ -158,14 +158,14 @@
 
                     <!-- Right column: SFW Previews -->
                     <div class="mgmt-column">
-                        <div class="flex justify-between items-center mb-2">
-                            <label class="m-0">SFW Previews (For New Releases Only)</label>
-                            <span onclick="clearImages()" class="clear-link">✕ Clear All</span>
+                        <div style="display:flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                            <label style="margin:0;">SFW Previews (For New Releases Only)</label>
+                            <span onclick="clearImages()" style="color: var(--accent); font-size: 0.8rem; cursor: pointer; font-weight: bold;">✕ Clear All</span>
                         </div>
                         <div id="drop-zone">
-                            <span id="drop-text" class="drop-zone-text">Drag images here or click to browse</span>
+                            <span id="drop-text" style="color: #94a3b8; text-align: center;">Drag images here or click to browse</span>
                             <div id="preview-container"></div>
-                            <input type="file" id="file-input" multiple accept="image/*" class="hidden">
+                            <input type="file" id="file-input" multiple accept="image/*" style="display: none;">
                         </div>
                     </div>
                 </div>
@@ -184,19 +184,19 @@
                                     <option value="">-- Select a post to base this on --</option>
                                 </select>
                             </div>
-                            <div class="form-group mt-4">
+                            <div class="form-group" style="margin-top: 20px;">
                                 <label>Select Supporter Post to Edit</label>
                                 <select id="supporterEditDropdown" onchange="loadSupporterEditData()">
                                     <option value="">-- Select a supporter post to edit --</option>
                                 </select>
                             </div>
-                            <div class="mt-4">
+                            <div style="margin-top: 20px;">
                                 <label>Existing Images in Selected Post</label>
-                                <div id="supporter-existing-images" class="flex flex-wrap gap-2 mt-2 min-h-100 border border-dashed border-gray rounded p-2 bg-dark"></div>
+                                <div id="supporter-existing-images" style="display: flex; flex-wrap: wrap; gap: 10px; margin-top: 10px; min-height: 100px; border: 1px dashed #475569; border-radius: 8px; padding: 10px; background: #0f172a;"></div>
                             </div>
 
-                            <div class="flex flex-wrap gap-5 mt-6">
-                                <div class="flex-1 min-w-320">
+                            <div style="display: flex; gap: 20px; flex-wrap: wrap; margin-top: 30px;">
+                                <div style="flex: 1; min-width: 320px;">
                                     <div class="form-group">
                                         <label>Pack Number</label>
                                         <input type="text" id="supPack" placeholder="e.g. 183">
@@ -207,12 +207,12 @@
                                     </div>
                                     <div class="form-group">
                                         <label>Sex & Name</label>
-                                        <div class="flex gap-2">
+                                        <div style="display: flex; gap: 10px;">
                                             <select id="supGender" style="flex: 0 0 80px;">
                                                 <option value=":female_sign:">♀️</option>
                                                 <option value=":male_sign:">♂️</option>
                                             </select>
-                                            <input type="text" id="supName" placeholder="Hayasaka Ai" class="flex-1">
+                                            <input type="text" id="supName" placeholder="Hayasaka Ai" style="flex: 1;">
                                         </div>
                                     </div>
                                     <div class="form-group">
@@ -233,30 +233,32 @@
                                     </div>
                                 </div>
 
-                                <div class="flex-1 min-w-320">
-                                    <div class="flex justify-between items-center mb-2">
-                                        <label class="m-0">New Images (will replace existing if posted)</label>
-                                        <span onclick="clearSupporterImages()" class="clear-link">✕ Clear All</span>
+                                <div style="flex: 1; min-width: 320px;">
+                                    <div style="display:flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                                        <label style="margin:0;">New Images (will replace existing if posted)</label>
+                                        <span onclick="clearSupporterImages()" style="color: var(--accent); font-size: 0.8rem; cursor: pointer; font-weight: bold;">✕ Clear All</span>
                                     </div>
-                                    <div id="sup-drop-zone">
-                                        <span id="sup-drop-text" class="drop-zone-text">Drag images here or click to select</span>
+                                    <div id="sup-drop-zone" style="border: 2px dashed #475569; border-radius: 8px; padding: 20px; background: #0f172a; min-height: 160px; text-align: center; cursor: pointer;">
+                                        <span id="sup-drop-text" style="color: #94a3b8; user-select: none;">Drag images here or click to select</span>
                                         <div id="sup-preview-container" style="display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; justify-content: center;"></div>
-                                        <input type="file" id="sup-file-input" multiple accept="image/*" class="hidden">
+                                        <input type="file" id="sup-file-input" multiple accept="image/*" style="display: none;">
                                     </div>
                                 </div>
                             </div>
 
-                            <button onclick="submitSupporterRelease()" class="btn-success btn-large mt-4">📤 Post / Update to #supporter-releases</button>
+                            <button onclick="submitSupporterRelease()" style="background: var(--success-green); width: 100%; margin-top: 20px; padding: 14px; font-size: 1.1rem; font-weight: bold;">📤 Post / Update to #supporter-releases</button>
 
-                            <div class="flex items-center justify-center gap-3 mt-4 text-base">
-                                <label for="edit-preview-toggle" class="cursor-pointer user-select-none">Edit Preview too</label>
+                            <div style="margin-top: 16px; display: flex; align-items: center; justify-content: center; gap: 12px; font-size: 1rem; color: #e2e8f0;">
+                                <label for="edit-preview-toggle" style="cursor: pointer; user-select: none;">
+                                    Edit Preview too
+                                </label>
                                 <label class="toggle-switch">
                                     <input type="checkbox" id="edit-preview-toggle" checked>
                                     <span class="toggle-slider"></span>
                                 </label>
                             </div>
 
-                            <div id="supporter-status" class="status"></div>
+                            <div id="supporter-status" class="status" style="margin-top: 12px; text-align: center; min-height: 24px;"></div>
                         </div>
                     </div>
 
@@ -265,34 +267,39 @@
                         <!-- ZIP Preview card -->
                         <div class="card">
                             <span class="card-header-label">ZIP Preview</span>
-                            <div class="mt-4">
+
+                            <div style="margin-top: 20px;">
                                 <label>ZIP File (max 100MB)</label>
-                                <div id="test-drop-zone">
-                                    <span id="test-drop-text" class="drop-zone-text">Drag ZIP file here or click to select</span>
-                                    <div id="test-preview-container" class="flex flex-wrap gap-2 mt-3 justify-center"></div>
-                                    <input type="file" id="test-file-input" accept=".zip" class="hidden">
+                                <div id="test-drop-zone" style="border: 2px dashed #475569; border-radius: 8px; padding: 20px; background: #0f172a; min-height: 160px; text-align: center; cursor: pointer;">
+                                    <span id="test-drop-text" style="color: #94a3b8; user-select: none;">Drag ZIP file here or click to select</span>
+                                    <div id="test-preview-container" style="display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; justify-content: center;"></div>
+                                    <input type="file" id="test-file-input" accept=".zip" style="display: none;">
                                 </div>
                             </div>
-                            <div id="test-image-grid"></div>
-                            <div class="mt-6 border-t border-gray-700 pt-4">
-                                <div class="flex justify-between items-center">
-                                    <span onclick="clearSelection()" class="clear-link">✕ Clear All</span>
+
+                            <div id="test-image-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 10px; margin-top: 20px;"></div>
+
+                            <div style="margin-top: 30px; border-top: 2px solid #334155; padding-top: 20px;">
+                                <div style="display: flex; justify-content: space-between; align-items: center;">
+                                    <span onclick="clearSelection()" style="color: var(--accent); font-size: 0.9rem; cursor: pointer; font-weight: bold;">✕ Clear All</span>
                                 </div>
                             </div>
                         </div>
 
                         <!-- MEGA Upload card -->
-                        <div class="card mt-4">
+                        <div class="card" style="margin-top: 20px;">
                             <span class="card-header-label">Upload ZIP to MEGA</span>
                             <div class="form-group">
                                 <label>Filename (will be uploaded as)</label>
                                 <input type="text" id="mega-filename" placeholder="[Pack 184] Himari Akeboshi - BLUE ARCHIVE.zip">
                             </div>
-                            <div class="mt-4">
-                                <progress id="mega-progress" value="0" max="100"></progress>
+                            <div style="margin-top: 20px;">
+                                <progress id="mega-progress" value="0" max="100" style="width:100%; height:20px; display:none;"></progress>
                             </div>
-                            <button onclick="uploadToMega()" id="mega-upload-btn" class="btn-accent btn-large mt-4">⬆️ Upload to MEGA</button>
-                            <div id="mega-status" class="status"></div>
+                            <button onclick="uploadToMega()" id="mega-upload-btn" style="background: var(--accent); width: 100%; margin-top: 20px; padding: 14px; font-size: 1.1rem; font-weight: bold;">
+                                ⬆️ Upload to MEGA
+                            </button>
+                            <div id="mega-status" class="status" style="margin-top: 12px; text-align: center; min-height: 24px;"></div>
                         </div>
                     </div>
                 </div>
@@ -302,10 +309,10 @@
         <!-- Queue Management -->
         <div id="queue-mgmt" class="tab-content">
             <h1>Queue Management</h1>
-            <div class="card max-w-600">
+            <div class="card" style="max-width: 600px;">
                 <div class="queue-input-group">
                     <input type="text" id="queue_input" placeholder=":female_sign: Isane Kotetsu">
-                    <button class="btn-accent" onclick="addToQueue()">Add</button>
+                    <button style="background: var(--accent)" onclick="addToQueue()">Add</button>
                 </div>
                 <div id="draggable-queue"></div>
                 <div id="queue-status" class="status"></div>
@@ -324,7 +331,7 @@
                     <label>Welcome Message</label>
                     <textarea id="welcome_message" placeholder="Welcome to the server, {user}!"></textarea>
                 </div>
-                <button class="btn-accent" onclick="saveGreetings()">Save Greetings</button>
+                <button style="background: var(--accent)" onclick="saveGreetings()">Save Greetings</button>
                 <div id="greetings-status" class="status"></div>
             </div>
         </div>
@@ -333,23 +340,26 @@
         <div id="member-mgmt" class="tab-content">
             <h1>Membership Monitor</h1>
             <div class="card">
-                <div class="flex justify-between items-center mb-3">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
                     <span class="card-header-label">Active Subscribers</span>
                 </div>
-                <div class="overflow-x-auto">
-                    <table class="w-full border-collapse">
+
+                <div style="overflow-x: auto;">
+                    <table style="width: 100%; border-collapse: collapse; color: #e2e8f0;">
                         <thead>
-                            <tr class="text-left border-b-2 border-gray-700 text-sm">
-                                <th class="p-3 cursor-pointer" onclick="sortMembers('nickname')">Server Nickname <span id="sort-nickname"></span></th>
-                                <th class="p-3 cursor-pointer" onclick="sortMembers('discordTag')">Discord Tag <span id="sort-discordTag"></span></th>
-                                <th class="p-3 cursor-pointer" onclick="sortMembers('userId')">User ID <span id="sort-userId"></span></th>
-                                <th class="p-3 cursor-pointer" onclick="sortMembers('rank')">Rank <span id="sort-rank"></span></th>
-                                <th class="p-3 cursor-pointer" onclick="sortMembers('daysLeft')">Days Left <span id="sort-daysLeft"></span></th>
+                            <tr style="text-align: left; border-bottom: 2px solid #334155; color: #94a3b8; font-size: 0.9rem;">
+                                <th style="padding: 12px; cursor: pointer;" onclick="sortMembers('nickname')">Server Nickname <span id="sort-nickname"></span></th>
+                                <th style="padding: 12px; cursor: pointer;" onclick="sortMembers('discordTag')">Discord Tag <span id="sort-discordTag"></span></th>
+                                <th style="padding: 12px; cursor: pointer;" onclick="sortMembers('userId')">User ID <span id="sort-userId"></span></th>
+                                <th style="padding: 12px; cursor: pointer;" onclick="sortMembers('rank')">Rank <span id="sort-rank"></span></th>
+                                <th style="padding: 12px; cursor: pointer;" onclick="sortMembers('daysLeft')">Days Left <span id="sort-daysLeft"></span></th>
                             </tr>
                         </thead>
                         <tbody id="membership-list-body">
                             <tr>
-                                <td colspan="5" class="p-6 text-center">Loading membership data...</td>
+                                <td colspan="5" style="padding: 30px; text-align: center; color: #64748b;">
+                                    Loading membership data...
+                                </td>
                             </tr>
                         </tbody>
                     </table>
@@ -357,70 +367,70 @@
             </div>
         </div>
 
-        <!-- Monitoring Tab -->
-        <div id="monitoring" class="tab-content">
-            <h1>Account Monitoring</h1>
-            <div class="card">
-                <div class="flex gap-2 items-end mb-4">
-                    <div class="form-group flex-1">
-                        <label>Show accounts where account age OR join age ≤ (days)</label>
-                        <input type="number" id="monitor-days" value="10" step="1" min="1">
-                    </div>
-                    <button onclick="loadMonitoringData()" class="btn-accent" style="padding: 8px 20px;">🔍 Refresh</button>
-                    <button onclick="kickAllSelected()" class="btn-danger" style="padding: 8px 20px;" id="kick-all-btn">🚨 Kick All Selected</button>
-                </div>
-                <div class="overflow-x-auto">
-                    <table class="w-full border-collapse">
-                        <thead>
-                            <tr class="text-left border-b-2 border-gray-700">
-                                <th class="p-2"><input type="checkbox" id="monitor-select-all"></th>
-                                <th class="p-2 cursor-pointer" onclick="sortMonitoringData('userId')">User ID</th>
-                                <th class="p-2 cursor-pointer" onclick="sortMonitoringData('username')">Discord Username</th>
-                                <th class="p-2 cursor-pointer" onclick="sortMonitoringData('accountCreatedAt')">Account Created (UTC)</th>
-                                <th class="p-2 cursor-pointer" onclick="sortMonitoringData('accountAge')">Account Age (days)</th>
-                                <th class="p-2 cursor-pointer" onclick="sortMonitoringData('joinedAt')">Joined Server (UTC)</th>
-                                <th class="p-2 cursor-pointer" onclick="sortMonitoringData('daysSinceJoin')">Days Since Join</th>
-                                <th class="p-2 cursor-pointer" onclick="sortMonitoringData('voteCharacter')">Vote</th>
-                                <th class="p-2">Action</th>
-                            </tr>
-                        </thead>
-                        <tbody id="monitoring-table-body">
-                            <tr><td colspan="9" class="text-center p-4">Click Refresh to load members</td></tr>
-                        </tbody>
-                    </table>
-                </div>
-                <div id="monitoring-status" class="status mt-3"></div>
+        <!-- Monitoring Tab (enhanced: account creation & join ages) -->
+<div id="monitoring" class="tab-content">
+    <h1>Account Monitoring</h1>
+    <div class="card">
+        <div style="display: flex; gap: 10px; align-items: flex-end; margin-bottom: 20px;">
+            <div class="form-group" style="flex: 1;">
+                <label>Show accounts where account age OR join age ≤ (days)</label>
+                <input type="number" id="monitor-days" value="10" step="1" min="1">
             </div>
+            <button onclick="loadMonitoringData()" style="background: var(--accent); padding: 8px 20px;">🔍 Refresh</button>
+            <button onclick="kickAllSelected()" style="background: #ef4444; padding: 8px 20px;" id="kick-all-btn">🚨 Kick All Selected</button>
         </div>
+        <div style="overflow-x: auto;">
+            <table style="width: 100%; border-collapse: collapse;">
+                <thead>
+                    <tr style="text-align: left; border-bottom: 2px solid #334155;">
+                        <th style="padding: 8px;"><input type="checkbox" id="monitor-select-all"></th>
+                        <th style="padding: 8px; cursor: pointer;" onclick="sortMonitoringData('userId')">User ID</th>
+                        <th style="padding: 8px; cursor: pointer;" onclick="sortMonitoringData('username')">Discord Username</th>
+                        <th style="padding: 8px; cursor: pointer;" onclick="sortMonitoringData('accountCreatedAt')">Account Created (UTC)</th>
+                        <th style="padding: 8px; cursor: pointer;" onclick="sortMonitoringData('accountAge')">Account Age (days)</th>
+                        <th style="padding: 8px; cursor: pointer;" onclick="sortMonitoringData('joinedAt')">Joined Server (UTC)</th>
+                        <th style="padding: 8px; cursor: pointer;" onclick="sortMonitoringData('daysSinceJoin')">Days Since Join</th>
+                        <th style="padding: 8px; cursor: pointer;" onclick="sortMonitoringData('voteCharacter')">Vote</th>
+                        <th style="padding: 8px;">Action</th>
+                    </tr>
+                </thead>
+                <tbody id="monitoring-table-body">
+                    <tr><td colspan="9" style="text-align: center; padding: 20px;">Click Refresh to load members</td></tr>
+                </tbody>
+            </table>
+        </div>
+        <div id="monitoring-status" class="status" style="margin-top: 12px;"></div>
+    </div>
+</div>
 
         <!-- Giveaway tab -->
-        <div id="giveaway-mgmt" class="tab-content">
-            <h1>Giveaway Monitor</h1>
-            <div class="card mb-4">
-                <div id="giveaway-info">
-                    <p>Loading giveaway data...</p>
-                </div>
-            </div>
-            <div class="card">
-                <div class="overflow-x-auto">
-                    <table class="w-full border-collapse">
-                        <thead>
-                            <tr class="text-left border-b-2 border-gray-700">
-                                <th class="p-2 cursor-pointer" onclick="sortGiveawayTable('username')">Discord Username</th>
-                                <th class="p-2 cursor-pointer" onclick="sortGiveawayTable('userId')">Discord ID</th>
-                                <th class="p-2 cursor-pointer" onclick="sortGiveawayTable('accountAge')">Account Age (days)</th>
-                                <th class="p-2 cursor-pointer" onclick="sortGiveawayTable('voteCharacter')">Current Vote</th>
-                                <th class="p-2">Action</th>
-                            </tr>
-                        </thead>
-                        <tbody id="giveaway-table-body">
-                            <tr><td colspan="5" class="text-center">No active giveaway or loading...</td></tr>
-                        </tbody>
-                    </table>
-                </div>
-                <div id="giveaway-status" class="status mt-3"></div>
-            </div>
+<div id="giveaway-mgmt" class="tab-content">
+    <h1>Giveaway Monitor</h1>
+    <div class="card" style="margin-bottom: 20px;">
+        <div id="giveaway-info">
+            <p>Loading giveaway data...</p>
         </div>
+    </div>
+    <div class="card">
+        <div style="overflow-x: auto;">
+            <table style="width: 100%; border-collapse: collapse;">
+                <thead>
+                    <tr style="text-align: left; border-bottom: 2px solid #334155;">
+                        <th style="padding: 8px; cursor: pointer;" onclick="sortGiveawayTable('username')">Discord Username</th>
+                        <th style="padding: 8px; cursor: pointer;" onclick="sortGiveawayTable('userId')">Discord ID</th>
+                        <th style="padding: 8px; cursor: pointer;" onclick="sortGiveawayTable('accountAge')">Account Age (days)</th>
+                        <th style="padding: 8px; cursor: pointer;" onclick="sortGiveawayTable('voteCharacter')">Current Vote</th>
+                        <th style="padding: 8px;">Action</th>
+                    </tr>
+                </thead>
+                <tbody id="giveaway-table-body">
+                    <tr><td colspan="5" style="text-align:center;">No active giveaway or loading...</td></tr>
+                </tbody>
+            </table>
+        </div>
+        <div id="giveaway-status" class="status" style="margin-top: 12px;"></div>
+    </div>
+</div>
     </main>
 
     <script>
@@ -478,9 +488,9 @@ async function switchTab(tabId) {
 }
 
 function switchSubTab(subId) {
-    document.querySelectorAll('.sub-tab-content').forEach(t => t.classList.add('hidden'));
+    document.querySelectorAll('.sub-tab-content').forEach(t => t.style.display = 'none');
     document.querySelectorAll('.sub-nav span').forEach(s => s.classList.remove('active'));
-    document.getElementById(subId).classList.remove('hidden');
+    document.getElementById(subId).style.display = 'block';
     document.querySelector(`.sub-nav span[onclick="switchSubTab('${subId}')"]`)?.classList.add('active');
 }
 
@@ -554,7 +564,7 @@ function escapeHtml(str) {
 function renderMembersTable() {
     const tb = document.getElementById('membership-list-body');
     if (!membersData.length) {
-        tb.innerHTML = '<tr><td colspan="5" class="text-center p-5">No active subscribers found.</td></tr>';
+        tb.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:20px;">No active subscribers found.</td></tr>';
         return;
     }
 
@@ -581,7 +591,7 @@ function renderMembersTable() {
     tb.innerHTML = sorted.map(m => {
         const r = MEMBERSHIP_MAP[m.rank] || {name: m.rank || 'Standard', color:'#94a3b8'};
         const days = m.daysLeft;
-        const recurringIcon = m.recurring ? `<span class="inline-block ml-2 align-middle" title="Recurring subscription">
+        const recurringIcon = m.recurring ? `<span style="display:inline-block; margin-left:8px; vertical-align:middle;" title="Recurring subscription">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: #10b981;">
                 <path d="M17 1L21 5L17 9"/>
                 <path d="M21 5H9C6.79086 5 5 6.79086 5 9"/>
@@ -589,12 +599,14 @@ function renderMembersTable() {
                 <path d="M3 19H15C17.2091 19 19 17.2091 19 15"/>
             </svg>
         </span>` : '';
-        return `<tr class="border-b border-gray-800">
-            <td class="p-3">${escapeHtml(m.nickname||'Unknown')}</td>
-            <td class="p-3 text-gray-400">${escapeHtml(m.discordTag||'Unknown')}</td>
-            <td class="p-3 text-gray-400 font-mono">${escapeHtml(m.userId||'')}</td>
-            <td class="p-3 font-bold" style="color:${r.color}">${escapeHtml(r.name)}</td>
-            <td class="p-3" style="color:${days<5?'#f87171':'#10b981'}">${days} Days${recurringIcon}</td>
+        return `<tr style="border-bottom:1px solid #1e293b;">
+            <td style="padding:12px;">${escapeHtml(m.nickname||'Unknown')}</td>
+            <td style="padding:12px; color:#94a3b8;">${escapeHtml(m.discordTag||'Unknown')}</td>
+            <td style="padding:12px; color:#94a3b8; font-family:monospace;">${escapeHtml(m.userId||'')}</td>
+            <td style="padding:12px; color:${r.color}; font-weight:bold;">${escapeHtml(r.name)}</td>
+            <td style="padding:12px; color:${days<5?'#f87171':'#10b981'};">
+                ${days} Days${recurringIcon}
+            </td>
         </tr>`;
     }).join('');
 }
@@ -604,7 +616,7 @@ function renderMembersTable() {
 // ======================================================
 async function loadMembershipData() {
     const tb = document.getElementById('membership-list-body');
-    tb.innerHTML = '<tr><td colspan="5" class="p-8 text-center text-gray-500">Loading membership data...</td></tr>';
+    tb.innerHTML = '<tr><td colspan="5" style="padding:30px; text-align:center; color:#64748b;">Loading membership data...</td></tr>';
 
     try {
         const r = await fetch('/api/memberships');
@@ -613,7 +625,7 @@ async function loadMembershipData() {
         renderMembersTable();
     } catch (e) {
         console.error(e);
-        tb.innerHTML = '<tr><td colspan="5" class="p-8 text-center text-red-500">Error loading data.</td></tr>';
+        tb.innerHTML = '<tr><td colspan="5" style="padding:30px; text-align:center; color:#f87171;">Error loading data.</td></tr>';
     }
 }
 
@@ -660,7 +672,7 @@ function renderMonitoringTable(data) {
     const tbody = document.getElementById('monitoring-table-body');
     if (!tbody) return;
     if (!data.length) {
-        tbody.innerHTML = '<tr><td colspan="9" class="text-center">No members found</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;">No members found<\/td><\/tr>';
         return;
     }
     tbody.innerHTML = data.map(m => {
@@ -672,16 +684,16 @@ function renderMonitoringTable(data) {
         }
         return `
             <tr data-user-id="${m.userId}">
-                <td class="p-2"><input type="checkbox" class="monitor-user-checkbox" data-id="${m.userId}"></td>
-                <td class="p-2">${escapeHtml(m.userId)}</td>
-                <td class="p-2">${escapeHtml(m.username)}</td>
-                <td class="p-2">${m.accountCreatedAt ? new Date(m.accountCreatedAt).toLocaleString() : 'Unknown'}</td>
-                <td class="p-2">${m.accountAge !== null ? m.accountAge : '?'}</td>
-                <td class="p-2">${m.joinedAt ? new Date(m.joinedAt).toLocaleString() : 'Unknown'}</td>
-                <td class="p-2">${m.daysSinceJoin !== null ? m.daysSinceJoin : '?'}</td>
-                <td class="p-2">${voteDisplay}</td>
-                <td class="p-2"><button class="kick-single btn-danger" data-id="${m.userId}" style="padding:4px 12px;">Kick</button></td>
-            </tr>
+                <td style="padding: 8px;"><input type="checkbox" class="monitor-user-checkbox" data-id="${m.userId}"><\/td>
+                <td style="padding: 8px;">${escapeHtml(m.userId)}<\/td>
+                <td style="padding: 8px;">${escapeHtml(m.username)}<\/td>
+                <td style="padding: 8px;">${m.accountCreatedAt ? new Date(m.accountCreatedAt).toLocaleString() : 'Unknown'}<\/td>
+                <td style="padding: 8px;">${m.accountAge !== null ? m.accountAge : '?'}<\/td>
+                <td style="padding: 8px;">${m.joinedAt ? new Date(m.joinedAt).toLocaleString() : 'Unknown'}<\/td>
+                <td style="padding: 8px;">${m.daysSinceJoin !== null ? m.daysSinceJoin : '?'}<\/td>
+                <td style="padding: 8px;">${voteDisplay}<\/td>
+                <td style="padding: 8px;"><button class="kick-single" data-id="${m.userId}" style="background:#ef4444; padding:4px 12px;">Kick<\/button><\/td>
+             <\/tr>
         `;
     }).join('');
     
@@ -715,7 +727,7 @@ async function loadMonitoringData() {
         return;
     }
 
-    tbody.innerHTML = '<tr><td colspan="9" class="text-center">Loading members...</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;">Loading members...<\/td><\/tr>';
     if (statusDiv) statusDiv.innerHTML = '';
 
     try {
@@ -726,7 +738,7 @@ async function loadMonitoringData() {
         renderMonitoringTable(currentMonitoringData);
     } catch (err) {
         console.error(err);
-        tbody.innerHTML = '<tr><td colspan="9" class="text-center text-red-500">Error loading data</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="9" style="text-align:center; color:#f87171;">Error loading data<\/td><\/tr>';
         if (statusDiv) statusDiv.innerHTML = 'Error: ' + err.message;
     } finally {
         if (monitoringRefreshTimeout) clearTimeout(monitoringRefreshTimeout);
@@ -746,14 +758,14 @@ async function kickMember(userId) {
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'Kick failed');
-        statusDiv.innerHTML = `<span class="text-green-400">✅ ${data.message}</span>`;
+        statusDiv.innerHTML = `<span style="color:#4ade80;">✅ ${data.message}</span>`;
         const row = document.querySelector(`tr[data-user-id="${userId}"]`);
         if (row) row.remove();
         currentMonitoringData = currentMonitoringData.filter(m => m.userId !== userId);
         if (typeof showSnackbar === 'function') showSnackbar(data.message, false);
         else alert(data.message);
     } catch (err) {
-        statusDiv.innerHTML = `<span class="text-red-500">❌ ${err.message}</span>`;
+        statusDiv.innerHTML = `<span style="color:#f87171;">❌ ${err.message}</span>`;
         if (typeof showSnackbar === 'function') showSnackbar(err.message, true);
         else alert(err.message);
     }
@@ -792,7 +804,7 @@ async function kickAllSelected() {
         }
         await new Promise(r => setTimeout(r, 500));
     }
-    statusDiv.innerHTML = `<span class="text-green-400">✅ Kicked ${success} members, Failed ${failed}</span>`;
+    statusDiv.innerHTML = `<span style="color:#4ade80;">✅ Kicked ${success} members, Failed ${failed}</span>`;
     if (typeof showSnackbar === 'function') showSnackbar(`Kicked ${success} members`, false);
 }
 
@@ -815,6 +827,6 @@ window.onload = () => {
     <script src="/js/releases.js" defer></script>
     <script src="/js/uploading.js" defer></script>
     <script src="/js/megalink.js" defer></script>
-    <script src="/js/giveaway.js" defer></script>
+    <script src="/js/giveaway.js" defer></script>   <!-- ADD THIS LINE -->
 </body>
 </html>
