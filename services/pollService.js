@@ -1,4 +1,4 @@
-// this is poll-san/web/services/pollService.js
+// this is poll-san/services/pollService.js
 
 const supabase = require('./supabase');
 const { supabaseRetry } = require('../utils/db');
