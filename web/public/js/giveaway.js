@@ -1,4 +1,5 @@
-// Giveaway tab functions
+// this is poll-san/web/public/js/giveaway.js
+
 let currentGiveawayData = null;
 let giveawaySortColumn = null;
 let giveawaySortDirection = 'asc';
