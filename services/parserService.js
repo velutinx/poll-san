@@ -1,4 +1,4 @@
-// this is poll-san/web/services/parserService.js
+// this is poll-san/services/parserService.js
 
 module.exports = {
     parseMessage: (text, member) => {
