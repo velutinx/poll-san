@@ -1,4 +1,5 @@
-// utils/helpers.js
+// this is poll-san/utils/helpers.js
+
 module.exports = {
     formatTime: (ms) => {
         if (ms <= 0) return "0d 0h 0m 0s";
