@@ -1,3 +1,5 @@
+// this is poll-san/utils/xputils.js
+
 require('dotenv').config({ quiet: true });
 
 const XP_MIN_CHARS = 5;
