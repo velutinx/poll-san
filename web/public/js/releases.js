@@ -1,4 +1,4 @@
-// public/js/releases.js – no logs
+// this is poll-san/web/public/js/releases.js
 
 let supporterSortable = null;
 
