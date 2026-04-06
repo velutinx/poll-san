@@ -1,4 +1,4 @@
-// public/js/greetings.js – handles welcome channel and message settings
+// this is poll-san/web/public/js/greetings.js
 
 async function loadSettings() {
     try {
