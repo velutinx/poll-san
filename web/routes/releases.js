@@ -66,8 +66,35 @@ Set size: ${setSize} images
 
   // ────────────────────────────────────────────────
   // 9. FORUM FETCHING
-  // (unchanged)
   // ────────────────────────────────────────────────
+  app.get('/api/forum-posts', async (req, res) => {
+    try {
+      const channelId = req.query.channelId || FORUM_ID;
+      const guild = await client.guilds.fetch(process.env.GUILD_ID);
+      const forumChannel = await guild.channels.fetch(channelId);
+      if (!forumChannel.isThreadOnly()) {
+        return res.status(400).json({ error: "Channel is not a forum" });
+      }
+
+      const threads = await forumChannel.threads.fetchActive();
+      const postList = threads.threads.map(t => ({
+        id: t.id,
+        name: t.name,
+        applied_tags: Array.isArray(t.appliedTags) ? t.appliedTags : []
+      }));
+
+      postList.sort((a, b) => {
+        const aId = BigInt(a.id);
+        const bId = BigInt(b.id);
+        return aId > bId ? -1 : aId < bId ? 1 : 0;
+      });
+
+      res.json(postList);
+    } catch (err) {
+      console.error('Forum posts endpoint error:', err);
+      res.status(500).json({ error: err.message || 'Failed to fetch forum threads' });
+    }
+  });
 
   // ────────────────────────────────────────────────
   // 10. EDIT FORUM POST
@@ -117,8 +144,31 @@ Set size: ${setSize} images
 
   // ────────────────────────────────────────────────
   // 11. GET POST CONTENT
-  // (unchanged)
   // ────────────────────────────────────────────────
+  app.get('/api/get-post-content', async (req, res) => {
+    const { id } = req.query;
+    try {
+      if (!id) return res.status(400).json({ error: "Missing thread id" });
+      const thread = await client.channels.fetch(id);
+      if (!thread?.isThread()) return res.status(404).json({ error: "Not a valid thread" });
+
+      const starter = await thread.fetchStarterMessage();
+      if (!starter) return res.status(404).json({ error: "Starter message not found" });
+
+      res.json({
+        content: starter.content,
+        attachments: starter.attachments.map(att => ({
+          url: att.url,
+          content_type: att.contentType || att.content_type || 'unknown',
+          name: att.name || 'attachment',
+          size: att.size
+        }))
+      });
+    } catch (err) {
+      console.error('Get post content error:', err);
+      res.status(500).json({ error: err.message });
+    }
+  });
 
   // ────────────────────────────────────────────────
   // 12. SUPPORTER RELEASE (with embed suppression)
