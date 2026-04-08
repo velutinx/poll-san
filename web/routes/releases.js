@@ -6,10 +6,10 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 
+
 module.exports = function setupReleasesRoutes(app, client, upload, FORUM_ID, SUPPORTER_FORUM_ID) {
-  // Custom animated emojis for "NEW"
-  const NEW_EMOJI_1 = '<a:NEW-1:1491321234015911977>';
-  const NEW_EMOJI_2 = '<a:NEW-2:1491321257780580414>';
+  const NEW_EMOJI_1 = '<a:NEW1:1491321234015911977>'; 
+  const NEW_EMOJI_2 = '<a:NEW2:1491321257780580414>';
   const PREVIEW_RELEASE_HEADER = `${NEW_EMOJI_1}${NEW_EMOJI_2} RELEASE`;
   const SUPPORTER_RELEASE_HEADER = `:underage: ${NEW_EMOJI_1}${NEW_EMOJI_2} SUPPORTER RELEASE`;
 
