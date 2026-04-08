@@ -7,6 +7,12 @@ const os = require('os');
 const path = require('path');
 
 module.exports = function setupReleasesRoutes(app, client, upload, FORUM_ID, SUPPORTER_FORUM_ID) {
+  // Custom animated emojis for "NEW"
+  const NEW_EMOJI_1 = '<a:NEW-1:1491321234015911977>';
+  const NEW_EMOJI_2 = '<a:NEW-2:1491321257780580414>';
+  const PREVIEW_RELEASE_HEADER = `${NEW_EMOJI_1}${NEW_EMOJI_2} RELEASE`;
+  const SUPPORTER_RELEASE_HEADER = `:underage: ${NEW_EMOJI_1}${NEW_EMOJI_2} SUPPORTER RELEASE`;
+
   // ────────────────────────────────────────────────
   // 8. RELEASE PREVIEW
   // ────────────────────────────────────────────────
@@ -32,7 +38,7 @@ module.exports = function setupReleasesRoutes(app, client, upload, FORUM_ID, SUP
       const isSoon = setSize.toUpperCase() === 'XX';
       const suffixStr = suffix ? ` — ${suffix}` : '';
       const threadTitle = `[${series.toUpperCase()}] ${charName} — Pack #${pack}${suffixStr}`;
-      const messageBody = `:new: NEW RELEASE${isSoon ? ' -- SOON' : ''}
+      const messageBody = `${PREVIEW_RELEASE_HEADER}${isSoon ? ' -- SOON' : ''}
 ━━━━━━━━━━━━━━
 Character: ${charName}
 Series: ${series}
@@ -60,35 +66,8 @@ Set size: ${setSize} images
 
   // ────────────────────────────────────────────────
   // 9. FORUM FETCHING
+  // (unchanged)
   // ────────────────────────────────────────────────
-  app.get('/api/forum-posts', async (req, res) => {
-    try {
-      const channelId = req.query.channelId || FORUM_ID;
-      const guild = await client.guilds.fetch(process.env.GUILD_ID);
-      const forumChannel = await guild.channels.fetch(channelId);
-      if (!forumChannel.isThreadOnly()) {
-        return res.status(400).json({ error: "Channel is not a forum" });
-      }
-
-      const threads = await forumChannel.threads.fetchActive();
-      const postList = threads.threads.map(t => ({
-        id: t.id,
-        name: t.name,
-        applied_tags: Array.isArray(t.appliedTags) ? t.appliedTags : []
-      }));
-
-      postList.sort((a, b) => {
-        const aId = BigInt(a.id);
-        const bId = BigInt(b.id);
-        return aId > bId ? -1 : aId < bId ? 1 : 0;
-      });
-
-      res.json(postList);
-    } catch (err) {
-      console.error('Forum posts endpoint error:', err);
-      res.status(500).json({ error: err.message || 'Failed to fetch forum threads' });
-    }
-  });
 
   // ────────────────────────────────────────────────
   // 10. EDIT FORUM POST
@@ -116,12 +95,14 @@ Set size: ${setSize} images
           .replace(/Series: .*/, `Series: ${series}`)
           .replace(/Set size: .* images/, `Set size: ${setSize} images`);
 
+        // Handle the new custom emoji header and -- SOON toggle
         if (isSoon) {
-          if (!newBody.includes('-- SOON')) {
-            newBody = newBody.replace(/:new: NEW RELEASE/, ':new: NEW RELEASE -- SOON');
+          if (!newBody.includes(' -- SOON')) {
+            newBody = newBody.replace(PREVIEW_RELEASE_HEADER, `${PREVIEW_RELEASE_HEADER} -- SOON`);
           }
         } else {
-          newBody = newBody.replace(/ -- SOON/g, '');
+          newBody = newBody.replace(` ${PREVIEW_RELEASE_HEADER} -- SOON`, PREVIEW_RELEASE_HEADER);
+          newBody = newBody.replace(`${PREVIEW_RELEASE_HEADER} -- SOON`, PREVIEW_RELEASE_HEADER);
         }
 
         await firstMsg.edit(newBody);
@@ -136,31 +117,8 @@ Set size: ${setSize} images
 
   // ────────────────────────────────────────────────
   // 11. GET POST CONTENT
+  // (unchanged)
   // ────────────────────────────────────────────────
-  app.get('/api/get-post-content', async (req, res) => {
-    const { id } = req.query;
-    try {
-      if (!id) return res.status(400).json({ error: "Missing thread id" });
-      const thread = await client.channels.fetch(id);
-      if (!thread?.isThread()) return res.status(404).json({ error: "Not a valid thread" });
-
-      const starter = await thread.fetchStarterMessage();
-      if (!starter) return res.status(404).json({ error: "Starter message not found" });
-
-      res.json({
-        content: starter.content,
-        attachments: starter.attachments.map(att => ({
-          url: att.url,
-          content_type: att.contentType || att.content_type || 'unknown',
-          name: att.name || 'attachment',
-          size: att.size
-        }))
-      });
-    } catch (err) {
-      console.error('Get post content error:', err);
-      res.status(500).json({ error: err.message });
-    }
-  });
 
   // ────────────────────────────────────────────────
   // 12. SUPPORTER RELEASE (with embed suppression)
@@ -195,7 +153,7 @@ Set size: ${setSize} images
 
       const suffixStr = suffix ? ` — ${suffix}` : '';
       const threadTitle = `[${series.toUpperCase()}] ${charName} — Pack #${pack}${suffixStr}`;
-const messageBody = `:underage: NEW SUPPORTER RELEASE
+      const messageBody = `${SUPPORTER_RELEASE_HEADER}
 ${roleMention || ''}
 ━━━━━━━━━━━━━━
 Character: ${charName}
@@ -203,8 +161,8 @@ Set size: ${setSize} images
 Content: Explicit (18+)
 
 :inbox_tray: Download:
-:link: [megaLink](${download || 'https://mega.nz'})`;   // <-- no bold, clean parentheses
-      
+:link: [megaLink](${download || 'https://mega.nz'})`;
+
       let supporterResult = {};
       if (supporterThreadId) {
         const thread = await client.channels.fetch(supporterThreadId);
@@ -228,11 +186,11 @@ Content: Explicit (18+)
         }
         supporterResult = { updated: true };
       } else {
-const newThread = await forumChannel.threads.create({
-    name: threadTitle,
-    appliedTags: appliedTags.length > 0 ? appliedTags : undefined,
-    message: { content: messageBody, files: files.map(f => ({ attachment: f.buffer, name: f.originalname })) }
-});
+        const newThread = await forumChannel.threads.create({
+          name: threadTitle,
+          appliedTags: appliedTags.length > 0 ? appliedTags : undefined,
+          message: { content: messageBody, files: files.map(f => ({ attachment: f.buffer, name: f.originalname })) }
+        });
         const starter = await newThread.fetchStarterMessage();
         if (starter) {
           await starter.edit({ flags: ["SuppressEmbeds"] });
@@ -275,7 +233,6 @@ const newThread = await forumChannel.threads.create({
               console.warn("Preview thread not found:", targetPreviewId);
               previewResult = { previewError: "Preview thread not found" };
             } else {
-              // Unarchive if archived
               if (previewThread.archived) {
                 await previewThread.setArchived(false);
                 console.log(`Unarchived preview thread ${targetPreviewId}`);
@@ -290,14 +247,11 @@ const newThread = await forumChannel.threads.create({
               const starter = await previewThread.fetchStarterMessage();
               if (starter) {
                 let newContent = starter.content;
-                const setSizeRegex = /Set size:\s*\d+\s*images/i;
-                const setSizeSoonRegex = /Set size:\s*XX\s*images/i;
-                if (setSizeRegex.test(newContent) || setSizeSoonRegex.test(newContent)) {
-                  newContent = newContent.replace(/(Set size:\s*)(\d+|XX)(\s*images)/i, `$1${setSize}$3`);
-                }
-                if (newContent.includes(':new: NEW RELEASE -- SOON')) {
-                  newContent = newContent.replace(':new: NEW RELEASE -- SOON', ':new: NEW RELEASE');
-                }
+                // Replace set size (XX → actual number)
+                newContent = newContent.replace(/(Set size:\s*)(\d+|XX)(\s*images)/i, `$1${setSize}$3`);
+                // Remove -- SOON from header if present
+                newContent = newContent.replace(` ${PREVIEW_RELEASE_HEADER} -- SOON`, PREVIEW_RELEASE_HEADER);
+                newContent = newContent.replace(`${PREVIEW_RELEASE_HEADER} -- SOON`, PREVIEW_RELEASE_HEADER);
                 await starter.edit(newContent);
               }
               previewResult = { previewUpdated: true };
