@@ -1,18 +1,7 @@
-// this is poll-san/events/reactions.js
+// poll-san/events/reactions.js
 
 const supabase = require('../services/supabase');
-const { reactIds } = require('../utils/helpers');
-
-// Weight Configuration
-const LEVEL_MULTIPLIER_PER_LEVEL = 0.02;
-const TIER_WEIGHTS = {
-  '1465444240845963326': 1.2,
-  '1465670134743044139': 1.5,
-  '1465904476417163457': 1.8,
-  '1465904548320378956': 2.0,
-  '1465952085026541804': 2.3
-};
-const BOOSTER_ROLE_ID = '1469284491456548976';
+const { reactIds, weights } = require('../utils/helpers');
 
 module.exports = async (reaction, user, action = 'add') => {
     if (user.bot) return;
@@ -46,30 +35,31 @@ module.exports = async (reaction, user, action = 'add') => {
                 .eq('user_id', user.id)
                 .eq('poll_id', 'character_poll_new')
                 .eq('option_id', optionId);
+            
             console.log(`🗑️ Vote Removed: ${user.username} for Option ${optionId}`);
             return;
         }
 
-        // Otherwise, handle add (with weight calculation)
+        // 3. Handle add (with weight calculation from helpers)
         const member = await message.guild.members.fetch(user.id).catch(() => null);
         let weight = 1.0;
 
         if (member) {
-            // Find highest Tier Weight
+            // Find highest Tier Weight from helpers.weights.tiers
             let highestTier = 1.0;
-            for (const [roleId, multiplier] of Object.entries(TIER_WEIGHTS)) {
+            for (const [roleId, multiplier] of Object.entries(weights.tiers)) {
                 if (member.roles.cache.has(roleId)) {
                     if (multiplier > highestTier) highestTier = multiplier;
                 }
             }
             weight = highestTier;
 
-            // Add Booster Bonus (+0.5)
-            if (member.roles.cache.has(BOOSTER_ROLE_ID)) {
+            // Add Booster Bonus (+0.5) using helpers.weights.booster
+            if (member.roles.cache.has(weights.booster)) {
                 weight += 0.5;
             }
 
-            // Add Level Bonus (Level * 0.02)
+            // Add Level Bonus using helpers.weights.xpFactor
             const { data: xpData } = await supabase
                 .from('user_xp')
                 .select('level')
@@ -78,7 +68,7 @@ module.exports = async (reaction, user, action = 'add') => {
                 .single();
 
             if (xpData?.level) {
-                weight += (xpData.level * LEVEL_MULTIPLIER_PER_LEVEL);
+                weight += (xpData.level * weights.xpFactor);
             }
         }
 
