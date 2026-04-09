@@ -394,19 +394,27 @@ ${releaseEmojis.LINK} [megaLink](${download || 'https://mega.nz'})`;
     res.download(filePath, filename);
   });
 
+// ────────────────────────────────────────────────
+  // 16. GET FORUM POSTS (Fixes Frontend 404)
   // ────────────────────────────────────────────────
-  // 16. GET PREVIEW POSTS (Fixes Frontend 404)
-  // ────────────────────────────────────────────────
-  app.get('/api/preview-posts', async (req, res) => {
+  app.get('/api/forum-posts', async (req, res) => {
+      const { channelId } = req.query;
+      
+      if (!channelId) {
+          return res.status(400).json({ error: "Missing channelId parameter" });
+      }
+
       try {
           const guild = await client.guilds.fetch(process.env.GUILD_ID);
-          const channel = await guild.channels.fetch(FORUM_ID);
+          const channel = await guild.channels.fetch(channelId);
+          
+          // Fetch the active threads for whichever channel ID the frontend requested
           const { threads } = await channel.threads.fetchActive();
           
           const posts = threads.map(t => ({ id: t.id, name: t.name }));
           res.json({ success: true, posts });
       } catch (err) {
-          console.error('Fetch preview posts error:', err);
+          console.error(`Fetch forum posts error for channel ${channelId}:`, err);
           res.status(500).json({ error: err.message });
       }
   });
