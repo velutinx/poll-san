@@ -6,6 +6,7 @@ module.exports = function setupReleasesRoutes(app, client, upload, FORUM_ID, SUP
   const NEW_EMOJI_2 = '<a:NEW2:1491321257780580414>';
   const EMOJI_18 = '<a:18:1491670036799029288>';
   const EMOJI_LINK = '<a:Link:1491670128562274475>';
+  const EMOJI_VERIFY = '<a:Verify:1491669023245729924>';
 
   // Arrow Array
   const ARROWS = [
@@ -137,8 +138,10 @@ ${getRandomArrow()} See <#${SUPPORTER_FORUM_ID}>`;
             newBody = newBody.replace(PREVIEW_RELEASE_HEADER, `${PREVIEW_RELEASE_HEADER} -- SOON`);
           }
         } else {
-          newBody = newBody.replace(` ${PREVIEW_RELEASE_HEADER} -- SOON`, PREVIEW_RELEASE_HEADER);
-          newBody = newBody.replace(`${PREVIEW_RELEASE_HEADER} -- SOON`, PREVIEW_RELEASE_HEADER);
+          // When "SOON" is removed, change the NEW header to the Verify header
+          newBody = newBody.replace(`${PREVIEW_RELEASE_HEADER} -- SOON`, `${EMOJI_VERIFY} RELEASE`);
+          newBody = newBody.replace(PREVIEW_RELEASE_HEADER, `${EMOJI_VERIFY} RELEASE`);
+          newBody = newBody.replace(/ -- SOON/g, ''); 
         }
 
         await firstMsg.edit(newBody);
@@ -304,13 +307,22 @@ ${EMOJI_LINK} [megaLink](${download || 'https://mega.nz'})`;
               }
 
               const starter = await previewThread.fetchStarterMessage();
-              if (starter) {
+                if (starter) {
                 let newContent = starter.content;
-                // Replace set size (XX → actual number)
+                
+                // 1. Replace set size (XX → actual number)
                 newContent = newContent.replace(/(Set size:\s*)(\d+|XX)(\s*images)/i, `$1${setSize}$3`);
-                // Remove -- SOON from header if present
-                newContent = newContent.replace(` ${PREVIEW_RELEASE_HEADER} -- SOON`, PREVIEW_RELEASE_HEADER);
-                newContent = newContent.replace(`${PREVIEW_RELEASE_HEADER} -- SOON`, PREVIEW_RELEASE_HEADER);
+                
+                // 2. Swap the NEW header for the Verify header when updating from the dashboard
+                if (newContent.includes(`${PREVIEW_RELEASE_HEADER} -- SOON`)) {
+                   newContent = newContent.replace(`${PREVIEW_RELEASE_HEADER} -- SOON`, `${EMOJI_VERIFY} RELEASE`);
+                } else if (newContent.includes(PREVIEW_RELEASE_HEADER)) {
+                   newContent = newContent.replace(PREVIEW_RELEASE_HEADER, `${EMOJI_VERIFY} RELEASE`);
+                }
+
+                // 3. Final cleanup for any leftover -- SOON strings in the body
+                newContent = newContent.replace(/ -- SOON/g, '');
+
                 await starter.edit(newContent);
               }
               previewResult = { previewUpdated: true };
