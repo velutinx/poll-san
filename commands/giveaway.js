@@ -141,10 +141,10 @@ module.exports = {
             timeoutId
         });
 
-await interaction.reply({ 
-    content: `${releaseEmojis.VERIFY} You entered the giveaway!`, 
-    flags: [MessageFlags.Ephemeral] 
-});
+        await interaction.reply({ 
+            content: `Giveaway created in ${channel}!`, 
+            flags: [MessageFlags.Ephemeral] 
+        });
     }
 };
 
@@ -230,10 +230,10 @@ async function handleGiveawayButton(interaction) {
         });
     }
 
-    await interaction.reply({ 
-        content: '✅ You entered the giveaway!', 
-        flags: [MessageFlags.Ephemeral] 
-    });
+await interaction.reply({ 
+    content: `${releaseEmojis.VERIFY} You entered the giveaway!`, 
+    flags: [MessageFlags.Ephemeral] 
+});
 }
 
 async function endGiveaway(messageId, client) {
