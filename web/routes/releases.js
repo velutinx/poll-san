@@ -150,7 +150,7 @@ ${getRandomArrow()} See <#${SUPPORTER_FORUM_ID}>`;
     }
   });
 
-// ────────────────────────────────────────────────
+    // ────────────────────────────────────────────────
     // 12. SUPPORTER RELEASE
     // ────────────────────────────────────────────────
     app.post('/api/supporter-release', upload.array('images'), async (req, res) => {
@@ -330,7 +330,7 @@ ${releaseEmojis.LINK} [megaLink](${download || 'https://mega.nz'})`;
     });
 
   // ────────────────────────────────────────────────
-  // 14. TEST ZIP (extract first 10 images, sorted by embedded number)
+  // 14. TEST ZIP
   // ────────────────────────────────────────────────
   app.post('/api/test-zip', upload.single('zipfile'), async (req, res) => {
     if (!req.file) {
@@ -371,30 +371,62 @@ ${releaseEmojis.LINK} [megaLink](${download || 'https://mega.nz'})`;
     }
   });
 
-// ────────────────────────────────────────────────
-// 15. DOWNLOAD FILE (for browser download after upload)
-// ────────────────────────────────────────────────
-app.get('/api/download-file', (req, res) => {
-  const filename = req.query.filename;
-  if (!filename) {
-    return res.status(400).send('Missing filename');
-  }
+  // ────────────────────────────────────────────────
+  // 15. DOWNLOAD FILE
+  // ────────────────────────────────────────────────
+  app.get('/api/download-file', (req, res) => {
+    const filename = req.query.filename;
+    if (!filename) {
+      return res.status(400).send('Missing filename');
+    }
 
-  // Construct absolute path to the downloads folder (relative to project root)
-  const downloadsDir = path.join(process.cwd(), 'downloads');
-  const filePath = path.join(downloadsDir, filename);
+    const downloadsDir = path.join(process.cwd(), 'downloads');
+    const filePath = path.join(downloadsDir, filename);
 
-  // Security: prevent directory traversal
-  if (filePath.indexOf(downloadsDir) !== 0) {
-    return res.status(403).send('Forbidden');
-  }
+    if (filePath.indexOf(downloadsDir) !== 0) {
+      return res.status(403).send('Forbidden');
+    }
 
-  if (!fs.existsSync(filePath)) {
-    return res.status(404).send('File not found');
-  }
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).send('File not found');
+    }
 
-  res.download(filePath, filename);
-});
+    res.download(filePath, filename);
+  });
+
+  // ────────────────────────────────────────────────
+  // 16. GET PREVIEW POSTS (Fixes Frontend 404)
+  // ────────────────────────────────────────────────
+  app.get('/api/preview-posts', async (req, res) => {
+      try {
+          const guild = await client.guilds.fetch(process.env.GUILD_ID);
+          const channel = await guild.channels.fetch(FORUM_ID);
+          const { threads } = await channel.threads.fetchActive();
+          
+          const posts = threads.map(t => ({ id: t.id, name: t.name }));
+          res.json({ success: true, posts });
+      } catch (err) {
+          console.error('Fetch preview posts error:', err);
+          res.status(500).json({ error: err.message });
+      }
+  });
+
+  // ────────────────────────────────────────────────
+  // 17. GET SUPPORTER POSTS (Fixes Frontend 404)
+  // ────────────────────────────────────────────────
+  app.get('/api/supporter-posts', async (req, res) => {
+      try {
+          const guild = await client.guilds.fetch(process.env.GUILD_ID);
+          const channel = await guild.channels.fetch(SUPPORTER_FORUM_ID);
+          const { threads } = await channel.threads.fetchActive();
+          
+          const posts = threads.map(t => ({ id: t.id, name: t.name }));
+          res.json({ success: true, posts });
+      } catch (err) {
+          console.error('Fetch supporter posts error:', err);
+          res.status(500).json({ error: err.message });
+      }
+  });
 
   // Temporary GET for testing – remove after debugging
   app.get('/api/test-zip', (req, res) => {
