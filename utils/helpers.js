@@ -53,6 +53,7 @@ module.exports = {
         EIGHTEEN: '<a:18:1491670036799029288>',
         LINK: '<a:Link:1491670128562274475>',
         CONFETTI: '<a:confetti:1491689074002755664>',
+        SPARKLES: '<a:sparkles:1491697348718493786>',
         ARROWS: [
             '<a:arrowyellow:1491672823729623212>',
             '<a:arrowwhite:1491672813398917150>',
