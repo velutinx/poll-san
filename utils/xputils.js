@@ -4,9 +4,6 @@ require('dotenv').config({ quiet: true });
 const { weights, releaseEmojis } = require('./helpers');
 
 const XP_MIN_CHARS = 5;
-// Remove the old LEVEL_MULTIPLIER_PER_LEVEL line
-const XP_MIN_CHARS = 5;
-const LEVEL_MULTIPLIER_PER_LEVEL = 0.02;
 
 // Thresholds: Level 2 = 50, Level 3 = 100, etc.
 const LEVEL_THRESHOLDS = Array.from({ length: 26 }, (_, index) =>
@@ -47,7 +44,7 @@ const XPLib = {
       const oldLevel = current.level;
       const newLevel = this.getLevel(total);
 
-      const upsertRes = await fetch(`${SUPABASE_URL}/rest/v1/user_xp`, {
+      await fetch(`${SUPABASE_URL}/rest/v1/user_xp`, {
         method: 'POST',
         headers: {
           apikey: SUPABASE_KEY,
@@ -64,14 +61,14 @@ const XPLib = {
         })
       });
 
-if (newLevel > oldLevel) {
-  const totalBonus = (newLevel * weights.xpFactor).toFixed(2);
-  const s = releaseEmojis.SPARKLES;
-  
-  message.author.send(
-    `${s} **Level Up!** ${s}\n\nYou reached **Level ${newLevel}**!\nYour vote bonus is now **+${totalBonus}**.\n\nType **/level** anytime to check progress.`
-  ).catch(() => {});
-}
+      if (newLevel > oldLevel) {
+        const totalBonus = (newLevel * weights.xpFactor).toFixed(2);
+        const s = releaseEmojis.SPARKLES;
+        
+        message.author.send(
+          `${s} **Level Up!** ${s}\n\nYou reached **Level ${newLevel}**!\nYour vote bonus is now **+${totalBonus}**.\n\nType **/level** anytime to check progress.`
+        ).catch(() => {});
+      }
 
     } catch (err) {
       console.error('[XP Update Error]', err.message);
