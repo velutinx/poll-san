@@ -40,7 +40,6 @@ module.exports = function setupReleasesRoutes(app, client, upload, FORUM_ID, SUP
             if (genderEmoji.includes('female_sign') || genderEmoji === '♀️') {
                 appliedTags.push(ids.tags.preview_female);
             } else if (genderEmoji.includes('male_sign') || genderEmoji === '♂️') {
-                // Now supports the array from helpers
                 appliedTags.push(...ids.tags.preview_male);
             }
 
@@ -75,7 +74,9 @@ ${getRandomArrow()} See <#${SUPPORTER_FORUM_ID}>`;
             console.error('Release preview error:', err);
             res.status(500).json({ error: err.message });
         }
-    });// ────────────────────────────────────────────────
+    });
+
+    // ────────────────────────────────────────────────
     // 10. EDIT FORUM POST
     // ────────────────────────────────────────────────
     app.post('/api/edit-post', async (req, res) => {
@@ -120,7 +121,7 @@ ${getRandomArrow()} See <#${SUPPORTER_FORUM_ID}>`;
             res.status(500).json({ error: err.message });
         }
     });
-
+    
   // ────────────────────────────────────────────────
   // 11. GET POST CONTENT
   // ────────────────────────────────────────────────
@@ -192,49 +193,27 @@ Content: Explicit (18+)
 ${getRandomDownArrow()} **Download:**
 ${releaseEmojis.LINK} [megaLink](${download || 'https://mega.nz'})`;
       
-      let supporterResult = {};
-      if (supporterThreadId) {
-        const thread = await client.channels.fetch(supporterThreadId);
-        if (!thread) return res.status(404).json({ error: "Thread not found" });
-
-        await thread.setName(threadTitle);
-        await thread.setAppliedTags(appliedTags, `Updating tags for supporter release`);
-
-        const starter = await thread.fetchStarterMessage();
-        if (starter) {
-          await starter.edit({
-            content: messageBody,
-            flags: ["SuppressEmbeds"]
-          });
-        }
-
-        if (files.length > 0) {
-          const attachments = files.map(f => ({ attachment: f.buffer, name: f.originalname }));
-          const sent = await thread.send({ content: "📸 **Updated images:**", files: attachments });
-          await sent.edit({ flags: ["SuppressEmbeds"] });
-        }
-        supporterResult = { updated: true };
-      } else {
-        const newThread = await forumChannel.threads.create({
-          name: threadTitle,
-          appliedTags: appliedTags.length > 0 ? appliedTags : undefined,
-          message: { content: messageBody, files: files.map(f => ({ attachment: f.buffer, name: f.originalname })) }
-        });
-        const starter = await newThread.fetchStarterMessage();
-        if (starter) {
-          await starter.edit({ flags: ["SuppressEmbeds"] });
-        }
-        supporterResult = { created: true };
-      }
-
-      // --- Update Preview Thread if Toggle is ON ---
-let supporterResult = {};
+            let supporterResult = {};
             if (supporterThreadId) {
                 const thread = await client.channels.fetch(supporterThreadId);
+                if (!thread) return res.status(404).json({ error: "Thread not found" });
+
                 await thread.setName(threadTitle);
-                await thread.setAppliedTags(appliedTags);
+                await thread.setAppliedTags(appliedTags, `Updating tags for supporter release`);
+
                 const starter = await thread.fetchStarterMessage();
-                if (starter) await starter.edit({ content: messageBody, flags: ["SuppressEmbeds"] });
+                if (starter) {
+                    await starter.edit({
+                        content: messageBody,
+                        flags: ["SuppressEmbeds"]
+                    });
+                }
+
+                if (files.length > 0) {
+                    const attachments = files.map(f => ({ attachment: f.buffer, name: f.originalname }));
+                    const sent = await thread.send({ content: "📸 **Updated images:**", files: attachments });
+                    await sent.edit({ flags: ["SuppressEmbeds"] });
+                }
                 supporterResult = { updated: true };
             } else {
                 const newThread = await forumChannel.threads.create({
@@ -243,31 +222,34 @@ let supporterResult = {};
                     message: { content: messageBody, files: files.map(f => ({ attachment: f.buffer, name: f.originalname })) }
                 });
                 const starter = await newThread.fetchStarterMessage();
-                if (starter) await starter.edit({ flags: ["SuppressEmbeds"] });
+                if (starter) {
+                    await starter.edit({ flags: ["SuppressEmbeds"] });
+                }
                 supporterResult = { created: true };
             }
 
-            // Preview Auto-Update Logic
+            // --- Update Preview Thread if Toggle is ON ---
             let previewResult = {};
             if (editPreview === 'true') {
                 let targetPreviewId = previewThreadId;
                 if (targetPreviewId) {
                     const previewThread = await client.channels.fetch(targetPreviewId);
                     if (previewThread) {
-                        let newContent = (await previewThread.fetchStarterMessage()).content;
-                        newContent = newContent.replace(/(Set size:\s*)(\d+|XX)(\s*images)/i, `$1${setSize}$3`);
-                        
-                        // Header Swaps
-                        if (newContent.includes(`${PREVIEW_RELEASE_HEADER} -- SOON`)) {
-                            newContent = newContent.replace(`${PREVIEW_RELEASE_HEADER} -- SOON`, `${releaseEmojis.VERIFY} RELEASE`);
-                        } else {
-                            newContent = newContent.replace(PREVIEW_RELEASE_HEADER, `${releaseEmojis.VERIFY} RELEASE`);
-                        }
-                        newContent = newContent.replace(/ -- SOON/g, '');
-
                         const starter = await previewThread.fetchStarterMessage();
-                        await starter.edit(newContent);
-                        previewResult = { previewUpdated: true };
+                        if (starter) {
+                            let newContent = starter.content;
+                            newContent = newContent.replace(/(Set size:\s*)(\d+|XX)(\s*images)/i, `$1${setSize}$3`);
+                            
+                            if (newContent.includes(`${PREVIEW_RELEASE_HEADER} -- SOON`)) {
+                                newContent = newContent.replace(`${PREVIEW_RELEASE_HEADER} -- SOON`, `${releaseEmojis.VERIFY} RELEASE`);
+                            } else if (newContent.includes(PREVIEW_RELEASE_HEADER)) {
+                                newContent = newContent.replace(PREVIEW_RELEASE_HEADER, `${releaseEmojis.VERIFY} RELEASE`);
+                            }
+                            newContent = newContent.replace(/ -- SOON/g, '');
+
+                            await starter.edit(newContent);
+                            previewResult = { previewUpdated: true };
+                        }
                     }
                 }
             }
@@ -279,107 +261,73 @@ let supporterResult = {};
         }
     });
 
-  // ────────────────────────────────────────────────
-  // 13. MEGA UPLOAD (with month folder and progress)
-  // ────────────────────────────────────────────────
-app.post('/api/upload-to-mega', upload.single('file'), async (req, res) => {
-  if (!req.file) {
-    return res.status(400).json({ error: 'No file uploaded' });
-  }
-  if (!req.file.originalname.toLowerCase().endsWith('.zip')) {
-    return res.status(400).json({ error: 'Only ZIP files are allowed' });
-  }
-  if (req.file.size > 100 * 1024 * 1024) {
-    return res.status(400).json({ error: 'File exceeds 100MB limit' });
-  }
+    // ────────────────────────────────────────────────
+    // 13. MEGA UPLOAD
+    // ────────────────────────────────────────────────
+    app.post('/api/upload-to-mega', upload.single('file'), async (req, res) => {
+        if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+        
+        const desiredFileName = req.body.desiredName || req.file.originalname;
+        const month = req.body.month;
+        if (!month) return res.status(400).json({ error: 'Month folder not provided' });
 
-  const megaEmail = process.env.MEGA_EMAIL;
-  const megaPassword = process.env.MEGA_PASSWORD;
-  if (!megaEmail || !megaPassword) {
-    return res.status(500).json({ error: 'MEGA credentials missing' });
-  }
+        const year = `20${month.slice(-2)}`;
+        const folderPath = ['Packs', year, month];
 
-  // --- NEW: allow custom filename for Mega (and local download) ---
-  const desiredFileName = req.body.desiredName || req.file.originalname;
-  const month = req.body.month;
-  if (!month) return res.status(400).json({ error: 'Month folder not provided' });
+        async function getOrCreateFolder(node, pathParts) {
+            let current = node;
+            for (const part of pathParts) {
+                let child = current.children.find(c => c.name === part && c.directory);
+                if (!child) child = await current.mkdir(part);
+                current = child;
+            }
+            return current;
+        }
 
-  const yearShort = month.slice(-2);
-  const year = `20${yearShort}`;
-  const folderPath = ['Packs', year, month];
+        const tempFilePath = path.join(os.tmpdir(), `mega-${Date.now()}-${desiredFileName}`);
 
-  async function getOrCreateFolder(node, pathParts) {
-    let current = node;
-    for (const part of pathParts) {
-      let child = current.children.find(c => c.name === part && c.directory);
-      if (!child) child = await current.mkdir(part);
-      current = child;
-    }
-    return current;
-  }
+        try {
+            fs.writeFileSync(tempFilePath, req.file.buffer);
+            const storage = await new Storage({ email: process.env.MEGA_EMAIL, password: process.env.MEGA_PASSWORD }).ready;
+            const targetFolder = await getOrCreateFolder(storage.root, folderPath);
+            const readStream = fs.createReadStream(tempFilePath);
 
-  const tempDir = os.tmpdir();
-  const tempFilePath = path.join(tempDir, `mega-upload-${Date.now()}-${desiredFileName}`);
+            const uploadResult = await new Promise((resolve, reject) => {
+                const upload = targetFolder.upload({ name: desiredFileName, size: req.file.size }, readStream);
+                upload.on('error', reject);
+                upload.on('complete', resolve);
+            });
 
-  try {
-    // Write buffer to temp file
-    fs.writeFileSync(tempFilePath, req.file.buffer);
+            const megaLink = await uploadResult.link();
+            let localPath = null;
 
-    const storage = await new Storage({ email: megaEmail, password: megaPassword }).ready;
-    const targetFolder = await getOrCreateFolder(storage.root, folderPath);
-    const readStream = fs.createReadStream(tempFilePath);
+            if (req.body.downloadAfterUpload === 'true') {
+                const downloadDir = req.body.localDownloadPath || './downloads/';
+                if (!fs.existsSync(downloadDir)) fs.mkdirSync(downloadDir, { recursive: true });
+                const { File } = require('megajs');
+                const megaFile = File.fromURL(megaLink);
 
-    // Upload to Mega
-    const uploadResult = await new Promise((resolve, reject) => {
-      const upload = targetFolder.upload({ name: desiredFileName, size: req.file.size }, readStream);
-      upload.on('error', reject);
-      upload.on('complete', resolve);
+                await new Promise((resolve, reject) => {
+                    const localFileStream = fs.createWriteStream(path.join(downloadDir, desiredFileName));
+                    megaFile.download((err, data) => {
+                        if (err) return reject(err);
+                        localFileStream.write(data);
+                        localFileStream.end();
+                        localFileStream.on('finish', resolve);
+                    });
+                });
+                localPath = path.join(downloadDir, desiredFileName);
+            }
+
+            fs.unlinkSync(tempFilePath);
+            storage.close();
+
+            res.json({ success: true, link: megaLink, localPath, fileName: desiredFileName });
+        } catch (error) {
+            if (fs.existsSync(tempFilePath)) fs.unlinkSync(tempFilePath);
+            res.status(500).json({ error: error.message });
+        }
     });
-
-    const megaLink = await uploadResult.link();
-    console.log(`✅ Uploaded to Mega: ${megaLink}`);
-
-    // --- NEW: automatically download the file from Mega (if requested) ---
-    let localPath = null;
-    if (req.body.downloadAfterUpload === 'true') {
-      const downloadDir = req.body.localDownloadPath || './downloads/';
-      if (!fs.existsSync(downloadDir)) fs.mkdirSync(downloadDir, { recursive: true });
-
-      // Use megajs to download the file via its link
-      const { File } = require('megajs');
-      const megaFile = File.fromURL(megaLink);
-
-      await new Promise((resolve, reject) => {
-        const localFileStream = fs.createWriteStream(path.join(downloadDir, desiredFileName));
-        megaFile.download((err, data) => {
-          if (err) return reject(err);
-          localFileStream.write(data);
-          localFileStream.end();
-          localFileStream.on('finish', resolve);
-          localFileStream.on('error', reject);
-        });
-      });
-      localPath = path.join(downloadDir, desiredFileName);
-//      console.log(`📥 Downloaded from Mega to ${localPath}`);
-    }
-
-    // Cleanup temp file
-    fs.unlinkSync(tempFilePath);
-    storage.close();
-
-    res.json({
-      success: true,
-      link: megaLink,
-      localPath: localPath,     // only if downloadAfterUpload was true
-      fileName: desiredFileName
-    });
-
-  } catch (error) {
-    console.error('MEGA operation error:', error);
-    if (fs.existsSync(tempFilePath)) fs.unlinkSync(tempFilePath);
-    res.status(500).json({ error: error.message || 'Upload failed' });
-  }
-});
 
   // ────────────────────────────────────────────────
   // 14. TEST ZIP (extract first 10 images, sorted by embedded number)
