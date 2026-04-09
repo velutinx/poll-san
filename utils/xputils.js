@@ -1,7 +1,10 @@
 // this is poll-san/utils/xputils.js
 
 require('dotenv').config({ quiet: true });
+const { weights, releaseEmojis } = require('./helpers');
 
+const XP_MIN_CHARS = 5;
+// Remove the old LEVEL_MULTIPLIER_PER_LEVEL line
 const XP_MIN_CHARS = 5;
 const LEVEL_MULTIPLIER_PER_LEVEL = 0.02;
 
@@ -61,12 +64,14 @@ const XPLib = {
         })
       });
 
-      if (newLevel > oldLevel) {
-        const totalBonus = (newLevel * LEVEL_MULTIPLIER_PER_LEVEL).toFixed(2);
-        message.author.send(
-          `✨ **Level Up!**\n\nYou reached **Level ${newLevel}**!\nYour vote bonus is now **+${totalBonus}**.\n\nType **/level** anytime to check progress.`
-        ).catch(() => {});
-      }
+if (newLevel > oldLevel) {
+  const totalBonus = (newLevel * weights.xpFactor).toFixed(2);
+  const s = releaseEmojis.SPARKLES;
+  
+  message.author.send(
+    `${s} **Level Up!** ${s}\n\nYou reached **Level ${newLevel}**!\nYour vote bonus is now **+${totalBonus}**.\n\nType **/level** anytime to check progress.`
+  ).catch(() => {});
+}
 
     } catch (err) {
       console.error('[XP Update Error]', err.message);
@@ -88,7 +93,7 @@ const XPLib = {
       return {
         level: data.level ?? 0,
         messages: data.total_messages ?? 0,
-        bonus: (data.level * LEVEL_MULTIPLIER_PER_LEVEL).toFixed(2)
+        bonus: (data.level * weights.xpFactor).toFixed(2)
       };
     } catch (err) {
       return { level: 0, messages: 0, bonus: '0.00' };
