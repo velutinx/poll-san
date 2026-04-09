@@ -1,8 +1,9 @@
 // this is poll-san/services/queueService.js
 
 const supabase = require('./supabase');
-const { ids, emojis } = require('../utils/helpers');
-const QUEUE_CHANNEL_ID = ids.channels.QUEUE;
+const helpers = require('../utils/helpers'); // Import the whole object
+const QUEUE_CHANNEL_ID = helpers.ids?.channels?.QUEUE || '1473730427318435860';
+const EMOJIS = helpers.emojis;
 
 async function getQueueData() {
     const { data, error } = await supabase
