@@ -2,6 +2,7 @@
 
 const { EmbedBuilder, MessageFlags } = require('discord.js');
 const supabase = require('../services/supabase');
+const { colors } = require('../utils/helpers');
 
 module.exports = async (interaction) => {
     const targetUser = interaction.isUserContextMenuCommand() ? interaction.targetUser : interaction.user;
