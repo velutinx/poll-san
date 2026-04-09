@@ -4,7 +4,8 @@ const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, Butt
 const path = require('path');
 const fs = require('fs');
 const supabase = require(path.join(__dirname, '..', 'services', 'supabase'));
-const { colors } = require('../utils/helpers'); // Add this near your other requires
+const { colors, releaseEmojis } = require('../utils/helpers');
+
 
 // In-memory cache for quick access
 const activeGiveaways = new Map();
@@ -140,10 +141,10 @@ module.exports = {
             timeoutId
         });
 
-        await interaction.reply({ 
-            content: `Giveaway created in ${channel}!`, 
-            flags: [MessageFlags.Ephemeral] 
-        });
+await interaction.reply({ 
+    content: `${releaseEmojis.VERIFY} You entered the giveaway!`, 
+    flags: [MessageFlags.Ephemeral] 
+});
     }
 };
 
@@ -270,7 +271,7 @@ async function endGiveaway(messageId, client) {
                 winners.push(shuffled.splice(randomIndex, 1)[0]);
             }
             const winnerMentions = winners.map(id => `<@${id}>`).join(', ');
-            await channel.send(`🎉 Congratulations to ${winnerMentions} for winning **${dbGiveaway.prize}**!`);
+            await channel.send(`${releaseEmojis.CONFETTI} Congratulations to ${winnerMentions} for winning **${dbGiveaway.prize}**!`);
         }
 
         const embed = message.embeds[0];
