@@ -1,17 +1,26 @@
 // this is poll-san/web/routes/releases.js
 
-const AdmZip = require('adm-zip');
-const { Storage } = require('megajs');
-const fs = require('fs');
-const os = require('os');
-const path = require('path');
-
-
 module.exports = function setupReleasesRoutes(app, client, upload, FORUM_ID, SUPPORTER_FORUM_ID) {
-  const NEW_EMOJI_1 = '<a:NEW1:1491321234015911977>'; 
+  // Emojis
+  const NEW_EMOJI_1 = '<a:NEW1:1491321234015911977>';
   const NEW_EMOJI_2 = '<a:NEW2:1491321257780580414>';
+  const EMOJI_18 = '<a:18:1491670036799029288>';
+  const EMOJI_LINK = '<a:Link:1491670128562274475>';
+
+  // Arrow Array
+  const ARROWS = [
+    '<a:arrowyellow:1491672823729623212>', '<a:arrowwhite:1491672813398917150>',
+    '<a:arrowred:1491672803030732850>', '<a:arrowpurple:1491672794235146260>',
+    '<a:arrowpink:1491672773716873257>', '<a:arroworange:1491672761582489681>',
+    '<a:arrowmagenta:1491672750849396756>', '<a:arrowgreen:1491672741495963738>',
+    '<a:arrowcyan:1491672731572375573>', '<a:arrowblue:1491672719140589638>'
+  ];
+
+  // Helper to get random arrow
+  const getRandomArrow = () => ARROWS[Math.floor(Math.random() * ARROWS.length)];
+
   const PREVIEW_RELEASE_HEADER = `${NEW_EMOJI_1}${NEW_EMOJI_2} RELEASE`;
-  const SUPPORTER_RELEASE_HEADER = `:underage: ${NEW_EMOJI_1}${NEW_EMOJI_2} SUPPORTER RELEASE`;
+  const SUPPORTER_RELEASE_HEADER = `${EMOJI_18} ${NEW_EMOJI_1}${NEW_EMOJI_2} SUPPORTER RELEASE`;
 
   // ────────────────────────────────────────────────
   // 8. RELEASE PREVIEW
@@ -46,8 +55,8 @@ Set size: ${setSize} images
 
 :pushpin: SFW preview below
 
-:arrow_right: Full version for supporters
-:arrow_right: See <#${SUPPORTER_FORUM_ID}>`;
+${getRandomArrow()} Full version for supporters
+${getRandomArrow()} See <#${SUPPORTER_FORUM_ID}>`;
 
       const attachments = files.map(f => ({ attachment: f.buffer, name: f.originalname }));
 
@@ -211,8 +220,8 @@ Set size: ${setSize} images
 Content: Explicit (18+)
 
 :inbox_tray: Download:
-:link: [megaLink](${download || 'https://mega.nz'})`;
-
+${EMOJI_LINK} [megaLink](${download || 'https://mega.nz'})`;
+      
       let supporterResult = {};
       if (supporterThreadId) {
         const thread = await client.channels.fetch(supporterThreadId);
