@@ -18,7 +18,7 @@ module.exports = async (interaction) => {
 
     const levelEmbed = new EmbedBuilder()
         .setTitle(`${data.discord_username}'s Stats`)
-        .setColor(0x00FFCC)
+        .setColor(colors.success)
         .addFields(
             { name: 'Level', value: `⭐ ${data.level}`, inline: true },
             { name: 'Messages', value: `💬 ${data.total_messages}`, inline: true }
