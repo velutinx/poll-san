@@ -1,54 +1,57 @@
 // this is poll-san/web/routes/releases.js
 
+const path = require('path');
+const fs = require('fs');
+const os = require('os');
+const AdmZip = require('adm-zip');
+const { Storage } = require('megajs');
+const helpers = require('../../utils/helpers');
+
 module.exports = function setupReleasesRoutes(app, client, upload, FORUM_ID, SUPPORTER_FORUM_ID) {
-  // Emojis
-  const NEW_EMOJI_1 = '<a:NEW1:1491321234015911977>';
-  const NEW_EMOJI_2 = '<a:NEW2:1491321257780580414>';
-  const EMOJI_18 = '<a:18:1491670036799029288>';
-  const EMOJI_LINK = '<a:Link:1491670128562274475>';
-  const EMOJI_VERIFY = '<a:Verify:1491669023245729924>';
+    // Pull constants from helpers
+    const { releaseEmojis, ids } = helpers;
+    
+    // Header Helpers
+    const PREVIEW_RELEASE_HEADER = `${releaseEmojis.NEW1}${releaseEmojis.NEW2} RELEASE`;
+    const SUPPORTER_RELEASE_HEADER = `${releaseEmojis.EIGHTEEN} ${releaseEmojis.NEW1}${releaseEmojis.NEW2} SUPPORTER RELEASE`;
 
-  // Arrow Array
-  const ARROWS = [
-    '<a:arrowyellow:1491672823729623212>', '<a:arrowwhite:1491672813398917150>',
-    '<a:arrowred:1491672803030732850>', '<a:arrowpurple:1491672794235146260>',
-    '<a:arrowpink:1491672773716873257>', '<a:arroworange:1491672761582489681>',
-    '<a:arrowmagenta:1491672750849396756>', '<a:arrowgreen:1491672741495963738>',
-    '<a:arrowcyan:1491672731572375573>', '<a:arrowblue:1491672719140589638>'
-  ];
+    // Arrow Helpers
+    const getRandomArrow = () => releaseEmojis.ARROWS[Math.floor(Math.random() * releaseEmojis.ARROWS.length)];
+    const getRandomDownArrow = () => releaseEmojis.DOWN_ARROWS[Math.floor(Math.random() * releaseEmojis.DOWN_ARROWS.length)];
 
-  // Helper to get random arrow
-  const getRandomArrow = () => ARROWS[Math.floor(Math.random() * ARROWS.length)];
+    // ────────────────────────────────────────────────
+    // 8. RELEASE PREVIEW
+    // ────────────────────────────────────────────────
+    app.post('/api/release-preview', upload.array('images'), async (req, res) => {
+        const { pack, setSize, input, series, suffix } = req.body;
+        const files = req.files || [];
+        try {
+            const fullInput = input.trim();
+            const spaceIndex = fullInput.indexOf(' ');
+            let genderEmoji = "";
+            let charName = fullInput;
+            
+            if (spaceIndex !== -1) {
+                genderEmoji = fullInput.substring(0, spaceIndex);
+                charName = fullInput.substring(spaceIndex + 1).trim();
+            }
 
-  const PREVIEW_RELEASE_HEADER = `${NEW_EMOJI_1}${NEW_EMOJI_2} RELEASE`;
-  const SUPPORTER_RELEASE_HEADER = `${EMOJI_18} ${NEW_EMOJI_1}${NEW_EMOJI_2} SUPPORTER RELEASE`;
+            const appliedTags = [];
+            if (genderEmoji.includes('female_sign') || genderEmoji === '♀️') {
+                appliedTags.push(ids.tags.preview_female);
+            } else if (genderEmoji.includes('male_sign') || genderEmoji === '♂️') {
+                // Now supports the array from helpers
+                appliedTags.push(...ids.tags.preview_male);
+            }
 
-  // ────────────────────────────────────────────────
-  // 8. RELEASE PREVIEW
-  // ────────────────────────────────────────────────
-  app.post('/api/release-preview', upload.array('images'), async (req, res) => {
-    const { pack, setSize, input, series, suffix } = req.body;
-    const files = req.files || [];
-    try {
-      const fullInput = input.trim();
-      const spaceIndex = fullInput.indexOf(' ');
-      let genderEmoji = "";
-      let charName = fullInput;
-      if (spaceIndex !== -1) {
-        genderEmoji = fullInput.substring(0, spaceIndex);
-        charName = fullInput.substring(spaceIndex + 1).trim();
-      }
-      const appliedTags = [];
-      if (genderEmoji.includes('female_sign') || genderEmoji === '♀️') appliedTags.push('1465939310720192637');
-      else if (genderEmoji.includes('male_sign') || genderEmoji === '♂️') appliedTags.push('1465939329120469095', '1467020233272328195');
+            const guild = await client.guilds.fetch(process.env.GUILD_ID);
+            const forumChannel = await guild.channels.fetch(FORUM_ID);
 
-      const guild = await client.guilds.fetch(process.env.GUILD_ID);
-      const forumChannel = await guild.channels.fetch(FORUM_ID);
-
-      const isSoon = setSize.toUpperCase() === 'XX';
-      const suffixStr = suffix ? ` — ${suffix}` : '';
-      const threadTitle = `[${series.toUpperCase()}] ${charName} — Pack #${pack}${suffixStr}`;
-      const messageBody = `${PREVIEW_RELEASE_HEADER}${isSoon ? ' -- SOON' : ''}
+            const isSoon = setSize.toUpperCase() === 'XX';
+            const suffixStr = suffix ? ` — ${suffix}` : '';
+            const threadTitle = `[${series.toUpperCase()}] ${charName} — Pack #${pack}${suffixStr}`;
+            
+            const messageBody = `${PREVIEW_RELEASE_HEADER}${isSoon ? ' -- SOON' : ''}
 ━━━━━━━━━━━━━━
 Character: ${charName}
 Series: ${series}
@@ -59,100 +62,64 @@ Set size: ${setSize} images
 ${getRandomArrow()} Full version for supporters
 ${getRandomArrow()} See <#${SUPPORTER_FORUM_ID}>`;
 
-      const attachments = files.map(f => ({ attachment: f.buffer, name: f.originalname }));
+            const attachments = files.map(f => ({ attachment: f.buffer, name: f.originalname }));
 
-      await forumChannel.threads.create({
-        name: threadTitle,
-        appliedTags: appliedTags,
-        message: { content: messageBody, files: attachments }
-      });
+            await forumChannel.threads.create({
+                name: threadTitle,
+                appliedTags: appliedTags,
+                message: { content: messageBody, files: attachments }
+            });
 
-      res.json({ success: true });
-    } catch (err) {
-      console.error('Release preview error:', err);
-      res.status(500).json({ error: err.message });
-    }
-  });
-
-  // ────────────────────────────────────────────────
-  // 9. FORUM FETCHING
-  // ────────────────────────────────────────────────
-  app.get('/api/forum-posts', async (req, res) => {
-    try {
-      const channelId = req.query.channelId || FORUM_ID;
-      const guild = await client.guilds.fetch(process.env.GUILD_ID);
-      const forumChannel = await guild.channels.fetch(channelId);
-      if (!forumChannel.isThreadOnly()) {
-        return res.status(400).json({ error: "Channel is not a forum" });
-      }
-
-      const threads = await forumChannel.threads.fetchActive();
-      const postList = threads.threads.map(t => ({
-        id: t.id,
-        name: t.name,
-        applied_tags: Array.isArray(t.appliedTags) ? t.appliedTags : []
-      }));
-
-      postList.sort((a, b) => {
-        const aId = BigInt(a.id);
-        const bId = BigInt(b.id);
-        return aId > bId ? -1 : aId < bId ? 1 : 0;
-      });
-
-      res.json(postList);
-    } catch (err) {
-      console.error('Forum posts endpoint error:', err);
-      res.status(500).json({ error: err.message || 'Failed to fetch forum threads' });
-    }
-  });
-
-  // ────────────────────────────────────────────────
-  // 10. EDIT FORUM POST
-  // ────────────────────────────────────────────────
-  app.post('/api/edit-post', async (req, res) => {
-    const { threadId, pack, setSize, input, series, suffix } = req.body;
-    try {
-      const thread = await client.channels.fetch(threadId);
-      if (!thread) return res.status(404).json({ error: "Thread not found" });
-
-      const fullInput = input.trim();
-      const spaceIndex = fullInput.indexOf(' ');
-      let charName = spaceIndex !== -1 ? fullInput.substring(spaceIndex + 1).trim() : fullInput;
-
-      const isSoon = setSize.toUpperCase() === 'XX';
-      const suffixStr = suffix ? ` — ${suffix}` : '';
-      const newTitle = `[${series.toUpperCase()}] ${charName} — Pack #${pack}${suffixStr}${isSoon ? ' — SOON' : ''}`;
-
-      await thread.setName(newTitle);
-
-      const firstMsg = await thread.fetchStarterMessage();
-      if (firstMsg) {
-        let newBody = firstMsg.content
-          .replace(/Character: .*/, `Character: ${charName}`)
-          .replace(/Series: .*/, `Series: ${series}`)
-          .replace(/Set size: .* images/, `Set size: ${setSize} images`);
-
-        // Handle the new custom emoji header and -- SOON toggle
-        if (isSoon) {
-          if (!newBody.includes(' -- SOON')) {
-            newBody = newBody.replace(PREVIEW_RELEASE_HEADER, `${PREVIEW_RELEASE_HEADER} -- SOON`);
-          }
-        } else {
-          // When "SOON" is removed, change the NEW header to the Verify header
-          newBody = newBody.replace(`${PREVIEW_RELEASE_HEADER} -- SOON`, `${EMOJI_VERIFY} RELEASE`);
-          newBody = newBody.replace(PREVIEW_RELEASE_HEADER, `${EMOJI_VERIFY} RELEASE`);
-          newBody = newBody.replace(/ -- SOON/g, ''); 
+            res.json({ success: true });
+        } catch (err) {
+            console.error('Release preview error:', err);
+            res.status(500).json({ error: err.message });
         }
+    });// ────────────────────────────────────────────────
+    // 10. EDIT FORUM POST
+    // ────────────────────────────────────────────────
+    app.post('/api/edit-post', async (req, res) => {
+        const { threadId, pack, setSize, input, series, suffix } = req.body;
+        try {
+            const thread = await client.channels.fetch(threadId);
+            if (!thread) return res.status(404).json({ error: "Thread not found" });
 
-        await firstMsg.edit(newBody);
-      }
+            const fullInput = input.trim();
+            const spaceIndex = fullInput.indexOf(' ');
+            let charName = spaceIndex !== -1 ? fullInput.substring(spaceIndex + 1).trim() : fullInput;
 
-      res.json({ success: true });
-    } catch (err) {
-      console.error('Edit post error:', err);
-      res.status(500).json({ error: err.message });
-    }
-  });
+            const isSoon = setSize.toUpperCase() === 'XX';
+            const suffixStr = suffix ? ` — ${suffix}` : '';
+            const newTitle = `[${series.toUpperCase()}] ${charName} — Pack #${pack}${suffixStr}${isSoon ? ' — SOON' : ''}`;
+
+            await thread.setName(newTitle);
+
+            const firstMsg = await thread.fetchStarterMessage();
+            if (firstMsg) {
+                let newBody = firstMsg.content
+                    .replace(/Character: .*/, `Character: ${charName}`)
+                    .replace(/Series: .*/, `Series: ${series}`)
+                    .replace(/Set size: .* images/, `Set size: ${setSize} images`);
+
+                if (isSoon) {
+                    if (!newBody.includes(' -- SOON')) {
+                        newBody = newBody.replace(PREVIEW_RELEASE_HEADER, `${PREVIEW_RELEASE_HEADER} -- SOON`);
+                    }
+                } else {
+                    newBody = newBody.replace(`${PREVIEW_RELEASE_HEADER} -- SOON`, `${releaseEmojis.VERIFY} RELEASE`);
+                    newBody = newBody.replace(PREVIEW_RELEASE_HEADER, `${releaseEmojis.VERIFY} RELEASE`);
+                    newBody = newBody.replace(/ -- SOON/g, ''); 
+                }
+
+                await firstMsg.edit(newBody);
+            }
+
+            res.json({ success: true });
+        } catch (err) {
+            console.error('Edit post error:', err);
+            res.status(500).json({ error: err.message });
+        }
+    });
 
   // ────────────────────────────────────────────────
   // 11. GET POST CONTENT
@@ -182,48 +149,48 @@ ${getRandomArrow()} See <#${SUPPORTER_FORUM_ID}>`;
     }
   });
 
-  // ────────────────────────────────────────────────
-  // 12. SUPPORTER RELEASE (with embed suppression)
-  // ────────────────────────────────────────────────
-  app.post('/api/supporter-release', upload.array('images'), async (req, res) => {
-    const { pack, setSize, input, series, suffix, download, editPreview, previewThreadId, supporterThreadId } = req.body;
-    const files = req.files || [];
+// ────────────────────────────────────────────────
+    // 12. SUPPORTER RELEASE
+    // ────────────────────────────────────────────────
+    app.post('/api/supporter-release', upload.array('images'), async (req, res) => {
+        const { pack, setSize, input, series, suffix, download, editPreview, previewThreadId, supporterThreadId } = req.body;
+        const files = req.files || [];
 
-    try {
-      const fullInput = input.trim();
-      const spaceIndex = fullInput.indexOf(' ');
-      let genderEmoji = "";
-      let charName = fullInput;
-      if (spaceIndex !== -1) {
-        genderEmoji = fullInput.substring(0, spaceIndex).trim();
-        charName = fullInput.substring(spaceIndex + 1).trim();
-      }
+        try {
+            const fullInput = input.trim();
+            const spaceIndex = fullInput.indexOf(' ');
+            let genderEmoji = "";
+            let charName = fullInput;
+            if (spaceIndex !== -1) {
+                genderEmoji = fullInput.substring(0, spaceIndex).trim();
+                charName = fullInput.substring(spaceIndex + 1).trim();
+            }
 
-      let roleMention = "";
-      const appliedTags = [];
-      if (genderEmoji.includes('female_sign') || genderEmoji === '♀️') {
-        roleMention = '<@&1465968041404928177>';
-        appliedTags.push('1465939610642415921');
-      } else if (genderEmoji.includes('male_sign') || genderEmoji === '♂️') {
-        roleMention = '<@&1465967964804350160>';
-        appliedTags.push('1465939591352680488');
-        appliedTags.push('1467020371428642957');
-      }
+            let roleMention = "";
+            const appliedTags = [];
+            if (genderEmoji.includes('female_sign') || genderEmoji === '♀️') {
+                roleMention = `<@&${ids.roles.female_supporter}>`;
+                appliedTags.push(ids.tags.supporter_female);
+            } else if (genderEmoji.includes('male_sign') || genderEmoji === '♂️') {
+                roleMention = `<@&${ids.roles.male_supporter}>`;
+                appliedTags.push(...ids.tags.supporter_male);
+            }
 
-      const guild = await client.guilds.fetch(process.env.GUILD_ID);
-      const forumChannel = await guild.channels.fetch(SUPPORTER_FORUM_ID);
+            const guild = await client.guilds.fetch(process.env.GUILD_ID);
+            const forumChannel = await guild.channels.fetch(SUPPORTER_FORUM_ID);
 
-      const suffixStr = suffix ? ` — ${suffix}` : '';
-      const threadTitle = `[${series.toUpperCase()}] ${charName} — Pack #${pack}${suffixStr}`;
-      const messageBody = `${SUPPORTER_RELEASE_HEADER}
+            const suffixStr = suffix ? ` — ${suffix}` : '';
+            const threadTitle = `[${series.toUpperCase()}] ${charName} — Pack #${pack}${suffixStr}`;
+            
+            const messageBody = `${SUPPORTER_RELEASE_HEADER}
 ${roleMention || ''}
 ━━━━━━━━━━━━━━
 Character: ${charName}
 Set size: ${setSize} images
 Content: Explicit (18+)
 
-:inbox_tray: Download:
-${EMOJI_LINK} [megaLink](${download || 'https://mega.nz'})`;
+${getRandomDownArrow()} **Download:**
+${releaseEmojis.LINK} [megaLink](${download || 'https://mega.nz'})`;
       
       let supporterResult = {};
       if (supporterThreadId) {
@@ -261,86 +228,56 @@ ${EMOJI_LINK} [megaLink](${download || 'https://mega.nz'})`;
       }
 
       // --- Update Preview Thread if Toggle is ON ---
-      let previewResult = {};
-      if (editPreview === 'true') {
-        let targetPreviewId = previewThreadId;
-
-        if (!targetPreviewId && supporterThreadId) {
-          try {
-            const previewForum = await guild.channels.fetch(FORUM_ID);
-            const threads = await previewForum.threads.fetchActive();
-            const seriesUpper = series.toUpperCase();
-            const packPattern = `Pack #${pack}`;
-            const matchingThread = threads.threads.find(t =>
-              t.name.includes(`[${seriesUpper}]`) && t.name.includes(packPattern)
-            );
-
-            if (matchingThread) {
-              targetPreviewId = matchingThread.id;
-              console.log(`Auto-matched preview thread: ${matchingThread.name} (${matchingThread.id})`);
+let supporterResult = {};
+            if (supporterThreadId) {
+                const thread = await client.channels.fetch(supporterThreadId);
+                await thread.setName(threadTitle);
+                await thread.setAppliedTags(appliedTags);
+                const starter = await thread.fetchStarterMessage();
+                if (starter) await starter.edit({ content: messageBody, flags: ["SuppressEmbeds"] });
+                supporterResult = { updated: true };
             } else {
-              console.warn('No matching preview thread found for auto-update.');
-              previewResult = { previewError: 'No matching preview thread found' };
+                const newThread = await forumChannel.threads.create({
+                    name: threadTitle,
+                    appliedTags: appliedTags.length > 0 ? appliedTags : undefined,
+                    message: { content: messageBody, files: files.map(f => ({ attachment: f.buffer, name: f.originalname })) }
+                });
+                const starter = await newThread.fetchStarterMessage();
+                if (starter) await starter.edit({ flags: ["SuppressEmbeds"] });
+                supporterResult = { created: true };
             }
-          } catch (findErr) {
-            console.error('Error finding preview thread:', findErr);
-            previewResult = { previewError: findErr.message };
-          }
-        }
 
-        if (targetPreviewId) {
-          try {
-            const previewThread = await client.channels.fetch(targetPreviewId);
-            if (!previewThread) {
-              console.warn("Preview thread not found:", targetPreviewId);
-              previewResult = { previewError: "Preview thread not found" };
-            } else {
-              if (previewThread.archived) {
-                await previewThread.setArchived(false);
-                console.log(`Unarchived preview thread ${targetPreviewId}`);
-              }
+            // Preview Auto-Update Logic
+            let previewResult = {};
+            if (editPreview === 'true') {
+                let targetPreviewId = previewThreadId;
+                if (targetPreviewId) {
+                    const previewThread = await client.channels.fetch(targetPreviewId);
+                    if (previewThread) {
+                        let newContent = (await previewThread.fetchStarterMessage()).content;
+                        newContent = newContent.replace(/(Set size:\s*)(\d+|XX)(\s*images)/i, `$1${setSize}$3`);
+                        
+                        // Header Swaps
+                        if (newContent.includes(`${PREVIEW_RELEASE_HEADER} -- SOON`)) {
+                            newContent = newContent.replace(`${PREVIEW_RELEASE_HEADER} -- SOON`, `${releaseEmojis.VERIFY} RELEASE`);
+                        } else {
+                            newContent = newContent.replace(PREVIEW_RELEASE_HEADER, `${releaseEmojis.VERIFY} RELEASE`);
+                        }
+                        newContent = newContent.replace(/ -- SOON/g, '');
 
-              let newTitle = previewThread.name;
-              if (newTitle.includes(' — SOON')) {
-                newTitle = newTitle.replace(' — SOON', '');
-                await previewThread.setName(newTitle);
-              }
-
-              const starter = await previewThread.fetchStarterMessage();
-                if (starter) {
-                let newContent = starter.content;
-                
-                // 1. Replace set size (XX → actual number)
-                newContent = newContent.replace(/(Set size:\s*)(\d+|XX)(\s*images)/i, `$1${setSize}$3`);
-                
-                // 2. Swap the NEW header for the Verify header when updating from the dashboard
-                if (newContent.includes(`${PREVIEW_RELEASE_HEADER} -- SOON`)) {
-                   newContent = newContent.replace(`${PREVIEW_RELEASE_HEADER} -- SOON`, `${EMOJI_VERIFY} RELEASE`);
-                } else if (newContent.includes(PREVIEW_RELEASE_HEADER)) {
-                   newContent = newContent.replace(PREVIEW_RELEASE_HEADER, `${EMOJI_VERIFY} RELEASE`);
+                        const starter = await previewThread.fetchStarterMessage();
+                        await starter.edit(newContent);
+                        previewResult = { previewUpdated: true };
+                    }
                 }
-
-                // 3. Final cleanup for any leftover -- SOON strings in the body
-                newContent = newContent.replace(/ -- SOON/g, '');
-
-                await starter.edit(newContent);
-              }
-              previewResult = { previewUpdated: true };
             }
-          } catch (previewErr) {
-            console.error('Error updating preview thread:', previewErr);
-            previewResult = { previewError: previewErr.message };
-          }
+
+            res.json({ success: true, ...supporterResult, ...previewResult });
+        } catch (err) {
+            console.error('Supporter release error:', err);
+            res.status(500).json({ error: err.message });
         }
-      }
-
-      res.json({ success: true, ...supporterResult, ...previewResult });
-
-    } catch (err) {
-      console.error('Supporter release error:', err);
-      res.status(500).json({ error: err.message });
-    }
-  });
+    });
 
   // ────────────────────────────────────────────────
   // 13. MEGA UPLOAD (with month folder and progress)
