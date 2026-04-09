@@ -1,56 +1,54 @@
 // this is poll-san/web/routes/releases.js
 
-const path = require('path');
-const fs = require('fs');
-const os = require('os');
-const AdmZip = require('adm-zip');
-const { Storage } = require('megajs');
-const helpers = require('../../utils/helpers');
-
 module.exports = function setupReleasesRoutes(app, client, upload, FORUM_ID, SUPPORTER_FORUM_ID) {
-    // Pull constants from helpers
-    const { releaseEmojis, ids } = helpers;
-    
-    // Header Helpers
-    const PREVIEW_RELEASE_HEADER = `${releaseEmojis.NEW1}${releaseEmojis.NEW2} RELEASE`;
-    const SUPPORTER_RELEASE_HEADER = `${releaseEmojis.EIGHTEEN} ${releaseEmojis.NEW1}${releaseEmojis.NEW2} SUPPORTER RELEASE`;
+  // Emojis
+  const NEW_EMOJI_1 = '<a:NEW1:1491321234015911977>';
+  const NEW_EMOJI_2 = '<a:NEW2:1491321257780580414>';
+  const EMOJI_18 = '<a:18:1491670036799029288>';
+  const EMOJI_LINK = '<a:Link:1491670128562274475>';
+  const EMOJI_VERIFY = '<a:Verify:1491669023245729924>';
 
-    // Arrow Helpers
-    const getRandomArrow = () => releaseEmojis.ARROWS[Math.floor(Math.random() * releaseEmojis.ARROWS.length)];
-    const getRandomDownArrow = () => releaseEmojis.DOWN_ARROWS[Math.floor(Math.random() * releaseEmojis.DOWN_ARROWS.length)];
+  // Arrow Array
+  const ARROWS = [
+    '<a:arrowyellow:1491672823729623212>', '<a:arrowwhite:1491672813398917150>',
+    '<a:arrowred:1491672803030732850>', '<a:arrowpurple:1491672794235146260>',
+    '<a:arrowpink:1491672773716873257>', '<a:arroworange:1491672761582489681>',
+    '<a:arrowmagenta:1491672750849396756>', '<a:arrowgreen:1491672741495963738>',
+    '<a:arrowcyan:1491672731572375573>', '<a:arrowblue:1491672719140589638>'
+  ];
 
-    // ────────────────────────────────────────────────
-    // 8. RELEASE PREVIEW
-    // ────────────────────────────────────────────────
-    app.post('/api/release-preview', upload.array('images'), async (req, res) => {
-        const { pack, setSize, input, series, suffix } = req.body;
-        const files = req.files || [];
-        try {
-            const fullInput = input.trim();
-            const spaceIndex = fullInput.indexOf(' ');
-            let genderEmoji = "";
-            let charName = fullInput;
-            
-            if (spaceIndex !== -1) {
-                genderEmoji = fullInput.substring(0, spaceIndex);
-                charName = fullInput.substring(spaceIndex + 1).trim();
-            }
+  // Helper to get random arrow
+  const getRandomArrow = () => ARROWS[Math.floor(Math.random() * ARROWS.length)];
 
-            const appliedTags = [];
-            if (genderEmoji.includes('female_sign') || genderEmoji === '♀️') {
-                appliedTags.push(ids.tags.preview_female);
-            } else if (genderEmoji.includes('male_sign') || genderEmoji === '♂️') {
-                appliedTags.push(...ids.tags.preview_male);
-            }
+  const PREVIEW_RELEASE_HEADER = `${NEW_EMOJI_1}${NEW_EMOJI_2} RELEASE`;
+  const SUPPORTER_RELEASE_HEADER = `${EMOJI_18} ${NEW_EMOJI_1}${NEW_EMOJI_2} SUPPORTER RELEASE`;
 
-            const guild = await client.guilds.fetch(process.env.GUILD_ID);
-            const forumChannel = await guild.channels.fetch(FORUM_ID);
+  // ────────────────────────────────────────────────
+  // 8. RELEASE PREVIEW
+  // ────────────────────────────────────────────────
+  app.post('/api/release-preview', upload.array('images'), async (req, res) => {
+    const { pack, setSize, input, series, suffix } = req.body;
+    const files = req.files || [];
+    try {
+      const fullInput = input.trim();
+      const spaceIndex = fullInput.indexOf(' ');
+      let genderEmoji = "";
+      let charName = fullInput;
+      if (spaceIndex !== -1) {
+        genderEmoji = fullInput.substring(0, spaceIndex);
+        charName = fullInput.substring(spaceIndex + 1).trim();
+      }
+      const appliedTags = [];
+      if (genderEmoji.includes('female_sign') || genderEmoji === '♀️') appliedTags.push('1465939310720192637');
+      else if (genderEmoji.includes('male_sign') || genderEmoji === '♂️') appliedTags.push('1465939329120469095', '1467020233272328195');
 
-            const isSoon = setSize.toUpperCase() === 'XX';
-            const suffixStr = suffix ? ` — ${suffix}` : '';
-            const threadTitle = `[${series.toUpperCase()}] ${charName} — Pack #${pack}${suffixStr}`;
-            
-            const messageBody = `${PREVIEW_RELEASE_HEADER}${isSoon ? ' -- SOON' : ''}
+      const guild = await client.guilds.fetch(process.env.GUILD_ID);
+      const forumChannel = await guild.channels.fetch(FORUM_ID);
+
+      const isSoon = setSize.toUpperCase() === 'XX';
+      const suffixStr = suffix ? ` — ${suffix}` : '';
+      const threadTitle = `[${series.toUpperCase()}] ${charName} — Pack #${pack}${suffixStr}`;
+      const messageBody = `${PREVIEW_RELEASE_HEADER}${isSoon ? ' -- SOON' : ''}
 ━━━━━━━━━━━━━━
 Character: ${charName}
 Series: ${series}
@@ -61,67 +59,101 @@ Set size: ${setSize} images
 ${getRandomArrow()} Full version for supporters
 ${getRandomArrow()} See <#${SUPPORTER_FORUM_ID}>`;
 
-            const attachments = files.map(f => ({ attachment: f.buffer, name: f.originalname }));
+      const attachments = files.map(f => ({ attachment: f.buffer, name: f.originalname }));
 
-            await forumChannel.threads.create({
-                name: threadTitle,
-                appliedTags: appliedTags,
-                message: { content: messageBody, files: attachments }
-            });
+      await forumChannel.threads.create({
+        name: threadTitle,
+        appliedTags: appliedTags,
+        message: { content: messageBody, files: attachments }
+      });
 
-            res.json({ success: true });
-        } catch (err) {
-            console.error('Release preview error:', err);
-            res.status(500).json({ error: err.message });
+      res.json({ success: true });
+    } catch (err) {
+      console.error('Release preview error:', err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // ────────────────────────────────────────────────
+  // 9. FORUM FETCHING
+  // ────────────────────────────────────────────────
+  app.get('/api/forum-posts', async (req, res) => {
+    try {
+      const channelId = req.query.channelId || FORUM_ID;
+      const guild = await client.guilds.fetch(process.env.GUILD_ID);
+      const forumChannel = await guild.channels.fetch(channelId);
+      if (!forumChannel.isThreadOnly()) {
+        return res.status(400).json({ error: "Channel is not a forum" });
+      }
+
+      const threads = await forumChannel.threads.fetchActive();
+      const postList = threads.threads.map(t => ({
+        id: t.id,
+        name: t.name,
+        applied_tags: Array.isArray(t.appliedTags) ? t.appliedTags : []
+      }));
+
+      postList.sort((a, b) => {
+        const aId = BigInt(a.id);
+        const bId = BigInt(b.id);
+        return aId > bId ? -1 : aId < bId ? 1 : 0;
+      });
+
+      res.json(postList);
+    } catch (err) {
+      console.error('Forum posts endpoint error:', err);
+      res.status(500).json({ error: err.message || 'Failed to fetch forum threads' });
+    }
+  });
+
+  // ────────────────────────────────────────────────
+  // 10. EDIT FORUM POST
+  // ────────────────────────────────────────────────
+  app.post('/api/edit-post', async (req, res) => {
+    const { threadId, pack, setSize, input, series, suffix } = req.body;
+    try {
+      const thread = await client.channels.fetch(threadId);
+      if (!thread) return res.status(404).json({ error: "Thread not found" });
+
+      const fullInput = input.trim();
+      const spaceIndex = fullInput.indexOf(' ');
+      let charName = spaceIndex !== -1 ? fullInput.substring(spaceIndex + 1).trim() : fullInput;
+
+      const isSoon = setSize.toUpperCase() === 'XX';
+      const suffixStr = suffix ? ` — ${suffix}` : '';
+      const newTitle = `[${series.toUpperCase()}] ${charName} — Pack #${pack}${suffixStr}${isSoon ? ' — SOON' : ''}`;
+
+      await thread.setName(newTitle);
+
+      const firstMsg = await thread.fetchStarterMessage();
+      if (firstMsg) {
+        let newBody = firstMsg.content
+          .replace(/Character: .*/, `Character: ${charName}`)
+          .replace(/Series: .*/, `Series: ${series}`)
+          .replace(/Set size: .* images/, `Set size: ${setSize} images`);
+
+        // Handle the new custom emoji header and -- SOON toggle
+        if (isSoon) {
+          if (!newBody.includes(' -- SOON')) {
+            newBody = newBody.replace(PREVIEW_RELEASE_HEADER, `${PREVIEW_RELEASE_HEADER} -- SOON`);
+          }
+        } else {
+          // When "SOON" is removed, change the NEW header to the Verify header
+          newBody = newBody.replace(`${PREVIEW_RELEASE_HEADER} -- SOON`, `${EMOJI_VERIFY} RELEASE`);
+          newBody = newBody.replace(PREVIEW_RELEASE_HEADER, `${EMOJI_VERIFY} RELEASE`);
+          newBody = newBody.replace(/ -- SOON/g, ''); 
         }
-    });
 
-    // ────────────────────────────────────────────────
-    // 10. EDIT FORUM POST
-    // ────────────────────────────────────────────────
-    app.post('/api/edit-post', async (req, res) => {
-        const { threadId, pack, setSize, input, series, suffix } = req.body;
-        try {
-            const thread = await client.channels.fetch(threadId);
-            if (!thread) return res.status(404).json({ error: "Thread not found" });
+        await firstMsg.edit(newBody);
+      }
 
-            const fullInput = input.trim();
-            const spaceIndex = fullInput.indexOf(' ');
-            let charName = spaceIndex !== -1 ? fullInput.substring(spaceIndex + 1).trim() : fullInput;
+      res.json({ success: true });
+    } catch (err) {
+      console.error('Edit post error:', err);
+      res.status(500).json({ error: err.message });
+    }
+  });
 
-            const isSoon = setSize.toUpperCase() === 'XX';
-            const suffixStr = suffix ? ` — ${suffix}` : '';
-            const newTitle = `[${series.toUpperCase()}] ${charName} — Pack #${pack}${suffixStr}${isSoon ? ' — SOON' : ''}`;
-
-            await thread.setName(newTitle);
-
-            const firstMsg = await thread.fetchStarterMessage();
-            if (firstMsg) {
-                let newBody = firstMsg.content
-                    .replace(/Character: .*/, `Character: ${charName}`)
-                    .replace(/Series: .*/, `Series: ${series}`)
-                    .replace(/Set size: .* images/, `Set size: ${setSize} images`);
-
-                if (isSoon) {
-                    if (!newBody.includes(' -- SOON')) {
-                        newBody = newBody.replace(PREVIEW_RELEASE_HEADER, `${PREVIEW_RELEASE_HEADER} -- SOON`);
-                    }
-                } else {
-                    newBody = newBody.replace(`${PREVIEW_RELEASE_HEADER} -- SOON`, `${releaseEmojis.VERIFY} RELEASE`);
-                    newBody = newBody.replace(PREVIEW_RELEASE_HEADER, `${releaseEmojis.VERIFY} RELEASE`);
-                    newBody = newBody.replace(/ -- SOON/g, ''); 
-                }
-
-                await firstMsg.edit(newBody);
-            }
-
-            res.json({ success: true });
-        } catch (err) {
-            console.error('Edit post error:', err);
-            res.status(500).json({ error: err.message });
-        }
-    });
-    
   // ────────────────────────────────────────────────
   // 11. GET POST CONTENT
   // ────────────────────────────────────────────────
@@ -150,187 +182,270 @@ ${getRandomArrow()} See <#${SUPPORTER_FORUM_ID}>`;
     }
   });
 
-    // ────────────────────────────────────────────────
-    // 12. SUPPORTER RELEASE
-    // ────────────────────────────────────────────────
-    app.post('/api/supporter-release', upload.array('images'), async (req, res) => {
-        const { pack, setSize, input, series, suffix, download, editPreview, previewThreadId, supporterThreadId } = req.body;
-        const files = req.files || [];
+  // ────────────────────────────────────────────────
+  // 12. SUPPORTER RELEASE (with embed suppression)
+  // ────────────────────────────────────────────────
+  app.post('/api/supporter-release', upload.array('images'), async (req, res) => {
+    const { pack, setSize, input, series, suffix, download, editPreview, previewThreadId, supporterThreadId } = req.body;
+    const files = req.files || [];
 
-        try {
-            const fullInput = input.trim();
-            const spaceIndex = fullInput.indexOf(' ');
-            let genderEmoji = "";
-            let charName = fullInput;
-            if (spaceIndex !== -1) {
-                genderEmoji = fullInput.substring(0, spaceIndex).trim();
-                charName = fullInput.substring(spaceIndex + 1).trim();
-            }
+    try {
+      const fullInput = input.trim();
+      const spaceIndex = fullInput.indexOf(' ');
+      let genderEmoji = "";
+      let charName = fullInput;
+      if (spaceIndex !== -1) {
+        genderEmoji = fullInput.substring(0, spaceIndex).trim();
+        charName = fullInput.substring(spaceIndex + 1).trim();
+      }
 
-            let roleMention = "";
-            const appliedTags = [];
-            if (genderEmoji.includes('female_sign') || genderEmoji === '♀️') {
-                roleMention = `<@&${ids.roles.female_supporter}>`;
-                appliedTags.push(ids.tags.supporter_female);
-            } else if (genderEmoji.includes('male_sign') || genderEmoji === '♂️') {
-                roleMention = `<@&${ids.roles.male_supporter}>`;
-                appliedTags.push(...ids.tags.supporter_male);
-            }
+      let roleMention = "";
+      const appliedTags = [];
+      if (genderEmoji.includes('female_sign') || genderEmoji === '♀️') {
+        roleMention = '<@&1465968041404928177>';
+        appliedTags.push('1465939610642415921');
+      } else if (genderEmoji.includes('male_sign') || genderEmoji === '♂️') {
+        roleMention = '<@&1465967964804350160>';
+        appliedTags.push('1465939591352680488');
+        appliedTags.push('1467020371428642957');
+      }
 
-            const guild = await client.guilds.fetch(process.env.GUILD_ID);
-            const forumChannel = await guild.channels.fetch(SUPPORTER_FORUM_ID);
+      const guild = await client.guilds.fetch(process.env.GUILD_ID);
+      const forumChannel = await guild.channels.fetch(SUPPORTER_FORUM_ID);
 
-            const suffixStr = suffix ? ` — ${suffix}` : '';
-            const threadTitle = `[${series.toUpperCase()}] ${charName} — Pack #${pack}${suffixStr}`;
-            
-            const messageBody = `${SUPPORTER_RELEASE_HEADER}
+      const suffixStr = suffix ? ` — ${suffix}` : '';
+      const threadTitle = `[${series.toUpperCase()}] ${charName} — Pack #${pack}${suffixStr}`;
+      const messageBody = `${SUPPORTER_RELEASE_HEADER}
 ${roleMention || ''}
 ━━━━━━━━━━━━━━
 Character: ${charName}
 Set size: ${setSize} images
 Content: Explicit (18+)
 
-${getRandomDownArrow()} **Download:**
-${releaseEmojis.LINK} [megaLink](${download || 'https://mega.nz'})`;
+:inbox_tray: Download:
+${EMOJI_LINK} [megaLink](${download || 'https://mega.nz'})`;
       
-            let supporterResult = {};
-            if (supporterThreadId) {
-                const thread = await client.channels.fetch(supporterThreadId);
-                if (!thread) return res.status(404).json({ error: "Thread not found" });
+      let supporterResult = {};
+      if (supporterThreadId) {
+        const thread = await client.channels.fetch(supporterThreadId);
+        if (!thread) return res.status(404).json({ error: "Thread not found" });
 
-                await thread.setName(threadTitle);
-                await thread.setAppliedTags(appliedTags, `Updating tags for supporter release`);
+        await thread.setName(threadTitle);
+        await thread.setAppliedTags(appliedTags, `Updating tags for supporter release`);
 
-                const starter = await thread.fetchStarterMessage();
-                if (starter) {
-                    await starter.edit({
-                        content: messageBody,
-                        flags: ["SuppressEmbeds"]
-                    });
-                }
+        const starter = await thread.fetchStarterMessage();
+        if (starter) {
+          await starter.edit({
+            content: messageBody,
+            flags: ["SuppressEmbeds"]
+          });
+        }
 
-                if (files.length > 0) {
-                    const attachments = files.map(f => ({ attachment: f.buffer, name: f.originalname }));
-                    const sent = await thread.send({ content: "📸 **Updated images:**", files: attachments });
-                    await sent.edit({ flags: ["SuppressEmbeds"] });
-                }
-                supporterResult = { updated: true };
+        if (files.length > 0) {
+          const attachments = files.map(f => ({ attachment: f.buffer, name: f.originalname }));
+          const sent = await thread.send({ content: "📸 **Updated images:**", files: attachments });
+          await sent.edit({ flags: ["SuppressEmbeds"] });
+        }
+        supporterResult = { updated: true };
+      } else {
+        const newThread = await forumChannel.threads.create({
+          name: threadTitle,
+          appliedTags: appliedTags.length > 0 ? appliedTags : undefined,
+          message: { content: messageBody, files: files.map(f => ({ attachment: f.buffer, name: f.originalname })) }
+        });
+        const starter = await newThread.fetchStarterMessage();
+        if (starter) {
+          await starter.edit({ flags: ["SuppressEmbeds"] });
+        }
+        supporterResult = { created: true };
+      }
+
+      // --- Update Preview Thread if Toggle is ON ---
+      let previewResult = {};
+      if (editPreview === 'true') {
+        let targetPreviewId = previewThreadId;
+
+        if (!targetPreviewId && supporterThreadId) {
+          try {
+            const previewForum = await guild.channels.fetch(FORUM_ID);
+            const threads = await previewForum.threads.fetchActive();
+            const seriesUpper = series.toUpperCase();
+            const packPattern = `Pack #${pack}`;
+            const matchingThread = threads.threads.find(t =>
+              t.name.includes(`[${seriesUpper}]`) && t.name.includes(packPattern)
+            );
+
+            if (matchingThread) {
+              targetPreviewId = matchingThread.id;
+              console.log(`Auto-matched preview thread: ${matchingThread.name} (${matchingThread.id})`);
             } else {
-                const newThread = await forumChannel.threads.create({
-                    name: threadTitle,
-                    appliedTags: appliedTags.length > 0 ? appliedTags : undefined,
-                    message: { content: messageBody, files: files.map(f => ({ attachment: f.buffer, name: f.originalname })) }
-                });
-                const starter = await newThread.fetchStarterMessage();
+              console.warn('No matching preview thread found for auto-update.');
+              previewResult = { previewError: 'No matching preview thread found' };
+            }
+          } catch (findErr) {
+            console.error('Error finding preview thread:', findErr);
+            previewResult = { previewError: findErr.message };
+          }
+        }
+
+        if (targetPreviewId) {
+          try {
+            const previewThread = await client.channels.fetch(targetPreviewId);
+            if (!previewThread) {
+              console.warn("Preview thread not found:", targetPreviewId);
+              previewResult = { previewError: "Preview thread not found" };
+            } else {
+              if (previewThread.archived) {
+                await previewThread.setArchived(false);
+                console.log(`Unarchived preview thread ${targetPreviewId}`);
+              }
+
+              let newTitle = previewThread.name;
+              if (newTitle.includes(' — SOON')) {
+                newTitle = newTitle.replace(' — SOON', '');
+                await previewThread.setName(newTitle);
+              }
+
+              const starter = await previewThread.fetchStarterMessage();
                 if (starter) {
-                    await starter.edit({ flags: ["SuppressEmbeds"] });
+                let newContent = starter.content;
+                
+                // 1. Replace set size (XX → actual number)
+                newContent = newContent.replace(/(Set size:\s*)(\d+|XX)(\s*images)/i, `$1${setSize}$3`);
+                
+                // 2. Swap the NEW header for the Verify header when updating from the dashboard
+                if (newContent.includes(`${PREVIEW_RELEASE_HEADER} -- SOON`)) {
+                   newContent = newContent.replace(`${PREVIEW_RELEASE_HEADER} -- SOON`, `${EMOJI_VERIFY} RELEASE`);
+                } else if (newContent.includes(PREVIEW_RELEASE_HEADER)) {
+                   newContent = newContent.replace(PREVIEW_RELEASE_HEADER, `${EMOJI_VERIFY} RELEASE`);
                 }
-                supporterResult = { created: true };
+
+                // 3. Final cleanup for any leftover -- SOON strings in the body
+                newContent = newContent.replace(/ -- SOON/g, '');
+
+                await starter.edit(newContent);
+              }
+              previewResult = { previewUpdated: true };
             }
-
-            // --- Update Preview Thread if Toggle is ON ---
-            let previewResult = {};
-            if (editPreview === 'true') {
-                let targetPreviewId = previewThreadId;
-                if (targetPreviewId) {
-                    const previewThread = await client.channels.fetch(targetPreviewId);
-                    if (previewThread) {
-                        const starter = await previewThread.fetchStarterMessage();
-                        if (starter) {
-                            let newContent = starter.content;
-                            newContent = newContent.replace(/(Set size:\s*)(\d+|XX)(\s*images)/i, `$1${setSize}$3`);
-                            
-                            if (newContent.includes(`${PREVIEW_RELEASE_HEADER} -- SOON`)) {
-                                newContent = newContent.replace(`${PREVIEW_RELEASE_HEADER} -- SOON`, `${releaseEmojis.VERIFY} RELEASE`);
-                            } else if (newContent.includes(PREVIEW_RELEASE_HEADER)) {
-                                newContent = newContent.replace(PREVIEW_RELEASE_HEADER, `${releaseEmojis.VERIFY} RELEASE`);
-                            }
-                            newContent = newContent.replace(/ -- SOON/g, '');
-
-                            await starter.edit(newContent);
-                            previewResult = { previewUpdated: true };
-                        }
-                    }
-                }
-            }
-
-            res.json({ success: true, ...supporterResult, ...previewResult });
-        } catch (err) {
-            console.error('Supporter release error:', err);
-            res.status(500).json({ error: err.message });
+          } catch (previewErr) {
+            console.error('Error updating preview thread:', previewErr);
+            previewResult = { previewError: previewErr.message };
+          }
         }
-    });
+      }
 
-    // ────────────────────────────────────────────────
-    // 13. MEGA UPLOAD
-    // ────────────────────────────────────────────────
-    app.post('/api/upload-to-mega', upload.single('file'), async (req, res) => {
-        if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
-        
-        const desiredFileName = req.body.desiredName || req.file.originalname;
-        const month = req.body.month;
-        if (!month) return res.status(400).json({ error: 'Month folder not provided' });
+      res.json({ success: true, ...supporterResult, ...previewResult });
 
-        const year = `20${month.slice(-2)}`;
-        const folderPath = ['Packs', year, month];
-
-        async function getOrCreateFolder(node, pathParts) {
-            let current = node;
-            for (const part of pathParts) {
-                let child = current.children.find(c => c.name === part && c.directory);
-                if (!child) child = await current.mkdir(part);
-                current = child;
-            }
-            return current;
-        }
-
-        const tempFilePath = path.join(os.tmpdir(), `mega-${Date.now()}-${desiredFileName}`);
-
-        try {
-            fs.writeFileSync(tempFilePath, req.file.buffer);
-            const storage = await new Storage({ email: process.env.MEGA_EMAIL, password: process.env.MEGA_PASSWORD }).ready;
-            const targetFolder = await getOrCreateFolder(storage.root, folderPath);
-            const readStream = fs.createReadStream(tempFilePath);
-
-            const uploadResult = await new Promise((resolve, reject) => {
-                const upload = targetFolder.upload({ name: desiredFileName, size: req.file.size }, readStream);
-                upload.on('error', reject);
-                upload.on('complete', resolve);
-            });
-
-            const megaLink = await uploadResult.link();
-            let localPath = null;
-
-            if (req.body.downloadAfterUpload === 'true') {
-                const downloadDir = req.body.localDownloadPath || './downloads/';
-                if (!fs.existsSync(downloadDir)) fs.mkdirSync(downloadDir, { recursive: true });
-                const { File } = require('megajs');
-                const megaFile = File.fromURL(megaLink);
-
-                await new Promise((resolve, reject) => {
-                    const localFileStream = fs.createWriteStream(path.join(downloadDir, desiredFileName));
-                    megaFile.download((err, data) => {
-                        if (err) return reject(err);
-                        localFileStream.write(data);
-                        localFileStream.end();
-                        localFileStream.on('finish', resolve);
-                    });
-                });
-                localPath = path.join(downloadDir, desiredFileName);
-            }
-
-            fs.unlinkSync(tempFilePath);
-            storage.close();
-
-            res.json({ success: true, link: megaLink, localPath, fileName: desiredFileName });
-        } catch (error) {
-            if (fs.existsSync(tempFilePath)) fs.unlinkSync(tempFilePath);
-            res.status(500).json({ error: error.message });
-        }
-    });
+    } catch (err) {
+      console.error('Supporter release error:', err);
+      res.status(500).json({ error: err.message });
+    }
+  });
 
   // ────────────────────────────────────────────────
-  // 14. TEST ZIP
+  // 13. MEGA UPLOAD (with month folder and progress)
+  // ────────────────────────────────────────────────
+app.post('/api/upload-to-mega', upload.single('file'), async (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ error: 'No file uploaded' });
+  }
+  if (!req.file.originalname.toLowerCase().endsWith('.zip')) {
+    return res.status(400).json({ error: 'Only ZIP files are allowed' });
+  }
+  if (req.file.size > 100 * 1024 * 1024) {
+    return res.status(400).json({ error: 'File exceeds 100MB limit' });
+  }
+
+  const megaEmail = process.env.MEGA_EMAIL;
+  const megaPassword = process.env.MEGA_PASSWORD;
+  if (!megaEmail || !megaPassword) {
+    return res.status(500).json({ error: 'MEGA credentials missing' });
+  }
+
+  // --- NEW: allow custom filename for Mega (and local download) ---
+  const desiredFileName = req.body.desiredName || req.file.originalname;
+  const month = req.body.month;
+  if (!month) return res.status(400).json({ error: 'Month folder not provided' });
+
+  const yearShort = month.slice(-2);
+  const year = `20${yearShort}`;
+  const folderPath = ['Packs', year, month];
+
+  async function getOrCreateFolder(node, pathParts) {
+    let current = node;
+    for (const part of pathParts) {
+      let child = current.children.find(c => c.name === part && c.directory);
+      if (!child) child = await current.mkdir(part);
+      current = child;
+    }
+    return current;
+  }
+
+  const tempDir = os.tmpdir();
+  const tempFilePath = path.join(tempDir, `mega-upload-${Date.now()}-${desiredFileName}`);
+
+  try {
+    // Write buffer to temp file
+    fs.writeFileSync(tempFilePath, req.file.buffer);
+
+    const storage = await new Storage({ email: megaEmail, password: megaPassword }).ready;
+    const targetFolder = await getOrCreateFolder(storage.root, folderPath);
+    const readStream = fs.createReadStream(tempFilePath);
+
+    // Upload to Mega
+    const uploadResult = await new Promise((resolve, reject) => {
+      const upload = targetFolder.upload({ name: desiredFileName, size: req.file.size }, readStream);
+      upload.on('error', reject);
+      upload.on('complete', resolve);
+    });
+
+    const megaLink = await uploadResult.link();
+    console.log(`✅ Uploaded to Mega: ${megaLink}`);
+
+    // --- NEW: automatically download the file from Mega (if requested) ---
+    let localPath = null;
+    if (req.body.downloadAfterUpload === 'true') {
+      const downloadDir = req.body.localDownloadPath || './downloads/';
+      if (!fs.existsSync(downloadDir)) fs.mkdirSync(downloadDir, { recursive: true });
+
+      // Use megajs to download the file via its link
+      const { File } = require('megajs');
+      const megaFile = File.fromURL(megaLink);
+
+      await new Promise((resolve, reject) => {
+        const localFileStream = fs.createWriteStream(path.join(downloadDir, desiredFileName));
+        megaFile.download((err, data) => {
+          if (err) return reject(err);
+          localFileStream.write(data);
+          localFileStream.end();
+          localFileStream.on('finish', resolve);
+          localFileStream.on('error', reject);
+        });
+      });
+      localPath = path.join(downloadDir, desiredFileName);
+//      console.log(`📥 Downloaded from Mega to ${localPath}`);
+    }
+
+    // Cleanup temp file
+    fs.unlinkSync(tempFilePath);
+    storage.close();
+
+    res.json({
+      success: true,
+      link: megaLink,
+      localPath: localPath,     // only if downloadAfterUpload was true
+      fileName: desiredFileName
+    });
+
+  } catch (error) {
+    console.error('MEGA operation error:', error);
+    if (fs.existsSync(tempFilePath)) fs.unlinkSync(tempFilePath);
+    res.status(500).json({ error: error.message || 'Upload failed' });
+  }
+});
+
+  // ────────────────────────────────────────────────
+  // 14. TEST ZIP (extract first 10 images, sorted by embedded number)
   // ────────────────────────────────────────────────
   app.post('/api/test-zip', upload.single('zipfile'), async (req, res) => {
     if (!req.file) {
@@ -371,80 +486,30 @@ ${releaseEmojis.LINK} [megaLink](${download || 'https://mega.nz'})`;
     }
   });
 
-  // ────────────────────────────────────────────────
-  // 15. DOWNLOAD FILE
-  // ────────────────────────────────────────────────
-  app.get('/api/download-file', (req, res) => {
-    const filename = req.query.filename;
-    if (!filename) {
-      return res.status(400).send('Missing filename');
-    }
-
-    const downloadsDir = path.join(process.cwd(), 'downloads');
-    const filePath = path.join(downloadsDir, filename);
-
-    if (filePath.indexOf(downloadsDir) !== 0) {
-      return res.status(403).send('Forbidden');
-    }
-
-    if (!fs.existsSync(filePath)) {
-      return res.status(404).send('File not found');
-    }
-
-    res.download(filePath, filename);
-  });
-
 // ────────────────────────────────────────────────
-  // 16. GET FORUM POSTS (Fixes Frontend 404)
-  // ────────────────────────────────────────────────
-app.get('/api/forum-posts', async (req, res) => {
-      const { channelId } = req.query;
-      console.log(`[DEBUG] Request received for channelId: ${channelId}`);
+// 15. DOWNLOAD FILE (for browser download after upload)
+// ────────────────────────────────────────────────
+app.get('/api/download-file', (req, res) => {
+  const filename = req.query.filename;
+  if (!filename) {
+    return res.status(400).send('Missing filename');
+  }
 
-      if (!channelId) return res.status(400).json({ error: "Missing channelId" });
+  // Construct absolute path to the downloads folder (relative to project root)
+  const downloadsDir = path.join(process.cwd(), 'downloads');
+  const filePath = path.join(downloadsDir, filename);
 
-      try {
-          const guild = await client.guilds.fetch(process.env.GUILD_ID);
-          const channel = await guild.channels.fetch(channelId);
-          
-          if (!channel) {
-              console.error(`[DEBUG] Channel ${channelId} not found in guild.`);
-              return res.status(404).json({ error: "Channel not found" });
-          }
+  // Security: prevent directory traversal
+  if (filePath.indexOf(downloadsDir) !== 0) {
+    return res.status(403).send('Forbidden');
+  }
 
-          const fetchedThreads = await channel.threads.fetchActive();
-          const posts = fetchedThreads.threads.map(t => ({ id: t.id, name: t.name }));
+  if (!fs.existsSync(filePath)) {
+    return res.status(404).send('File not found');
+  }
 
-          console.log(`[DEBUG] Found ${posts.length} active threads in ${channel.name}`);
-          
-          // Check if the posts array is empty
-          if (posts.length === 0) {
-              console.warn(`[DEBUG] No active threads found. Check if threads are archived or if bot has permissions.`);
-          }
-
-          res.json({ success: true, posts });
-      } catch (err) {
-          console.error(`[DEBUG] Fetch error:`, err);
-          res.status(500).json({ error: err.message });
-      }
-  });
-
-  // ────────────────────────────────────────────────
-  // 17. GET SUPPORTER POSTS (Fixes Frontend 404)
-  // ────────────────────────────────────────────────
-  app.get('/api/supporter-posts', async (req, res) => {
-      try {
-          const guild = await client.guilds.fetch(process.env.GUILD_ID);
-          const channel = await guild.channels.fetch(SUPPORTER_FORUM_ID);
-          const { threads } = await channel.threads.fetchActive();
-          
-          const posts = threads.map(t => ({ id: t.id, name: t.name }));
-          res.json({ success: true, posts });
-      } catch (err) {
-          console.error('Fetch supporter posts error:', err);
-          res.status(500).json({ error: err.message });
-      }
-  });
+  res.download(filePath, filename);
+});
 
   // Temporary GET for testing – remove after debugging
   app.get('/api/test-zip', (req, res) => {
