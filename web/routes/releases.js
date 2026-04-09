@@ -1,27 +1,21 @@
 // this is poll-san/web/routes/releases.js
 
+const fs = require('fs');
+const path = require('path');
+const os = require('os');
+const AdmZip = require('adm-zip');
+const { Storage } = require('megajs');
+const h = require('../../utils/helpers'); // Importing your helpers
+
 module.exports = function setupReleasesRoutes(app, client, upload, FORUM_ID, SUPPORTER_FORUM_ID) {
-  // Emojis
-  const NEW_EMOJI_1 = '<a:NEW1:1491321234015911977>';
-  const NEW_EMOJI_2 = '<a:NEW2:1491321257780580414>';
-  const EMOJI_18 = '<a:18:1491670036799029288>';
-  const EMOJI_LINK = '<a:Link:1491670128562274475>';
-  const EMOJI_VERIFY = '<a:Verify:1491669023245729924>';
+  
+  // Helpers to get random arrows from the utils arrays
+  const getRandomArrow = () => h.releaseEmojis.ARROWS[Math.floor(Math.random() * h.releaseEmojis.ARROWS.length)];
+  const getRandomDownArrow = () => h.releaseEmojis.DOWN_ARROWS[Math.floor(Math.random() * h.releaseEmojis.DOWN_ARROWS.length)];
 
-  // Arrow Array
-  const ARROWS = [
-    '<a:arrowyellow:1491672823729623212>', '<a:arrowwhite:1491672813398917150>',
-    '<a:arrowred:1491672803030732850>', '<a:arrowpurple:1491672794235146260>',
-    '<a:arrowpink:1491672773716873257>', '<a:arroworange:1491672761582489681>',
-    '<a:arrowmagenta:1491672750849396756>', '<a:arrowgreen:1491672741495963738>',
-    '<a:arrowcyan:1491672731572375573>', '<a:arrowblue:1491672719140589638>'
-  ];
-
-  // Helper to get random arrow
-  const getRandomArrow = () => ARROWS[Math.floor(Math.random() * ARROWS.length)];
-
-  const PREVIEW_RELEASE_HEADER = `${NEW_EMOJI_1}${NEW_EMOJI_2} RELEASE`;
-  const SUPPORTER_RELEASE_HEADER = `${EMOJI_18} ${NEW_EMOJI_1}${NEW_EMOJI_2} SUPPORTER RELEASE`;
+  // Headers using utils emojis
+  const PREVIEW_RELEASE_HEADER = `${h.releaseEmojis.NEW1}${h.releaseEmojis.NEW2} RELEASE`;
+  const SUPPORTER_RELEASE_HEADER = `${h.releaseEmojis.EIGHTEEN} ${h.releaseEmojis.NEW1}${h.releaseEmojis.NEW2} SUPPORTER RELEASE`;
 
   // ────────────────────────────────────────────────
   // 8. RELEASE PREVIEW
@@ -38,9 +32,14 @@ module.exports = function setupReleasesRoutes(app, client, upload, FORUM_ID, SUP
         genderEmoji = fullInput.substring(0, spaceIndex);
         charName = fullInput.substring(spaceIndex + 1).trim();
       }
+
       const appliedTags = [];
-      if (genderEmoji.includes('female_sign') || genderEmoji === '♀️') appliedTags.push('1465939310720192637');
-      else if (genderEmoji.includes('male_sign') || genderEmoji === '♂️') appliedTags.push('1465939329120469095', '1467020233272328195');
+      if (genderEmoji.includes('female_sign') || genderEmoji === '♀️') {
+        appliedTags.push(h.ids.tags.preview_female);
+      } else if (genderEmoji.includes('male_sign') || genderEmoji === '♂️') {
+        // Spreads the array from utils [id1, id2]
+        appliedTags.push(...h.ids.tags.preview_male);
+      }
 
       const guild = await client.guilds.fetch(process.env.GUILD_ID);
       const forumChannel = await guild.channels.fetch(FORUM_ID);
@@ -48,6 +47,7 @@ module.exports = function setupReleasesRoutes(app, client, upload, FORUM_ID, SUP
       const isSoon = setSize.toUpperCase() === 'XX';
       const suffixStr = suffix ? ` — ${suffix}` : '';
       const threadTitle = `[${series.toUpperCase()}] ${charName} — Pack #${pack}${suffixStr}`;
+      
       const messageBody = `${PREVIEW_RELEASE_HEADER}${isSoon ? ' -- SOON' : ''}
 ━━━━━━━━━━━━━━
 Character: ${charName}
@@ -106,7 +106,7 @@ ${getRandomArrow()} See <#${SUPPORTER_FORUM_ID}>`;
     }
   });
 
-  // ────────────────────────────────────────────────
+// ────────────────────────────────────────────────
   // 10. EDIT FORUM POST
   // ────────────────────────────────────────────────
   app.post('/api/edit-post', async (req, res) => {
@@ -132,15 +132,13 @@ ${getRandomArrow()} See <#${SUPPORTER_FORUM_ID}>`;
           .replace(/Series: .*/, `Series: ${series}`)
           .replace(/Set size: .* images/, `Set size: ${setSize} images`);
 
-        // Handle the new custom emoji header and -- SOON toggle
         if (isSoon) {
           if (!newBody.includes(' -- SOON')) {
             newBody = newBody.replace(PREVIEW_RELEASE_HEADER, `${PREVIEW_RELEASE_HEADER} -- SOON`);
           }
         } else {
-          // When "SOON" is removed, change the NEW header to the Verify header
-          newBody = newBody.replace(`${PREVIEW_RELEASE_HEADER} -- SOON`, `${EMOJI_VERIFY} RELEASE`);
-          newBody = newBody.replace(PREVIEW_RELEASE_HEADER, `${EMOJI_VERIFY} RELEASE`);
+          newBody = newBody.replace(`${PREVIEW_RELEASE_HEADER} -- SOON`, `${h.releaseEmojis.VERIFY} RELEASE`);
+          newBody = newBody.replace(PREVIEW_RELEASE_HEADER, `${h.releaseEmojis.VERIFY} RELEASE`);
           newBody = newBody.replace(/ -- SOON/g, ''); 
         }
 
@@ -182,8 +180,8 @@ ${getRandomArrow()} See <#${SUPPORTER_FORUM_ID}>`;
     }
   });
 
-  // ────────────────────────────────────────────────
-  // 12. SUPPORTER RELEASE (with embed suppression)
+// ────────────────────────────────────────────────
+  // 12. SUPPORTER RELEASE
   // ────────────────────────────────────────────────
   app.post('/api/supporter-release', upload.array('images'), async (req, res) => {
     const { pack, setSize, input, series, suffix, download, editPreview, previewThreadId, supporterThreadId } = req.body;
@@ -202,12 +200,11 @@ ${getRandomArrow()} See <#${SUPPORTER_FORUM_ID}>`;
       let roleMention = "";
       const appliedTags = [];
       if (genderEmoji.includes('female_sign') || genderEmoji === '♀️') {
-        roleMention = '<@&1465968041404928177>';
-        appliedTags.push('1465939610642415921');
+        roleMention = `<@&${h.ids.roles.female_supporter}>`;
+        appliedTags.push(h.ids.tags.supporter_female);
       } else if (genderEmoji.includes('male_sign') || genderEmoji === '♂️') {
-        roleMention = '<@&1465967964804350160>';
-        appliedTags.push('1465939591352680488');
-        appliedTags.push('1467020371428642957');
+        roleMention = `<@&${h.ids.roles.male_supporter}>`;
+        appliedTags.push(...h.ids.tags.supporter_male);
       }
 
       const guild = await client.guilds.fetch(process.env.GUILD_ID);
@@ -223,7 +220,7 @@ Set size: ${setSize} images
 Content: Explicit (18+)
 
 :inbox_tray: Download:
-${EMOJI_LINK} [megaLink](${download || 'https://mega.nz'})`;
+${h.releaseEmojis.LINK} [megaLink](${download || 'https://mega.nz'})`;
       
       let supporterResult = {};
       if (supporterThreadId) {
@@ -243,7 +240,8 @@ ${EMOJI_LINK} [megaLink](${download || 'https://mega.nz'})`;
 
         if (files.length > 0) {
           const attachments = files.map(f => ({ attachment: f.buffer, name: f.originalname }));
-          const sent = await thread.send({ content: "📸 **Updated images:**", files: attachments });
+          // Example usage of your new DOWN_ARROWS
+          const sent = await thread.send({ content: `${getRandomDownArrow()} **Updated images:**`, files: attachments });
           await sent.edit({ flags: ["SuppressEmbeds"] });
         }
         supporterResult = { updated: true };
@@ -277,28 +275,17 @@ ${EMOJI_LINK} [megaLink](${download || 'https://mega.nz'})`;
 
             if (matchingThread) {
               targetPreviewId = matchingThread.id;
-              console.log(`Auto-matched preview thread: ${matchingThread.name} (${matchingThread.id})`);
-            } else {
-              console.warn('No matching preview thread found for auto-update.');
-              previewResult = { previewError: 'No matching preview thread found' };
             }
           } catch (findErr) {
             console.error('Error finding preview thread:', findErr);
-            previewResult = { previewError: findErr.message };
           }
         }
 
         if (targetPreviewId) {
           try {
             const previewThread = await client.channels.fetch(targetPreviewId);
-            if (!previewThread) {
-              console.warn("Preview thread not found:", targetPreviewId);
-              previewResult = { previewError: "Preview thread not found" };
-            } else {
-              if (previewThread.archived) {
-                await previewThread.setArchived(false);
-                console.log(`Unarchived preview thread ${targetPreviewId}`);
-              }
+            if (previewThread) {
+              if (previewThread.archived) await previewThread.setArchived(false);
 
               let newTitle = previewThread.name;
               if (newTitle.includes(' — SOON')) {
@@ -307,29 +294,23 @@ ${EMOJI_LINK} [megaLink](${download || 'https://mega.nz'})`;
               }
 
               const starter = await previewThread.fetchStarterMessage();
-                if (starter) {
+              if (starter) {
                 let newContent = starter.content;
-                
-                // 1. Replace set size (XX → actual number)
                 newContent = newContent.replace(/(Set size:\s*)(\d+|XX)(\s*images)/i, `$1${setSize}$3`);
                 
-                // 2. Swap the NEW header for the Verify header when updating from the dashboard
                 if (newContent.includes(`${PREVIEW_RELEASE_HEADER} -- SOON`)) {
-                   newContent = newContent.replace(`${PREVIEW_RELEASE_HEADER} -- SOON`, `${EMOJI_VERIFY} RELEASE`);
+                   newContent = newContent.replace(`${PREVIEW_RELEASE_HEADER} -- SOON`, `${h.releaseEmojis.VERIFY} RELEASE`);
                 } else if (newContent.includes(PREVIEW_RELEASE_HEADER)) {
-                   newContent = newContent.replace(PREVIEW_RELEASE_HEADER, `${EMOJI_VERIFY} RELEASE`);
+                   newContent = newContent.replace(PREVIEW_RELEASE_HEADER, `${h.releaseEmojis.VERIFY} RELEASE`);
                 }
 
-                // 3. Final cleanup for any leftover -- SOON strings in the body
                 newContent = newContent.replace(/ -- SOON/g, '');
-
                 await starter.edit(newContent);
               }
               previewResult = { previewUpdated: true };
             }
           } catch (previewErr) {
             console.error('Error updating preview thread:', previewErr);
-            previewResult = { previewError: previewErr.message };
           }
         }
       }
