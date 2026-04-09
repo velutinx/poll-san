@@ -397,24 +397,34 @@ ${releaseEmojis.LINK} [megaLink](${download || 'https://mega.nz'})`;
 // ────────────────────────────────────────────────
   // 16. GET FORUM POSTS (Fixes Frontend 404)
   // ────────────────────────────────────────────────
-  app.get('/api/forum-posts', async (req, res) => {
+app.get('/api/forum-posts', async (req, res) => {
       const { channelId } = req.query;
-      
-      if (!channelId) {
-          return res.status(400).json({ error: "Missing channelId parameter" });
-      }
+      console.log(`[DEBUG] Request received for channelId: ${channelId}`);
+
+      if (!channelId) return res.status(400).json({ error: "Missing channelId" });
 
       try {
           const guild = await client.guilds.fetch(process.env.GUILD_ID);
           const channel = await guild.channels.fetch(channelId);
           
-          // Fetch the active threads for whichever channel ID the frontend requested
-          const { threads } = await channel.threads.fetchActive();
+          if (!channel) {
+              console.error(`[DEBUG] Channel ${channelId} not found in guild.`);
+              return res.status(404).json({ error: "Channel not found" });
+          }
+
+          const fetchedThreads = await channel.threads.fetchActive();
+          const posts = fetchedThreads.threads.map(t => ({ id: t.id, name: t.name }));
+
+          console.log(`[DEBUG] Found ${posts.length} active threads in ${channel.name}`);
           
-          const posts = threads.map(t => ({ id: t.id, name: t.name }));
+          // Check if the posts array is empty
+          if (posts.length === 0) {
+              console.warn(`[DEBUG] No active threads found. Check if threads are archived or if bot has permissions.`);
+          }
+
           res.json({ success: true, posts });
       } catch (err) {
-          console.error(`Fetch forum posts error for channel ${channelId}:`, err);
+          console.error(`[DEBUG] Fetch error:`, err);
           res.status(500).json({ error: err.message });
       }
   });
