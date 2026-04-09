@@ -13,9 +13,9 @@ module.exports = function setupReleasesRoutes(app, client, upload, FORUM_ID, SUP
   const getRandomArrow = () => h.releaseEmojis.ARROWS[Math.floor(Math.random() * h.releaseEmojis.ARROWS.length)];
   const getRandomDownArrow = () => h.releaseEmojis.DOWN_ARROWS[Math.floor(Math.random() * h.releaseEmojis.DOWN_ARROWS.length)];
 
-  // Headers using utils emojis
+  // Headers using utils emojis - Supporter now uses default :underage:
   const PREVIEW_RELEASE_HEADER = `${h.releaseEmojis.NEW1}${h.releaseEmojis.NEW2} RELEASE`;
-  const SUPPORTER_RELEASE_HEADER = `${h.releaseEmojis.EIGHTEEN} ${h.releaseEmojis.NEW1}${h.releaseEmojis.NEW2} SUPPORTER RELEASE`;
+  const SUPPORTER_RELEASE_HEADER = `🔞 ${h.releaseEmojis.NEW1}${h.releaseEmojis.NEW2} SUPPORTER RELEASE`;
 
   // ────────────────────────────────────────────────
   // 8. RELEASE PREVIEW
@@ -106,7 +106,7 @@ ${getRandomArrow()} See <#${SUPPORTER_FORUM_ID}>`;
     }
   });
 
-// ────────────────────────────────────────────────
+  // ────────────────────────────────────────────────
   // 10. EDIT FORUM POST
   // ────────────────────────────────────────────────
   app.post('/api/edit-post', async (req, res) => {
@@ -180,7 +180,7 @@ ${getRandomArrow()} See <#${SUPPORTER_FORUM_ID}>`;
     }
   });
 
-// ────────────────────────────────────────────────
+  // ────────────────────────────────────────────────
   // 12. SUPPORTER RELEASE
   // ────────────────────────────────────────────────
   app.post('/api/supporter-release', upload.array('images'), async (req, res) => {
@@ -212,14 +212,16 @@ ${getRandomArrow()} See <#${SUPPORTER_FORUM_ID}>`;
 
       const suffixStr = suffix ? ` — ${suffix}` : '';
       const threadTitle = `[${series.toUpperCase()}] ${charName} — Pack #${pack}${suffixStr}`;
+      
+      // Updated message body with Animated Eighteen and Random Down Arrow
       const messageBody = `${SUPPORTER_RELEASE_HEADER}
 ${roleMention || ''}
 ━━━━━━━━━━━━━━
 Character: ${charName}
 Set size: ${setSize} images
-Content: Explicit (18+)
+Content: Explicit (${h.releaseEmojis.EIGHTEEN})
 
-:inbox_tray: Download:
+${getRandomDownArrow()} Download:
 ${h.releaseEmojis.LINK} [megaLink](${download || 'https://mega.nz'})`;
       
       let supporterResult = {};
@@ -240,7 +242,6 @@ ${h.releaseEmojis.LINK} [megaLink](${download || 'https://mega.nz'})`;
 
         if (files.length > 0) {
           const attachments = files.map(f => ({ attachment: f.buffer, name: f.originalname }));
-          // Example usage of your new DOWN_ARROWS
           const sent = await thread.send({ content: `${getRandomDownArrow()} **Updated images:**`, files: attachments });
           await sent.edit({ flags: ["SuppressEmbeds"] });
         }
@@ -258,7 +259,7 @@ ${h.releaseEmojis.LINK} [megaLink](${download || 'https://mega.nz'})`;
         supporterResult = { created: true };
       }
 
-      // --- Update Preview Thread if Toggle is ON ---
+      // --- Update Preview Thread ---
       let previewResult = {};
       if (editPreview === 'true') {
         let targetPreviewId = previewThreadId;
@@ -272,10 +273,7 @@ ${h.releaseEmojis.LINK} [megaLink](${download || 'https://mega.nz'})`;
             const matchingThread = threads.threads.find(t =>
               t.name.includes(`[${seriesUpper}]`) && t.name.includes(packPattern)
             );
-
-            if (matchingThread) {
-              targetPreviewId = matchingThread.id;
-            }
+            if (matchingThread) targetPreviewId = matchingThread.id;
           } catch (findErr) {
             console.error('Error finding preview thread:', findErr);
           }
