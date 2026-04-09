@@ -1,6 +1,6 @@
 // this is poll-san/commands/startpoll.js
 
-const { chunkArray, emojis, reactIds } = require('../utils/helpers');
+const { chunkArray, emojis, reactIds, ids } = require('../utils/helpers');
 const { generateMessageContent, runPollInterval } = require('../services/pollService');
 const supabase = require('../services/supabase');
 
@@ -92,7 +92,7 @@ module.exports = async (interaction) => {
 
     // Final thread message (mention role)
     await thread.send({
-        content: ":point_up_2: Character images for the poll above! <@&1472273843665113139>"
+    content: `:point_up_2: Character images for the poll above! <@&${ids.tags.poll_mention}>`
     });
 
     // Finalize interaction
