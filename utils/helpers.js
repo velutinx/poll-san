@@ -54,6 +54,8 @@ module.exports = {
         LINK: '<a:Link:1491670128562274475>',
         CONFETTI: '<a:confetti:1491689074002755664>',
         SPARKLES: '<a:sparkles:1491697348718493786>',
+        PROGRESS: '<a:progress:1491670111923212308>',
+        
         ARROWS: [
             '<a:arrowyellow:1491672823729623212>',
             '<a:arrowwhite:1491672813398917150>',
@@ -75,11 +77,7 @@ module.exports = {
             male_supporter: '1465967964804350160',
             server_booster: '1469284491456548976',
             supporter: '1466155709547675795',
-            restricted: [
-                '1468666174102442227', 
-                '1467233133362544642', 
-                '1487554855068368916'
-            ]
+            restricted: ['1468666174102442227', '1467233133362544642', '1487554855068368916']
         },
         tags: {
             preview_female: '1465939310720192637',
@@ -88,7 +86,9 @@ module.exports = {
             supporter_male: ['1465939591352680488', '1467020371428642957'],
             poll_mention: '1472273843665113139',
         },
-
+        channels: {
+            QUEUE: '1473730427318435860' // :hourglass_flowing_sand:large-requests-queue - channel
+        },
     },
 
     weights: {
@@ -99,7 +99,7 @@ module.exports = {
             '1465904548320378956': 2.0, // Gold
             '1465952085026541804': 2.3  // Platinum
         },
-        booster: '1469284491456548976',
+        booster: '1469284491456548976', // booster
         xpFactor: 0.02
     },
 
