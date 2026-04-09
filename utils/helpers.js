@@ -46,7 +46,7 @@ module.exports = {
     ],
 
     // --- NEW RELEASE SYSTEM EMOJIS ---
-    releaseEmojis: {
+releaseEmojis: {
         NEW1: '<a:NEW1:1491321234015911977>',
         NEW2: '<a:NEW2:1491321257780580414>',
         VERIFY: '<a:Verify:1491669023245729924>',
@@ -67,6 +67,19 @@ module.exports = {
             '<a:arrowgreen:1491672741495963738>',
             '<a:arrowcyan:1491672731572375573>',
             '<a:arrowblue:1491672719140589638>'
+        ],
+
+        DOWN_ARROWS: [
+            '<a:arrowdownblue:1491763134590091335>',
+            '<a:arrowdowncyan:1491763136011960511>',
+            '<a:arrowdowngreen:1491763137580498954>',
+            '<a:arrowdownmagenta:1491763139279323196>',
+            '<a:arrowdownorange:1491763140914970655>',
+            '<a:arrowdownpink:1491763142231986310>',
+            '<a:arrowdownpurple:1491763143561711696>',
+            '<a:arrowdownred:1491763144601895052>',
+            '<a:arrowdownwhite:1491763145843281931>',
+            '<a:arrowdownyellow:1491763147063820309>'
         ]
     },
 
