@@ -4,6 +4,7 @@ const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, Butt
 const path = require('path');
 const fs = require('fs');
 const supabase = require(path.join(__dirname, '..', 'services', 'supabase'));
+const { colors } = require('../utils/helpers'); // Add this near your other requires
 
 // In-memory cache for quick access
 const activeGiveaways = new Map();
@@ -82,7 +83,7 @@ module.exports = {
                 { name: 'Hosts', value: `${interaction.user}`, inline: true },
                 { name: 'Winners', value: `${winnersCount}`, inline: true }
             )
-            .setColor('#FF69B4')
+            .setColor(colors.giveaway)
             .setFooter({ text: `Giveaway ID: ${giveawayId}` });
 
         if (imageUrl) embed.setImage(imageUrl);
@@ -276,7 +277,7 @@ async function endGiveaway(messageId, client) {
         const newEmbed = EmbedBuilder.from(embed)
             .setTitle(`${dbGiveaway.prize} Giveaway Ended`)  // ← changed here
             .setDescription(null)
-            .setColor('#808080')
+            .setColor(colors.ended)
             .setFooter({ text: 'Ended' })
             .setFields(
                 { name: 'Hosts', value: `<@${dbGiveaway.host_id}>`, inline: true },
