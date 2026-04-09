@@ -21,7 +21,7 @@ function formatQueue(queueArr) {
     
     let str = "Current Queue:\n\n";
     queueArr.forEach((char, i) => {
-        const emoji = emojis[i] || `[${i + 1}]`;
+        const emoji = EMOJIS[i] || `[${i + 1}]`;
         
         const cleanChar = char.replace(/♀️/g, ':female_sign:').replace(/♂️/g, ':male_sign:');
         str += `${emoji} ${cleanChar}\n`;
