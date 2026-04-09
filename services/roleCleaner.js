@@ -1,11 +1,11 @@
 // this is poll-san/services/roleCleaner.js
 
-const TARGET_ROLES = ['1468666174102442227', '1467233133362544642', '1487554855068368916'];
+const { ids } = require('../utils/helpers');
 
 async function cleanRoles(guild) {
     try {
-        // Fetch all members to ensure cache is up to date
         const members = await guild.members.fetch();
+        const TARGET_ROLES = ids.roles.restricted;
         
         members.forEach(async (member) => {
             const rolesToRemove = member.roles.cache.filter(role => TARGET_ROLES.includes(role.id));
@@ -21,5 +21,4 @@ async function cleanRoles(guild) {
         console.error("Error in role cleaner service:", err);
     }
 }
-
-module.exports = { cleanRoles, TARGET_ROLES };
+module.exports = { cleanRoles };
