@@ -1,4 +1,4 @@
-// this is poll-san/utils/helpers.js
+// poll-san/utils/helpers.js
 
 module.exports = {
     formatTime: (ms) => {
@@ -14,6 +14,8 @@ module.exports = {
         for (let i = 0; i < array.length; i += size) chunks.push(array.slice(i, i + size));
         return chunks;
     },
+
+    // --- POLL SYSTEM (Legacy) ---
     emojis: [
         '<:one:1485655941520167062>',
         '<:two:1485655967436767252>',
@@ -42,15 +44,66 @@ module.exports = {
         '1485656186060542104',
         '1485656217194991667'
     ],
+
+    // --- NEW RELEASE SYSTEM EMOJIS ---
+    releaseEmojis: {
+        NEW1: '<a:NEW1:1491321234015911977>',
+        NEW2: '<a:NEW2:1491321257780580414>',
+        VERIFY: '<a:Verify:1491669023245729924>',
+        EIGHTEEN: '<a:18:1491670036799029288>',
+        LINK: '<a:Link:1491670128562274475>',
+        ARROWS: [
+            '<a:arrowyellow:1491672823729623212>',
+            '<a:arrowwhite:1491672813398917150>',
+            '<a:arrowred:1491672803030732850>',
+            '<a:arrowpurple:1491672794235146260>',
+            '<a:arrowpink:1491672773716873257>',
+            '<a:arroworange:1491672761582489681>',
+            '<a:arrowmagenta:1491672750849396756>',
+            '<a:arrowgreen:1491672741495963738>',
+            '<a:arrowcyan:1491672731572375573>',
+            '<a:arrowblue:1491672719140589638>'
+        ]
+    },
+
+    // --- CHANNEL & ROLE IDs ---
+    ids: {
+        roles: {
+            female_supporter: '1465968041404928177',
+            male_supporter: '1465967964804350160',
+            server_booster: '1469284491456548976'
+        },
+        tags: {
+            preview_female: '1465939310720192637',
+            preview_male: ['1465939329120469095', '1467020233272328195'],
+            supporter_female: '1465939610642415921',
+            supporter_male: ['1465939591352680488', '1467020371428642957'],
+            poll_mention: '1472273843665113139',
+
+        }
+    },
+
     weights: {
         tiers: {
-            '1465444240845963326': 1.2,
-            '1465670134743044139': 1.5,
-            '1465904476417163457': 1.8,
-            '1465904548320378956': 2.0,
-            '1465952085026541804': 2.3
+            '1465444240845963326': 1.2, // Bronze
+            '1465670134743044139': 1.5, // Copper
+            '1465904476417163457': 1.8, // Silver
+            '1465904548320378956': 2.0, // Gold
+            '1465952085026541804': 2.3  // Platinum
         },
         booster: '1469284491456548976',
         xpFactor: 0.02
-    }
+    },
+
+    colors: {
+        success: 0x00FFCC,
+        giveaway: '#FF69B4',
+        ended: '#808080'
+    },
+
+    urls: {
+        base: "https://www.velutinx.com",
+        pollImages: "https://www.velutinx.com/images/poll/"
+    },
+    
 };
