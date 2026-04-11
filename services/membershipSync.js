@@ -5,9 +5,9 @@ const db = require('../utils/db');
 const h = require('../utils/helpers'); 
 const supabaseRetry = db.supabaseRetry;
 
-// Now it pulls the 1-5 number mapping from helpers!
-const TIER_ROLES = h.ids.roles.tierMapping;
-const SUPPORTER_ROLE = h.ids.roles.supporter;
+// UPDATED PATHS:
+const TIER_ROLES = h.weights.tierMapping; // This points to h -> weights -> tierMapping
+const SUPPORTER_ROLE = h.ids.roles.supporter; // This stays in ids -> roles
 
 // Translation dictionary for user messages
 const MESSAGES = {
