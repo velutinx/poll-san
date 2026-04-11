@@ -52,6 +52,7 @@ releaseEmojis: {
         VERIFY: '<a:Verify:1491669023245729924>',
         EIGHTEEN: '<a:18:1491670036799029288>',
         LINK: '<a:Link:1491670128562274475>',
+        HOURGLASS: '<a:Hourglass:1491762676416905267>',
         CONFETTI: '<a:confetti:1491689074002755664>',
         SPARKLES: '<a:sparkles:1491697348718493786>',
         PROGRESS: '<a:progress:1491670111923212308>',
@@ -81,7 +82,20 @@ releaseEmojis: {
             '<a:arrowdownpurple:1491763143561711696>',
             '<a:arrowdownred:1491763144601895052>',
             '<a:arrowdownwhite:1491763145843281931>',
-            '<a:arrowdownyellow:1491763147063820309>'
+            '<a:arrowdownyellow:1491763147063820309>',
+        ],
+
+        UP_ARROWS: [
+            '<a:arrowupblue:1492637578359476554>',
+            '<a:arrowupcyan:1492637580033003630>',
+            '<a:arrowupgreen:1492637581077123205>',
+            '<a:arrowupmagenta:1492637582570422334>',
+            '<a:arrowuporange:1492637583753084958>',
+            '<a:arrowuppink:1492637584965243091>',
+            '<a:arrowuppurple:1492637586714267648>',
+            '<a:arrowupred:1492637588220280912>',
+            '<a:arrowupwhite:1492637589331640320>',
+            '<a:arrowupyellow:1492637590409445539>'
         ]
     },
 
