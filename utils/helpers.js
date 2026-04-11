@@ -104,6 +104,9 @@ releaseEmojis: {
         channels: {
             QUEUE: '1473730427318435860' // :hourglass_flowing_sand:large-requests-queue - channel
         },
+        users: {
+            Velutinx: '1380051214766444617'
+        }
     },
 
     weights: {
@@ -114,6 +117,14 @@ releaseEmojis: {
             '1465904548320378956': 2.0, // Gold
             '1465952085026541804': 2.3  // Platinum
         },
+
+        tierMapping: {
+                1: '1465444240845963326',
+                2: '1465670134743044139',
+                3: '1465904476417163457',
+                4: '1465904548320378956',
+                5: '1465952085026541804'
+                    
         booster: '1469284491456548976', // booster
         xpFactor: 0.02
     },
