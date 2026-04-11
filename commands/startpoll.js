@@ -1,6 +1,6 @@
 // this is poll-san/commands/startpoll.js
 
-const { chunkArray, emojis, reactIds, ids } = require('../utils/helpers');
+const { chunkArray, emojis, reactIds, ids, releaseEmojis } = require('../utils/helpers');
 const { generateMessageContent, runPollInterval } = require('../services/pollService');
 const supabase = require('../services/supabase');
 
@@ -90,9 +90,14 @@ module.exports = async (interaction) => {
         }).catch(e => console.error("Thread Image Error:", e.message));
     }
 
-    // Final thread message (mention role)
+    // --- RANDOM ARROW LOGIC ---
+    // Pick one random up arrow for the final thread message
+    const upArrows = releaseEmojis.UP_ARROWS;
+    const randomUpArrow = upArrows[Math.floor(Math.random() * upArrows.length)];
+
+    // Final thread message (using the new randomized arrow)
     await thread.send({
-    content: `:point_up_2: Character images for the poll above! <@&${ids.tags.poll_mention}>`
+        content: `${randomUpArrow} Character images for the poll above! <@&${ids.tags.poll_mention}>`
     });
 
     // Finalize interaction
