@@ -2,6 +2,7 @@
 
 module.exports = function setupPollRoutes(app, client, supabase, supabaseRetry) {
     const h = require('../../utils/helpers');
+    const pollService = require('../../services/pollService');
     
     // Cache for poll results (shared between endpoints)
     let cachedPollResultsData = null;
@@ -79,6 +80,34 @@ module.exports = function setupPollRoutes(app, client, supabase, supabaseRetry) 
     // ────────────────────────────────────────────────
     app.post('/api/stop-poll', async (req, res) => {
         try {
+            // 1. Physically stop the Node.js update interval
+            pollService.forceStopPoll();
+
+            // 2. Fetch the active poll to update the message UI to "Ended"
+            const { data: poll } = await supabaseRetry(() =>
+                supabase.from('auto_resume')
+                    .select('*')
+                    .order('id', { ascending: false })
+                    .limit(1)
+                    .single()
+            );
+
+            if (poll) {
+                const channel = await client.channels.fetch(poll.channel_id);
+                const pollMessage = await channel.messages.fetch(poll.message_id);
+                
+                // Update message to static "Ended" state
+                const characters = poll.poll_list
+                    .split(/(?=:female_sign:|:male_sign:|♀️|♂️|\n)/)
+                    .map(s => s.trim())
+                    .filter(s => s.length > 1);
+                
+                const results = await pollService.getPollResults(pollMessage, characters);
+                const content = await pollService.generateMessageContent(0, results, characters, true);
+                await pollMessage.edit({ content });
+            }
+
+            // 3. Clear the database records
             const { error: rpcError } = await supabaseRetry(() =>
                 supabase.rpc('truncate_poll_tables')
             );
@@ -101,7 +130,6 @@ module.exports = function setupPollRoutes(app, client, supabase, supabaseRetry) 
         const e = h.releaseEmojis;
 
         try {
-            // Get the current poll details to identify the correct thread/list
             const { data: poll } = await supabaseRetry(() =>
                 supabase.from('auto_resume')
                     .select('*')
@@ -110,16 +138,16 @@ module.exports = function setupPollRoutes(app, client, supabase, supabaseRetry) 
                     .single()
             );
             
-            if (!poll) return res.status(404).json({ error: "No active poll found in auto_resume." });
+            if (!poll) return res.status(404).json({ error: "No active poll found." });
 
-            // Update the winner in the DB
+            // Update winner status in database
             await supabaseRetry(() =>
                 supabase.from('final_votes')
                     .update({ selected_at: new Date().toISOString() })
                     .filter('character_name', 'ilike', `%${winner_name}%`)
             );
 
-            // Fetch updated vote list for the scoreboard
+            // Fetch current standings
             const { data: voteData } = await supabaseRetry(() =>
                 supabase.from('final_votes')
                     .select('character_name, score, selected_at')
@@ -130,14 +158,14 @@ module.exports = function setupPollRoutes(app, client, supabase, supabaseRetry) 
             const pollMessage = await channel.messages.fetch(poll.message_id);
             const thread = pollMessage.thread;
             
-            if (!thread) return res.status(404).json({ error: "Discussion thread not found." });
+            if (!thread) return res.status(404).json({ error: "Thread not found." });
 
             const characters = poll.poll_list
                 .split(/(?=:female_sign:|:male_sign:|♀️|♂️|\n)/)
                 .map(s => s.trim().replace(/:female_sign:/g, '♀️').replace(/:male_sign:/g, '♂️'))
                 .filter(s => s.length > 1);
 
-            // Clean scoreboard header
+            // Build the scoreboard without the random arrow prefix
             let scoreboard = `:trophy: **${winner_name}** has been marked as a winner! ${e.CONFETTI}\n\n`;
             
             characters.forEach((char, index) => {
@@ -152,15 +180,11 @@ module.exports = function setupPollRoutes(app, client, supabase, supabaseRetry) 
                 const isWinner = record && record.selected_at !== null;
                 const line = `${emoji} = ${score} -- ${char}`;
                 
-                // Wrap winners in spoilers
                 scoreboard += isWinner ? `||${line}||\n` : `${line}\n`;
             });
 
-            // Random arrow for the announcement prefix
-            const randomUpArrow = e.UP_ARROWS[Math.floor(Math.random() * e.UP_ARROWS.length)];
-            
-            // Send to thread
-            await thread.send(`${randomUpArrow} ${scoreboard}`);
+            // Send to thread without the random arrow
+            await thread.send(scoreboard);
             
             res.json({ success: true });
         } catch (err) {
