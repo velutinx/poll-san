@@ -1,6 +1,6 @@
 // this is poll-san/web/routes/monitoring.js
 
-const SUPPORTER_ROLE_ID = '1466155709547675795';
+const h = require('../../utils/helpers'); // Import helpers
 
 function parseCharacterList(pollList) {
     if (!pollList) return [];
@@ -16,12 +16,11 @@ async function fetchMembersWithRetry(getGuildMembers, guild, maxRetries = 3) {
             return await getGuildMembers(guild);
         } catch (err) {
             lastError = err;
-            // Check for Gateway rate limit (code 50001 or message includes "rate limited")
             const isRateLimit = err.code === 50001 || 
                                 (err.message && err.message.includes('rate limited')) ||
                                 (err.name === 'GatewayRateLimitError');
             if (isRateLimit && attempt < maxRetries - 1) {
-                const delay = Math.pow(2, attempt) * 1000; // 1s, 2s, 4s
+                const delay = Math.pow(2, attempt) * 1000; 
                 console.log(`Rate limited, retrying in ${delay}ms (attempt ${attempt + 1}/${maxRetries})`);
                 await new Promise(resolve => setTimeout(resolve, delay));
                 continue;
@@ -39,7 +38,6 @@ module.exports = function setupMonitoringRoutes(app, client, supabase, supabaseR
             const days = parseInt(req.query.days) || 10;
             const guild = await client.guilds.fetch(process.env.GUILD_ID);
             
-            // Fetch members with retry
             let members;
             try {
                 if (typeof getGuildMembers === 'function') {
@@ -49,7 +47,6 @@ module.exports = function setupMonitoringRoutes(app, client, supabase, supabaseR
                 }
             } catch (err) {
                 console.error('Member fetch failed after retries:', err);
-                // Check if it's a rate limit error to send appropriate response
                 if (err.name === 'GatewayRateLimitError' || (err.message && err.message.includes('rate limited'))) {
                     return res.status(429).json({ error: 'Discord API rate limited. Please wait a moment and try again.' });
                 }
@@ -58,7 +55,6 @@ module.exports = function setupMonitoringRoutes(app, client, supabase, supabaseR
             
             const now = Date.now();
 
-            // Get active poll character list
             const { data: activePoll, error: pollError } = await supabaseRetry(() =>
                 supabase.from('auto_resume')
                     .select('poll_list')
@@ -73,7 +69,6 @@ module.exports = function setupMonitoringRoutes(app, client, supabase, supabaseR
                 characterList = parseCharacterList(activePoll.poll_list);
             }
 
-            // Get votes for the active poll
             const { data: votes, error: voteError } = await supabaseRetry(() =>
                 supabase.from('votes_discord')
                     .select('user_id, option_id')
@@ -81,7 +76,6 @@ module.exports = function setupMonitoringRoutes(app, client, supabase, supabaseR
             );
             if (voteError) console.error('Vote fetch error:', voteError);
 
-            // Build vote map
             const voteMap = {};
             if (votes) {
                 for (const v of votes) {
@@ -94,45 +88,41 @@ module.exports = function setupMonitoringRoutes(app, client, supabase, supabaseR
                 }
             }
 
-// Inside app.get('/api/monitoring/members') – replace the membersList building loop
+            const membersList = [];
+            for (const [id, member] of members) {
+                // CHANGED: Using helper ID for the supporter role check
+                if (member.roles.cache.has(h.ids.roles.supporter)) continue;
 
-const membersList = [];
-for (const [id, member] of members) {
-    // Skip supporters
-    if (member.roles.cache.has(SUPPORTER_ROLE_ID)) continue;
+                let freshMember = member;
+                try {
+                    freshMember = await guild.members.fetch({ user: id, force: false }); 
+                } catch (err) {
+                    console.warn(`Failed to refresh member ${id}:`, err.message);
+                }
+                
+                const joinedAt = freshMember.joinedTimestamp;
+                const accountCreatedAt = freshMember.user.createdTimestamp;
+                const daysSinceJoin = joinedAt ? Math.floor((now - joinedAt) / (24 * 60 * 60 * 1000)) : null;
+                const accountAge = accountCreatedAt ? Math.floor((now - accountCreatedAt) / (24 * 60 * 60 * 1000)) : null;
 
-    // Force-fetch the member to get latest nickname (cached but ensures we have nickname)
-    let freshMember = member;
-    try {
-        freshMember = await guild.members.fetch({ user: id, force: false }); // false to use cache if available
-    } catch (err) {
-        console.warn(`Failed to refresh member ${id}:`, err.message);
-    }
-    
-    const joinedAt = freshMember.joinedTimestamp;
-    const accountCreatedAt = freshMember.user.createdTimestamp;
-    const daysSinceJoin = joinedAt ? Math.floor((now - joinedAt) / (24 * 60 * 60 * 1000)) : null;
-    const accountAge = accountCreatedAt ? Math.floor((now - accountCreatedAt) / (24 * 60 * 60 * 1000)) : null;
+                const isNew = (accountAge !== null && accountAge <= days) || (daysSinceJoin !== null && daysSinceJoin <= days);
+                if (!isNew) continue;
 
-    const isNew = (accountAge !== null && accountAge <= days) || (daysSinceJoin !== null && daysSinceJoin <= days);
-    if (!isNew) continue;
+                const vote = voteMap[id] || null;
+                membersList.push({
+                    userId: id,
+                    username: freshMember.user.username,
+                    nickname: freshMember.nickname || freshMember.user.username,
+                    accountCreatedAt: accountCreatedAt ? new Date(accountCreatedAt).toISOString() : null,
+                    accountAge: accountAge,
+                    joinedAt: joinedAt ? new Date(joinedAt).toISOString() : null,
+                    daysSinceJoin: daysSinceJoin,
+                    voted: !!vote,
+                    voteCharacter: vote ? vote.characterName : null,
+                    voteOptionId: vote ? vote.option_id : null
+                });
+            }
 
-    const vote = voteMap[id] || null;
-    membersList.push({
-        userId: id,
-        username: freshMember.user.username,
-        nickname: freshMember.nickname || freshMember.user.username, // now nickname should be correct
-        accountCreatedAt: accountCreatedAt ? new Date(accountCreatedAt).toISOString() : null,
-        accountAge: accountAge,
-        joinedAt: joinedAt ? new Date(joinedAt).toISOString() : null,
-        daysSinceJoin: daysSinceJoin,
-        voted: !!vote,
-        voteCharacter: vote ? vote.characterName : null,
-        voteOptionId: vote ? vote.option_id : null
-    });
-}
-
-            // Sort by newest (smallest age first)
             membersList.sort((a, b) => {
                 const aRecent = Math.min(a.accountAge ?? Infinity, a.daysSinceJoin ?? Infinity);
                 const bRecent = Math.min(b.accountAge ?? Infinity, b.daysSinceJoin ?? Infinity);
