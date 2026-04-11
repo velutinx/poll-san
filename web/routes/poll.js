@@ -1,14 +1,6 @@
 // this is poll-san/web/routes/poll.js
 
 module.exports = function setupPollRoutes(app, client, supabase, supabaseRetry) {
-    // Cache for poll results (shared between endpoints)
-    let cachedPollResultsData = null;
-    let cachedPollResultsTime = 0;
-    const POLL_CACHE_TTL = 60000; // 1 minute
-
-// poll-san/web/routes/poll.js
-
-module.exports = function setupPollRoutes(app, client, supabase, supabaseRetry) {
     const h = require('../../utils/helpers');
     
     // Cache for poll results (shared between endpoints)
@@ -49,12 +41,8 @@ module.exports = function setupPollRoutes(app, client, supabase, supabaseRetry) 
                 isCommand: () => true
             };
 
-            // Clear previous final_votes before starting new
             await supabaseRetry(() => supabase.from('final_votes').delete().neq('option_id', 0));
-            
-            // Execute the start poll logic
             startPollLogic(mockInteraction);
-            
             res.json({ success: true });
         } catch (err) {
             console.error('Trigger poll error:', err);
@@ -63,7 +51,7 @@ module.exports = function setupPollRoutes(app, client, supabase, supabaseRetry) 
     });
 
     // ────────────────────────────────────────────────
-    // POLL RESULTS DATA (for dashboard)
+    // POLL RESULTS DATA
     // ────────────────────────────────────────────────
     app.get('/api/poll-results-data', async (req, res) => {
         try {
@@ -85,22 +73,17 @@ module.exports = function setupPollRoutes(app, client, supabase, supabaseRetry) 
     });
 
     // ────────────────────────────────────────────────
-    // STOP POLL - Clean version with RPC
+    // STOP POLL
     // ────────────────────────────────────────────────
     app.post('/api/stop-poll', async (req, res) => {
         try {
-            // Use RPC to bypass RLS and clear all relevant tables at once
             const { error: rpcError } = await supabaseRetry(() =>
                 supabase.rpc('truncate_poll_tables')
             );
-
             if (rpcError) throw rpcError;
 
-            // Invalidate dashboard cache
             cachedPollResultsData = null;
             cachedPollResultsTime = 0;
-
-            console.log('All poll tables cleared and cache invalidated');
             res.json({ success: true });
         } catch (err) {
             console.error('Stop poll error:', err);
@@ -116,7 +99,6 @@ module.exports = function setupPollRoutes(app, client, supabase, supabaseRetry) 
         const e = h.releaseEmojis;
 
         try {
-            // 1. Get current active poll details
             const { data: poll } = await supabaseRetry(() =>
                 supabase.from('auto_resume')
                     .select('*')
@@ -126,34 +108,28 @@ module.exports = function setupPollRoutes(app, client, supabase, supabaseRetry) 
             );
             if (!poll) return res.status(404).json({ error: "No active poll." });
 
-            // 2. Update the winner status in DB
             await supabaseRetry(() =>
                 supabase.from('final_votes')
                     .update({ selected_at: new Date().toISOString() })
                     .filter('character_name', 'ilike', `%${winner_name}%`)
             );
 
-            // 3. Fetch fresh results for the announcement
             const { data: voteData } = await supabaseRetry(() =>
                 supabase.from('final_votes')
                     .select('character_name, score, selected_at')
                     .order('option_id', { ascending: true })
             );
 
-            // 4. Locate the Discord thread
             const channel = await client.channels.fetch(poll.channel_id);
             const pollMessage = await channel.messages.fetch(poll.message_id);
             const thread = pollMessage.thread;
             if (!thread) return res.status(404).json({ error: "Thread not found." });
 
-            // 5. Build characters array from the poll list
             const characters = poll.poll_list
                 .split(/(?=:female_sign:|:male_sign:|♀️|♂️|\n)/)
                 .map(s => s.trim().replace(/:female_sign:/g, '♀️').replace(/:male_sign:/g, '♂️'))
                 .filter(s => s.length > 1);
 
-            // 6. Build the Scoreboard Message
-            // Header: Now uses the custom animated confetti
             let scoreboard = `:trophy: **${winner_name}** has been marked as a winner! ${e.CONFETTI}\n\n`;
             
             characters.forEach((char, index) => {
@@ -171,10 +147,7 @@ module.exports = function setupPollRoutes(app, client, supabase, supabaseRetry) 
                 scoreboard += isWinner ? `||${line}||\n` : `${line}\n`;
             });
 
-            // 7. Pick a random up arrow for the announcement
             const randomUpArrow = e.UP_ARROWS[Math.floor(Math.random() * e.UP_ARROWS.length)];
-
-            // Send the final result to the thread
             await thread.send(`${randomUpArrow} ${scoreboard}`);
             
             res.json({ success: true });
@@ -183,4 +156,4 @@ module.exports = function setupPollRoutes(app, client, supabase, supabaseRetry) 
             res.status(500).json({ error: err.message });
         }
     });
-};
+}; // Closing the module.exports function correctly now
