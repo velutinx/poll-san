@@ -2,7 +2,7 @@
 
 const supabase = require('../services/supabase');
 const { parseMessage } = require('../services/parserService');
-const { TARGET_ROLES } = require('../services/roleCleaner');
+const h = require('../utils/helpers'); // Switch to your new helpers file
 
 module.exports = async (member) => {
     // --- 1. WELCOME MESSAGE LOGIC ---
@@ -18,10 +18,8 @@ module.exports = async (member) => {
             if (channel) {
                 const finalMessage = parseMessage(settings.welcome_message, member);
                 
-                // We capture the sent message in a variable called 'sent'
                 const sent = await channel.send(finalMessage);
                 
-                // Add the wave reaction to that specific message
                 await sent.react('👋').catch(err => console.error("Failed to react:", err));
             }
         }
@@ -35,14 +33,22 @@ module.exports = async (member) => {
             const freshMember = await member.guild.members.fetch(member.id).catch(() => null);
             if (!freshMember) return;
 
-            const rolesToRemove = freshMember.roles.cache.filter(role => TARGET_ROLES.includes(role.id));
-            if (rolesToRemove.size > 0) {
-                await freshMember.roles.remove(rolesToRemove);
-                console.log(`⚡ Instant-removed ${rolesToRemove.size} restricted roles from ${freshMember.user.tag}`);
+            // Updated to use h.ids.roles.restricted from your helpers.js
+            const restrictedRoles = h.ids.roles.restricted;
+            
+            if (restrictedRoles && Array.isArray(restrictedRoles)) {
+                const rolesToRemove = freshMember.roles.cache.filter(role => 
+                    restrictedRoles.includes(role.id)
+                );
+
+                if (rolesToRemove.size > 0) {
+                    await freshMember.roles.remove(rolesToRemove);
+                    console.log(`⚡ Instant-removed ${rolesToRemove.size} restricted roles from ${freshMember.user.tag}`);
+                }
             }
         } catch (e) {
             if (e.code === 50013) {
-                console.error('❌ Permission Error: Poll-san role must be higher than SubscribeStar roles.');
+                console.error('❌ Permission Error: Poll-san role must be higher than the restricted roles.');
             } else {
                 console.error('Role Removal Error (Instant):', e);
             }
