@@ -2,7 +2,7 @@
 
 const supabase = require('../services/supabase');
 const { parseMessage } = require('../services/parserService');
-const h = require('../utils/helpers'); // Switch to your new helpers file
+const h = require('../utils/helpers');
 
 module.exports = async (member) => {
     // --- 1. WELCOME MESSAGE LOGIC ---
@@ -16,11 +16,14 @@ module.exports = async (member) => {
         if (settings && settings.welcome_channel_id && settings.welcome_message) {
             const channel = await member.guild.channels.fetch(settings.welcome_channel_id);
             if (channel) {
-                const finalMessage = parseMessage(settings.welcome_message, member);
+                // Prepending the member mention so you can click their profile easily
+                const parsedContent = parseMessage(settings.welcome_message, member);
+                const finalMessage = `<@${member.id}> ${parsedContent}`;
                 
                 const sent = await channel.send(finalMessage);
                 
-                await sent.react('👋').catch(err => console.error("Failed to react:", err));
+                // Uses the ID from helpers to react with the animated wave
+                await sent.react(h.releaseEmojis.waveId).catch(err => console.error("Failed to react:", err));
             }
         }
     } catch (err) {
@@ -33,7 +36,6 @@ module.exports = async (member) => {
             const freshMember = await member.guild.members.fetch(member.id).catch(() => null);
             if (!freshMember) return;
 
-            // Updated to use h.ids.roles.restricted from your helpers.js
             const restrictedRoles = h.ids.roles.restricted;
             
             if (restrictedRoles && Array.isArray(restrictedRoles)) {
