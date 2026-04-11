@@ -1,5 +1,7 @@
 // this is poll-san/services/parserService.js
 
+const h = require('../utils/helpers');
+
 module.exports = {
     parseMessage: (text, member) => {
         if (!text) return "";
@@ -27,18 +29,30 @@ module.exports = {
         }
 
         // 2. Data to insert
-        // Use member.user.username for the global account handle (velutinxx)
         const globalUsername = member.user.username; 
         const mention = `<@${member.id}>`;
         const serverName = member.guild.name;
         const count = member.guild.memberCount.toLocaleString();
 
-        // 3. Replace Tags in the chosen string
-        // We use the global username for {user(proper)} as requested
+        // 3. Animated Arrow Logic
+        const e = h.releaseEmojis;
+        const randomDown = e.DOWN_ARROWS[Math.floor(Math.random() * e.DOWN_ARROWS.length)];
+        const randomUp = e.UP_ARROWS[Math.floor(Math.random() * e.UP_ARROWS.length)];
+
+        // 4. Replace Tags in the chosen string
         message = message.split('{user(proper)}').join(globalUsername);
         message = message.split('{user}').join(mention);
         message = message.split('{server}').join(serverName);
         message = message.split('{members}').join(count);
+        
+        // Custom Tags for your new animated arrows
+        message = message.split('{random_down_arrow}').join(randomDown);
+        message = message.split('{random_up_arrow}').join(randomUp);
+        
+        // Support for other static release emojis if needed
+        message = message.split('{link_icon}').join(e.LINK);
+        message = message.split('{confetti}').join(e.CONFETTI);
+        message = message.split('{hourglass}').join(e.HOURGLASS);
 
         return message;
     }
