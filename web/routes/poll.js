@@ -41,7 +41,9 @@ module.exports = function setupPollRoutes(app, client, supabase, supabaseRetry) 
                 isCommand: () => true
             };
 
+            // Clear final votes before starting a fresh poll
             await supabaseRetry(() => supabase.from('final_votes').delete().neq('option_id', 0));
+            
             startPollLogic(mockInteraction);
             res.json({ success: true });
         } catch (err) {
@@ -99,6 +101,7 @@ module.exports = function setupPollRoutes(app, client, supabase, supabaseRetry) 
         const e = h.releaseEmojis;
 
         try {
+            // Get the current poll details to identify the correct thread/list
             const { data: poll } = await supabaseRetry(() =>
                 supabase.from('auto_resume')
                     .select('*')
@@ -106,14 +109,17 @@ module.exports = function setupPollRoutes(app, client, supabase, supabaseRetry) 
                     .limit(1)
                     .single()
             );
-            if (!poll) return res.status(404).json({ error: "No active poll." });
+            
+            if (!poll) return res.status(404).json({ error: "No active poll found in auto_resume." });
 
+            // Update the winner in the DB
             await supabaseRetry(() =>
                 supabase.from('final_votes')
                     .update({ selected_at: new Date().toISOString() })
                     .filter('character_name', 'ilike', `%${winner_name}%`)
             );
 
+            // Fetch updated vote list for the scoreboard
             const { data: voteData } = await supabaseRetry(() =>
                 supabase.from('final_votes')
                     .select('character_name, score, selected_at')
@@ -123,13 +129,15 @@ module.exports = function setupPollRoutes(app, client, supabase, supabaseRetry) 
             const channel = await client.channels.fetch(poll.channel_id);
             const pollMessage = await channel.messages.fetch(poll.message_id);
             const thread = pollMessage.thread;
-            if (!thread) return res.status(404).json({ error: "Thread not found." });
+            
+            if (!thread) return res.status(404).json({ error: "Discussion thread not found." });
 
             const characters = poll.poll_list
                 .split(/(?=:female_sign:|:male_sign:|♀️|♂️|\n)/)
                 .map(s => s.trim().replace(/:female_sign:/g, '♀️').replace(/:male_sign:/g, '♂️'))
                 .filter(s => s.length > 1);
 
+            // Clean scoreboard header
             let scoreboard = `:trophy: **${winner_name}** has been marked as a winner! ${e.CONFETTI}\n\n`;
             
             characters.forEach((char, index) => {
@@ -144,10 +152,14 @@ module.exports = function setupPollRoutes(app, client, supabase, supabaseRetry) 
                 const isWinner = record && record.selected_at !== null;
                 const line = `${emoji} = ${score} -- ${char}`;
                 
+                // Wrap winners in spoilers
                 scoreboard += isWinner ? `||${line}||\n` : `${line}\n`;
             });
 
+            // Random arrow for the announcement prefix
             const randomUpArrow = e.UP_ARROWS[Math.floor(Math.random() * e.UP_ARROWS.length)];
+            
+            // Send to thread
             await thread.send(`${randomUpArrow} ${scoreboard}`);
             
             res.json({ success: true });
@@ -156,4 +168,4 @@ module.exports = function setupPollRoutes(app, client, supabase, supabaseRetry) 
             res.status(500).json({ error: err.message });
         }
     });
-}; // Closing the module.exports function correctly now
+};
