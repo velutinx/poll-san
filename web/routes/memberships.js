@@ -1,5 +1,7 @@
 // this is poll-san/web/routes/memberships.js
 
+const h = require('../../utils/helpers'); // Import helpers
+
 module.exports = function setupMembershipsRoute(app, client, supabase, supabaseRetry) {
   // GET endpoint – now updates discord_tag in DB
   app.get('/api/memberships', async (req, res) => {
@@ -17,7 +19,7 @@ module.exports = function setupMembershipsRoute(app, client, supabase, supabaseR
         const daysLeft = Math.max(0, Math.ceil((expiresAt - now) / (1000 * 60 * 60 * 24)));
 
         let nickname = "User Left Server";
-        let discordTag = sub.discord_tag || "Unknown"; // use stored tag if present
+        let discordTag = sub.discord_tag || "Unknown"; 
         let userId = sub.discord_id;
 
         try {
@@ -26,7 +28,6 @@ module.exports = function setupMembershipsRoute(app, client, supabase, supabaseR
           discordTag = member.user.tag;
           userId = member.user.id;
 
-          // Update stored tag if missing or changed
           if (sub.discord_tag !== discordTag) {
             await supabaseRetry(() =>
               supabase.from('memberships')
@@ -36,7 +37,6 @@ module.exports = function setupMembershipsRoute(app, client, supabase, supabaseR
             console.log(`✅ Updated discord_tag for ${sub.discord_id} to ${discordTag}`);
           }
         } catch (err) {
-          // Member not in server – use stored tag if any
           discordTag = sub.discord_tag || "Unknown";
           userId = sub.discord_id;
         }
@@ -58,7 +58,7 @@ module.exports = function setupMembershipsRoute(app, client, supabase, supabaseR
     }
   });
 
-  // POST endpoint: capture membership order (unchanged, but now respects existing tag)
+  // POST endpoint: capture membership order
   app.post('/api/capture-membership-order', async (req, res) => {
     console.log('🔥🔥🔥 CAPTURE ENDPOINT HIT! 🔥🔥🔥');
     try {
@@ -72,7 +72,6 @@ module.exports = function setupMembershipsRoute(app, client, supabase, supabaseR
       const expirationDate = new Date();
       expirationDate.setDate(now.getDate() + 30);
 
-      // Note: we don't have the tag here – it will be filled by the GET endpoint later
       const { error } = await supabaseRetry(() =>
         supabase.from('memberships')
           .upsert({
@@ -81,7 +80,6 @@ module.exports = function setupMembershipsRoute(app, client, supabase, supabaseR
             order_id: orderId,
             updated_at: now.toISOString(),
             expires_at: expirationDate.toISOString()
-            // discord_tag is omitted; will be updated on next dashboard load
           }, { onConflict: 'discord_id' })
       );
 
@@ -96,14 +94,8 @@ module.exports = function setupMembershipsRoute(app, client, supabase, supabaseR
         const member = await guild.members.fetch(discordId).catch(() => null);
 
         if (member) {
-          const tierRoles = {
-            "1": "1465444240845963326",  // ✨ Bronze
-            "2": "1465670134743044139",  // ✨ Copper
-            "3": "1465904476417163457",  // ✨ Silver
-            "4": "1465904548320378956",  // ✨ Gold
-            "5": "1465952085026541804"   // ✨ Platinum
-          };
-          const roleId = tierRoles[String(tier)];
+          // CHANGED: Using centralized tier roles from helpers
+          const roleId = h.ids.tiers[String(tier)];
           if (roleId) {
             await member.roles.add(roleId);
             console.log(`✅ Role added to ${member.user.tag}`);
