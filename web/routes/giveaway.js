@@ -1,6 +1,6 @@
 // this is poll-san/web/routes/giveaway.js
 
-const SUPPORTER_ROLE_ID = '1466155709547675795';
+const h = require('../../utils/helpers'); // Import helpers
 
 function parseCharacterList(pollList) {
     if (!pollList) return [];
@@ -81,7 +81,9 @@ module.exports = function setupGiveawayRoutes(app, client, supabase, supabaseRet
                         accountAge = member.user.createdTimestamp
                             ? Math.floor((Date.now() - member.user.createdTimestamp) / (24 * 60 * 60 * 1000))
                             : null;
-                        isSupporter = member.roles.cache.has(SUPPORTER_ROLE_ID);
+                        
+                        // CHANGED: Using centralized helper for supporter check
+                        isSupporter = member.roles.cache.has(h.ids.roles.supporter);
                     }
 
                 } catch (err) {
@@ -148,7 +150,6 @@ module.exports = function setupGiveawayRoutes(app, client, supabase, supabaseRet
             );
             if (updateError) throw updateError;
 
-            // Optional: delete their poll votes
             await supabaseRetry(() =>
                 supabase.from('votes_discord')
                     .delete()
