@@ -2,7 +2,7 @@
 
 const supabase = require('./supabase');
 const { supabaseRetry } = require('../utils/db');
-const h = require('../utils/helpers'); // Use the 'h' pattern for consistency
+const h = require('../utils/helpers');
 
 // Use a constant for the poll ID so it's easy to change later
 const CURRENT_POLL_ID = 'character_poll_new'; 
@@ -20,9 +20,6 @@ async function getPollResults(message, characters) {
     const rawDataForDB = [];
 
     if (cachedPollResults && (Date.now() - cachedPollTimestamp) < CACHE_TTL) {
-        if (Date.now() - lastCacheLogTime > CACHE_LOG_INTERVAL) {
-            lastCacheLogTime = Date.now();
-        }
         return cachedPollResults;
     }
 
@@ -75,8 +72,7 @@ async function getPollResults(message, characters) {
             const rawName = characters[i].replace(/:female_sign:|:male_sign:/g, m => m === ':female_sign:' ? '♀️' : '♂️');
             const isWinner = winnerMap[optionId] || false;
 
-            // UPDATED: Using h.emojis
-            let line = `${h.emojis[i]} \`  ${totalScore.toFixed(2).padStart(5, ' ')}   ${rawName.padEnd(30)} \` \n`;
+            let line = `${h.emojis[i]} \`  ${totalScore.toFixed(2).padStart(5, ' ')}    ${rawName.padEnd(30)} \` \n`;
             if (isWinner) {
                 line = `||${line}||`;
             }
@@ -108,15 +104,25 @@ async function getPollResults(message, characters) {
 }
 
 async function generateMessageContent(endTime, resultsText, characters) {
-    // UPDATED: Using h.formatTime
-    let header = `:hourglass_flowing_sand: Time remaining: **${h.formatTime(endTime - Date.now())}**\n\n`;
+    const e = h.releaseEmojis;
+    
+    // Pick a random down arrow for the footer
+    const randomDownArrow = e.DOWN_ARROWS[Math.floor(Math.random() * e.DOWN_ARROWS.length)];
+    
+    // 1. Header with Animated Hourglass
+    let header = `${e.HOURGLASS} Time remaining: **${h.formatTime(endTime - Date.now())}**\n\n`;
+    
+    // 2. Body (Results or Initial State)
     let body = resultsText || characters.map((char, i) => {
         const name = char.replace(/:female_sign:|:male_sign:/g, m => m === ':female_sign:' ? '♀️' : '♂️');
-        // UPDATED: Using h.emojis
-        return `${h.emojis[i]} \`     0.00   ${name.padEnd(30)} \` \n`;
+        return `${h.emojis[i]} \`      0.00   ${name.padEnd(30)} \` \n`;
     }).join('');
     
-    return header + body + `\nDiscord weighted vote + :link: **[Website poll results](https://velutinx.com/poll)** (Click to vote there too!)\n\n:point_down: Click the thread below for character images & discussion!`;
+    // 3. Footer with Animated Link and Random Down Arrow
+    const footer = `\nDiscord weighted vote + ${e.LINK} **[Website poll results](https://velutinx.com/poll)** (Click to vote there too!)\n\n` +
+                   `${randomDownArrow} Click the thread below for character images & discussion!`;
+    
+    return header + body + footer;
 }
 
 async function getFinalPollMessageContent(pollList) {
@@ -126,8 +132,10 @@ async function getFinalPollMessageContent(pollList) {
         .filter(s => s.length > 0);
 
     const resultsString = await getPollResults(null, characters);
+    const e = h.releaseEmojis;
+    const randomDownArrow = e.DOWN_ARROWS[Math.floor(Math.random() * e.DOWN_ARROWS.length)];
 
-    return `🛑 **Poll has ended.**\n\n${resultsString}\n\nDiscord weighted vote + :link: **[Website poll results](https://velutinx.com/poll)**\n\n:point_down: Click the thread below for character images & discussion!`;
+    return `🛑 **Poll has ended.**\n\n${resultsString}\n\nDiscord weighted vote + ${e.LINK} **[Website poll results](https://velutinx.com/poll)**\n\n${randomDownArrow} Click the thread below for character images & discussion!`;
 }
 
 function runPollInterval(pollMessage, endTime, characters) {
@@ -138,7 +146,8 @@ function runPollInterval(pollMessage, endTime, characters) {
             try {
                 const results = await getPollResults(pollMessage, characters);
                 const content = await generateMessageContent(endTime, results, characters);
-                await pollMessage.edit({ content: content.replace(/:hourglass_flowing_sand: .*/, "🛑 **Poll Ended**") });
+                // Replace the hourglass line with the Stop emoji when finished
+                await pollMessage.edit({ content: content.replace(/.*Time remaining.*/, "🛑 **Poll Ended**") });
             } catch (e) {
                 console.error("Error ending poll:", e);
             }
@@ -155,7 +164,7 @@ function runPollInterval(pollMessage, endTime, characters) {
                 const content = await generateMessageContent(endTime, results, characters);
                 await pollMessage.edit({ content });
             } catch (e) {
-                if (e.code === 10008) { 
+                if (e.code === 10008) { // Message deleted
                     clearInterval(timer);
                     try {
                         await supabaseRetry(() =>
