@@ -12,8 +12,8 @@ let cachedPollResults = null;
 let cachedPollTimestamp = 0;
 const CACHE_TTL = 60000; // 1 minute
 
-let lastCacheLogTime = 0;
-const CACHE_LOG_INTERVAL = 60000;
+// Module-level timer variable to allow stopping from outside
+let activePollTimer = null;
 
 async function getPollResults(message, characters) {
     const displayResults = [];
@@ -24,29 +24,23 @@ async function getPollResults(message, characters) {
     }
 
     try {
-        // 1. Fetch Discord votes
-        const { data: discordVotes, error: dError } = await supabaseRetry(() =>
+        const { data: discordVotes } = await supabaseRetry(() =>
             supabase.from('votes_discord')
                 .select('option_id, weight')
                 .eq('poll_id', CURRENT_POLL_ID)
         );
-        if (dError) throw dError;
 
-        // 2. Fetch website votes
-        const { data: websiteVotes, error: wError } = await supabaseRetry(() =>
+        const { data: websiteVotes } = await supabaseRetry(() =>
             supabase.from('website_voting')
                 .select('option_id')
                 .eq('poll_id', CURRENT_POLL_ID)
         );
-        if (wError) throw wError;
 
-        // 3. Fetch winner status
-        const { data: winnerData, error: winnerError } = await supabaseRetry(() =>
+        const { data: winnerData } = await supabaseRetry(() =>
             supabase.from('final_votes')
                 .select('option_id, selected_at')
                 .eq('poll_id', CURRENT_POLL_ID)
         );
-        if (winnerError) throw winnerError;
 
         const winnerMap = {};
         if (winnerData) {
@@ -98,31 +92,42 @@ async function getPollResults(message, characters) {
 
     } catch (err) {
         console.error("Error calculating poll results:", err);
-        if (cachedPollResults) return cachedPollResults;
-        return "Error loading results...";
+        return cachedPollResults || "Error loading results...";
     }
 }
 
-async function generateMessageContent(endTime, resultsText, characters) {
+/**
+ * Generates the message content. 
+ * @param {boolean} isEnded - If true, replaces the timer with a static "Poll Ended" header.
+ */
+async function generateMessageContent(endTime, resultsText, characters, isEnded = false) {
     const e = h.releaseEmojis;
-    
-    // Pick a random down arrow for the footer
     const randomDownArrow = e.DOWN_ARROWS[Math.floor(Math.random() * e.DOWN_ARROWS.length)];
     
-    // 1. Header with Animated Hourglass
-    let header = `${e.HOURGLASS} Time remaining: **${h.formatTime(endTime - Date.now())}**\n\n`;
+    // 1. Header (Dynamic Timer vs Static Ended)
+    const header = isEnded 
+        ? `🛑 **Poll Ended**\n\n` 
+        : `${e.HOURGLASS} Time remaining: **${h.formatTime(endTime - Date.now())}**\n\n`;
     
-    // 2. Body (Results or Initial State)
-    let body = resultsText || characters.map((char, i) => {
+    // 2. Body
+    const body = resultsText || characters.map((char, i) => {
         const name = char.replace(/:female_sign:|:male_sign:/g, m => m === ':female_sign:' ? '♀️' : '♂️');
         return `${h.emojis[i]} \`      0.00   ${name.padEnd(30)} \` \n`;
     }).join('');
     
-    // 3. Footer with Animated Link and Random Down Arrow
+    // 3. Footer
     const footer = `\nDiscord weighted vote + ${e.LINK} **[Website poll results](https://velutinx.com/poll)** (Click to vote there too!)\n\n` +
                    `${randomDownArrow} Click the thread below for character images & discussion!`;
     
     return header + body + footer;
+}
+
+function forceStopPoll() {
+    if (activePollTimer) {
+        clearInterval(activePollTimer);
+        activePollTimer = null;
+        console.log("Poll interval cleared.");
+    }
 }
 
 async function getFinalPollMessageContent(pollList) {
@@ -139,44 +144,40 @@ async function getFinalPollMessageContent(pollList) {
 }
 
 function runPollInterval(pollMessage, endTime, characters) {
-    const timer = setInterval(async () => {
+    // Clear any existing timer before starting a new one
+    forceStopPoll();
+
+    activePollTimer = setInterval(async () => {
         const now = Date.now();
-        if (now >= endTime) {
-            clearInterval(timer);
-            try {
-                const results = await getPollResults(pollMessage, characters);
-                const content = await generateMessageContent(endTime, results, characters);
-                // Replace the hourglass line with the Stop emoji when finished
-                await pollMessage.edit({ content: content.replace(/.*Time remaining.*/, "🛑 **Poll Ended**") });
-            } catch (e) {
-                console.error("Error ending poll:", e);
-            }
-            try {
+        const isFinished = now >= endTime;
+
+        try {
+            const results = await getPollResults(pollMessage, characters);
+            const content = await generateMessageContent(endTime, results, characters, isFinished);
+            
+            await pollMessage.edit({ content });
+
+            if (isFinished) {
+                forceStopPoll();
                 await supabaseRetry(() =>
                     supabase.from('auto_resume').delete().eq('message_id', pollMessage.id)
                 );
-            } catch (err) {
-                console.error("Error deleting auto_resume record:", err);
             }
-        } else {
-            try {
-                const results = await getPollResults(pollMessage, characters);
-                const content = await generateMessageContent(endTime, results, characters);
-                await pollMessage.edit({ content });
-            } catch (e) {
-                if (e.code === 10008) { // Message deleted
-                    clearInterval(timer);
-                    try {
-                        await supabaseRetry(() =>
-                            supabase.from('auto_resume').delete().eq('message_id', pollMessage.id)
-                        );
-                    } catch (err) {
-                        console.error("Error deleting auto_resume record:", err);
-                    }
-                }
+        } catch (e) {
+            if (e.code === 10008) { // Message deleted
+                forceStopPoll();
+                await supabaseRetry(() =>
+                    supabase.from('auto_resume').delete().eq('message_id', pollMessage.id)
+                );
             }
         }
     }, 10000); 
 }
 
-module.exports = { getPollResults, generateMessageContent, runPollInterval, getFinalPollMessageContent };
+module.exports = { 
+    getPollResults, 
+    generateMessageContent, 
+    runPollInterval, 
+    getFinalPollMessageContent,
+    forceStopPoll 
+};
