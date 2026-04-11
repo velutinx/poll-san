@@ -2,34 +2,30 @@
 
 const supabase = require('./supabase');
 const db = require('../utils/db');
+const h = require('../utils/helpers'); // Centralized helpers
 const supabaseRetry = db.supabaseRetry;
 
-const TIER_ROLES = {
-  1: '1465444240845963326',
-  2: '1465670134743044139',
-  3: '1465904476417163457',
-  4: '1465904548320378956',
-  5: '1465952085026541804'
-};
-const SUPPORTER_ROLE = '1466155709547675795';
+// Use centralized IDs from helpers
+const TIER_ROLES = h.ids.roles.tiers; 
+const SUPPORTER_ROLE = h.ids.roles.supporter;
 
 // Translation dictionary for user messages
 const MESSAGES = {
   en: {
-    welcome_tier1: "🎉 Welcome to the {tierName} tier!\nYour membership is active until **{expiryDate}**.\n\nFeel free to explore the packs on **[this channel](https://discord.com/channels/1401446104498700358/1465937644394512516)** and **[join the server](https://discord.gg/XF363uYfSh)** if you haven't.\n\nPlease message DM dorem if you have any questions.",
-    welcome_tier2_5: "🎉 Welcome to the {tierName} tier!\nYour membership is active until **{expiryDate}**.\n\nFeel free to explore the packs on **[this channel](https://discord.com/channels/1401446104498700358/1465937644394512516)** and **[join the server](https://discord.gg/XF363uYfSh)** if you haven't.\n\nPlease message DM dorem to redeem your {currentMonth} billing cycle request."
+    welcome_tier1: `${h.releaseEmojis.CONFETTI} Welcome to the {tierName} tier!\nYour membership is active until **{expiryDate}**.\n\nFeel free to explore the packs on **[this channel](https://discord.com/channels/1401446104498700358/1465937644394512516)** and **[join the server](https://discord.gg/XF363uYfSh)** if you haven't.\n\nPlease message DM dorem if you have any questions.`,
+    welcome_tier2_5: `${h.releaseEmojis.CONFETTI} Welcome to the {tierName} tier!\nYour membership is active until **{expiryDate}**.\n\nFeel free to explore the packs on **[this channel](https://discord.com/channels/1401446104498700358/1465937644394512516)** and **[join the server](https://discord.gg/XF363uYfSh)** if you haven't.\n\nPlease message DM dorem to redeem your {currentMonth} billing cycle request.`
   },
   ja: {
-    welcome_tier1: "🎉 {tierName} ティアへようこそ！\nメンバーシップは **{expiryDate}** まで有効です。\n\nこちらの **[チャンネル](https://discord.com/channels/1401446104498700358/1465937644394512516)** でパックを探索したり、**[サーバーに参加](https://discord.gg/XF363uYfSh)** したりできます（まだの場合）。\n\nご質問があれば、DM dorem までお問い合わせください。",
-    welcome_tier2_5: "🎉 {tierName} ティアへようこそ！\nメンバーシップは **{expiryDate}** まで有効です。\n\nこちらの **[チャンネル](https://discord.com/channels/1401446104498700358/1465937644394512516)** でパックを探索したり、**[サーバーに参加](https://discord.gg/XF363uYfSh)** したりできます（まだの場合）。\n\n{currentMonth}のリクエストをご利用になるには、DM dorem までメッセージを送ってください。"
+    welcome_tier1: `${h.releaseEmojis.CONFETTI} {tierName} ティアへようこそ！\nメンバーシップは **{expiryDate}** まで有効です。\n\nこちらの **[チャンネル](https://discord.com/channels/1401446104498700358/1465937644394512516)** でパックを探索したり、**[サーバーに参加](https://discord.gg/XF363uYfSh)** したりできます（まだの場合）。\n\nご質問があれば、DM dorem までお問い合わせください。`,
+    welcome_tier2_5: `${h.releaseEmojis.CONFETTI} {tierName} ティアへようこそ！\nメンバーシップは **{expiryDate}** まで有効です。\n\nこちらの **[チャンネル](https://discord.com/channels/1401446104498700358/1465937644394512516)** でパックを探索したり、**[サーバーに参加](https://discord.gg/XF363uYfSh)** したりできます（まだの場合）。\n\n{currentMonth}のリクエストをご利用になるには、DM dorem までメッセージを送ってください。`
   },
   zh: {
-    welcome_tier1: "🎉 欢迎加入 {tierName} 等级！\n您的会员资格有效至 **{expiryDate}**。\n\n请随时在此 **[频道](https://discord.com/channels/1401446104498700358/1465937644394512516)** 探索图包，并 **[加入服务器](https://discord.gg/XF363uYfSh)**（如果尚未加入）。\n\n如有任何问题，请 DM dorem。",
-    welcome_tier2_5: "🎉 欢迎加入 {tierName} 等级！\n您的会员资格有效至 **{expiryDate}**。\n\n请随时在此 **[频道](https://discord.com/channels/1401446104498700358/1465937644394512516)** 探索图包，并 **[加入服务器](https://discord.gg/XF363uYfSh)**（如果尚未加入）。\n\n如需使用 {currentMonth} 的请求额度，请 DM dorem。"
+    welcome_tier1: `${h.releaseEmojis.CONFETTI} 欢迎加入 {tierName} 等级！\n您的会员资格有效至 **{expiryDate}**。\n\n请随时在此 **[频道](https://discord.com/channels/1401446104498700358/1465937644394512516)** 探索图包，并 **[加入服务器](https://discord.gg/XF363uYfSh)**（如果尚未加入）。\n\n如有任何问题，请 DM dorem。`,
+    welcome_tier2_5: `${h.releaseEmojis.CONFETTI} 欢迎加入 {tierName} 等级！\n您的会员资格有效至 **{expiryDate}**。\n\n请随时在此 **[频道](https://discord.com/channels/1401446104498700358/1465937644394512516)** 探索图包，并 **[加入服务器](https://discord.gg/XF363uYfSh)**（如果尚未加入）。\n\n如需使用 {currentMonth} 的请求额度，请 DM dorem。`
   },
   es: {
-    welcome_tier1: "🎉 ¡Bienvenido al nivel {tierName}!\nTu membresía está activa hasta el **{expiryDate}**.\n\nExplora los packs en **[este canal](https://discord.com/channels/1401446104498700358/1465937644394512516)** y **[únete al servidor](https://discord.gg/XF363uYfSh)** si aún no lo has hecho.\n\nSi tienes alguna pregunta, envía un DM dorem.",
-    welcome_tier2_5: "🎉 ¡Bienvenido al nivel {tierName}!\nTu membresía está activa hasta el **{expiryDate}**.\n\nExplora los packs en **[este canal](https://discord.com/channels/1401446104498700358/1465937644394512516)** y **[únete al servidor](https://discord.gg/XF363uYfSh)** si aún no lo has hecho.\n\nPara canjear tu solicitud del ciclo de facturación de {currentMonth}, envía un DM dorem."
+    welcome_tier1: `${h.releaseEmojis.CONFETTI} ¡Bienvenido al nivel {tierName}!\nTu membresía está activa hasta el **{expiryDate}**.\n\nExplora los packs en **[este canal](https://discord.com/channels/1401446104498700358/1465937644394512516)** y **[únete al servidor](https://discord.gg/XF363uYfSh)** si aún no lo has hecho.\n\nSi tienes alguna pregunta, envía un DM dorem.`,
+    welcome_tier2_5: `${h.releaseEmojis.CONFETTI} ¡Bienvenido al nivel {tierName}!\nTu membresía está activa hasta el **{expiryDate}**.\n\nExplora los packs en **[este canal](https://discord.com/channels/1401446104498700358/1465937644394512516)** y **[únete al servidor](https://discord.gg/XF363uYfSh)** si aún no lo has hecho.\n\nPara canjear tu solicitud del ciclo de facturación de {currentMonth}, envía un DM dorem.`
   }
 };
 
@@ -90,7 +86,6 @@ async function recordMessageSent(discordId, orderId, language, membership, disco
 
 async function sendDM(member, content, lang) {
   try {
-    // Add flags to suppress link embeds
     await member.send({ content, flags: ["SuppressEmbeds"] });
     console.log(`[MembershipSync] ✅ DM sent to ${member.user.tag} (lang: ${lang})`);
     return true;
@@ -104,6 +99,8 @@ async function sendMembershipMessage(client, discordId, membership) {
   const tier = membership.tier;
   const expiresAt = new Date(membership.expires_at);
   const orderId = membership.order_id;
+  
+  // Tier names mapping
   const tierNames = { 1: 'Bronze', 2: 'Copper', 3: 'Silver', 4: 'Gold', 5: 'Platinum' };
   const tierName = tierNames[tier] || `Tier ${tier}`;
 
@@ -113,18 +110,17 @@ async function sendMembershipMessage(client, discordId, membership) {
   const lang = await getLanguageForOrder(orderId);
   const t = MESSAGES[lang] || MESSAGES.en;
 
-  const OWNER_ID = '1380051214766444617';
+  const OWNER_ID = h.ids.users.dorem; // Use owner ID from helpers
   const ownerDmLink = `[DM dorem](https://discord.com/users/${OWNER_ID})`;
 
   const messageTemplate = (tier === 1) ? t.welcome_tier1 : t.welcome_tier2_5;
   const currentMonth = new Date().toLocaleString(lang, { month: 'long' });
 
-  // Replace placeholders and then replace the plain text "DM dorem"
   let message = messageTemplate
     .replace('{tierName}', tierName)
     .replace('{expiryDate}', formatDate(expiresAt))
     .replace('{currentMonth}', currentMonth)
-    .replace(/DM dorem/g, ownerDmLink);   // now template must have plain "DM dorem"
+    .replace(/DM dorem/g, ownerDmLink);
 
   try {
     const guild = await client.guilds.fetch(process.env.GUILD_ID);
@@ -135,16 +131,15 @@ async function sendMembershipMessage(client, discordId, membership) {
     if (success) {
       await recordMessageSent(discordId, orderId, lang, membership, discordName);
 
-      // Admin notification: link to the user's profile
+      // Admin notification
       try {
         const owner = await client.users.fetch(OWNER_ID);
         const userLink = `[${discordName}](https://discord.com/users/${discordId})`;
-        const adminMsg = `🔔 **New membership period started for** ${userLink}\n` +
+        const adminMsg = `${h.releaseEmojis.SPARKLES} **New membership period started for** ${userLink}\n` +
                          `**Tier:** ${tierName}\n` +
                          `**Expires on:** ${formatDate(expiresAt)}\n` +
                          `*Please reach out to them.*`;
         await owner.send({ content: adminMsg, flags: ["SuppressEmbeds"] });
-//        console.log(`[MembershipSync] Admin (owner) notified for ${discordName} (${discordId})`);
       } catch (adminErr) {
         console.error('[MembershipSync] Could not notify owner:', adminErr.message);
       }
@@ -155,6 +150,7 @@ async function sendMembershipMessage(client, discordId, membership) {
     console.error(`[MembershipSync] Could not send DM to ${discordId}:`, err.message);
   }
 }
+
 // ========== Helper functions for sync state ==========
 async function getLastActiveSet() {
   const { data, error } = await supabaseRetry(() =>
@@ -221,9 +217,9 @@ async function syncMembershipRoles(client) {
           const member = await guild.members.fetch(discordId).catch(() => null);
           const tier = userBestMembership.get(discordId).tier;
           const tag = member ? member.user.tag : 'Unknown';
-          console.log(`🎉 [MembershipSync] NEW ACTIVE MEMBER: ${tag} (${discordId}) - Tier ${tier}`);
+          console.log(`${h.releaseEmojis.CONFETTI} [MembershipSync] NEW ACTIVE MEMBER: ${tag} (${discordId}) - Tier ${tier}`);
         } catch (err) {
-          console.log(`🎉 [MembershipSync] NEW ACTIVE MEMBER: ${discordId} (could not fetch member) - Tier ${userBestMembership.get(discordId).tier}`);
+          console.log(`${h.releaseEmojis.CONFETTI} [MembershipSync] NEW ACTIVE MEMBER: ${discordId} (could not fetch member) - Tier ${userBestMembership.get(discordId).tier}`);
         }
       }
     }
@@ -233,7 +229,7 @@ async function syncMembershipRoles(client) {
       await sendMembershipMessage(client, discordId, membership);
     }
 
-    // Role sync (assign highest tier and supporter role)
+    // Role sync
     const guild = await client.guilds.fetch(process.env.GUILD_ID);
     for (const [discordId, membership] of userBestMembership.entries()) {
       const member = await guild.members.fetch(discordId).catch(() => null);
@@ -256,6 +252,7 @@ async function syncMembershipRoles(client) {
         changesMade = true;
       }
 
+      // Remove other tier roles
       for (const roleId of Object.values(TIER_ROLES)) {
         if (roleId !== targetRoleId && currentRoleIds.includes(roleId)) {
           await member.roles.remove(roleId);
@@ -297,8 +294,6 @@ async function syncMembershipRoles(client) {
     await storeCurrentActiveSet(currentActiveIds);
     if (changesMade) {
       console.log('[MembershipSync] Sync completed with changes.');
-    } else {
-//      console.log('[MembershipSync] Sync completed, no changes.');
     }
   } catch (err) {
     console.error('[MembershipSync] Fatal error:', err);
