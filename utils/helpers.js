@@ -55,6 +55,8 @@ releaseEmojis: {
         CONFETTI: '<a:confetti:1491689074002755664>',
         SPARKLES: '<a:sparkles:1491697348718493786>',
         PROGRESS: '<a:progress:1491670111923212308>',
+        WAVE: '<a:wave:1492326023080185987>', // New animated emoji
+        waveId: '1492326023080185987',        // ID for reactions
         
         ARROWS: [
             '<a:arrowyellow:1491672823729623212>',
