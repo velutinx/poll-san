@@ -14,10 +14,7 @@ async function loadActivePoll() {
         // Handle the case where the API might return { results: [], pollId: ... } 
         // or just a flat array. Adjusting for both.
         const pollData = Array.isArray(data) ? data : (data.results || []);
-        
-        // Use current date as a fallback cache-buster if no specific ID/Time is found
-const cacheBuster = Date.now();
-        
+
         if (!pollData || pollData.length === 0) {
             listArea.innerHTML = '<p>No active poll.</p>';
             document.getElementById('launch-btn').disabled = false;
@@ -32,24 +29,7 @@ const cacheBuster = Date.now();
         const buttons = [];
         let highestScore = -Infinity;
 
-        pollData.forEach((item, index) => {
-            const container = document.createElement('div');
-            container.className = 'winner-item-container'; // Optional styling class
-            container.style.display = 'flex';
-            container.style.alignItems = 'center';
-            container.style.marginBottom = '10px';
-
-            // 1. Create the Image Preview (Cache-Busted)
-            const img = document.createElement('img');
-            const imgNum = index + 1;
-            img.src = `https://www.velutinx.com/images/poll/${imgNum}.jpg?v=${cacheBuster}`;
-            img.style.width = '60px';
-            img.style.height = 'auto';
-            img.style.marginRight = '15px';
-            img.style.borderRadius = '4px';
-            img.alt = item.character_name;
-
-            // 2. Create the Button
+        pollData.forEach((item) => {
             const btn = document.createElement('button');
             const score = parseFloat(item.score);
             const hasWinner = !!item.selected_at;
@@ -59,11 +39,7 @@ const cacheBuster = Date.now();
             btn.onclick = hasWinner ? null : () => markWinner(item.character_name);
             btn.setAttribute('data-score', score);
             
-            // Assembly
-            container.appendChild(img);
-            container.appendChild(btn);
-            listArea.appendChild(container);
-            
+            listArea.appendChild(btn);
             buttons.push(btn);
 
             if (!hasWinner && score > highestScore) {
@@ -98,7 +74,6 @@ async function triggerPoll() {
 
     if (res.ok) {
         showToast('Poll Started', 'New poll launched successfully');
-        // Small delay to let DB catch up before reload
         setTimeout(loadActivePoll, 1000);
     } else {
         showToast('Error', 'Failed to start poll', 'error');
