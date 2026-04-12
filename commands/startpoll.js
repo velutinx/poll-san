@@ -63,6 +63,9 @@ module.exports = async (interaction) => {
     // Split characters into chunks of 4
     const characterChunks = chunkArray(characters, 4);
 
+    // --- NEW: Generate a single cache-buster timestamp for this entire poll run ---
+    const cacheVersion = Date.now();
+
     for (let i = 0; i < characterChunks.length; i++) {
         let content = "";
         const embeds = [];
@@ -75,10 +78,11 @@ module.exports = async (interaction) => {
             content += `${emojis[globalIdx - 1]} ${name}\n`;
             
             // Push an individual embed for each image to guarantee order
+            // --- NEW: Apply the ?v=cacheVersion to the Discord embed URL ---
             embeds.push({
                 url: sharedUrl,
                 image: {
-                    url: `https://www.velutinx.com/images/poll/${globalIdx}.jpg`
+                    url: `https://www.velutinx.com/images/poll/${globalIdx}.jpg?v=${cacheVersion}`
                 }
             });
         });
