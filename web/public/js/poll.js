@@ -16,8 +16,8 @@ async function loadActivePoll() {
         const pollData = Array.isArray(data) ? data : (data.results || []);
         
         // Use current date as a fallback cache-buster if no specific ID/Time is found
-        const cacheBuster = data.pollId || new Date().toISOString().split('T')[0].replace(/-/g, '');
-
+const cacheBuster = Date.now();
+        
         if (!pollData || pollData.length === 0) {
             listArea.innerHTML = '<p>No active poll.</p>';
             document.getElementById('launch-btn').disabled = false;
