@@ -165,11 +165,15 @@ module.exports = function setupPollRoutes(app, client, supabase, supabaseRetry) 
                 .map(s => s.trim().replace(/:female_sign:/g, '♀️').replace(/:male_sign:/g, '♂️'))
                 .filter(s => s.length > 1);
 
-            // Build the scoreboard without the random arrow prefix
+// Build the scoreboard
             let scoreboard = `:trophy: **${winner_name}** has been marked as a winner! ${e.CONFETTI}\n\n`;
             
+            // Cache buster using the unique poll ID
+            const v = poll.id; 
+
             characters.forEach((char, index) => {
-                const emoji = h.emojis[index] || `[${index + 1}]`;
+                const imgNum = index + 1;
+                const emoji = h.emojis[index] || `[${imgNum}]`;
                 const record = voteData.find(v => {
                     const cleanChar = char.replace(/♀️|♂️/g, '').trim().toLowerCase();
                     const cleanRecord = v.character_name.replace(/♀️|♂️/g, '').trim().toLowerCase();
@@ -178,12 +182,14 @@ module.exports = function setupPollRoutes(app, client, supabase, supabaseRetry) 
                 
                 const score = record ? parseFloat(record.score).toFixed(1) : "0.0";
                 const isWinner = record && record.selected_at !== null;
-                const line = `${emoji} = ${score} -- ${char}`;
                 
-                scoreboard += isWinner ? `||${line}||\n` : `${line}\n`;
+                // Add the image link for Discord to preview
+                const imgLink = `https://www.velutinx.com/images/poll/${imgNum}.jpg?v=${v}`;
+                const line = `${emoji} = ${score} -- ${char} \n${imgLink}`;
+                
+                scoreboard += isWinner ? `||${line}||\n\n` : `${line}\n\n`;
             });
 
-            // Send to thread without the random arrow
             await thread.send(scoreboard);
             
             res.json({ success: true });
