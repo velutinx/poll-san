@@ -49,10 +49,11 @@ module.exports = async (interaction) => {
         console.error("❌ Supabase Error:", dbError.message);
     }
 
-    // Add reactions
-    for (const id of reactIds) {
-        await pollMessage.react(id).catch(() => {});
-    }
+    // --- UPDATED: Add reactions in parallel ---
+    // This fires off all reaction requests at once rather than one-by-one
+    await Promise.all(reactIds.map(id => 
+        pollMessage.react(id).catch(e => console.error(`Reaction Error (${id}):`, e.message))
+    ));
 
     // Create discussion thread
     const thread = await pollMessage.startThread({
@@ -70,15 +71,12 @@ module.exports = async (interaction) => {
         let content = "";
         const embeds = [];
         
-        // Using a shared URL helps Discord group these into a visual grid
         const sharedUrl = "https://www.velutinx.com/poll"; 
 
         characterChunks[i].forEach((name, idx) => {
             const globalIdx = (i * 4) + idx + 1;
             content += `${emojis[globalIdx - 1]} ${name}\n`;
             
-            // Push an individual embed for each image to guarantee order
-            // --- NEW: Apply the ?v=cacheVersion to the Discord embed URL ---
             embeds.push({
                 url: sharedUrl,
                 image: {
@@ -87,28 +85,22 @@ module.exports = async (interaction) => {
             });
         });
 
-        // Send the names and the images together
         await thread.send({ 
             content: content, 
             embeds: embeds 
         }).catch(e => console.error("Thread Image Error:", e.message));
     }
 
-    // --- RANDOM ARROW LOGIC ---
-    // Pick one random up arrow for the final thread message
     const upArrows = releaseEmojis.UP_ARROWS;
     const randomUpArrow = upArrows[Math.floor(Math.random() * upArrows.length)];
 
-    // Final thread message (using the new randomized arrow)
     await thread.send({
         content: `${randomUpArrow} Character images for the poll above! <@&${ids.tags.poll_mention}>`
     });
 
-    // Finalize interaction
     if (interaction.editReply) {
         await interaction.editReply({ content: '✅ Poll Live!' }).catch(() => {});
     }
 
-    // Start background timer for poll updates
     runPollInterval(pollMessage, endTime, characters);
 };
