@@ -171,7 +171,7 @@ function runPollInterval(pollMessage, endTime, characters) {
                 );
             }
         }
-    }, 10000); 
+    }, 60000); 
 }
 
 module.exports = { 
