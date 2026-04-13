@@ -2,16 +2,9 @@
 
 const supabase = require('../services/supabase');
 const { supabaseRetry } = require('./db');
+const h = require('./helpers'); 
 
-const ADMIN_ID = '1380051214766444617'; // Velutinx
-
-const tierNames = {
-  1: 'Bronze',
-  2: 'Copper',
-  3: 'Silver',
-  4: 'Gold',
-  5: 'Platinum'
-};
+const ADMIN_ID = h.ids.users.Velutinx; 
 
 async function sendMembershipMessage(client, discordId, membership) {
   const now = new Date().toISOString();
@@ -23,13 +16,14 @@ async function sendMembershipMessage(client, discordId, membership) {
       .select('id')
       .eq('discord_id', discordId)
       .eq('expires_at', membership.expires_at)
-      .limit(1)
+      .limit(1) 
   );
+  
   if (logError) console.error('Log check error:', logError);
-if (existing && existing.length > 0) {
-    // console.debug(`Already messaged for membership period ${membership.expires_at} for ${discordId}`);
+  
+  if (existing && existing.length > 0) {
     return false; // Already messaged
-}
+  }
 
   // Send DM to member
   const member = await client.users.fetch(discordId).catch(() => null);
@@ -38,7 +32,8 @@ if (existing && existing.length > 0) {
     return false;
   }
 
-  const tierName = tierNames[membership.tier] || `Tier ${membership.tier}`;
+  // Pull the string names from helpers.js
+  const tierName = h.weights.tierNames[membership.tier] || `Tier ${membership.tier}`;
   const currentMonth = new Date().toLocaleDateString('en-US', { month: 'long' });
 
   let memberMessage = '';
@@ -49,7 +44,7 @@ if (existing && existing.length > 0) {
   }
 
   await member.send(memberMessage).catch(err => {
-    console.error(`Failed to send DM to ${member.tag}:`, err);
+    console.error(`Failed to send DM to ${member.tag}:`, err.message);
   });
 
   // Admin message
@@ -57,7 +52,7 @@ if (existing && existing.length > 0) {
   if (admin) {
     const expiryFormatted = new Date(membership.expires_at).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
     const adminMessage = `📢 **New membership period started for [DM ${member.tag}](${`https://discord.com/users/${discordId}`})**\nTier: ${tierName}\nExpires on ${expiryFormatted}\nPlease reach out to them.`;
-    await admin.send(adminMessage).catch(err => console.error(`Failed to send DM to admin:`, err));
+    await admin.send(adminMessage).catch(err => console.error(`Failed to send DM to admin:`, err.message));
   } else {
     console.warn('Admin user not found');
   }
@@ -66,17 +61,18 @@ if (existing && existing.length > 0) {
   const { error: insertError } = await supabaseRetry(() =>
     supabase
       .from('member_message_log')
-        .insert({
-            discord_id: discordId,
-            discord_name: member.tag,           // full Discord tag (e.g., "username#1234")
-            tier: tierName,                     // e.g., "Silver"
-            expires_at: membership.expires_at,
-            sent_by: 'auto',
-            message_type: 'cycle_start'
+      .insert({
+        discord_id: discordId,
+        discord_name: member.tag,           
+        tier: tierName,                     
+        expires_at: membership.expires_at,
+        sent_by: 'auto',
+        message_type: 'cycle_start'
       })
   );
+  
   if (insertError) {
-    console.error('Failed to insert log:', insertError);
+    console.error('Failed to insert log:', insertError.message);
   } else {
     console.log(`Logged auto message for ${discordId} (expires: ${membership.expires_at})`);
   }
