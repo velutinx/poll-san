@@ -138,7 +138,16 @@ releaseEmojis: {
                 3: '1465904476417163457',
                 4: '1465904548320378956',
                 5: '1465952085026541804'
-        },            
+        },    
+
+        tierNames: {
+            1: 'Bronze',
+            2: 'Copper',
+            3: 'Silver',
+            4: 'Gold',
+            5: 'Platinum'
+        },
+        
         booster: '1469284491456548976', // booster
         xpFactor: 0.02
     },
