@@ -156,7 +156,7 @@ async function getLastActiveSet() {
       .from('sync_state')
       .select('value')
       .eq('key', 'active_members')
-      .maybeSingle() // FIX: Changed .single() to .maybeSingle()
+      .single() // <--- CHECK THIS
   );
   if (error) {
     console.error('[MembershipSync] Failed to fetch sync state:', error.message);
