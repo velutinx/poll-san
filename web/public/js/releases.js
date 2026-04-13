@@ -1,22 +1,132 @@
 // this is poll-san/web/public/js/releases.js
 
 let supporterSortable = null;
+let previewSortable = null;   // NEW: Sortable instance for SFW preview images
 
-// Function to initialize Sortable on the supporter preview container
+function initPreviewSortable() {
+    const container = document.getElementById('preview-container');
+    if (!container || previewSortable) return;
+
+    previewSortable = new Sortable(container, {
+        animation: 150,
+        handle: '.preview-img',        // drag by the image itself
+        ghostClass: 'sortable-ghost',  // optional: add a ghost style in your CSS
+        onEnd: function() {
+            // Rebuild window.uploadedFiles to match the new DOM order
+            const newOrder = [];
+            container.querySelectorAll('.preview-img').forEach((img) => {
+                const idx = img.getAttribute('data-file-index');
+                if (idx !== null && window.uploadedFiles[idx]) {
+                    newOrder.push(window.uploadedFiles[idx]);
+                }
+            });
+            if (newOrder.length === window.uploadedFiles.length) {
+                window.uploadedFiles = newOrder;
+            }
+            // Update data-file-index attributes to reflect new positions
+            container.querySelectorAll('.preview-img').forEach((img, i) => {
+                img.setAttribute('data-file-index', i);
+            });
+        }
+    });
+}
+
+// ------------------------------------------------------------
+// Override handleFiles to add data attributes and init Sortable
+// ------------------------------------------------------------
+const originalHandleFiles = window.handleFiles;
+window.handleFiles = function(files) {
+    if (originalHandleFiles) {
+        originalHandleFiles(files);
+    } else {
+        // Fallback if original was not defined
+        for (let file of files) {
+            window.uploadedFiles.push(file);
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const img = document.createElement('img');
+                img.src = e.target.result;
+                img.className = "preview-img";
+                document.getElementById('preview-container').appendChild(img);
+            };
+            reader.readAsDataURL(file);
+        }
+        const dropText = document.getElementById('drop-text');
+        if (dropText) dropText.style.display = 'none';
+    }
+
+    // After images are added, set data-file-index and initialize Sortable
+    setTimeout(() => {
+        const container = document.getElementById('preview-container');
+        if (container) {
+            container.querySelectorAll('.preview-img').forEach((img, idx) => {
+                img.setAttribute('data-file-index', idx);
+            });
+            if (previewSortable) {
+                previewSortable.destroy();
+                previewSortable = null;
+            }
+            initPreviewSortable();
+        }
+    }, 50);
+};
+
+// ------------------------------------------------------------
+// Override clearImages to destroy Sortable and reset
+// ------------------------------------------------------------
+const originalClearImages = window.clearImages;
+window.clearImages = function() {
+    if (originalClearImages) {
+        originalClearImages();
+    } else {
+        window.uploadedFiles.length = 0;
+        const previewContainer = document.getElementById('preview-container');
+        previewContainer.innerHTML = '';
+        const dropText = document.getElementById('drop-text');
+        if (dropText) dropText.style.display = 'block';
+        const fileInput = document.getElementById('file-input');
+        if (fileInput) fileInput.value = '';
+    }
+
+    if (previewSortable) {
+        previewSortable.destroy();
+        previewSortable = null;
+    }
+};
+
+// ------------------------------------------------------------
+// Ensure Sortable is initialized when images already exist
+// (e.g., after loading a page with pre‑filled images)
+// ------------------------------------------------------------
+function setupPreviewSortable() {
+    const container = document.getElementById('preview-container');
+    if (container && container.children.length > 0) {
+        container.querySelectorAll('.preview-img').forEach((img, i) => {
+            if (!img.hasAttribute('data-file-index')) {
+                img.setAttribute('data-file-index', i);
+            }
+        });
+        if (!previewSortable) {
+            initPreviewSortable();
+        }
+    }
+}
+
+// ------------------------------------------------------------
+// Supporter Sortable (unchanged, included for completeness)
+// ------------------------------------------------------------
 function initSupporterSortable() {
     const container = document.getElementById('sup-preview-container');
     if (!container || supporterSortable) return;
     supporterSortable = new Sortable(container, {
         animation: 200,
         onEnd: function() {
-            // Reorder the global supporterUploadedFiles array to match visual order
             const newOrder = [];
             container.querySelectorAll('.preview-img').forEach((img) => {
                 const idx = img.getAttribute('data-file-index');
                 if (idx !== null && window.supporterUploadedFiles[idx]) {
                     newOrder.push(window.supporterUploadedFiles[idx]);
                 } else {
-                    // Fallback: try by filename (less reliable but works as backup)
                     const filename = img.src.split('/').pop();
                     const file = window.supporterUploadedFiles.find(f => f.name === filename);
                     if (file) newOrder.push(file);
@@ -25,7 +135,6 @@ function initSupporterSortable() {
             if (newOrder.length === window.supporterUploadedFiles.length) {
                 window.supporterUploadedFiles = newOrder;
             }
-            // Update data-file-index attributes
             container.querySelectorAll('.preview-img').forEach((img, i) => {
                 img.setAttribute('data-file-index', i);
             });
@@ -33,7 +142,7 @@ function initSupporterSortable() {
     });
 }
 
-// Override handleSupporterFiles to add data-file-index and init sortable
+// Override handleSupporterFiles
 if (window.handleSupporterFiles) {
     const originalHandleSupporterFiles = window.handleSupporterFiles;
     window.handleSupporterFiles = function(files) {
@@ -50,7 +159,7 @@ if (window.handleSupporterFiles) {
     };
 }
 
-// Override clearSupporterImages to destroy sortable and reset
+// Override clearSupporterImages
 if (window.clearSupporterImages) {
     const originalClearSupporterImages = window.clearSupporterImages;
     window.clearSupporterImages = function() {
@@ -62,12 +171,9 @@ if (window.clearSupporterImages) {
     };
 }
 
-// Also initialise sortable if images already exist (e.g., after loading an existing post)
-// This runs when the supporter tab becomes visible (called from initReleases)
 function setupSupporterSortable() {
     const container = document.getElementById('sup-preview-container');
     if (container && container.children.length > 0 && !supporterSortable) {
-        // Ensure each image has a data-file-index
         container.querySelectorAll('.preview-img').forEach((img, i) => {
             if (!img.hasAttribute('data-file-index')) {
                 img.setAttribute('data-file-index', i);
