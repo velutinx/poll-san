@@ -1,20 +1,26 @@
 // this is poll-san/services/pollService.js
 
+// poll-san/services/pollService.js
+
 const supabase = require('./supabase');
 const { supabaseRetry } = require('../utils/db');
 const h = require('../utils/helpers');
 
 // Use a constant for the poll ID so it's easy to change later
-const CURRENT_POLL_ID = 'character_poll_new'; 
+const CURRENT_POLL_ID = 'character_poll_new';
 
 // Cache for poll results
 let cachedPollResults = null;
 let cachedPollTimestamp = 0;
 const CACHE_TTL = 60000; // 1 minute
 
-// Module-level timer variable to allow stopping from outside
+// Module-level timer and realtime subscription
 let activePollTimer = null;
+let voteSubscription = null;
 
+// ----------------------------------------------------------------------
+// Core poll result calculation (unchanged)
+// ----------------------------------------------------------------------
 async function getPollResults(message, characters) {
     const displayResults = [];
     const rawDataForDB = [];
@@ -96,66 +102,119 @@ async function getPollResults(message, characters) {
     }
 }
 
-/**
- * Generates the message content. 
- * @param {boolean} isEnded - If true, replaces the timer with a static "Poll Ended" header.
- */
+// ----------------------------------------------------------------------
+// Message content generation (unchanged)
+// ----------------------------------------------------------------------
 async function generateMessageContent(endTime, resultsText, characters, isEnded = false) {
     const e = h.releaseEmojis;
     const randomDownArrow = e.DOWN_ARROWS[Math.floor(Math.random() * e.DOWN_ARROWS.length)];
     
-    // 1. Header (Dynamic Timer vs Static Ended)
     const header = isEnded 
         ? `🛑 **Poll Ended**\n\n` 
         : `${e.HOURGLASS} Time remaining: **${h.formatTime(endTime - Date.now())}**\n\n`;
     
-    // 2. Body
     const body = resultsText || characters.map((char, i) => {
         const name = char.replace(/:female_sign:|:male_sign:/g, m => m === ':female_sign:' ? '♀️' : '♂️');
         return `${h.emojis[i]} \`      0.00   ${name.padEnd(30)} \` \n`;
     }).join('');
     
-    // 3. Footer
     const footer = `\nDiscord weighted vote + ${e.LINK} **[Website poll results](https://velutinx.com/poll)** (Click to vote there too!)\n\n` +
                    `${randomDownArrow} Click the thread below for character images & discussion!`;
     
     return header + body + footer;
 }
 
+// ----------------------------------------------------------------------
+// Helper to refresh the poll message (used by both timer and realtime)
+// ----------------------------------------------------------------------
+async function refreshPollMessage(pollMessage, endTime, characters) {
+    // Clear cache to force fresh data from DB
+    cachedPollResults = null;
+    cachedPollTimestamp = 0;
+
+    const now = Date.now();
+    const isFinished = now >= endTime;
+    const results = await getPollResults(pollMessage, characters);
+    const content = await generateMessageContent(endTime, results, characters, isFinished);
+    
+    try {
+        await pollMessage.edit({ content });
+    } catch (err) {
+        // Ignore "Unknown Message" (10008) – usually means poll was already deleted
+        if (err.code !== 10008) {
+            console.warn('Failed to edit poll message:', err.message);
+        }
+    }
+}
+
+// ----------------------------------------------------------------------
+// Supabase Realtime subscription – triggers on every new vote
+// ----------------------------------------------------------------------
+async function subscribeToVoteUpdates(pollMessage, endTime, characters) {
+    // Unsubscribe from any previous subscription first
+    if (voteSubscription) {
+        await supabase.removeChannel(voteSubscription);
+        voteSubscription = null;
+    }
+
+    // Create a new channel listening to both voting tables
+    const channel = supabase
+        .channel('vote-updates')
+        .on(
+            'postgres_changes',
+            { event: 'INSERT', schema: 'public', table: 'votes_discord' },
+            () => refreshPollMessage(pollMessage, endTime, characters)
+        )
+        .on(
+            'postgres_changes',
+            { event: 'INSERT', schema: 'public', table: 'website_voting' },
+            () => refreshPollMessage(pollMessage, endTime, characters)
+        )
+        .subscribe((status, err) => {
+            if (err) {
+                console.error('Realtime subscription error:', err);
+            } else {
+                console.log(`Realtime subscription status: ${status}`);
+            }
+        });
+
+    voteSubscription = channel;
+}
+
+// ----------------------------------------------------------------------
+// Cleanup: stop timer and unsubscribe from realtime
+// ----------------------------------------------------------------------
 function forceStopPoll() {
     if (activePollTimer) {
         clearInterval(activePollTimer);
         activePollTimer = null;
         console.log("Poll interval cleared.");
     }
+    
+    if (voteSubscription) {
+        supabase.removeChannel(voteSubscription)
+            .then(() => {
+                voteSubscription = null;
+                console.log("Realtime subscription removed.");
+            })
+            .catch(err => console.error("Error removing subscription:", err));
+    }
 }
 
-async function getFinalPollMessageContent(pollList) {
-    const characters = pollList
-        .split(/(?=:female_sign:|:male_sign:|♀️|♂️)/)
-        .map(s => s.trim())
-        .filter(s => s.length > 0);
-
-    const resultsString = await getPollResults(null, characters);
-    const e = h.releaseEmojis;
-    const randomDownArrow = e.DOWN_ARROWS[Math.floor(Math.random() * e.DOWN_ARROWS.length)];
-
-    return `🛑 **Poll has ended.**\n\n${resultsString}\n\nDiscord weighted vote + ${e.LINK} **[Website poll results](https://velutinx.com/poll)**\n\n${randomDownArrow} Click the thread below for character images & discussion!`;
-}
-
+// ----------------------------------------------------------------------
+// Main polling loop (1‑minute fallback + starts realtime)
+// ----------------------------------------------------------------------
 function runPollInterval(pollMessage, endTime, characters) {
-    // Clear any existing timer before starting a new one
+    // Clear any existing timer
     forceStopPoll();
 
+    // Start the 1‑minute interval as a fallback
     activePollTimer = setInterval(async () => {
         const now = Date.now();
         const isFinished = now >= endTime;
 
         try {
-            const results = await getPollResults(pollMessage, characters);
-            const content = await generateMessageContent(endTime, results, characters, isFinished);
-            
-            await pollMessage.edit({ content });
+            await refreshPollMessage(pollMessage, endTime, characters);
 
             if (isFinished) {
                 forceStopPoll();
@@ -171,13 +230,37 @@ function runPollInterval(pollMessage, endTime, characters) {
                 );
             }
         }
-    }, 60000); 
+    }, 60000);
+
+    // Also subscribe to realtime vote events (instant updates)
+    subscribeToVoteUpdates(pollMessage, endTime, characters).catch(err => {
+        console.error("Failed to start realtime subscription:", err);
+    });
 }
 
+// ----------------------------------------------------------------------
+// Utility for final poll message (unchanged)
+// ----------------------------------------------------------------------
+async function getFinalPollMessageContent(pollList) {
+    const characters = pollList
+        .split(/(?=:female_sign:|:male_sign:|♀️|♂️)/)
+        .map(s => s.trim())
+        .filter(s => s.length > 0);
+
+    const resultsString = await getPollResults(null, characters);
+    const e = h.releaseEmojis;
+    const randomDownArrow = e.DOWN_ARROWS[Math.floor(Math.random() * e.DOWN_ARROWS.length)];
+
+    return `🛑 **Poll has ended.**\n\n${resultsString}\n\nDiscord weighted vote + ${e.LINK} **[Website poll results](https://velutinx.com/poll)**\n\n${randomDownArrow} Click the thread below for character images & discussion!`;
+}
+
+// ----------------------------------------------------------------------
+// Exports
+// ----------------------------------------------------------------------
 module.exports = { 
     getPollResults, 
     generateMessageContent, 
     runPollInterval, 
     getFinalPollMessageContent,
-    forceStopPoll 
+    forceStopPoll
 };
