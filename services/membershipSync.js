@@ -49,21 +49,23 @@ supabase
 }
 
 async function hasMessageBeenSent(discordId, orderId) {
-  // FIX: Changed .single() to .maybeSingle() based on log errors
   const { data, error } = await supabaseRetry(() =>
     supabase
       .from('member_message_log')
       .select('id')
       .eq('discord_id', discordId)
       .eq('order_id', orderId)
-      .maybeSingle()
+      .limit(1) // Tell it to just grab the first match it finds
   );
+  
   if (error) {
     console.error('[MembershipSync] Failed to check message sent status:', error.message);
-    // If DB fails, we return true to "fail safe" (prevents DM spam loops)
+    // Fail-safe: assume sent to prevent spam loops
     return true; 
   }
-  return !!data;
+  
+  // If data array has at least one item, the message was sent
+  return data && data.length > 0;
 }
 
 async function recordMessageSent(discordId, orderId, language, membership, discordName) {
