@@ -5,11 +5,9 @@ const db = require('../utils/db');
 const h = require('../utils/helpers'); 
 const supabaseRetry = db.supabaseRetry;
 
-// UPDATED PATHS:
-const TIER_ROLES = h.weights.tierMapping; // This points to h -> weights -> tierMapping
-const SUPPORTER_ROLE = h.ids.roles.supporter; // This stays in ids -> roles
+const TIER_ROLES = h.weights.tierMapping; 
+const SUPPORTER_ROLE = h.ids.roles.supporter; 
 
-// Translation dictionary for user messages
 const MESSAGES = {
   en: {
     welcome_tier1: `${h.releaseEmojis.CONFETTI} Welcome to the {tierName} tier!\nYour membership is active until **{expiryDate}**.\n\nFeel free to explore the packs on **[this channel](https://discord.com/channels/1401446104498700358/1465937644394512516)** and **[join the server](https://discord.gg/XF363uYfSh)** if you haven't.\n\nPlease message DM Velutinx if you have any questions.`,
@@ -35,21 +33,23 @@ function formatDate(date) {
 
 async function getLanguageForOrder(orderId) {
   if (!orderId) return 'en';
+  // FIX: Changed .single() to .maybeSingle() to prevent "multiple rows" crash
   const { data, error } = await supabaseRetry(() =>
     supabase
       .from('successs')
       .select('language')
       .eq('paypal_token', orderId)
-      .single()
+      .maybeSingle()
   );
   if (error || !data) {
-    console.warn(`[MembershipSync] Could not fetch language for order ${orderId}:`, error?.message);
+    if (error) console.warn(`[MembershipSync] Language fetch error for ${orderId}:`, error.message);
     return 'en';
   }
   return data.language || 'en';
 }
 
 async function hasMessageBeenSent(discordId, orderId) {
+  // FIX: Changed .single() to .maybeSingle() based on log errors
   const { data, error } = await supabaseRetry(() =>
     supabase
       .from('member_message_log')
@@ -60,7 +60,8 @@ async function hasMessageBeenSent(discordId, orderId) {
   );
   if (error) {
     console.error('[MembershipSync] Failed to check message sent status:', error.message);
-    return false;
+    // If DB fails, we return true to "fail safe" (prevents DM spam loops)
+    return true; 
   }
   return !!data;
 }
@@ -100,17 +101,17 @@ async function sendMembershipMessage(client, discordId, membership) {
   const expiresAt = new Date(membership.expires_at);
   const orderId = membership.order_id;
   
-  // Tier names mapping
   const tierNames = { 1: 'Bronze', 2: 'Copper', 3: 'Silver', 4: 'Gold', 5: 'Platinum' };
   const tierName = tierNames[tier] || `Tier ${tier}`;
 
+  // Check if message sent - Fail safe added to prevent spam loops
   const alreadySent = await hasMessageBeenSent(discordId, orderId);
   if (alreadySent) return;
 
   const lang = await getLanguageForOrder(orderId);
   const t = MESSAGES[lang] || MESSAGES.en;
 
-  const OWNER_ID = h.ids.users.Velutinx; // Use owner ID from helpers
+  const OWNER_ID = h.ids.users.Velutinx; 
   const ownerDmLink = `[DM Velutinx](https://discord.com/users/${OWNER_ID})`;
 
   const messageTemplate = (tier === 1) ? t.welcome_tier1 : t.welcome_tier2_5;
@@ -131,7 +132,6 @@ async function sendMembershipMessage(client, discordId, membership) {
     if (success) {
       await recordMessageSent(discordId, orderId, lang, membership, discordName);
 
-      // Admin notification
       try {
         const owner = await client.users.fetch(OWNER_ID);
         const userLink = `[${discordName}](https://discord.com/users/${discordId})`;
@@ -143,11 +143,9 @@ async function sendMembershipMessage(client, discordId, membership) {
       } catch (adminErr) {
         console.error('[MembershipSync] Could not notify owner:', adminErr.message);
       }
-    } else {
-      console.error(`[MembershipSync] Failed to send DM to ${discordId} for order ${orderId}`);
     }
   } catch (err) {
-    console.error(`[MembershipSync] Could not send DM to ${discordId}:`, err.message);
+    console.error(`[MembershipSync] Could not handle DM for ${discordId}:`, err.message);
   }
 }
 
@@ -158,7 +156,7 @@ async function getLastActiveSet() {
       .from('sync_state')
       .select('value')
       .eq('key', 'active_members')
-      .single()
+      .maybeSingle() // FIX: Changed .single() to .maybeSingle()
   );
   if (error) {
     console.error('[MembershipSync] Failed to fetch sync state:', error.message);
@@ -218,18 +216,17 @@ async function syncMembershipRoles(client) {
           const tier = userBestMembership.get(discordId).tier;
           const tag = member ? member.user.tag : 'Unknown';
           console.log(`${h.releaseEmojis.CONFETTI} [MembershipSync] NEW ACTIVE MEMBER: ${tag} (${discordId}) - Tier ${tier}`);
-        } catch (err) {
-          console.log(`${h.releaseEmojis.CONFETTI} [MembershipSync] NEW ACTIVE MEMBER: ${discordId} (could not fetch member) - Tier ${userBestMembership.get(discordId).tier}`);
-        }
+        } catch (err) {}
       }
     }
 
-    // Send messages to all active members that haven't been messaged yet
+    // Sequence the DMs to avoid hammering Supabase and triggering 502s
     for (const [discordId, membership] of userBestMembership.entries()) {
       await sendMembershipMessage(client, discordId, membership);
+      // Small pause between members to respect rate limits
+      await new Promise(res => setTimeout(res, 500)); 
     }
 
-    // Role sync
     const guild = await client.guilds.fetch(process.env.GUILD_ID);
     for (const [discordId, membership] of userBestMembership.entries()) {
       const member = await guild.members.fetch(discordId).catch(() => null);
@@ -240,29 +237,24 @@ async function syncMembershipRoles(client) {
       const hasTargetRole = currentRoleIds.includes(targetRoleId);
       const hasSupporter = currentRoleIds.includes(SUPPORTER_ROLE);
 
-      if (!hasTargetRole) {
+      if (!hasTargetRole && targetRoleId) {
         await member.roles.add(targetRoleId);
-        console.log(`[MembershipSync] Added role ${targetRoleId} to ${member.user.tag} (tier ${membership.tier})`);
         changesMade = true;
       }
 
       if (!hasSupporter) {
         await member.roles.add(SUPPORTER_ROLE);
-        console.log(`[MembershipSync] Added supporter role to ${member.user.tag}`);
         changesMade = true;
       }
 
-      // Remove other tier roles
       for (const roleId of Object.values(TIER_ROLES)) {
         if (roleId !== targetRoleId && currentRoleIds.includes(roleId)) {
           await member.roles.remove(roleId);
-          console.log(`[MembershipSync] Removed lower tier role ${roleId} from ${member.user.tag}`);
           changesMade = true;
         }
       }
     }
 
-    // Clean up inactive users
     const inactiveUserIds = [...previousActiveIds].filter(id => !currentActiveIds.has(id));
     for (const discordId of inactiveUserIds) {
       try {
@@ -276,27 +268,18 @@ async function syncMembershipRoles(client) {
 
         if (hasTierRole || hasSupporter) {
           for (const roleId of tierRoleIds) {
-            if (currentRoleIds.includes(roleId)) {
-              await member.roles.remove(roleId);
-            }
+            if (currentRoleIds.includes(roleId)) await member.roles.remove(roleId);
           }
-          if (hasSupporter) {
-            await member.roles.remove(SUPPORTER_ROLE);
-          }
-          console.log(`[MembershipSync] Removed all membership roles from ${member.user.tag} (inactive)`);
+          if (hasSupporter) await member.roles.remove(SUPPORTER_ROLE);
           changesMade = true;
         }
-      } catch (err) {
-        console.error(`[MembershipSync] Error cleaning roles for user ${discordId}:`, err.message);
-      }
+      } catch (err) {}
     }
 
     await storeCurrentActiveSet(currentActiveIds);
-    if (changesMade) {
-      console.log('[MembershipSync] Sync completed with changes.');
-    }
+    if (changesMade) console.log('[MembershipSync] Sync completed.');
   } catch (err) {
-    console.error('[MembershipSync] Fatal error:', err);
+    console.error('[MembershipSync] Fatal error:', err.message);
   }
 }
 
