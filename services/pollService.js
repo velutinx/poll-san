@@ -1,7 +1,5 @@
 // this is poll-san/services/pollService.js
 
-// poll-san/services/pollService.js
-
 const supabase = require('./supabase');
 const { supabaseRetry } = require('../utils/db');
 const h = require('../utils/helpers');
