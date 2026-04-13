@@ -150,16 +150,29 @@ async function refreshPollMessage(pollMessage, endTime, characters) {
 // ----------------------------------------------------------------------
 // Supabase Realtime subscription – triggers on every new vote
 // ----------------------------------------------------------------------
+let voteSubscription = null;
+let keepAliveInterval = null;
+
 async function subscribeToVoteUpdates(pollMessage, endTime, characters) {
     // Unsubscribe from any previous subscription first
     if (voteSubscription) {
         await supabase.removeChannel(voteSubscription);
         voteSubscription = null;
     }
+    if (keepAliveInterval) {
+        clearInterval(keepAliveInterval);
+        keepAliveInterval = null;
+    }
 
-    // Create a new channel listening to both voting tables
+    // Create a new channel with extended timeout config
     const channel = supabase
-        .channel('vote-updates')
+        .channel('vote-updates', {
+            config: {
+                // Increase default timeouts (Railway closes idle connections quickly)
+                timeout: 60000,           // 60 seconds instead of default ~10
+                heartbeatIntervalMs: 15000, // Send a ping every 15 seconds
+            }
+        })
         .on(
             'postgres_changes',
             { event: 'INSERT', schema: 'public', table: 'votes_discord' },
@@ -172,9 +185,28 @@ async function subscribeToVoteUpdates(pollMessage, endTime, characters) {
         )
         .subscribe((status, err) => {
             if (err) {
-                console.error('Realtime subscription error:', err);
+                console.error('❌ Realtime subscription error:', err);
+                // Attempt to reconnect after a delay (Supabase client may retry automatically,
+                // but we can force a manual re‑sub if needed)
+                setTimeout(() => {
+                    if (voteSubscription?.state !== 'joined') {
+                        console.log('🔄 Manually re‑subscribing to realtime...');
+                        subscribeToVoteUpdates(pollMessage, endTime, characters);
+                    }
+                }, 5000);
             } else {
-                console.log(`Realtime subscription status: ${status}`);
+                console.log(`✅ Realtime subscription status: ${status}`);
+                
+                // Once subscribed, start a manual keep‑alive ping every 20 seconds
+                if (status === 'SUBSCRIBED') {
+                    if (keepAliveInterval) clearInterval(keepAliveInterval);
+                    keepAliveInterval = setInterval(() => {
+                        // Send a harmless 'ping' message over the WebSocket to keep it alive
+                        if (voteSubscription?.socket?.readyState === 1) { // WebSocket.OPEN
+                            voteSubscription.socket.send(JSON.stringify({ type: 'ping' }));
+                        }
+                    }, 20000);
+                }
             }
         });
 
@@ -189,6 +221,11 @@ function forceStopPoll() {
         clearInterval(activePollTimer);
         activePollTimer = null;
         console.log("Poll interval cleared.");
+    }
+    
+    if (keepAliveInterval) {
+        clearInterval(keepAliveInterval);
+        keepAliveInterval = null;
     }
     
     if (voteSubscription) {
