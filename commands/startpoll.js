@@ -103,4 +103,5 @@ module.exports = async (interaction) => {
     }
 
     runPollInterval(pollMessage, endTime, characters);
+    subscribeToVoteUpdates(pollMessage, endTime, characters);
 };
