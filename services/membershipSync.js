@@ -35,11 +35,11 @@ async function getLanguageForOrder(orderId) {
   if (!orderId) return 'en';
   // FIX: Changed .single() to .maybeSingle() to prevent "multiple rows" crash
   const { data, error } = await supabaseRetry(() =>
-    supabase
-      .from('successs')
-      .select('language')
-      .eq('paypal_token', orderId)
-      .maybeSingle()
+supabase
+  .from('successs')
+  .select('language')
+  .eq('paypal_token', orderId)
+  .single() // <--- AND THIS
   );
   if (error || !data) {
     if (error) console.warn(`[MembershipSync] Language fetch error for ${orderId}:`, error.message);
