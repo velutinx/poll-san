@@ -235,6 +235,17 @@ await interaction.reply({
 });
 }
 
+// Delete the reminder message if it exists
+if (giveaway.reminder_message_id) {
+    try {
+        const channel = await client.channels.fetch(giveaway.channel_id);
+        const reminderMsg = await channel.messages.fetch(giveaway.reminder_message_id).catch(() => null);
+        if (reminderMsg) await reminderMsg.delete();
+    } catch (err) {
+        console.warn('Could not delete reminder message:', err.message);
+    }
+}
+
 async function endGiveaway(messageId, client) {
     const giveaway = activeGiveaways.get(messageId);
     if (!giveaway || giveaway.ended) return;
