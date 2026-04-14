@@ -30,10 +30,7 @@ async function updateDashboard() {
         global.refreshPollDashboard();
         console.log('✅ Broadcast sent to SSE clients');
     }
-} catch (err) {
-        console.error('❌ Dashboard refresh failed:', err.message);
-    }
-
+} 
 
 // Register the callback
 pollService.setDashboardRefreshCallback(updateDashboard);
