@@ -20,14 +20,14 @@ module.exports = (client) => {
         allowedHeaders: ['Content-Type', 'Authorization']
     }));
 
-    // Quick probe blocker (keep as before)
+    // Quick probe blocker
     app.use((req, res, next) => {
         const url = req.url.toLowerCase();
         const probePatterns = [
             /\.env/i, /\.git/i, /actuator/i, /swagger/i, /api-docs/i, /v[2-3]\/api/i,
             /php(info|myadmin|phpunit|adminer)/i, /\.ht(access|passwd)/i, /web\.config/i,
             /nginx\.conf/i, /docker-compose/i, /Dockerfile/i, /composer\.(json|lock)/i,
-            /package\.json/i, /requirements\.txt/i, /backup|dump|db\.sql|database\.sql/i,
+            /package\.json/i, /requirements\.(txt)/i, /backup|dump|db\.sql|database\.sql/i,
             /config\.(php|yml|yaml|json|xml)/i, /settings\.(json|yml)/i, /secrets|credentials/i,
             /robots\.txt/i, /sitemap\.xml/i, /crossdomain\.xml/i, /\.\.\//, /%3Cscript/i,
             /union\+select/i, /server-status|server-info|trace/i, /graphql/i,
@@ -39,123 +39,84 @@ module.exports = (client) => {
         next();
     });
 
-    // Serve static files from 'public' folder (this will serve /js/*.js, /css/*.css, etc.)
     app.use(express.static(path.join(__dirname, 'public')));
-
-    // Body parser
     app.use(express.json());
 
     const upload = multer({ storage: multer.memoryStorage() });
+
     const FORUM_ID = '1465938599378812980';
     const SUPPORTER_FORUM_ID = '1465937644394512516';
 
     // ====================== MEMBER CACHE ======================
     let cachedMembers = null;
     let lastMemberFetch = 0;
-    const MEMBER_CACHE_TTL = 15 * 60 * 1000; // 15 minutes (was 10)
-    
-// In server.js, replace the existing getGuildMembers with:
+    const MEMBER_CACHE_TTL = 15 * 60 * 1000;
 
-let memberFetchPromise = null;
+    let memberFetchPromise = null;
+    async function getGuildMembers(guild) {
+        const now = Date.now();
+        if (cachedMembers && (now - lastMemberFetch) < MEMBER_CACHE_TTL) {
+            return cachedMembers;
+        }
+        if (memberFetchPromise) return memberFetchPromise;
 
-async function getGuildMembers(guild) {
-    const now = Date.now();
-    if (cachedMembers && (now - lastMemberFetch) < MEMBER_CACHE_TTL) {
-        return cachedMembers;
-    }
-    if (memberFetchPromise) {
-        // Wait for ongoing fetch
+        memberFetchPromise = (async () => {
+            try {
+                const members = await guild.members.fetch({ withPresences: false });
+                cachedMembers = members;
+                lastMemberFetch = Date.now();
+                return members;
+            } finally {
+                memberFetchPromise = null;
+            }
+        })();
         return memberFetchPromise;
     }
-    memberFetchPromise = (async () => {
-        try {
-            const members = await guild.members.fetch({ withPresences: false });
-            cachedMembers = members;
-            lastMemberFetch = Date.now();
-            return members;
-        } finally {
-            memberFetchPromise = null;
-        }
-    })();
-    return memberFetchPromise;
-}
 
-    // ────────────────────────────────────────────────
-    // API ROUTES (existing)
-    // ────────────────────────────────────────────────
-    app.get('/api/channels', async (req, res) => {
-        try {
-            const guild = await client.guilds.fetch(process.env.GUILD_ID);
-            const channels = await guild.channels.fetch();
-            const channelData = channels
-                .filter(c => c.type === ChannelType.GuildText)
-                .map(c => ({
-                    id: c.id,
-                    name: c.name,
-                    category: c.parent ? c.parent.name.toUpperCase() : 'TEXT CHANNELS'
-                }))
-                .sort((a, b) => a.category.localeCompare(b.category));
-            res.json(channelData);
-        } catch (err) {
-            console.error('Channels endpoint error:', err);
-            res.status(500).json({ error: "Could not fetch channels." });
-        }
-    });
+    // ====================== LIVE POLL UPDATES (SSE) ======================
+    const pollClients = new Set();
 
-    app.get('/api/get-settings', async (req, res) => {
-        try {
-            const { data } = await supabaseRetry(() =>
-                supabase.from('server_settings')
-                    .select('*')
-                    .eq('guild_id', String(process.env.GUILD_ID))
-                    .single()
-            );
-            res.json(data || {});
-        } catch (e) {
-            console.error('Get settings error:', e);
-            res.json({});
-        }
-    });
-
-    app.post('/api/save-settings', async (req, res) => {
-        const { welcome_channel_id, welcome_message } = req.body;
-        try {
-            const { data: existing } = await supabaseRetry(() =>
-                supabase.from('server_settings')
-                    .select('guild_id')
-                    .eq('guild_id', String(process.env.GUILD_ID))
-                    .maybeSingle()
-            );
-            let error;
-            if (existing) {
-                ({ error } = await supabaseRetry(() =>
-                    supabase.from('server_settings')
-                        .update({ welcome_channel_id, welcome_message })
-                        .eq('guild_id', String(process.env.GUILD_ID))
-                ));
-            } else {
-                ({ error } = await supabaseRetry(() =>
-                    supabase.from('server_settings')
-                        .insert({
-                            guild_id: String(process.env.GUILD_ID),
-                            welcome_channel_id,
-                            welcome_message
-                        })
-                ));
+    function broadcastPollUpdate() {
+        const data = JSON.stringify({ type: 'pollUpdate', timestamp: Date.now() });
+        pollClients.forEach(client => {
+            try {
+                client.write(`data: ${data}\n\n`);
+            } catch (e) {
+                pollClients.delete(client);
             }
-            if (error) throw error;
-            res.json({ success: true });
-        } catch (err) {
-            console.error('Save settings error:', err);
-            res.status(500).json({ error: err.message });
-        }
+        });
+    }
+
+    // Expose refresh function globally so index.js can call it
+    global.refreshPollDashboard = broadcastPollUpdate;
+
+    // SSE Endpoint for live poll updates
+    app.get('/api/poll/live', (req, res) => {
+        res.setHeader('Content-Type', 'text/event-stream');
+        res.setHeader('Cache-Control', 'no-cache');
+        res.setHeader('Connection', 'keep-alive');
+        res.flushHeaders();
+
+        pollClients.add(res);
+
+        // Send initial connection message
+        res.write(`data: ${JSON.stringify({ type: 'connected', timestamp: Date.now() })}\n\n`);
+
+        req.on('close', () => {
+            pollClients.delete(res);
+        });
     });
+
+    // ====================== EXISTING ROUTES ======================
+    app.get('/api/channels', async (req, res) => { /* ... your existing code ... */ });
+    app.get('/api/get-settings', async (req, res) => { /* ... */ });
+    app.post('/api/save-settings', async (req, res) => { /* ... */ });
 
     app.get('/poll-san', (req, res) => {
         res.sendFile(path.join(__dirname, 'public', 'index.html'));
     });
 
-    // Load external route files (including monitoring)
+    // Load external routes
     const setupQueueRoutes = require('./routes/queue');
     const setupPollRoutes = require('./routes/poll');
     const setupMembershipsRoute = require('./routes/memberships');
@@ -163,7 +124,7 @@ async function getGuildMembers(guild) {
     const setupReleasesRoutes = require('./routes/releases');
     const setupMonitoringRoutes = require('./routes/monitoring');
     const setupGiveawayRoutes = require('./routes/giveaway');
-    
+
     setupGiveawayRoutes(app, client, supabase, supabaseRetry, getGuildMembers);
     setupQueueRoutes(app, client, queueService);
     setupPollRoutes(app, client, supabase, supabaseRetry);
@@ -175,5 +136,6 @@ async function getGuildMembers(guild) {
     // Start server
     app.listen(PORT, () => {
         console.log(`🌐 Dashboard running at http://localhost:${PORT}/poll-san`);
+        console.log(`📡 SSE live updates enabled at /api/poll/live`);
     });
 };
