@@ -5,100 +5,13 @@ const { supabaseRetry } = require('../utils/db');
 const h = require('../utils/helpers');
 
 const CURRENT_POLL_ID = 'character_poll_new';
-const UPDATE_INTERVAL = h.POLL_UPDATE_INTERVAL_MS;
+const UPDATE_INTERVAL = h.POLL_UPDATE_INTERVAL_MS || 10000;
 
 let cachedPollResults = null;
 let cachedPollTimestamp = 0;
-const CACHE_TTL = 5000;
+const CACHE_TTL = UPDATE_INTERVAL; // same as update interval
 
 let activePollTimer = null;
-let realtimeChannel = null;
-let currentPollMessage = null;
-let currentCharacters = null;
-let currentEndTime = null;
-
-let reconnectAttempts = 0;
-const MAX_RECONNECT_ATTEMPTS = 5;
-
-// ==================== REAL-TIME SETUP ====================
-function setupRealtimeListeners() {
-    if (realtimeChannel) {
-        realtimeChannel.unsubscribe().catch(() => {});
-        supabase.removeChannel(realtimeChannel).catch(() => {});
-        realtimeChannel = null;
-    }
-
-    realtimeChannel = supabase.channel('poll-votes-realtime', {
-        config: {
-            heartbeat: true,
-            heartbeatIntervalMs: 15000,
-            timeout: 25000,
-        }
-    });
-
-    realtimeChannel
-        .on('postgres_changes', {
-            event: '*',
-            schema: 'public',
-            table: 'votes_discord',
-            filter: `poll_id=eq.${CURRENT_POLL_ID}`
-        }, handleVoteChange)
-        .on('postgres_changes', {
-            event: '*',
-            schema: 'public',
-            table: 'website_voting',
-            filter: `poll_id=eq.${CURRENT_POLL_ID}`
-        }, handleVoteChange)
-        .subscribe((status, err) => {
-
-            if (status === 'SUBSCRIBED') {
-     //           console.log('✅ Supabase Realtime: Successfully subscribed and listening for votes!');
-                reconnectAttempts = 0;
-            } else if (['TIMED_OUT', 'CLOSED', 'CHANNEL_ERROR'].includes(status)) {
-                console.warn(`⚠️ Realtime ${status}`);
-                attemptReconnect();
-            }
-        });
-}
-
-function attemptReconnect() {
-    if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
-        console.error('❌ Max realtime reconnect attempts reached. Falling back to 10s interval only.');
-        return;
-    }
-
-    reconnectAttempts++;
-    const delay = Math.min(1500 * reconnectAttempts, 15000);
-
-    console.log(`🔄 Reconnecting realtime in ${delay}ms... (Attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})`);
-
-    setTimeout(() => {
-        if (currentPollMessage) setupRealtimeListeners();
-    }, delay);
-}
-
-async function handleVoteChange(payload) {
-    console.log(`🗳️ Realtime vote detected → ${payload.eventType} on ${payload.table}`);
-
-    // Clear cache so next getPollResults gets fresh data
-    cachedPollResults = null;
-    cachedPollTimestamp = 0;
-
-    // Update Discord poll message only (no dashboard)
-    if (currentPollMessage && currentCharacters) {
-        try {
-            const results = await getPollResults(currentPollMessage, currentCharacters);
-            const isFinished = Date.now() >= currentEndTime;
-            const content = await generateMessageContent(currentEndTime, results, currentCharacters, isFinished);
-            await currentPollMessage.edit({ content });
-            console.log('✅ Discord poll updated via realtime');
-        } catch (err) {
-            if (err.code !== 10008) {
-                console.error('❌ Discord update failed:', err.message);
-            }
-        }
-    }
-}
 
 // ==================== CORE FUNCTIONS ====================
 async function getPollResults(message, characters) {
@@ -182,6 +95,7 @@ function forceStopPoll() {
     if (activePollTimer) {
         clearInterval(activePollTimer);
         activePollTimer = null;
+        console.log("Poll interval cleared.");
     }
 }
 
@@ -200,11 +114,6 @@ async function getFinalPollMessageContent(pollList) {
 
 function runPollInterval(pollMessage, endTime, characters) {
     forceStopPoll();
-    currentPollMessage = pollMessage;
-    currentCharacters = characters;
-    currentEndTime = endTime;
-
-    setupRealtimeListeners();
 
     activePollTimer = setInterval(async () => {
         const now = Date.now();
@@ -215,20 +124,29 @@ function runPollInterval(pollMessage, endTime, characters) {
             const content = await generateMessageContent(endTime, results, characters, isFinished);
             await pollMessage.edit({ content });
 
-            if (isFinished) forceStopPoll();
+            if (isFinished) {
+                forceStopPoll();
+                await supabaseRetry(() =>
+                    supabase.from('auto_resume').delete().eq('message_id', pollMessage.id)
+                );
+            }
         } catch (e) {
-            if (e.code === 10008) forceStopPoll();
-            else console.error("Poll interval error:", e);
+            if (e.code === 10008) {
+                forceStopPoll();
+                await supabaseRetry(() =>
+                    supabase.from('auto_resume').delete().eq('message_id', pollMessage.id)
+                );
+            } else {
+                console.error("Poll interval error:", e);
+            }
         }
     }, UPDATE_INTERVAL);
 }
 
-// ==================== EXPORTS ====================
 module.exports = {
     getPollResults,
     generateMessageContent,
     runPollInterval,
     getFinalPollMessageContent,
     forceStopPoll
-    // Removed: setDashboardRefreshCallback and refreshDashboard
 };
