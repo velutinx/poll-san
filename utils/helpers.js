@@ -7,6 +7,7 @@ module.exports = {
         const hours = Math.floor((ms % 86400000) / 3600000);
         const minutes = Math.floor((ms % 3600000) / 60000);
         const seconds = Math.floor((ms % 60000) / 1000);
+        POLL_UPDATE_INTERVAL_MS: 10000,   // 10 seconds
         return `${days}d ${hours}h ${minutes}m ${seconds}s`;
     },
     chunkArray: (array, size) => {
