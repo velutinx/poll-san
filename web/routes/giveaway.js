@@ -39,7 +39,7 @@ module.exports = function setupGiveawayRoutes(app, client, supabase, supabaseRet
                 try {
                     const channel = await client.channels.fetch(giveaway.channel_id);
                     const roleMention = `<@&${h.ids.roles.giveaway_notify_role}>`;
-                    await channel.send(`⚠️ **Last day in the current giveaway!** ${roleMention}`);
+                    await channel.send(`${h.releaseEmojis.ALERT} **Last day in the current giveaway!** ${roleMention}`);
                     await supabaseRetry(() =>
                         supabase.from('giveaways')
                             .update({ reminder_sent: true })
