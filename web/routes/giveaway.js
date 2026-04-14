@@ -9,7 +9,7 @@ function parseCharacterList(pollList) {
     return lines.map(line => line.trim().replace(/:female_sign:|:male_sign:/g, m => m === ':female_sign:' ? '♀️' : '♂️'));
 }
 
-module.exports = function setupGiveawayRoutes(app, client, supabase, supabaseRetry) {
+module.exports = function setupGiveawayRoutes(app, client, supabase, supabaseRetry, getGuildMembers) {
     
     // ────────────────────────────────────────────────
     // GET active giveaway and entrants with full details
