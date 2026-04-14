@@ -9,7 +9,7 @@ const UPDATE_INTERVAL = h.POLL_UPDATE_INTERVAL_MS;
 
 let cachedPollResults = null;
 let cachedPollTimestamp = 0;
-const CACHE_TTL = 4000; // 4s - safe with realtime
+const CACHE_TTL = 5000;
 
 let activePollTimer = null;
 let realtimeChannel = null;
@@ -18,9 +18,9 @@ let currentCharacters = null;
 let currentEndTime = null;
 
 let reconnectAttempts = 0;
-const MAX_RECONNECT_ATTEMPTS = 6;
+const MAX_RECONNECT_ATTEMPTS = 5;
 
-// ==================== DASHBOARD REFRESH ====================
+// Dashboard callback
 let dashboardRefreshCallback = null;
 
 function setDashboardRefreshCallback(callback) {
@@ -34,14 +34,14 @@ async function refreshDashboard() {
     if (typeof dashboardRefreshCallback === 'function') {
         try {
             await dashboardRefreshCallback();
-            console.log('📊 Dashboard refreshed via realtime');
+            console.log('📊 Dashboard refreshed via realtime vote');
         } catch (err) {
             console.error('❌ Dashboard refresh failed:', err.message);
         }
     }
 }
 
-// ==================== REAL-TIME SETUP ====================
+// ==================== REAL-TIME (More Stable) ====================
 function setupRealtimeListeners() {
     if (realtimeChannel) {
         realtimeChannel.unsubscribe().catch(() => {});
@@ -52,8 +52,8 @@ function setupRealtimeListeners() {
     realtimeChannel = supabase.channel('poll-votes-realtime', {
         config: {
             heartbeat: true,
-            heartbeatIntervalMs: 20000,   // 20s - balanced
-            timeout: 25000,
+            heartbeatIntervalMs: 25000,
+            timeout: 30000,
         }
     });
 
@@ -72,7 +72,7 @@ function setupRealtimeListeners() {
             console.log(`[Realtime] Status: ${status}${err ? ` - ${err.message || err}` : ''}`);
 
             if (status === 'SUBSCRIBED') {
-                console.log('✅ Supabase Realtime: Successfully subscribed!');
+                console.log('✅ Supabase Realtime: Successfully subscribed and listening!');
                 reconnectAttempts = 0;
             } else if (['TIMED_OUT', 'CLOSED', 'CHANNEL_ERROR'].includes(status)) {
                 console.warn(`⚠️ Realtime ${status}`);
@@ -83,37 +83,36 @@ function setupRealtimeListeners() {
 
 function attemptReconnect() {
     if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
-        console.error('❌ Max realtime reconnect attempts reached. Relying on interval fallback only.');
+        console.error('❌ Max realtime reconnect attempts reached. Using interval fallback only.');
         return;
     }
 
     reconnectAttempts++;
-    const delay = Math.min(2000 * reconnectAttempts, 25000);
+    const delay = 2000 * reconnectAttempts;
 
-    console.log(`🔄 Reconnecting in ${delay}ms... (Attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})`);
+    console.log(`🔄 Reconnecting realtime in ${delay}ms... (Attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})`);
 
     setTimeout(() => {
         if (currentPollMessage) setupRealtimeListeners();
     }, delay);
 }
 
-// ==================== VOTE HANDLER ====================
 async function handleVoteChange(payload) {
-    console.log(`🗳️ Realtime vote → ${payload.eventType} on ${payload.table} (by ${payload.new?.user_id || 'unknown'})`);
+    console.log(`🗳️ Realtime vote detected → ${payload.eventType} on ${payload.table}`);
 
     cachedPollResults = null;
     cachedPollTimestamp = 0;
 
-    // Update Discord message
+    // Update Discord poll
     if (currentPollMessage && currentCharacters) {
         try {
             const results = await getPollResults(currentPollMessage, currentCharacters);
             const isFinished = Date.now() >= currentEndTime;
             const content = await generateMessageContent(currentEndTime, results, currentCharacters, isFinished);
             await currentPollMessage.edit({ content });
-            console.log('✅ Discord poll message updated');
+            console.log('✅ Discord poll updated via realtime');
         } catch (err) {
-            if (err.code !== 10008) console.error('❌ Discord edit failed:', err.message);
+            if (err.code !== 10008) console.error('❌ Discord update failed:', err.message);
         }
     }
 
