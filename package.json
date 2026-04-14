@@ -20,9 +20,9 @@
   "ws": "^8.18.0"
 },
   
-  "engines": {
-    "node": "20.x"
-  },
+"engines": {
+  "node": "20.x || 22.x"
+}
   "author": "Your Name",
   "license": "MIT"
 }
