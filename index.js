@@ -25,16 +25,15 @@ const giveawayCommand = require('./commands/giveaway');
 
 // ==================== DASHBOARD REFRESH FUNCTION ====================
 async function updateDashboard() {
-    try {
-        console.log('📊 Realtime vote detected → Broadcasting to dashboard...');
-        if (typeof global.refreshPollDashboard === 'function') {
-            global.refreshPollDashboard();
-            console.log('✅ Live poll update broadcasted to all connected clients');
-        }
-    } catch (err) {
+    console.log('📊 Realtime vote → Broadcasting update!');
+    if (typeof global.refreshPollDashboard === 'function') {
+        global.refreshPollDashboard();
+        console.log('✅ Broadcast sent to SSE clients');
+    }
+} catch (err) {
         console.error('❌ Dashboard refresh failed:', err.message);
     }
-}
+
 
 // Register the callback
 pollService.setDashboardRefreshCallback(updateDashboard);
