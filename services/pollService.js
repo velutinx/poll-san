@@ -4,18 +4,17 @@ const supabase = require('./supabase');
 const { supabaseRetry } = require('../utils/db');
 const h = require('../utils/helpers');
 
-const CURRENT_POLL_ID = 'character_poll_new';
+// Use a constant for the poll ID so it's easy to change later
+const CURRENT_POLL_ID = 'character_poll_new'; 
+
+// Cache for poll results
 let cachedPollResults = null;
 let cachedPollTimestamp = 0;
-const CACHE_TTL = 60000;
+const CACHE_TTL = 10000; // 10 seconds
+
+// Module-level timer variable to allow stopping from outside
 let activePollTimer = null;
 
-// Store active poll context for manual refresh
-let currentPollContext = null;
-
-// ------------------------------------------------------------------
-// getPollResults (unchanged)
-// ------------------------------------------------------------------
 async function getPollResults(message, characters) {
     const displayResults = [];
     const rawDataForDB = [];
@@ -97,86 +96,38 @@ async function getPollResults(message, characters) {
     }
 }
 
-// ------------------------------------------------------------------
-// generateMessageContent (unchanged)
-// ------------------------------------------------------------------
+/**
+ * Generates the message content. 
+ * @param {boolean} isEnded - If true, replaces the timer with a static "Poll Ended" header.
+ */
 async function generateMessageContent(endTime, resultsText, characters, isEnded = false) {
     const e = h.releaseEmojis;
     const randomDownArrow = e.DOWN_ARROWS[Math.floor(Math.random() * e.DOWN_ARROWS.length)];
     
+    // 1. Header (Dynamic Timer vs Static Ended)
     const header = isEnded 
         ? `🛑 **Poll Ended**\n\n` 
         : `${e.HOURGLASS} Time remaining: **${h.formatTime(endTime - Date.now())}**\n\n`;
     
+    // 2. Body
     const body = resultsText || characters.map((char, i) => {
         const name = char.replace(/:female_sign:|:male_sign:/g, m => m === ':female_sign:' ? '♀️' : '♂️');
         return `${h.emojis[i]} \`      0.00   ${name.padEnd(30)} \` \n`;
     }).join('');
     
+    // 3. Footer
     const footer = `\nDiscord weighted vote + ${e.LINK} **[Website poll results](https://velutinx.com/poll)** (Click to vote there too!)\n\n` +
                    `${randomDownArrow} Click the thread below for character images & discussion!`;
     
     return header + body + footer;
 }
 
-// ------------------------------------------------------------------
-// Manual refresh (called from vote handlers)
-// ------------------------------------------------------------------
-function setActivePollContext(pollMessage, endTime, characters) {
-    currentPollContext = { pollMessage, endTime, characters };
-}
-
-async function refreshActivePollMessage() {
-    console.log("🔄 refreshActivePollMessage called"); // <-- add this
-    if (!currentPollContext) return;
-    const { pollMessage, endTime, characters } = currentPollContext;
-    cachedPollResults = null;
-    cachedPollTimestamp = 0;
-    const isFinished = Date.now() >= endTime;
-    const results = await getPollResults(pollMessage, characters);
-    const content = await generateMessageContent(endTime, results, characters, isFinished);
-    try {
-        await pollMessage.edit({ content });
-    } catch (err) {
-        if (err.code !== 10008) console.warn('Poll refresh edit failed:', err.message);
-    }
-}
-
-// ------------------------------------------------------------------
-// Cleanup and timer (fallback)
-// ------------------------------------------------------------------
 function forceStopPoll() {
     if (activePollTimer) {
         clearInterval(activePollTimer);
         activePollTimer = null;
         console.log("Poll interval cleared.");
     }
-}
-
-function runPollInterval(pollMessage, endTime, characters) {
-    forceStopPoll();
-    activePollTimer = setInterval(async () => {
-        const now = Date.now();
-        const isFinished = now >= endTime;
-        try {
-            await refreshActivePollMessage(); // reuse same refresh
-            if (isFinished) {
-                forceStopPoll();
-                await supabaseRetry(() =>
-                    supabase.from('auto_resume').delete().eq('message_id', pollMessage.id)
-                );
-                currentPollContext = null;
-            }
-        } catch (e) {
-            if (e.code === 10008) {
-                forceStopPoll();
-                await supabaseRetry(() =>
-                    supabase.from('auto_resume').delete().eq('message_id', pollMessage.id)
-                );
-                currentPollContext = null;
-            }
-        }
-    }, 60000);
 }
 
 async function getFinalPollMessageContent(pollList) {
@@ -192,12 +143,41 @@ async function getFinalPollMessageContent(pollList) {
     return `🛑 **Poll has ended.**\n\n${resultsString}\n\nDiscord weighted vote + ${e.LINK} **[Website poll results](https://velutinx.com/poll)**\n\n${randomDownArrow} Click the thread below for character images & discussion!`;
 }
 
+function runPollInterval(pollMessage, endTime, characters) {
+    // Clear any existing timer before starting a new one
+    forceStopPoll();
+
+    activePollTimer = setInterval(async () => {
+        const now = Date.now();
+        const isFinished = now >= endTime;
+
+        try {
+            const results = await getPollResults(pollMessage, characters);
+            const content = await generateMessageContent(endTime, results, characters, isFinished);
+            
+            await pollMessage.edit({ content });
+
+            if (isFinished) {
+                forceStopPoll();
+                await supabaseRetry(() =>
+                    supabase.from('auto_resume').delete().eq('message_id', pollMessage.id)
+                );
+            }
+        } catch (e) {
+            if (e.code === 10008) { // Message deleted
+                forceStopPoll();
+                await supabaseRetry(() =>
+                    supabase.from('auto_resume').delete().eq('message_id', pollMessage.id)
+                );
+            }
+        }
+    }, 60000); 
+}
+
 module.exports = { 
     getPollResults, 
     generateMessageContent, 
     runPollInterval, 
     getFinalPollMessageContent,
-    forceStopPoll,
-    setActivePollContext,
-    refreshActivePollMessage
+    forceStopPoll 
 };
