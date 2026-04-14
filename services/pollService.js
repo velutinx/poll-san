@@ -2,17 +2,17 @@
 
 const supabase = require('./supabase');
 const { supabaseRetry } = require('../utils/db');
-const h = require('../utils/helpers');
+const h = require('../utils/helpers');   // already imported
 
-// Use a constant for the poll ID so it's easy to change later
-const CURRENT_POLL_ID = 'character_poll_new'; 
+const CURRENT_POLL_ID = 'character_poll_new';
 
-// Cache for poll results
+// Use the shared interval for both cache and update frequency
+const UPDATE_INTERVAL = h.POLL_UPDATE_INTERVAL_MS;
+
 let cachedPollResults = null;
 let cachedPollTimestamp = 0;
-const CACHE_TTL = 10000; // 10 seconds
+const CACHE_TTL = UPDATE_INTERVAL;   // same as update interval
 
-// Module-level timer variable to allow stopping from outside
 let activePollTimer = null;
 
 async function getPollResults(message, characters) {
@@ -144,7 +144,6 @@ async function getFinalPollMessageContent(pollList) {
 }
 
 function runPollInterval(pollMessage, endTime, characters) {
-    // Clear any existing timer before starting a new one
     forceStopPoll();
 
     activePollTimer = setInterval(async () => {
@@ -154,7 +153,6 @@ function runPollInterval(pollMessage, endTime, characters) {
         try {
             const results = await getPollResults(pollMessage, characters);
             const content = await generateMessageContent(endTime, results, characters, isFinished);
-            
             await pollMessage.edit({ content });
 
             if (isFinished) {
@@ -164,14 +162,14 @@ function runPollInterval(pollMessage, endTime, characters) {
                 );
             }
         } catch (e) {
-            if (e.code === 10008) { // Message deleted
+            if (e.code === 10008) {
                 forceStopPoll();
                 await supabaseRetry(() =>
                     supabase.from('auto_resume').delete().eq('message_id', pollMessage.id)
                 );
             }
         }
-    }, 60000); 
+    }, UPDATE_INTERVAL);   // <-- now uses the shared constant
 }
 
 module.exports = { 
