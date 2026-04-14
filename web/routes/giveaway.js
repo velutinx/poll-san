@@ -1,6 +1,7 @@
 // this is poll-san/web/routes/giveaway.js
 
-const h = require('../../utils/helpers'); // Import helpers
+const h = require('../../utils/helpers');
+const { EmbedBuilder } = require('discord.js');
 
 function parseCharacterList(pollList) {
     if (!pollList) return [];
@@ -10,7 +11,9 @@ function parseCharacterList(pollList) {
 
 module.exports = function setupGiveawayRoutes(app, client, supabase, supabaseRetry) {
     
-    // Get active giveaway and entrants with full details
+    // ────────────────────────────────────────────────
+    // GET active giveaway and entrants with full details
+    // ────────────────────────────────────────────────
     app.get('/api/giveaway/active', async (req, res) => {
         try {
             const now = new Date().toISOString();
@@ -82,17 +85,14 @@ module.exports = function setupGiveawayRoutes(app, client, supabase, supabaseRet
                             ? Math.floor((Date.now() - member.user.createdTimestamp) / (24 * 60 * 60 * 1000))
                             : null;
                         
-                        // CHANGED: Using centralized helper for supporter check
                         isSupporter = member.roles.cache.has(h.ids.roles.supporter);
                     }
-
                 } catch (err) {
                     console.warn(`Failed to fetch member ${userId}:`, err.message);
                     leftServer = true;
                 }
 
                 const vote = voteMap[userId] || null;
-
                 entrantsDetails.push({
                     userId,
                     username: leftServer ? `[LEFT] ${userId}` : username,
@@ -118,6 +118,62 @@ module.exports = function setupGiveawayRoutes(app, client, supabase, supabaseRet
         }
     });
 
+    // ────────────────────────────────────────────────
+    // POST – Adjust giveaway end time by hours (+/-)
+    // ────────────────────────────────────────────────
+    app.post('/api/giveaway/adjust-time', async (req, res) => {
+        const { hours } = req.body;
+        if (typeof hours !== 'number' || isNaN(hours)) {
+            return res.status(400).json({ error: 'Invalid hours value' });
+        }
+
+        try {
+            const now = new Date().toISOString();
+            const { data: giveaway, error } = await supabaseRetry(() =>
+                supabase.from('giveaways')
+                    .select('*')
+                    .eq('ended', false)
+                    .gt('end_time', now)
+                    .order('end_time', { ascending: true })
+                    .limit(1)
+                    .single()
+            );
+            if (error || !giveaway) {
+                return res.status(404).json({ error: 'No active giveaway found' });
+            }
+
+            // Calculate new end time
+            const oldEnd = new Date(giveaway.end_time);
+            const newEnd = new Date(oldEnd.getTime() + hours * 60 * 60 * 1000);
+            const newEndISO = newEnd.toISOString();
+
+            // Update database
+            const { error: updateError } = await supabaseRetry(() =>
+                supabase.from('giveaways')
+                    .update({ end_time: newEndISO })
+                    .eq('message_id', giveaway.message_id)
+            );
+            if (updateError) throw updateError;
+
+            // Update Discord message embed
+            const channel = await client.channels.fetch(giveaway.channel_id);
+            const message = await channel.messages.fetch(giveaway.message_id);
+            const oldEmbed = message.embeds[0];
+            const newEmbed = new EmbedBuilder(oldEmbed.data)
+                .spliceFields(0, 1, { name: 'Ends', value: `<t:${Math.floor(newEnd.getTime() / 1000)}:R>`, inline: true });
+
+            await message.edit({ embeds: [newEmbed] });
+
+            res.json({ success: true, newEndTime: newEndISO });
+        } catch (err) {
+            console.error('Giveaway time adjust error:', err);
+            res.status(500).json({ error: err.message });
+        }
+    });
+
+    // ────────────────────────────────────────────────
+    // POST – Remove a user from the active giveaway
+    // ────────────────────────────────────────────────
     app.post('/api/giveaway/remove', async (req, res) => {
         const { userId } = req.body;
         if (!userId) return res.status(400).json({ error: 'Missing userId' });
