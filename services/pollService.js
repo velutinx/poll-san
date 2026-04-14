@@ -4,22 +4,18 @@ const supabase = require('./supabase');
 const { supabaseRetry } = require('../utils/db');
 const h = require('../utils/helpers');
 
-// Use a constant for the poll ID so it's easy to change later
 const CURRENT_POLL_ID = 'character_poll_new';
-
-// Cache for poll results
 let cachedPollResults = null;
 let cachedPollTimestamp = 0;
-const CACHE_TTL = 60000; // 1 minute
-
-// Module-level timer and realtime subscription
+const CACHE_TTL = 60000;
 let activePollTimer = null;
-let voteSubscription = null;
-let keepAliveInterval = null;   // <-- moved to module level
 
-// ----------------------------------------------------------------------
-// Core poll result calculation (unchanged)
-// ----------------------------------------------------------------------
+// Store active poll context for manual refresh
+let currentPollContext = null;
+
+// ------------------------------------------------------------------
+// getPollResults (unchanged)
+// ------------------------------------------------------------------
 async function getPollResults(message, characters) {
     const displayResults = [];
     const rawDataForDB = [];
@@ -101,9 +97,9 @@ async function getPollResults(message, characters) {
     }
 }
 
-// ----------------------------------------------------------------------
-// Message content generation (unchanged)
-// ----------------------------------------------------------------------
+// ------------------------------------------------------------------
+// generateMessageContent (unchanged)
+// ------------------------------------------------------------------
 async function generateMessageContent(endTime, resultsText, characters, isEnded = false) {
     const e = h.releaseEmojis;
     const randomDownArrow = e.DOWN_ARROWS[Math.floor(Math.random() * e.DOWN_ARROWS.length)];
@@ -123,157 +119,65 @@ async function generateMessageContent(endTime, resultsText, characters, isEnded 
     return header + body + footer;
 }
 
-// ----------------------------------------------------------------------
-// Helper to refresh the poll message (used by both timer and realtime)
-// ----------------------------------------------------------------------
-async function refreshPollMessage(pollMessage, endTime, characters) {
-    // Clear cache to force fresh data from DB
+// ------------------------------------------------------------------
+// Manual refresh (called from vote handlers)
+// ------------------------------------------------------------------
+function setActivePollContext(pollMessage, endTime, characters) {
+    currentPollContext = { pollMessage, endTime, characters };
+}
+
+async function refreshActivePollMessage() {
+    if (!currentPollContext) return;
+    const { pollMessage, endTime, characters } = currentPollContext;
     cachedPollResults = null;
     cachedPollTimestamp = 0;
-
-    const now = Date.now();
-    const isFinished = now >= endTime;
+    const isFinished = Date.now() >= endTime;
     const results = await getPollResults(pollMessage, characters);
     const content = await generateMessageContent(endTime, results, characters, isFinished);
-    
     try {
         await pollMessage.edit({ content });
     } catch (err) {
-        // Ignore "Unknown Message" (10008) – usually means poll was already deleted
-        if (err.code !== 10008) {
-            console.warn('Failed to edit poll message:', err.message);
-        }
+        if (err.code !== 10008) console.warn('Poll refresh edit failed:', err.message);
     }
 }
 
-// ----------------------------------------------------------------------
-// Supabase Realtime subscription – triggers on every new vote
-// ----------------------------------------------------------------------
-async function subscribeToVoteUpdates(pollMessage, endTime, characters) {
-    // Unsubscribe from any previous subscription first
-    if (voteSubscription) {
-        await supabase.removeChannel(voteSubscription);
-        voteSubscription = null;
-    }
-    if (keepAliveInterval) {
-        clearInterval(keepAliveInterval);
-        keepAliveInterval = null;
-    }
-
-    // Create a new channel with extended timeout config
-    const channel = supabase
-        .channel('vote-updates', {
-            config: {
-                // Increase default timeouts (Railway closes idle connections quickly)
-                timeout: 60000,           // 60 seconds instead of default ~10
-                heartbeatIntervalMs: 15000, // Send a ping every 15 seconds
-            }
-        })
-        .on(
-            'postgres_changes',
-            { event: 'INSERT', schema: 'public', table: 'votes_discord' },
-            () => refreshPollMessage(pollMessage, endTime, characters)
-        )
-        .on(
-            'postgres_changes',
-            { event: 'INSERT', schema: 'public', table: 'website_voting' },
-            () => refreshPollMessage(pollMessage, endTime, characters)
-        )
-        .subscribe((status, err) => {
-            if (err) {
-                console.error('❌ Realtime subscription error:', err);
-                // Attempt to reconnect after a delay (Supabase client may retry automatically,
-                // but we can force a manual re‑sub if needed)
-                setTimeout(() => {
-                    if (voteSubscription?.state !== 'joined') {
-                        console.log('🔄 Manually re‑subscribing to realtime...');
-                        subscribeToVoteUpdates(pollMessage, endTime, characters);
-                    }
-                }, 5000);
-            } else {
-                console.log(`✅ Realtime subscription status: ${status}`);
-                
-                // Once subscribed, start a manual keep‑alive ping every 20 seconds
-                if (status === 'SUBSCRIBED') {
-                    if (keepAliveInterval) clearInterval(keepAliveInterval);
-                    keepAliveInterval = setInterval(() => {
-                        // Send a harmless 'ping' message over the WebSocket to keep it alive
-                        if (voteSubscription?.socket?.readyState === 1) { // WebSocket.OPEN
-                            voteSubscription.socket.send(JSON.stringify({ type: 'ping' }));
-                        }
-                    }, 20000);
-                }
-            }
-        });
-
-    voteSubscription = channel;
-}
-
-// ----------------------------------------------------------------------
-// Cleanup: stop timer and unsubscribe from realtime
-// ----------------------------------------------------------------------
+// ------------------------------------------------------------------
+// Cleanup and timer (fallback)
+// ------------------------------------------------------------------
 function forceStopPoll() {
     if (activePollTimer) {
         clearInterval(activePollTimer);
         activePollTimer = null;
         console.log("Poll interval cleared.");
     }
-    
-    if (keepAliveInterval) {
-        clearInterval(keepAliveInterval);
-        keepAliveInterval = null;
-    }
-    
-    if (voteSubscription) {
-        supabase.removeChannel(voteSubscription)
-            .then(() => {
-                voteSubscription = null;
-                console.log("Realtime subscription removed.");
-            })
-            .catch(err => console.error("Error removing subscription:", err));
-    }
 }
 
-// ----------------------------------------------------------------------
-// Main polling loop (1‑minute fallback + starts realtime)
-// ----------------------------------------------------------------------
 function runPollInterval(pollMessage, endTime, characters) {
-    // Clear any existing timer
     forceStopPoll();
-
-    // Start the 1‑minute interval as a fallback
     activePollTimer = setInterval(async () => {
         const now = Date.now();
         const isFinished = now >= endTime;
-
         try {
-            await refreshPollMessage(pollMessage, endTime, characters);
-
+            await refreshActivePollMessage(); // reuse same refresh
             if (isFinished) {
                 forceStopPoll();
                 await supabaseRetry(() =>
                     supabase.from('auto_resume').delete().eq('message_id', pollMessage.id)
                 );
+                currentPollContext = null;
             }
         } catch (e) {
-            if (e.code === 10008) { // Message deleted
+            if (e.code === 10008) {
                 forceStopPoll();
                 await supabaseRetry(() =>
                     supabase.from('auto_resume').delete().eq('message_id', pollMessage.id)
                 );
+                currentPollContext = null;
             }
         }
     }, 60000);
-
-    // Also subscribe to realtime vote events (instant updates)
-    subscribeToVoteUpdates(pollMessage, endTime, characters).catch(err => {
-        console.error("Failed to start realtime subscription:", err);
-    });
 }
 
-// ----------------------------------------------------------------------
-// Utility for final poll message (unchanged)
-// ----------------------------------------------------------------------
 async function getFinalPollMessageContent(pollList) {
     const characters = pollList
         .split(/(?=:female_sign:|:male_sign:|♀️|♂️)/)
@@ -287,13 +191,12 @@ async function getFinalPollMessageContent(pollList) {
     return `🛑 **Poll has ended.**\n\n${resultsString}\n\nDiscord weighted vote + ${e.LINK} **[Website poll results](https://velutinx.com/poll)**\n\n${randomDownArrow} Click the thread below for character images & discussion!`;
 }
 
-// ----------------------------------------------------------------------
-// Exports
-// ----------------------------------------------------------------------
 module.exports = { 
     getPollResults, 
     generateMessageContent, 
     runPollInterval, 
     getFinalPollMessageContent,
-    forceStopPoll
+    forceStopPoll,
+    setActivePollContext,
+    refreshActivePollMessage
 };
