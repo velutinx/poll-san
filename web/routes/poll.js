@@ -166,28 +166,26 @@ app.post('/api/mark-winner', async (req, res) => {
             .filter(s => s.length > 1);
 
         // Build the scoreboard – TEXT ONLY, no image links
-        let scoreboard = `:trophy: **${winner_name}** has been marked as a winner! ${e.CONFETTI}\n\n`;
+let scoreboard = `:trophy: **${winner_name}** has been marked as a winner! ${e.CONFETTI}\n\n`;
 
-        characters.forEach((char, index) => {
-            const imgNum = index + 1;
-            const emoji = h.emojis[index] || `[${imgNum}]`;
-            const record = voteData.find(v => {
-                const cleanChar = char.replace(/♀️|♂️/g, '').trim().toLowerCase();
-                const cleanRecord = v.character_name.replace(/♀️|♂️/g, '').trim().toLowerCase();
-                return cleanChar === cleanRecord;
-            });
-            
-            const score = record ? parseFloat(record.score).toFixed(1) : "0.0";
-            const isWinner = record && record.selected_at !== null;
-            
-            // TEXT LINE (no image link)
-            const line = `${emoji} = ${score} -- ${char}`;
-            
-            // Add to scoreboard: spoiler if winner, otherwise plain
-            scoreboard += isWinner ? `||${line}||\n` : `${line}\n`;
-        });
+characters.forEach((char, index) => {
+    const imgNum = index + 1;
+    const emoji = h.emojis[index] || `[${imgNum}]`;
+    const record = voteData.find(v => {
+        const cleanChar = char.replace(/♀️|♂️/g, '').trim().toLowerCase();
+        const cleanRecord = v.character_name.replace(/♀️|♂️/g, '').trim().toLowerCase();
+        return cleanChar === cleanRecord;
+    });
+    
+    const score = record ? parseFloat(record.score).toFixed(1) : "0.0";
+    const isWinner = record && record.selected_at !== null;
+    
+    // ✅ TEXT ONLY – no image link
+    const line = `${emoji} = ${score} -- ${char}`;
+    scoreboard += isWinner ? `||${line}||\n` : `${line}\n`;
+});
 
-        await thread.send(scoreboard);
+await thread.send(scoreboard);
         res.json({ success: true });
     } catch (err) {
         console.error('Mark winner error:', err);
