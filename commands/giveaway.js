@@ -6,7 +6,6 @@ const fs = require('fs');
 const supabase = require(path.join(__dirname, '..', 'services', 'supabase'));
 const { colors, releaseEmojis } = require('../utils/helpers');
 
-
 // In-memory cache for quick access
 const activeGiveaways = new Map();
 
@@ -78,7 +77,7 @@ module.exports = {
         // Create embed
         const embed = new EmbedBuilder()
             .setTitle(prize)
-            .setDescription('Click the button below to join the giveaway!')
+            .setDescription(`${releaseEmojis.CHAT} Click the button below to join the giveaway! ${releaseEmojis.CHAT}`)
             .addFields(
                 { name: 'Ends', value: `<t:${Math.floor(endTime.getTime() / 1000)}:R>`, inline: true },
                 { name: 'Hosts', value: `${interaction.user}`, inline: true },
