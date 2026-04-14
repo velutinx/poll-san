@@ -183,7 +183,6 @@ function forceStopPoll() {
         clearInterval(activePollTimer);
         activePollTimer = null;
     }
-    console.log("Poll interval cleared.");
 }
 
 async function getFinalPollMessageContent(pollList) {
