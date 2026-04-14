@@ -1,6 +1,8 @@
 // this is poll-san/index.js
 
 const path = require('path');
+const pollService = require('./services/pollService');
+pollService.setDashboardRefreshCallback(yourDashboardUpdateFunction);
 require('dotenv').config({ path: path.resolve(__dirname, '.env'), quiet: true });
 
 const { 
