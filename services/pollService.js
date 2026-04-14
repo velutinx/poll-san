@@ -15,13 +15,16 @@ let activePollTimer = null;
 let realtimeChannel = null;
 let currentPollMessage = null;
 let currentCharacters = null;
-let currentEndTime = null;   // Store endTime for realtime handler
+let currentEndTime = null;
 
-// ==================== REAL-TIME SETUP ====================
+let reconnectAttempts = 0;
+const MAX_RECONNECT_ATTEMPTS = 5;
+const RECONNECT_DELAY = 3000; // 3 seconds
+
+// ==================== REAL-TIME SETUP WITH RETRY ====================
 function setupRealtimeListeners() {
     if (realtimeChannel) {
-        console.log('Realtime channel already active');
-        return;
+        supabase.removeChannel(realtimeChannel);
     }
 
     realtimeChannel = supabase.channel('poll-votes-realtime');
@@ -48,49 +51,58 @@ function setupRealtimeListeners() {
             handleVoteChange
         )
         .subscribe((status, err) => {
+            console.log(`Realtime status: ${status}`);
+
             if (status === 'SUBSCRIBED') {
-                console.log('✅ Supabase Realtime: Listening for new votes (Discord + Website)');
-            } else if (status === 'CHANNEL_ERROR') {
-                console.error('Realtime channel error:', err);
-            } else {
-                console.log(`Realtime subscription status: ${status}`);
+                console.log('✅ Supabase Realtime: Successfully listening for votes');
+                reconnectAttempts = 0;
+            } else if (['TIMED_OUT', 'CLOSED', 'CHANNEL_ERROR'].includes(status)) {
+                console.warn(`⚠️ Realtime ${status}${err ? ': ' + err.message : ''}`);
+                attemptReconnect();
             }
         });
 }
 
-async function handleVoteChange(payload) {
-    if (!currentPollMessage || !currentCharacters) {
-        console.warn('Realtime vote received but no active poll is loaded');
+function attemptReconnect() {
+    if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+        console.error('❌ Max realtime reconnect attempts reached. Falling back to interval only.');
         return;
     }
 
-    console.log(`🗳️ Realtime vote detected → ${payload.eventType} on ${payload.table}`);
+    reconnectAttempts++;
+    console.log(`🔄 Reconnecting realtime... Attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS}`);
+
+    setTimeout(() => {
+        if (currentPollMessage) {  // only reconnect if there's still an active poll
+            setupRealtimeListeners();
+        }
+    }, RECONNECT_DELAY * reconnectAttempts); // exponential-ish backoff
+}
+
+async function handleVoteChange(payload) {
+    if (!currentPollMessage || !currentCharacters) return;
+
+    console.log(`🗳️ Realtime vote change detected → ${payload.eventType} on ${payload.table}`);
 
     try {
-        // Force fresh calculation (bypass cache)
+        // Force fresh DB read
         cachedPollResults = null;
         cachedPollTimestamp = 0;
 
         const results = await getPollResults(currentPollMessage, currentCharacters);
-
         const now = Date.now();
         const isFinished = now >= currentEndTime;
 
-        const content = await generateMessageContent(
-            currentEndTime,
-            results,
-            currentCharacters,
-            isFinished
-        );
+        const content = await generateMessageContent(currentEndTime, results, currentCharacters, isFinished);
 
         await currentPollMessage.edit({ content });
-        console.log('✅ Poll message updated via realtime');
+        console.log('✅ Poll updated successfully via realtime');
     } catch (err) {
-        console.error('Error updating poll via realtime:', err);
+        console.error('Error in realtime update:', err);
     }
 }
 
-// ==================== EXISTING FUNCTIONS (with small enhancements) ====================
+// ==================== REST OF YOUR FUNCTIONS (unchanged logic) ====================
 
 async function getPollResults(message, characters) {
     const displayResults = [];
@@ -128,11 +140,9 @@ async function getPollResults(message, characters) {
 
         for (let i = 0; i < characters.length; i++) {
             const optionId = i + 1;
-
             const discordScore = discordVotes
-                ? discordVotes
-                    .filter(v => v.option_id === optionId)
-                    .reduce((sum, v) => sum + parseFloat(v.weight), 0)
+                ? discordVotes.filter(v => v.option_id === optionId)
+                    .reduce((sum, v) => sum + parseFloat(v.weight || 0), 0)
                 : 0;
 
             const websiteScore = websiteVotes
@@ -140,18 +150,11 @@ async function getPollResults(message, characters) {
                 : 0;
 
             const totalScore = discordScore + websiteScore;
-
-            const rawName = characters[i].replace(/:female_sign:|:male_sign:/g, m =>
-                m === ':female_sign:' ? '♀️' : '♂️'
-            );
-
+            const rawName = characters[i].replace(/:female_sign:|:male_sign:/g, m => m === ':female_sign:' ? '♀️' : '♂️');
             const isWinner = winnerMap[optionId] || false;
 
             let line = `${h.emojis[i]} \` ${totalScore.toFixed(2).padStart(5, ' ')} ${rawName.padEnd(30)} \` \n`;
-
-            if (isWinner) {
-                line = `||${line}||`;
-            }
+            if (isWinner) line = `||${line}||`;
 
             displayResults.push(line);
 
@@ -170,7 +173,6 @@ async function getPollResults(message, characters) {
         const resultString = displayResults.join('');
         cachedPollResults = resultString;
         cachedPollTimestamp = Date.now();
-
         return resultString;
     } catch (err) {
         console.error("Error calculating poll results:", err);
@@ -187,9 +189,7 @@ async function generateMessageContent(endTime, resultsText, characters, isEnded 
         : `${e.HOURGLASS} Time remaining: **${h.formatTime(endTime - Date.now())}**\n\n`;
 
     const body = resultsText || characters.map((char, i) => {
-        const name = char.replace(/:female_sign:|:male_sign:/g, m =>
-            m === ':female_sign:' ? '♀️' : '♂️'
-        );
+        const name = char.replace(/:female_sign:|:male_sign:/g, m => m === ':female_sign:' ? '♀️' : '♂️');
         return `${h.emojis[i]} \` 0.00 ${name.padEnd(30)} \` \n`;
     }).join('');
 
@@ -204,15 +204,8 @@ function forceStopPoll() {
         clearInterval(activePollTimer);
         activePollTimer = null;
     }
-
-    // Optional: keep realtime alive across polls (recommended)
-    // If you want to fully clean up:
-    // if (realtimeChannel) {
-    //     realtimeChannel.unsubscribe();
-    //     realtimeChannel = null;
-    // }
-
     console.log("Poll interval cleared.");
+    // We keep realtime alive in case a new poll starts soon
 }
 
 async function getFinalPollMessageContent(pollList) {
@@ -231,12 +224,10 @@ async function getFinalPollMessageContent(pollList) {
 function runPollInterval(pollMessage, endTime, characters) {
     forceStopPoll();
 
-    // Store references for realtime handler
     currentPollMessage = pollMessage;
     currentCharacters = characters;
     currentEndTime = endTime;
 
-    // Start realtime listening (only once)
     setupRealtimeListeners();
 
     activePollTimer = setInterval(async () => {
@@ -246,7 +237,6 @@ function runPollInterval(pollMessage, endTime, characters) {
         try {
             const results = await getPollResults(pollMessage, characters);
             const content = await generateMessageContent(endTime, results, characters, isFinished);
-
             await pollMessage.edit({ content });
 
             if (isFinished) {
@@ -256,13 +246,13 @@ function runPollInterval(pollMessage, endTime, characters) {
                 );
             }
         } catch (e) {
-            if (e.code === 10008) { // Unknown Message
+            if (e.code === 10008) {
                 forceStopPoll();
                 await supabaseRetry(() =>
                     supabase.from('auto_resume').delete().eq('message_id', pollMessage.id)
                 );
             } else {
-                console.error("Error in poll interval:", e);
+                console.error("Poll interval error:", e);
             }
         }
     }, UPDATE_INTERVAL);
@@ -273,6 +263,5 @@ module.exports = {
     generateMessageContent,
     runPollInterval,
     getFinalPollMessageContent,
-    forceStopPoll,
-    setupRealtimeListeners   // useful if you want to call it manually
+    forceStopPoll
 };
