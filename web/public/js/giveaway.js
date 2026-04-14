@@ -26,11 +26,25 @@ async function loadGiveawayData() {
         const hours = Math.floor(timeLeft / (1000 * 60 * 60));
         const minutes = Math.floor((timeLeft % (3600000)) / 60000);
         const seconds = Math.floor((timeLeft % 60000) / 1000);
+
+        // Format ending time: e.g., "Tuesday, 4:00 PM"
+        const endingStr = endTime.toLocaleString(undefined, {
+            weekday: 'long', hour: 'numeric', minute: '2-digit', hour12: true
+        }).replace(':00', ''); // remove seconds if zero
+
         infoDiv.innerHTML = `
             <strong>Prize:</strong> ${escapeHtml(data.prize)} &nbsp;|&nbsp;
             <strong>Winners:</strong> ${data.winnersCount} &nbsp;|&nbsp;
             <strong>Time left:</strong> ${hours}h ${minutes}m ${seconds}s &nbsp;|&nbsp;
-            <strong>Entrants:</strong> ${data.entrants.length}
+            <strong>Entrants:</strong> ${data.entrants.length} &nbsp;|&nbsp;
+            <strong>Ending at:</strong> ${endingStr}
+            <div style="margin-top: 12px;">
+                <label style="font-size:0.9rem;">Adjust time: </label>
+                <input type="number" id="adjust-hours" step="1" value="0" style="width:70px; background:#1e293b; border:1px solid #475569; color:white; border-radius:4px; padding:4px;">
+                <button onclick="adjustGiveawayTime(1)" style="background:#3b82f6; padding:4px 12px;">+1h</button>
+                <button onclick="adjustGiveawayTime(-1)" style="background:#ef4444; padding:4px 12px;">-1h</button>
+                <button onclick="adjustGiveawayTime(parseInt(document.getElementById('adjust-hours').value) || 0)" style="background:#10b981;">Apply</button>
+            </div>
         `;
         currentGiveawayData = data.entrants;
         if (window.giveawayTimer) clearInterval(window.giveawayTimer);
@@ -41,11 +55,9 @@ async function loadGiveawayData() {
                 loadGiveawayData();
                 return;
             }
-            const hrs = Math.floor(remaining / 3600000);
-            const mins = Math.floor((remaining % 3600000) / 60000);
-            const secs = Math.floor((remaining % 60000) / 1000);
-            infoDiv.innerHTML = infoDiv.innerHTML.replace(/Time left:.*?&nbsp;\|/, `Time left: ${hrs}h ${mins}m ${secs}s &nbsp;|`);
-        }, 1000);
+            // Refresh every minute to keep "Time left" accurate
+            loadGiveawayData();
+        }, 60000);
         renderGiveawayTable(currentGiveawayData);
     } catch (err) {
         console.error(err);
@@ -59,7 +71,7 @@ function renderGiveawayTable(entrants) {
     const tbody = document.getElementById('giveaway-table-body');
     if (!tbody) return;
     if (!entrants.length) {
-        tbody.innerHTML = '<tr><td colspan="5">No entrants yet.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="5">No entrants yet.‹/td><\/tr>';
         return;
     }
     let sorted = [...entrants];
@@ -91,11 +103,11 @@ function renderGiveawayTable(entrants) {
             ? `<button class="giveaway-remove" data-id="${e.userId}" style="background:#ef4444; padding:4px 12px; opacity:0.6;">✕ Remove (Left)</button>`
             : `<button class="giveaway-remove" data-id="${e.userId}" style="background:#ef4444; padding:4px 12px;">✕ Remove</button>`;
         return `<tr ${rowStyle}>
-            <td style="padding:8px;">${escapeHtml(e.username)}</td>
-            <td style="padding:8px;">${escapeHtml(e.userId)}</td>
-            <td style="padding:8px;">${e.accountAge !== null ? e.accountAge : '?'}</td>
-            <td style="padding:8px;">${escapeHtml(voteDisplay)}</td>
-            <td style="padding:8px;">${removeButton}</td>
+            <td style="padding:8px;">${escapeHtml(e.username)}<\/td>
+            <td style="padding:8px;">${escapeHtml(e.userId)}<\/td>
+            <td style="padding:8px;">${e.accountAge !== null ? e.accountAge : '?'}<\/td>
+            <td style="padding:8px;">${escapeHtml(voteDisplay)}<\/td>
+            <td style="padding:8px;">${removeButton}<\/td>
          <\/tr>`;
     }).join('');
     document.querySelectorAll('.giveaway-remove').forEach(btn => {
@@ -138,3 +150,25 @@ async function removeFromGiveaway(userId) {
         else alert(err.message);
     }
 }
+
+async function adjustGiveawayTime(hours) {
+    const statusDiv = document.getElementById('giveaway-status');
+    statusDiv.innerHTML = 'Updating...';
+    try {
+        const res = await fetch('/api/giveaway/adjust-time', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ hours })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Adjustment failed');
+        statusDiv.innerHTML = `<span style="color:#4ade80;">✅ Giveaway end time updated by ${hours} hour(s).</span>`;
+        loadGiveawayData(); // refresh display
+    } catch (err) {
+        statusDiv.innerHTML = `<span style="color:#f87171;">❌ ${err.message}</span>`;
+        console.error(err);
+    }
+}
+
+// Expose globally so HTML buttons can call it
+window.adjustGiveawayTime = adjustGiveawayTime;
