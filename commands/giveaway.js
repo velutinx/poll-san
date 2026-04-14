@@ -235,17 +235,6 @@ await interaction.reply({
 });
 }
 
-// Delete the reminder message if it exists
-if (giveaway.reminder_message_id) {
-    try {
-        const channel = await client.channels.fetch(giveaway.channel_id);
-        const reminderMsg = await channel.messages.fetch(giveaway.reminder_message_id).catch(() => null);
-        if (reminderMsg) await reminderMsg.delete();
-    } catch (err) {
-        console.warn('Could not delete reminder message:', err.message);
-    }
-}
-
 async function endGiveaway(messageId, client) {
     const giveaway = activeGiveaways.get(messageId);
     if (!giveaway || giveaway.ended) return;
@@ -266,8 +255,18 @@ async function endGiveaway(messageId, client) {
         }
 
         const channel = await client.channels.fetch(dbGiveaway.channel_id);
-        const message = await channel.messages.fetch(messageId);
+        
+        // Delete the reminder message if it exists
+        if (dbGiveaway.reminder_message_id) {
+            try {
+                const reminderMsg = await channel.messages.fetch(dbGiveaway.reminder_message_id).catch(() => null);
+                if (reminderMsg) await reminderMsg.delete();
+            } catch (err) {
+                console.warn('Could not delete reminder message:', err.message);
+            }
+        }
 
+        const message = await channel.messages.fetch(messageId);
         const entrantsArray = dbGiveaway.entrants || [];
         const totalEntries = entrantsArray.length;
 
@@ -284,9 +283,10 @@ async function endGiveaway(messageId, client) {
             await channel.send(`${releaseEmojis.CONFETTI} Congratulations to ${winnerMentions} for winning **${dbGiveaway.prize}**!`);
         }
 
+        // Update embed to ended state (existing code)
         const embed = message.embeds[0];
         const newEmbed = EmbedBuilder.from(embed)
-            .setTitle(`${dbGiveaway.prize} Giveaway Ended`)  // ← changed here
+            .setTitle(`${dbGiveaway.prize} Giveaway Ended`)
             .setDescription(null)
             .setColor(colors.ended)
             .setFooter({ text: 'Ended' })
@@ -303,7 +303,6 @@ async function endGiveaway(messageId, client) {
         }
 
         await message.edit({ embeds: [newEmbed], components: [] });
-
         await supabase.from('giveaways').delete().eq('message_id', messageId);
     } catch (err) {
         console.error('Error ending giveaway:', err);
