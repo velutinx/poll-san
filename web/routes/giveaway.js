@@ -35,21 +35,25 @@ module.exports = function setupGiveawayRoutes(app, client, supabase, supabaseRet
             const nowDate = new Date();
             const msLeft = endTimeDate - nowDate;
             const hoursLeft = msLeft / (1000 * 60 * 60);
-            if (!giveaway.reminder_sent && hoursLeft <= 24 && hoursLeft > 0) {
-                try {
-                    const channel = await client.channels.fetch(giveaway.channel_id);
-                    const roleMention = `<@&${h.ids.roles.giveaway_notify_role}>`;
-                    await channel.send(`${h.releaseEmojis.ALERT} **Last day in the current giveaway!** ${roleMention}`);
-                    await supabaseRetry(() =>
-                        supabase.from('giveaways')
-                            .update({ reminder_sent: true })
-                            .eq('message_id', giveaway.message_id)
-                    );
-                    console.log(`✅ Reminder sent for giveaway ${giveaway.message_id}`);
-                } catch (reminderErr) {
-                    console.error('Failed to send giveaway reminder:', reminderErr);
-                }
-            }
+if (!giveaway.reminder_sent && hoursLeft <= 24 && hoursLeft > 0) {
+    try {
+        const channel = await client.channels.fetch(giveaway.channel_id);
+        const roleMention = `<@&${h.ids.roles.giveaway_notify_role}>`;
+        const reminderMsg = await channel.send(`${h.releaseEmojis.ALERT} **Last day in the current giveaway!** ${roleMention}`);
+        // Store the message ID
+        await supabaseRetry(() =>
+            supabase.from('giveaways')
+                .update({ 
+                    reminder_sent: true,
+                    reminder_message_id: reminderMsg.id
+                })
+                .eq('message_id', giveaway.message_id)
+        );
+        console.log(`✅ Reminder sent for giveaway ${giveaway.message_id}`);
+    } catch (reminderErr) {
+        console.error('Failed to send giveaway reminder:', reminderErr);
+    }
+}
             // ------------------------------------------------------------
 
             const guild = await client.guilds.fetch(process.env.GUILD_ID);
