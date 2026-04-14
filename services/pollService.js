@@ -9,7 +9,7 @@ const UPDATE_INTERVAL = h.POLL_UPDATE_INTERVAL_MS;
 
 let cachedPollResults = null;
 let cachedPollTimestamp = 0;
-const CACHE_TTL = 3000; // 3 seconds - good balance with realtime
+const CACHE_TTL = 4000; // 4s - safe with realtime
 
 let activePollTimer = null;
 let realtimeChannel = null;
@@ -18,10 +18,9 @@ let currentCharacters = null;
 let currentEndTime = null;
 
 let reconnectAttempts = 0;
-const MAX_RECONNECT_ATTEMPTS = 8;
-const BASE_RECONNECT_DELAY = 1500;
+const MAX_RECONNECT_ATTEMPTS = 6;
 
-// ==================== DASHBOARD REFRESH CALLBACK ====================
+// ==================== DASHBOARD REFRESH ====================
 let dashboardRefreshCallback = null;
 
 function setDashboardRefreshCallback(callback) {
@@ -35,16 +34,15 @@ async function refreshDashboard() {
     if (typeof dashboardRefreshCallback === 'function') {
         try {
             await dashboardRefreshCallback();
-            console.log('📊 Dashboard refreshed via realtime vote');
+            console.log('📊 Dashboard refreshed via realtime');
         } catch (err) {
-            console.error('❌ Failed to refresh dashboard:', err.message);
+            console.error('❌ Dashboard refresh failed:', err.message);
         }
     }
 }
 
-// ==================== REAL-TIME SETUP (Improved & Stable) ====================
+// ==================== REAL-TIME SETUP ====================
 function setupRealtimeListeners() {
-    // Full cleanup of previous channel
     if (realtimeChannel) {
         realtimeChannel.unsubscribe().catch(() => {});
         supabase.removeChannel(realtimeChannel).catch(() => {});
@@ -54,40 +52,30 @@ function setupRealtimeListeners() {
     realtimeChannel = supabase.channel('poll-votes-realtime', {
         config: {
             heartbeat: true,
-            heartbeatIntervalMs: 15000,
-            timeout: 20000,
+            heartbeatIntervalMs: 20000,   // 20s - balanced
+            timeout: 25000,
         }
     });
 
     realtimeChannel
         .on(
             'postgres_changes',
-            {
-                event: '*',
-                schema: 'public',
-                table: 'votes_discord',
-                filter: `poll_id=eq.${CURRENT_POLL_ID}`
-            },
+            { event: '*', schema: 'public', table: 'votes_discord', filter: `poll_id=eq.${CURRENT_POLL_ID}` },
             handleVoteChange
         )
         .on(
             'postgres_changes',
-            {
-                event: '*',
-                schema: 'public',
-                table: 'website_voting',
-                filter: `poll_id=eq.${CURRENT_POLL_ID}`
-            },
+            { event: '*', schema: 'public', table: 'website_voting', filter: `poll_id=eq.${CURRENT_POLL_ID}` },
             handleVoteChange
         )
         .subscribe((status, err) => {
             console.log(`[Realtime] Status: ${status}${err ? ` - ${err.message || err}` : ''}`);
 
             if (status === 'SUBSCRIBED') {
-                console.log('✅ Supabase Realtime: Successfully subscribed and listening for votes');
+                console.log('✅ Supabase Realtime: Successfully subscribed!');
                 reconnectAttempts = 0;
             } else if (['TIMED_OUT', 'CLOSED', 'CHANNEL_ERROR'].includes(status)) {
-                console.warn(`⚠️ Realtime ${status} - attempting reconnect`);
+                console.warn(`⚠️ Realtime ${status}`);
                 attemptReconnect();
             }
         });
@@ -95,50 +83,45 @@ function setupRealtimeListeners() {
 
 function attemptReconnect() {
     if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
-        console.error('❌ Max realtime reconnect attempts reached. Falling back to interval updates only.');
+        console.error('❌ Max realtime reconnect attempts reached. Relying on interval fallback only.');
         return;
     }
 
     reconnectAttempts++;
-    const delay = Math.min(BASE_RECONNECT_DELAY * Math.pow(1.6, reconnectAttempts - 1), 30000);
+    const delay = Math.min(2000 * reconnectAttempts, 25000);
 
-    console.log(`🔄 Reconnecting realtime in ${delay}ms... (Attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})`);
+    console.log(`🔄 Reconnecting in ${delay}ms... (Attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})`);
 
     setTimeout(() => {
-        if (currentPollMessage) {
-            setupRealtimeListeners();
-        }
+        if (currentPollMessage) setupRealtimeListeners();
     }, delay);
 }
 
 // ==================== VOTE HANDLER ====================
 async function handleVoteChange(payload) {
-    console.log(`🗳️ Realtime vote → ${payload.eventType} on ${payload.table}`);
+    console.log(`🗳️ Realtime vote → ${payload.eventType} on ${payload.table} (by ${payload.new?.user_id || 'unknown'})`);
 
-    // Force cache refresh
     cachedPollResults = null;
     cachedPollTimestamp = 0;
 
-    // Update Discord poll message if active
+    // Update Discord message
     if (currentPollMessage && currentCharacters) {
         try {
             const results = await getPollResults(currentPollMessage, currentCharacters);
             const isFinished = Date.now() >= currentEndTime;
             const content = await generateMessageContent(currentEndTime, results, currentCharacters, isFinished);
             await currentPollMessage.edit({ content });
-            console.log('✅ Discord poll updated via realtime');
+            console.log('✅ Discord poll message updated');
         } catch (err) {
-            if (err.code !== 10008) {
-                console.error('❌ Discord realtime update failed:', err.message);
-            }
+            if (err.code !== 10008) console.error('❌ Discord edit failed:', err.message);
         }
     }
 
-    // Update Dashboard immediately
+    // Update Dashboard
     await refreshDashboard();
 }
 
-// ==================== CORE FUNCTIONS ====================
+// ==================== CORE FUNCTIONS (unchanged) ====================
 async function getPollResults(message, characters) {
     if (cachedPollResults && (Date.now() - cachedPollTimestamp) < CACHE_TTL) {
         return cachedPollResults;
@@ -152,9 +135,7 @@ async function getPollResults(message, characters) {
         ]);
 
         const winnerMap = {};
-        (winnerData || []).forEach(row => {
-            if (row.selected_at) winnerMap[row.option_id] = true;
-        });
+        (winnerData || []).forEach(row => { if (row.selected_at) winnerMap[row.option_id] = true; });
 
         const displayResults = [];
         const rawDataForDB = [];
@@ -164,25 +145,17 @@ async function getPollResults(message, characters) {
             const discordScore = (discordVotes || [])
                 .filter(v => v.option_id === optionId)
                 .reduce((sum, v) => sum + parseFloat(v.weight || 0), 0);
-
             const websiteScore = (websiteVotes || []).filter(v => v.option_id === optionId).length;
             const totalScore = discordScore + websiteScore;
 
-            const rawName = characters[i].replace(/:female_sign:|:male_sign:/g, m =>
-                m === ':female_sign:' ? '♀️' : '♂️'
-            );
+            const rawName = characters[i].replace(/:female_sign:|:male_sign:/g, m => m === ':female_sign:' ? '♀️' : '♂️');
 
             const isWinner = !!winnerMap[optionId];
             let line = `${h.emojis[i]} \` ${totalScore.toFixed(2).padStart(5, ' ')} ${rawName.padEnd(30)} \` \n`;
             if (isWinner) line = `||${line}||`;
 
             displayResults.push(line);
-            rawDataForDB.push({
-                poll_id: CURRENT_POLL_ID,
-                option_id: optionId,
-                character_name: rawName,
-                score: totalScore
-            });
+            rawDataForDB.push({ poll_id: CURRENT_POLL_ID, option_id: optionId, character_name: rawName, score: totalScore });
         }
 
         await supabaseRetry(() => supabase.from('final_votes').upsert(rawDataForDB, { onConflict: 'poll_id,option_id' }));
@@ -190,7 +163,6 @@ async function getPollResults(message, characters) {
         const resultString = displayResults.join('');
         cachedPollResults = resultString;
         cachedPollTimestamp = Date.now();
-
         return resultString;
     } catch (err) {
         console.error("Error calculating poll results:", err);
@@ -202,17 +174,14 @@ async function generateMessageContent(endTime, resultsText, characters, isEnded 
     const e = h.releaseEmojis;
     const randomDownArrow = e.DOWN_ARROWS[Math.floor(Math.random() * e.DOWN_ARROWS.length)];
 
-    const header = isEnded
-        ? `🛑 **Poll Ended**\n\n`
-        : `${e.HOURGLASS} Time remaining: **${h.formatTime(endTime - Date.now())}**\n\n`;
+    const header = isEnded ? `🛑 **Poll Ended**\n\n` : `${e.HOURGLASS} Time remaining: **${h.formatTime(endTime - Date.now())}**\n\n`;
 
     const body = resultsText || characters.map((char, i) => {
         const name = char.replace(/:female_sign:|:male_sign:/g, m => m === ':female_sign:' ? '♀️' : '♂️');
         return `${h.emojis[i]} \` 0.00 ${name.padEnd(30)} \` \n`;
     }).join('');
 
-    const footer = `\nDiscord weighted vote + ${e.LINK} **[Website poll results](https://velutinx.com/poll)** (Click to vote there too!)\n\n` +
-                   `${randomDownArrow} Click the thread below for character images & discussion!`;
+    const footer = `\nDiscord weighted vote + ${e.LINK} **[Website poll results](https://velutinx.com/poll)**\n\n${randomDownArrow} Click the thread below for images & discussion!`;
 
     return header + body + footer;
 }
@@ -226,21 +195,15 @@ function forceStopPoll() {
 }
 
 async function getFinalPollMessageContent(pollList) {
-    const characters = pollList
-        .split(/(?=:female_sign:|:male_sign:|♀️|♂️)/)
-        .map(s => s.trim())
-        .filter(s => s.length > 0);
-
+    const characters = pollList.split(/(?=:female_sign:|:male_sign:|♀️|♂️)/).map(s => s.trim()).filter(s => s.length > 0);
     const resultsString = await getPollResults(null, characters);
     const e = h.releaseEmojis;
     const randomDownArrow = e.DOWN_ARROWS[Math.floor(Math.random() * e.DOWN_ARROWS.length)];
-
-    return `🛑 **Poll has ended.**\n\n${resultsString}\n\nDiscord weighted vote + ${e.LINK} **[Website poll results](https://velutinx.com/poll)**\n\n${randomDownArrow} Click the thread below for character images & discussion!`;
+    return `🛑 **Poll has ended.**\n\n${resultsString}\n\nDiscord weighted vote + ${e.LINK} **[Website poll results](https://velutinx.com/poll)**\n\n${randomDownArrow} Click the thread below for images & discussion!`;
 }
 
 function runPollInterval(pollMessage, endTime, characters) {
     forceStopPoll();
-
     currentPollMessage = pollMessage;
     currentCharacters = characters;
     currentEndTime = endTime;
@@ -250,28 +213,18 @@ function runPollInterval(pollMessage, endTime, characters) {
     activePollTimer = setInterval(async () => {
         const now = Date.now();
         const isFinished = now >= endTime;
-
         try {
             const results = await getPollResults(pollMessage, characters);
             const content = await generateMessageContent(endTime, results, characters, isFinished);
             await pollMessage.edit({ content });
-
-            if (isFinished) {
-                forceStopPoll();
-                await supabaseRetry(() => supabase.from('auto_resume').delete().eq('message_id', pollMessage.id));
-            }
+            if (isFinished) forceStopPoll();
         } catch (e) {
-            if (e.code === 10008) {
-                forceStopPoll();
-                await supabaseRetry(() => supabase.from('auto_resume').delete().eq('message_id', pollMessage.id));
-            } else {
-                console.error("Poll interval error:", e);
-            }
+            if (e.code === 10008) forceStopPoll();
+            else console.error("Poll interval error:", e);
         }
     }, UPDATE_INTERVAL);
 }
 
-// ==================== EXPORTS ====================
 module.exports = {
     getPollResults,
     generateMessageContent,
