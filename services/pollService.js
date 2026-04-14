@@ -5,11 +5,11 @@ const { supabaseRetry } = require('../utils/db');
 const h = require('../utils/helpers');
 
 const CURRENT_POLL_ID = 'character_poll_new';
-const UPDATE_INTERVAL = h.POLL_UPDATE_INTERVAL_MS;
+const UPDATE_INTERVAL = h.POLL_UPDATE_INTERVAL_MS; // ~10s fallback
 
 let cachedPollResults = null;
 let cachedPollTimestamp = 0;
-const CACHE_TTL = UPDATE_INTERVAL;
+const CACHE_TTL = 3000; // Reduced to 3 seconds - safer with realtime
 
 let activePollTimer = null;
 let realtimeChannel = null;
@@ -20,19 +20,39 @@ let currentEndTime = null;
 let reconnectAttempts = 0;
 const MAX_RECONNECT_ATTEMPTS = 6;
 
+// ==================== DASHBOARD REFRESH CALLBACK ====================
+// This will be set by your dashboard/index.js or wherever the dashboard lives
+let dashboardRefreshCallback = null;
+
+function setDashboardRefreshCallback(callback) {
+    if (typeof callback === 'function') {
+        dashboardRefreshCallback = callback;
+        console.log('✅ Dashboard refresh callback registered');
+    }
+}
+
+// Call this whenever we want to force the dashboard to update
+async function refreshDashboard() {
+    if (typeof dashboardRefreshCallback === 'function') {
+        try {
+            await dashboardRefreshCallback();
+            console.log('📊 Dashboard refreshed via realtime vote');
+        } catch (err) {
+            console.error('❌ Failed to refresh dashboard:', err.message);
+        }
+    }
+}
+
 // ==================== REAL-TIME SETUP ====================
 function setupRealtimeListeners() {
-    // Clean up previous channel if exists
+    // Clean up previous channel
     if (realtimeChannel) {
         supabase.removeChannel(realtimeChannel).catch(() => {});
         realtimeChannel = null;
     }
 
     realtimeChannel = supabase.channel('poll-votes-realtime', {
-        config: {
-            // These options help with stability in Node.js
-            heartbeat: true,
-        }
+        config: { heartbeat: true }
     });
 
     realtimeChannel
@@ -58,7 +78,6 @@ function setupRealtimeListeners() {
         )
         .subscribe((status, err) => {
             console.log(`[Realtime] Status: ${status}${err ? ` - ${err.message}` : ''}`);
-
             if (status === 'SUBSCRIBED') {
                 console.log('✅ Supabase Realtime: Successfully listening for votes (Discord + Website)');
                 reconnectAttempts = 0;
@@ -71,50 +90,45 @@ function setupRealtimeListeners() {
 
 function attemptReconnect() {
     if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
-        console.error('❌ Max realtime reconnect attempts reached. Falling back to interval updates only.');
+        console.error('❌ Max realtime reconnect attempts reached. Falling back to interval only.');
         return;
     }
-
     reconnectAttempts++;
-    const delay = 2000 * reconnectAttempts; // progressive delay
-
+    const delay = 2000 * reconnectAttempts;
     console.log(`🔄 Reconnecting realtime in ${delay}ms... (Attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})`);
-
     setTimeout(() => {
-        if (currentPollMessage) {
-            setupRealtimeListeners();
-        }
+        if (currentPollMessage) setupRealtimeListeners();
     }, delay);
 }
 
+// ==================== VOTE HANDLER (Now updates BOTH Discord + Dashboard) ====================
 async function handleVoteChange(payload) {
-    if (!currentPollMessage || !currentCharacters) return;
-
     console.log(`🗳️ Realtime vote detected → ${payload.eventType} on ${payload.table}`);
 
-    try {
-        // Bypass cache for fresh data
-        cachedPollResults = null;
-        cachedPollTimestamp = 0;
+    // Force cache invalidation
+    cachedPollResults = null;
+    cachedPollTimestamp = 0;
 
-        const results = await getPollResults(currentPollMessage, currentCharacters);
-        const isFinished = Date.now() >= currentEndTime;
-
-        const content = await generateMessageContent(currentEndTime, results, currentCharacters, isFinished);
-
-        await currentPollMessage.edit({ content });
-        console.log('✅ Poll message updated via realtime');
-    } catch (err) {
-        console.error('❌ Realtime update failed:', err.message);
+    // 1. Update Discord poll message (if active)
+    if (currentPollMessage && currentCharacters) {
+        try {
+            const results = await getPollResults(currentPollMessage, currentCharacters);
+            const isFinished = Date.now() >= currentEndTime;
+            const content = await generateMessageContent(currentEndTime, results, currentCharacters, isFinished);
+            await currentPollMessage.edit({ content });
+            console.log('✅ Discord poll message updated via realtime');
+        } catch (err) {
+            console.error('❌ Discord realtime update failed:', err.message);
+        }
     }
+
+    // 2. Refresh the Dashboard immediately
+    await refreshDashboard();
 }
 
-// ==================== CORE FUNCTIONS (lightly cleaned) ====================
-
+// ==================== CORE FUNCTIONS ====================
 async function getPollResults(message, characters) {
-    const displayResults = [];
-    const rawDataForDB = [];
-
+    // Use cache only if still fresh (now shorter TTL)
     if (cachedPollResults && (Date.now() - cachedPollTimestamp) < CACHE_TTL) {
         return cachedPollResults;
     }
@@ -131,6 +145,9 @@ async function getPollResults(message, characters) {
             if (row.selected_at) winnerMap[row.option_id] = true;
         });
 
+        const displayResults = [];
+        const rawDataForDB = [];
+
         for (let i = 0; i < characters.length; i++) {
             const optionId = i + 1;
             const discordScore = (discordVotes || [])
@@ -138,16 +155,17 @@ async function getPollResults(message, characters) {
                 .reduce((sum, v) => sum + parseFloat(v.weight || 0), 0);
 
             const websiteScore = (websiteVotes || []).filter(v => v.option_id === optionId).length;
-
             const totalScore = discordScore + websiteScore;
-            const rawName = characters[i].replace(/:female_sign:|:male_sign:/g, m => m === ':female_sign:' ? '♀️' : '♂️');
-            const isWinner = !!winnerMap[optionId];
 
+            const rawName = characters[i].replace(/:female_sign:|:male_sign:/g, m => 
+                m === ':female_sign:' ? '♀️' : '♂️'
+            );
+
+            const isWinner = !!winnerMap[optionId];
             let line = `${h.emojis[i]} \` ${totalScore.toFixed(2).padStart(5, ' ')} ${rawName.padEnd(30)} \` \n`;
             if (isWinner) line = `||${line}||`;
 
             displayResults.push(line);
-
             rawDataForDB.push({
                 poll_id: CURRENT_POLL_ID,
                 option_id: optionId,
@@ -156,11 +174,13 @@ async function getPollResults(message, characters) {
             });
         }
 
+        // Update final_votes table
         await supabaseRetry(() => supabase.from('final_votes').upsert(rawDataForDB, { onConflict: 'poll_id,option_id' }));
 
         const resultString = displayResults.join('');
         cachedPollResults = resultString;
         cachedPollTimestamp = Date.now();
+
         return resultString;
     } catch (err) {
         console.error("Error calculating poll results:", err);
@@ -231,7 +251,7 @@ function runPollInterval(pollMessage, endTime, characters) {
                 await supabaseRetry(() => supabase.from('auto_resume').delete().eq('message_id', pollMessage.id));
             }
         } catch (e) {
-            if (e.code === 10008) {
+            if (e.code === 10008) { // Unknown Message
                 forceStopPoll();
                 await supabaseRetry(() => supabase.from('auto_resume').delete().eq('message_id', pollMessage.id));
             } else {
@@ -241,10 +261,13 @@ function runPollInterval(pollMessage, endTime, characters) {
     }, UPDATE_INTERVAL);
 }
 
+// ==================== EXPORTS ====================
 module.exports = {
     getPollResults,
     generateMessageContent,
     runPollInterval,
     getFinalPollMessageContent,
-    forceStopPoll
+    forceStopPoll,
+    setDashboardRefreshCallback,   // ← NEW: Call this from your dashboard code
+    refreshDashboard               // ← NEW: For manual triggering if needed
 };
