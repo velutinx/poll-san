@@ -105,7 +105,7 @@ module.exports = {
             male_supporter: '1465967964804350160',
             server_booster: '1469284491456548976',
             supporter: '1466155709547675795',
-            giveaway_notify_role: '1493704902902415390',   // <-- ADDED
+            giveaway_notify_role: '1472273843665113139',   // <-- ADDED
             restricted: ['1468666174102442227', '1467233133362544642', '1487554855068368916']
         },
         tags: {
