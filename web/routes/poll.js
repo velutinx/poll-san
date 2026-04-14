@@ -2,7 +2,7 @@
 
 module.exports = function setupPollRoutes(app, client, supabase, supabaseRetry) {
     const h = require('../../utils/helpers');
-    const pollService = require('../../services/pollService'); // correct path, single import
+    const pollService = require('../../services/pollService');
     
     // Cache for poll results (shared between endpoints)
     let cachedPollResultsData = null;
@@ -147,10 +147,7 @@ module.exports = function setupPollRoutes(app, client, supabase, supabaseRetry) 
                     .filter('character_name', 'ilike', `%${winner_name}%`)
             );
 
-            // ✅ Refresh the main Discord poll message (scoreboard) immediately
-            await pollService.refreshActivePollMessage();
-
-            // Fetch current standings for the thread scoreboard
+            // Fetch current standings
             const { data: voteData } = await supabaseRetry(() =>
                 supabase.from('final_votes')
                     .select('character_name, score, selected_at')
@@ -168,8 +165,10 @@ module.exports = function setupPollRoutes(app, client, supabase, supabaseRetry) 
                 .map(s => s.trim().replace(/:female_sign:/g, '♀️').replace(/:male_sign:/g, '♂️'))
                 .filter(s => s.length > 1);
 
-            // Build the scoreboard
+// Build the scoreboard
             let scoreboard = `:trophy: **${winner_name}** has been marked as a winner! ${e.CONFETTI}\n\n`;
+            
+            // Cache buster using the unique poll ID
             const v = poll.id; 
 
             characters.forEach((char, index) => {
@@ -183,8 +182,11 @@ module.exports = function setupPollRoutes(app, client, supabase, supabaseRetry) 
                 
                 const score = record ? parseFloat(record.score).toFixed(1) : "0.0";
                 const isWinner = record && record.selected_at !== null;
+                
+                // Add the image link for Discord to preview
                 const imgLink = `https://www.velutinx.com/images/poll/${imgNum}.jpg?v=${v}`;
                 const line = `${emoji} = ${score} -- ${char} \n${imgLink}`;
+                
                 scoreboard += isWinner ? `||${line}||\n\n` : `${line}\n\n`;
             });
 
