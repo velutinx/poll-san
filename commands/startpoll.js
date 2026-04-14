@@ -1,7 +1,7 @@
 // this is poll-san/commands/startpoll.js
 
 const { chunkArray, emojis, reactIds, ids, releaseEmojis } = require('../utils/helpers');
-const { generateMessageContent, runPollInterval } = require('../services/pollService');
+const { generateMessageContent, runPollInterval, setActivePollContext } = require('../services/pollService');
 const supabase = require('../services/supabase');
 
 module.exports = async (interaction) => {
@@ -36,6 +36,9 @@ module.exports = async (interaction) => {
         content: await generateMessageContent(endTime, null, characters)
     });
 
+    // Store poll context for manual refresh (used by vote handlers)
+    setActivePollContext(pollMessage, endTime, characters);
+
     // Record in Supabase (for auto-resume)
     try {
         await supabase.from('auto_resume').upsert({
@@ -49,8 +52,7 @@ module.exports = async (interaction) => {
         console.error("❌ Supabase Error:", dbError.message);
     }
 
-    // --- UPDATED: Add reactions in parallel ---
-    // This fires off all reaction requests at once rather than one-by-one
+    // Add reactions in parallel
     await Promise.all(reactIds.map(id => 
         pollMessage.react(id).catch(e => console.error(`Reaction Error (${id}):`, e.message))
     ));
@@ -63,20 +65,16 @@ module.exports = async (interaction) => {
 
     // Split characters into chunks of 4
     const characterChunks = chunkArray(characters, 4);
-
-    // --- NEW: Generate a single cache-buster timestamp for this entire poll run ---
     const cacheVersion = Date.now();
 
     for (let i = 0; i < characterChunks.length; i++) {
         let content = "";
         const embeds = [];
-        
-        const sharedUrl = "https://www.velutinx.com/poll"; 
+        const sharedUrl = "https://www.velutinx.com/poll";
 
         characterChunks[i].forEach((name, idx) => {
             const globalIdx = (i * 4) + idx + 1;
             content += `${emojis[globalIdx - 1]} ${name}\n`;
-            
             embeds.push({
                 url: sharedUrl,
                 image: {
@@ -102,6 +100,6 @@ module.exports = async (interaction) => {
         await interaction.editReply({ content: '✅ Poll Live!' }).catch(() => {});
     }
 
+    // Start the 1‑minute fallback timer (also sets up manual refresh context)
     runPollInterval(pollMessage, endTime, characters);
-    subscribeToVoteUpdates(pollMessage, endTime, characters);
 };
