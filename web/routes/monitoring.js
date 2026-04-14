@@ -1,14 +1,19 @@
 // this is poll-san/web/routes/monitoring.js
 
-const h = require('../../utils/helpers'); // Import helpers
+const h = require('../../utils/helpers');
 
+// ------------------------- CACHE -------------------------
+let cachedData = null;
+let cacheTimestamp = 0;
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+// ------------------------- HELPERS -------------------------
 function parseCharacterList(pollList) {
     if (!pollList) return [];
     const lines = pollList.split(/\r?\n/).filter(line => line.trim().length > 0);
     return lines.map(line => line.trim().replace(/:female_sign:|:male_sign:/g, m => m === ':female_sign:' ? '♀️' : '♂️'));
 }
 
-// Helper: retry member fetch with exponential backoff
 async function fetchMembersWithRetry(getGuildMembers, guild, maxRetries = 3) {
     let lastError;
     for (let attempt = 0; attempt < maxRetries; attempt++) {
@@ -16,11 +21,11 @@ async function fetchMembersWithRetry(getGuildMembers, guild, maxRetries = 3) {
             return await getGuildMembers(guild);
         } catch (err) {
             lastError = err;
-            const isRateLimit = err.code === 50001 || 
+            const isRateLimit = err.code === 50001 ||
                                 (err.message && err.message.includes('rate limited')) ||
                                 (err.name === 'GatewayRateLimitError');
             if (isRateLimit && attempt < maxRetries - 1) {
-                const delay = Math.pow(2, attempt) * 1000; 
+                const delay = Math.pow(2, attempt) * 1000;
                 console.log(`Rate limited, retrying in ${delay}ms (attempt ${attempt + 1}/${maxRetries})`);
                 await new Promise(resolve => setTimeout(resolve, delay));
                 continue;
@@ -31,14 +36,22 @@ async function fetchMembersWithRetry(getGuildMembers, guild, maxRetries = 3) {
     throw lastError;
 }
 
+// ------------------------- ROUTES -------------------------
 module.exports = function setupMonitoringRoutes(app, client, supabase, supabaseRetry, getGuildMembers) {
-    
+
     app.get('/api/monitoring/members', async (req, res) => {
+        const days = parseInt(req.query.days) || 10;
+
+        // Check cache
+        const now = Date.now();
+        if (cachedData && (now - cacheTimestamp) < CACHE_TTL && cachedData.days === days) {
+            return res.json(cachedData.members);
+        }
+
         try {
-            const days = parseInt(req.query.days) || 10;
             const guild = await client.guilds.fetch(process.env.GUILD_ID);
-            
             let members;
+
             try {
                 if (typeof getGuildMembers === 'function') {
                     members = await fetchMembersWithRetry(getGuildMembers, guild);
@@ -52,9 +65,8 @@ module.exports = function setupMonitoringRoutes(app, client, supabase, supabaseR
                 }
                 throw err;
             }
-            
-            const now = Date.now();
 
+            // Fetch current poll list
             const { data: activePoll, error: pollError } = await supabaseRetry(() =>
                 supabase.from('auto_resume')
                     .select('poll_list')
@@ -63,12 +75,13 @@ module.exports = function setupMonitoringRoutes(app, client, supabase, supabaseR
                     .single()
             );
             if (pollError) console.error('Poll fetch error:', pollError);
-            
+
             let characterList = [];
             if (activePoll && activePoll.poll_list) {
                 characterList = parseCharacterList(activePoll.poll_list);
             }
 
+            // Fetch all votes
             const { data: votes, error: voteError } = await supabaseRetry(() =>
                 supabase.from('votes_discord')
                     .select('user_id, option_id')
@@ -90,16 +103,16 @@ module.exports = function setupMonitoringRoutes(app, client, supabase, supabaseR
 
             const membersList = [];
             for (const [id, member] of members) {
-                // CHANGED: Using helper ID for the supporter role check
+                // Skip supporters
                 if (member.roles.cache.has(h.ids.roles.supporter)) continue;
 
                 let freshMember = member;
                 try {
-                    freshMember = await guild.members.fetch({ user: id, force: false }); 
+                    freshMember = await guild.members.fetch({ user: id, force: false });
                 } catch (err) {
                     console.warn(`Failed to refresh member ${id}:`, err.message);
                 }
-                
+
                 const joinedAt = freshMember.joinedTimestamp;
                 const accountCreatedAt = freshMember.user.createdTimestamp;
                 const daysSinceJoin = joinedAt ? Math.floor((now - joinedAt) / (24 * 60 * 60 * 1000)) : null;
@@ -129,6 +142,10 @@ module.exports = function setupMonitoringRoutes(app, client, supabase, supabaseR
                 return aRecent - bRecent;
             });
 
+            // Store in cache
+            cachedData = { members: membersList, days: days };
+            cacheTimestamp = Date.now();
+
             res.json(membersList);
         } catch (err) {
             console.error('Monitoring fetch error:', err);
@@ -150,8 +167,8 @@ module.exports = function setupMonitoringRoutes(app, client, supabase, supabaseR
             );
             if (!deleteError) deletedVotes = count || 0;
             else console.error('Delete votes error:', deleteError);
-        } catch (err) { 
-            console.error('Exception deleting votes:', err); 
+        } catch (err) {
+            console.error('Exception deleting votes:', err);
         }
 
         try {
@@ -159,6 +176,9 @@ module.exports = function setupMonitoringRoutes(app, client, supabase, supabaseR
             const member = await guild.members.fetch(userId);
             if (!member) return res.status(404).json({ error: 'Member not found' });
             await member.kick('Flagged as suspicious new account – poll votes removed');
+            // Invalidate cache after a kick (so next load shows fresh data)
+            cachedData = null;
+            cacheTimestamp = 0;
             res.json({ success: true, message: `Kicked ${member.user.tag} and removed ${deletedVotes} poll vote(s)` });
         } catch (err) {
             console.error('Kick error:', err);
