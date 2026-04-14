@@ -1,8 +1,7 @@
 // poll-san/utils/helpers.js
 
 module.exports = {
-    // Poll system update interval (milliseconds) – used by pollService.js
-    POLL_UPDATE_INTERVAL_MS: 10000,   // 10 seconds
+    POLL_UPDATE_INTERVAL_MS: 10000,
 
     formatTime: (ms) => {
         if (ms <= 0) return "0d 0h 0m 0s";
@@ -19,7 +18,6 @@ module.exports = {
         return chunks;
     },
 
-    // --- POLL SYSTEM (Legacy) ---
     emojis: [
         '<:one:1485655941520167062>',
         '<:two:1485655967436767252>',
@@ -49,7 +47,6 @@ module.exports = {
         '1485656217194991667'
     ],
 
-    // --- NEW RELEASE SYSTEM EMOJIS ---
     releaseEmojis: {
         NEW1: '<a:NEW1:1491321234015911977>',
         NEW2: '<a:NEW2:1491321257780580414>',
@@ -63,7 +60,6 @@ module.exports = {
         PROGRESS: '<a:progress:1491670111923212308>',
         WAVE: '<a:wave:1492326023080185987>',
         waveId: '1492326023080185987',
-        
         ARROWS: [
             '<a:arrowyellow:1491672823729623212>',
             '<a:arrowwhite:1491672813398917150>',
@@ -76,7 +72,6 @@ module.exports = {
             '<a:arrowcyan:1491672731572375573>',
             '<a:arrowblue:1491672719140589638>'
         ],
-
         DOWN_ARROWS: [
             '<a:arrowdownblue:1491763134590091335>',
             '<a:arrowdowncyan:1491763136011960511>',
@@ -89,7 +84,6 @@ module.exports = {
             '<a:arrowdownwhite:1491763145843281931>',
             '<a:arrowdownyellow:1491763147063820309>',
         ],
-
         UP_ARROWS: [
             '<a:arrowupblue:1492637578359476554>',
             '<a:arrowupcyan:1492637580033003630>',
@@ -104,13 +98,13 @@ module.exports = {
         ]
     },
 
-    // --- CHANNEL & ROLE IDs ---
     ids: {
         roles: {
             female_supporter: '1465968041404928177',
             male_supporter: '1465967964804350160',
             server_booster: '1469284491456548976',
             supporter: '1466155709547675795',
+            giveaway_notify_role: '1472450019067171008',   // <-- ADDED
             restricted: ['1468666174102442227', '1467233133362544642', '1487554855068368916']
         },
         tags: {
