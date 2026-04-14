@@ -1,15 +1,18 @@
 // poll-san/utils/helpers.js
 
 module.exports = {
+    // Poll system update interval (milliseconds) – used by pollService.js
+    POLL_UPDATE_INTERVAL_MS: 10000,   // 10 seconds
+
     formatTime: (ms) => {
         if (ms <= 0) return "0d 0h 0m 0s";
         const days = Math.floor(ms / 86400000);
         const hours = Math.floor((ms % 86400000) / 3600000);
         const minutes = Math.floor((ms % 3600000) / 60000);
         const seconds = Math.floor((ms % 60000) / 1000);
-        POLL_UPDATE_INTERVAL_MS: 10000,   // 10 seconds
         return `${days}d ${hours}h ${minutes}m ${seconds}s`;
     },
+
     chunkArray: (array, size) => {
         const chunks = [];
         for (let i = 0; i < array.length; i += size) chunks.push(array.slice(i, i + size));
@@ -47,7 +50,7 @@ module.exports = {
     ],
 
     // --- NEW RELEASE SYSTEM EMOJIS ---
-releaseEmojis: {
+    releaseEmojis: {
         NEW1: '<a:NEW1:1491321234015911977>',
         NEW2: '<a:NEW2:1491321257780580414>',
         VERIFY: '<a:Verify:1491669023245729924>',
@@ -57,8 +60,8 @@ releaseEmojis: {
         CONFETTI: '<a:confetti:1491689074002755664>',
         SPARKLES: '<a:sparkles:1491697348718493786>',
         PROGRESS: '<a:progress:1491670111923212308>',
-        WAVE: '<a:wave:1492326023080185987>', // New animated emoji
-        waveId: '1492326023080185987',        // ID for reactions
+        WAVE: '<a:wave:1492326023080185987>',
+        waveId: '1492326023080185987',
         
         ARROWS: [
             '<a:arrowyellow:1491672823729623212>',
@@ -117,7 +120,7 @@ releaseEmojis: {
             poll_mention: '1472273843665113139',
         },
         channels: {
-            QUEUE: '1473730427318435860' // :hourglass_flowing_sand:large-requests-queue - channel
+            QUEUE: '1473730427318435860'
         },
         users: {
             Velutinx: '1380051214766444617'
@@ -126,21 +129,19 @@ releaseEmojis: {
 
     weights: {
         tiers: {
-            '1465444240845963326': 1.1, // Bronze
-            '1465670134743044139': 1.3, // Copper
-            '1465904476417163457': 1.9, // Silver
-            '1465904548320378956': 2.1, // Gold
-            '1465952085026541804': 2.5  // Platinum
+            '1465444240845963326': 1.1,
+            '1465670134743044139': 1.3,
+            '1465904476417163457': 1.9,
+            '1465904548320378956': 2.1,
+            '1465952085026541804': 2.5
         },
-
         tierMapping: {
-                1: '1465444240845963326',
-                2: '1465670134743044139',
-                3: '1465904476417163457',
-                4: '1465904548320378956',
-                5: '1465952085026541804'
+            1: '1465444240845963326',
+            2: '1465670134743044139',
+            3: '1465904476417163457',
+            4: '1465904548320378956',
+            5: '1465952085026541804'
         },    
-
         tierNames: {
             1: 'Bronze',
             2: 'Copper',
@@ -148,8 +149,7 @@ releaseEmojis: {
             4: 'Gold',
             5: 'Platinum'
         },
-        
-        booster: '1469284491456548976', // booster
+        booster: '1469284491456548976',
         xpFactor: 0.02
     },
 
@@ -163,5 +163,4 @@ releaseEmojis: {
         base: "https://www.velutinx.com",
         pollImages: "https://www.velutinx.com/images/poll/"
     },
-    
 };
