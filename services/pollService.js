@@ -50,10 +50,9 @@ function setupRealtimeListeners() {
             filter: `poll_id=eq.${CURRENT_POLL_ID}`
         }, handleVoteChange)
         .subscribe((status, err) => {
-            console.log(`[Realtime] Status: ${status}${err ? ` - ${err.message || err}` : ''}`);
 
             if (status === 'SUBSCRIBED') {
-                console.log('✅ Supabase Realtime: Successfully subscribed and listening for votes!');
+     //           console.log('✅ Supabase Realtime: Successfully subscribed and listening for votes!');
                 reconnectAttempts = 0;
             } else if (['TIMED_OUT', 'CLOSED', 'CHANNEL_ERROR'].includes(status)) {
                 console.warn(`⚠️ Realtime ${status}`);
