@@ -2,8 +2,7 @@
 
 module.exports = function setupPollRoutes(app, client, supabase, supabaseRetry) {
     const h = require('../../utils/helpers');
-    const pollService = require('../../services/pollService');
-    await pollService.refreshActivePollMessage();
+    const pollService = require('../../services/pollService'); // correct path, single import
     
     // Cache for poll results (shared between endpoints)
     let cachedPollResultsData = null;
