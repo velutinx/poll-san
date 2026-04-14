@@ -136,6 +136,5 @@ module.exports = (client) => {
     // Start server
     app.listen(PORT, () => {
         console.log(`🌐 Dashboard running at http://localhost:${PORT}/poll-san`);
-        console.log(`📡 SSE live updates enabled at /api/poll/live`);
     });
 };
