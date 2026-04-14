@@ -52,27 +52,19 @@ function setupRealtimeListeners() {
     realtimeChannel = supabase.channel('poll-votes-realtime', {
         config: {
             heartbeat: true,
-            heartbeatIntervalMs: 25000,
-            timeout: 30000,
+            heartbeatIntervalMs: 15000,
+            timeout: 25000,
         }
     });
 
     realtimeChannel
-        .on(
-            'postgres_changes',
-            { event: '*', schema: 'public', table: 'votes_discord', filter: `poll_id=eq.${CURRENT_POLL_ID}` },
-            handleVoteChange
-        )
-        .on(
-            'postgres_changes',
-            { event: '*', schema: 'public', table: 'website_voting', filter: `poll_id=eq.${CURRENT_POLL_ID}` },
-            handleVoteChange
-        )
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'votes_discord', filter: `poll_id=eq.${CURRENT_POLL_ID}` }, handleVoteChange)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'website_voting', filter: `poll_id=eq.${CURRENT_POLL_ID}` }, handleVoteChange)
         .subscribe((status, err) => {
             console.log(`[Realtime] Status: ${status}${err ? ` - ${err.message || err}` : ''}`);
 
             if (status === 'SUBSCRIBED') {
-                console.log('✅ Supabase Realtime: Successfully subscribed and listening!');
+                console.log('✅ Supabase Realtime: Successfully subscribed and listening for votes!');
                 reconnectAttempts = 0;
             } else if (['TIMED_OUT', 'CLOSED', 'CHANNEL_ERROR'].includes(status)) {
                 console.warn(`⚠️ Realtime ${status}`);
@@ -83,12 +75,12 @@ function setupRealtimeListeners() {
 
 function attemptReconnect() {
     if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
-        console.error('❌ Max realtime reconnect attempts reached. Using interval fallback only.');
+        console.error('❌ Max realtime reconnect attempts reached. Falling back to 10s interval only.');
         return;
     }
 
     reconnectAttempts++;
-    const delay = 2000 * reconnectAttempts;
+    const delay = Math.min(1500 * reconnectAttempts, 15000); // gentler backoff
 
     console.log(`🔄 Reconnecting realtime in ${delay}ms... (Attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})`);
 
