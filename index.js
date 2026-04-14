@@ -21,24 +21,19 @@ const { runPollInterval } = require('./services/pollService');
 const { cleanRoles } = require('./services/roleCleaner');
 const XPLib = require('./utils/xputils');
 const { syncMembershipRoles } = require('./services/membershipSync');
-
-// Import giveaway command
 const giveawayCommand = require('./commands/giveaway');
 
 // ==================== DASHBOARD REFRESH FUNCTION ====================
-// This is what will actually update your dashboard when a vote happens
 async function updateDashboard() {
     try {
-        // TODO: Put your actual dashboard refresh logic here
-        // For now we'll just log it so the bot doesn't crash
-        console.log('📊 Dashboard refresh triggered by realtime vote');
-
-        // Example (uncomment and adapt when you implement the real dashboard update):
-        // const dashboardModule = await import('./web/server.js');
-        // if (dashboardModule.refreshPollData) {
-        //     await dashboardModule.refreshPollData();
-        // }
-
+        console.log('📊 Realtime vote detected → Refreshing dashboard...');
+        
+        // This is where the real dashboard refresh will happen once we connect it
+        // For now it just logs so the bot doesn't crash
+        if (typeof global.refreshPollDashboard === 'function') {
+            await global.refreshPollDashboard();
+            console.log('✅ Dashboard refreshed successfully via realtime');
+        }
     } catch (err) {
         console.error('❌ Dashboard refresh failed:', err.message);
     }
@@ -59,16 +54,20 @@ const client = new Client({
     partials: [Partials.Message, Partials.Reaction, Partials.User]
 });
 
-// --- 1. STARTUP, AUTO-RESUME & AUDIT ---
+// --- 1. STARTUP ---
 client.once(Events.ClientReady, async (c) => {
     console.log(`🚀 ${c.user.tag} online and ready!`);
 
-    // Start the dashboard (this should be the line that starts your Express server)
-    const dashboardModule = await import('./web/server.js');
-    const startDashboard = dashboardModule.default || dashboardModule;
-    startDashboard(client);
+    // Start the dashboard
+    try {
+        const dashboardModule = await import('./web/server.js');
+        const startDashboard = dashboardModule.default || dashboardModule;
+        startDashboard(client);
+    } catch (err) {
+        console.error('❌ Failed to start dashboard:', err.message);
+    }
 
-    // ... rest of your startup code remains the same ...
+    // Sync slash commands
     const commandsData = [
         new SlashCommandBuilder().setName('level').setDescription('Shows your current XP/level').toJSON(),
         new ContextMenuCommandBuilder().setName('View Level').setType(ApplicationCommandType.User).toJSON(),
@@ -85,12 +84,10 @@ client.once(Events.ClientReady, async (c) => {
         console.error('❌ Failed to sync commands:', err);
     }
 
+    // Role cleanup
     const guild = client.guilds.cache.get(process.env.GUILD_ID);
-    if (guild) {
-        cleanRoles(guild);
-    }
+    if (guild) cleanRoles(guild);
 
-    // Role cleanup every hour
     setInterval(() => {
         const activeGuild = client.guilds.cache.get(process.env.GUILD_ID);
         if (activeGuild) cleanRoles(activeGuild);
@@ -118,7 +115,6 @@ client.once(Events.ClientReady, async (c) => {
             try {
                 const channel = await client.channels.fetch(poll.channel_id);
                 const pollMsg = await channel.messages.fetch(poll.message_id);
-
                 const characters = poll.poll_list
                     .split(/(?=:female_sign:|:male_sign:|♀️|♂️)/)
                     .map(s => s.trim())
