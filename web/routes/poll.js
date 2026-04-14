@@ -122,73 +122,75 @@ module.exports = function setupPollRoutes(app, client, supabase, supabaseRetry) 
         }
     });
 
-// ────────────────────────────────────────────────
-// MARK WINNER (fixed – no images, single newlines)
-// ────────────────────────────────────────────────
-app.post('/api/mark-winner', async (req, res) => {
-    const { winner_name } = req.body;
-    const e = h.releaseEmojis;
+    // ────────────────────────────────────────────────
+    // MARK WINNER (fixed – no images, single newlines)
+    // ────────────────────────────────────────────────
+    app.post('/api/mark-winner', async (req, res) => {
+        const { winner_name } = req.body;
+        const e = h.releaseEmojis;
 
-    try {
-        const { data: poll } = await supabaseRetry(() =>
-            supabase.from('auto_resume')
-                .select('*')
-                .order('id', { ascending: false })
-                .limit(1)
-                .single()
-        );
-        
-        if (!poll) return res.status(404).json({ error: "No active poll found." });
+        try {
+            const { data: poll } = await supabaseRetry(() =>
+                supabase.from('auto_resume')
+                    .select('*')
+                    .order('id', { ascending: false })
+                    .limit(1)
+                    .single()
+            );
+            
+            if (!poll) return res.status(404).json({ error: "No active poll found." });
 
-        // Update winner status in database
-        await supabaseRetry(() =>
-            supabase.from('final_votes')
-                .update({ selected_at: new Date().toISOString() })
-                .filter('character_name', 'ilike', `%${winner_name}%`)
-        );
+            // Update winner status in database
+            await supabaseRetry(() =>
+                supabase.from('final_votes')
+                    .update({ selected_at: new Date().toISOString() })
+                    .filter('character_name', 'ilike', `%${winner_name}%`)
+            );
 
-        // Fetch current standings
-        const { data: voteData } = await supabaseRetry(() =>
-            supabase.from('final_votes')
-                .select('character_name, score, selected_at')
-                .order('option_id', { ascending: true })
-        );
+            // Fetch current standings
+            const { data: voteData } = await supabaseRetry(() =>
+                supabase.from('final_votes')
+                    .select('character_name, score, selected_at')
+                    .order('option_id', { ascending: true })
+            );
 
-        const channel = await client.channels.fetch(poll.channel_id);
-        const pollMessage = await channel.messages.fetch(poll.message_id);
-        const thread = pollMessage.thread;
-        
-        if (!thread) return res.status(404).json({ error: "Thread not found." });
+            const channel = await client.channels.fetch(poll.channel_id);
+            const pollMessage = await channel.messages.fetch(poll.message_id);
+            const thread = pollMessage.thread;
+            
+            if (!thread) return res.status(404).json({ error: "Thread not found." });
 
-        const characters = poll.poll_list
-            .split(/(?=:female_sign:|:male_sign:|♀️|♂️|\n)/)
-            .map(s => s.trim().replace(/:female_sign:/g, '♀️').replace(/:male_sign:/g, '♂️'))
-            .filter(s => s.length > 1);
+            const characters = poll.poll_list
+                .split(/(?=:female_sign:|:male_sign:|♀️|♂️|\n)/)
+                .map(s => s.trim().replace(/:female_sign:/g, '♀️').replace(/:male_sign:/g, '♂️'))
+                .filter(s => s.length > 1);
 
-        // Build the scoreboard – TEXT ONLY, no image links
-let scoreboard = `:trophy: **${winner_name}** has been marked as a winner! ${e.CONFETTI}\n\n`;
+            // Build the scoreboard – TEXT ONLY, no image links
+            let scoreboard = `:trophy: **${winner_name}** has been marked as a winner! ${e.CONFETTI}\n\n`;
 
-characters.forEach((char, index) => {
-    const imgNum = index + 1;
-    const emoji = h.emojis[index] || `[${imgNum}]`;
-    const record = voteData.find(v => {
-        const cleanChar = char.replace(/♀️|♂️/g, '').trim().toLowerCase();
-        const cleanRecord = v.character_name.replace(/♀️|♂️/g, '').trim().toLowerCase();
-        return cleanChar === cleanRecord;
+            characters.forEach((char, index) => {
+                const imgNum = index + 1;
+                const emoji = h.emojis[index] || `[${imgNum}]`;
+                const record = voteData.find(v => {
+                    const cleanChar = char.replace(/♀️|♂️/g, '').trim().toLowerCase();
+                    const cleanRecord = v.character_name.replace(/♀️|♂️/g, '').trim().toLowerCase();
+                    return cleanChar === cleanRecord;
+                });
+                
+                const score = record ? parseFloat(record.score).toFixed(1) : "0.0";
+                const isWinner = record && record.selected_at !== null;
+                
+                // TEXT ONLY – no image link
+                const line = `${emoji} = ${score} -- ${char}`;
+                scoreboard += isWinner ? `||${line}||\n` : `${line}\n`;
+            });
+
+            await thread.send(scoreboard);
+            res.json({ success: true });
+        } catch (err) {
+            console.error('Mark winner error:', err);
+            res.status(500).json({ error: err.message });
+        }
     });
-    
-    const score = record ? parseFloat(record.score).toFixed(1) : "0.0";
-    const isWinner = record && record.selected_at !== null;
-    
-    // ✅ TEXT ONLY – no image link
-    const line = `${emoji} = ${score} -- ${char}`;
-    scoreboard += isWinner ? `||${line}||\n` : `${line}\n`;
-});
 
-await thread.send(scoreboard);
-        res.json({ success: true });
-    } catch (err) {
-        console.error('Mark winner error:', err);
-        res.status(500).json({ error: err.message });
-    }
-});
+};
