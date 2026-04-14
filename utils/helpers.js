@@ -53,6 +53,7 @@ module.exports = {
         VERIFY: '<a:Verify:1491669023245729924>',
         EIGHTEEN: '<a:18:1491670036799029288>',
         LINK: '<a:Link:1491670128562274475>',
+        ALERT: '<a:alert:1493698480034676736>',
         HOURGLASS: '<a:Hourglass:1491762676416905267>',
         CHAT: '<a:chat:1491669036998594600>',
         CONFETTI: '<a:confetti:1491689074002755664>',
