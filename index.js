@@ -23,18 +23,6 @@ const XPLib = require('./utils/xputils');
 const { syncMembershipRoles } = require('./services/membershipSync');
 const giveawayCommand = require('./commands/giveaway');
 
-// ==================== DASHBOARD REFRESH FUNCTION ====================
-async function updateDashboard() {
-    console.log('📊 Realtime vote → Broadcasting update!');
-    if (typeof global.refreshPollDashboard === 'function') {
-        global.refreshPollDashboard();
-        console.log('✅ Broadcast sent to SSE clients');
-    }
-} 
-
-// Register the callback
-pollService.setDashboardRefreshCallback(updateDashboard);
-
 // ==================== DISCORD CLIENT SETUP ====================
 const client = new Client({
     intents: [
@@ -51,7 +39,7 @@ const client = new Client({
 client.once(Events.ClientReady, async (c) => {
     console.log(`🚀 ${c.user.tag} online and ready!`);
 
-    // Start the dashboard
+    // Start the dashboard (clean version - no realtime stuff)
     try {
         const dashboardModule = await import('./web/server.js');
         const startDashboard = dashboardModule.default || dashboardModule;
