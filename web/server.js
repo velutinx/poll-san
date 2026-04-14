@@ -20,7 +20,7 @@ module.exports = (client) => {
         allowedHeaders: ['Content-Type', 'Authorization']
     }));
 
-    // Quick probe blocker
+    // Quick probe blocker (same as yours)
     app.use((req, res, next) => {
         const url = req.url.toLowerCase();
         const probePatterns = [
@@ -51,15 +51,12 @@ module.exports = (client) => {
     let cachedMembers = null;
     let lastMemberFetch = 0;
     const MEMBER_CACHE_TTL = 15 * 60 * 1000;
-
     let memberFetchPromise = null;
+
     async function getGuildMembers(guild) {
         const now = Date.now();
-        if (cachedMembers && (now - lastMemberFetch) < MEMBER_CACHE_TTL) {
-            return cachedMembers;
-        }
+        if (cachedMembers && (now - lastMemberFetch) < MEMBER_CACHE_TTL) return cachedMembers;
         if (memberFetchPromise) return memberFetchPromise;
-
         memberFetchPromise = (async () => {
             try {
                 const members = await guild.members.fetch({ withPresences: false });
@@ -75,7 +72,6 @@ module.exports = (client) => {
 
     // ====================== LIVE POLL UPDATES (SSE) ======================
     const pollClients = new Set();
-
     function broadcastPollUpdate() {
         const data = JSON.stringify({ type: 'pollUpdate', timestamp: Date.now() });
         pollClients.forEach(client => {
@@ -86,37 +82,48 @@ module.exports = (client) => {
             }
         });
     }
-
-    // Expose refresh function globally so index.js can call it
     global.refreshPollDashboard = broadcastPollUpdate;
 
-    // SSE Endpoint for live poll updates
     app.get('/api/poll/live', (req, res) => {
         res.setHeader('Content-Type', 'text/event-stream');
         res.setHeader('Cache-Control', 'no-cache');
         res.setHeader('Connection', 'keep-alive');
         res.flushHeaders();
-
         pollClients.add(res);
-
-        // Send initial connection message
         res.write(`data: ${JSON.stringify({ type: 'connected', timestamp: Date.now() })}\n\n`);
-
-        req.on('close', () => {
-            pollClients.delete(res);
-        });
+        req.on('close', () => pollClients.delete(res));
     });
 
-    // ====================== EXISTING ROUTES ======================
-    app.get('/api/channels', async (req, res) => { /* ... your existing code ... */ });
-    app.get('/api/get-settings', async (req, res) => { /* ... */ });
-    app.post('/api/save-settings', async (req, res) => { /* ... */ });
+    // ====================== CHANNELS ROUTE ======================
+    app.get('/api/channels', async (req, res) => {
+        try {
+            const guild = client.guilds.cache.get(process.env.GUILD_ID);
+            if (!guild) return res.status(500).json({ error: 'Guild not found' });
+            const channels = guild.channels.cache
+                .filter(ch => ch.type === ChannelType.GuildText)
+                .map(ch => ({ id: ch.id, name: ch.name }));
+            res.json(channels);
+        } catch (err) {
+            res.status(500).json({ error: err.message });
+        }
+    });
 
+    // ====================== GREETINGS SETTINGS (mock, replace with your DB) ======================
+    app.get('/api/get-settings', async (req, res) => {
+        // Example: fetch from your settings table
+        res.json({ welcome_channel_id: '', welcome_message: '' });
+    });
+    app.post('/api/save-settings', async (req, res) => {
+        // Example: save to DB
+        res.json({ success: true });
+    });
+
+    // ====================== STATIC DASHBOARD PAGE ======================
     app.get('/poll-san', (req, res) => {
         res.sendFile(path.join(__dirname, 'public', 'index.html'));
     });
 
-    // Load external routes
+    // ====================== EXTERNAL ROUTES ======================
     const setupQueueRoutes = require('./routes/queue');
     const setupPollRoutes = require('./routes/poll');
     const setupMembershipsRoute = require('./routes/memberships');
