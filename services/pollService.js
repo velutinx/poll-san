@@ -18,16 +18,22 @@ let currentCharacters = null;
 let currentEndTime = null;
 
 let reconnectAttempts = 0;
-const MAX_RECONNECT_ATTEMPTS = 5;
-const RECONNECT_DELAY = 3000; // 3 seconds
+const MAX_RECONNECT_ATTEMPTS = 6;
 
-// ==================== REAL-TIME SETUP WITH RETRY ====================
+// ==================== REAL-TIME SETUP ====================
 function setupRealtimeListeners() {
+    // Clean up previous channel if exists
     if (realtimeChannel) {
-        supabase.removeChannel(realtimeChannel);
+        supabase.removeChannel(realtimeChannel).catch(() => {});
+        realtimeChannel = null;
     }
 
-    realtimeChannel = supabase.channel('poll-votes-realtime');
+    realtimeChannel = supabase.channel('poll-votes-realtime', {
+        config: {
+            // These options help with stability in Node.js
+            heartbeat: true,
+        }
+    });
 
     realtimeChannel
         .on(
@@ -51,13 +57,13 @@ function setupRealtimeListeners() {
             handleVoteChange
         )
         .subscribe((status, err) => {
-            console.log(`Realtime status: ${status}`);
+            console.log(`[Realtime] Status: ${status}${err ? ` - ${err.message}` : ''}`);
 
             if (status === 'SUBSCRIBED') {
-                console.log('✅ Supabase Realtime: Successfully listening for votes');
+                console.log('✅ Supabase Realtime: Successfully listening for votes (Discord + Website)');
                 reconnectAttempts = 0;
             } else if (['TIMED_OUT', 'CLOSED', 'CHANNEL_ERROR'].includes(status)) {
-                console.warn(`⚠️ Realtime ${status}${err ? ': ' + err.message : ''}`);
+                console.warn(`⚠️ Realtime ${status}`);
                 attemptReconnect();
             }
         });
@@ -65,44 +71,45 @@ function setupRealtimeListeners() {
 
 function attemptReconnect() {
     if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
-        console.error('❌ Max realtime reconnect attempts reached. Falling back to interval only.');
+        console.error('❌ Max realtime reconnect attempts reached. Falling back to interval updates only.');
         return;
     }
 
     reconnectAttempts++;
-    console.log(`🔄 Reconnecting realtime... Attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS}`);
+    const delay = 2000 * reconnectAttempts; // progressive delay
+
+    console.log(`🔄 Reconnecting realtime in ${delay}ms... (Attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})`);
 
     setTimeout(() => {
-        if (currentPollMessage) {  // only reconnect if there's still an active poll
+        if (currentPollMessage) {
             setupRealtimeListeners();
         }
-    }, RECONNECT_DELAY * reconnectAttempts); // exponential-ish backoff
+    }, delay);
 }
 
 async function handleVoteChange(payload) {
     if (!currentPollMessage || !currentCharacters) return;
 
-    console.log(`🗳️ Realtime vote change detected → ${payload.eventType} on ${payload.table}`);
+    console.log(`🗳️ Realtime vote detected → ${payload.eventType} on ${payload.table}`);
 
     try {
-        // Force fresh DB read
+        // Bypass cache for fresh data
         cachedPollResults = null;
         cachedPollTimestamp = 0;
 
         const results = await getPollResults(currentPollMessage, currentCharacters);
-        const now = Date.now();
-        const isFinished = now >= currentEndTime;
+        const isFinished = Date.now() >= currentEndTime;
 
         const content = await generateMessageContent(currentEndTime, results, currentCharacters, isFinished);
 
         await currentPollMessage.edit({ content });
-        console.log('✅ Poll updated successfully via realtime');
+        console.log('✅ Poll message updated via realtime');
     } catch (err) {
-        console.error('Error in realtime update:', err);
+        console.error('❌ Realtime update failed:', err.message);
     }
 }
 
-// ==================== REST OF YOUR FUNCTIONS (unchanged logic) ====================
+// ==================== CORE FUNCTIONS (lightly cleaned) ====================
 
 async function getPollResults(message, characters) {
     const displayResults = [];
@@ -113,45 +120,28 @@ async function getPollResults(message, characters) {
     }
 
     try {
-        const { data: discordVotes } = await supabaseRetry(() =>
-            supabase.from('votes_discord')
-                .select('option_id, weight')
-                .eq('poll_id', CURRENT_POLL_ID)
-        );
-
-        const { data: websiteVotes } = await supabaseRetry(() =>
-            supabase.from('website_voting')
-                .select('option_id')
-                .eq('poll_id', CURRENT_POLL_ID)
-        );
-
-        const { data: winnerData } = await supabaseRetry(() =>
-            supabase.from('final_votes')
-                .select('option_id, selected_at')
-                .eq('poll_id', CURRENT_POLL_ID)
-        );
+        const [{ data: discordVotes }, { data: websiteVotes }, { data: winnerData }] = await Promise.all([
+            supabaseRetry(() => supabase.from('votes_discord').select('option_id, weight').eq('poll_id', CURRENT_POLL_ID)),
+            supabaseRetry(() => supabase.from('website_voting').select('option_id').eq('poll_id', CURRENT_POLL_ID)),
+            supabaseRetry(() => supabase.from('final_votes').select('option_id, selected_at').eq('poll_id', CURRENT_POLL_ID))
+        ]);
 
         const winnerMap = {};
-        if (winnerData) {
-            winnerData.forEach(row => {
-                if (row.selected_at) winnerMap[row.option_id] = true;
-            });
-        }
+        (winnerData || []).forEach(row => {
+            if (row.selected_at) winnerMap[row.option_id] = true;
+        });
 
         for (let i = 0; i < characters.length; i++) {
             const optionId = i + 1;
-            const discordScore = discordVotes
-                ? discordVotes.filter(v => v.option_id === optionId)
-                    .reduce((sum, v) => sum + parseFloat(v.weight || 0), 0)
-                : 0;
+            const discordScore = (discordVotes || [])
+                .filter(v => v.option_id === optionId)
+                .reduce((sum, v) => sum + parseFloat(v.weight || 0), 0);
 
-            const websiteScore = websiteVotes
-                ? websiteVotes.filter(v => v.option_id === optionId).length
-                : 0;
+            const websiteScore = (websiteVotes || []).filter(v => v.option_id === optionId).length;
 
             const totalScore = discordScore + websiteScore;
             const rawName = characters[i].replace(/:female_sign:|:male_sign:/g, m => m === ':female_sign:' ? '♀️' : '♂️');
-            const isWinner = winnerMap[optionId] || false;
+            const isWinner = !!winnerMap[optionId];
 
             let line = `${h.emojis[i]} \` ${totalScore.toFixed(2).padStart(5, ' ')} ${rawName.padEnd(30)} \` \n`;
             if (isWinner) line = `||${line}||`;
@@ -166,9 +156,7 @@ async function getPollResults(message, characters) {
             });
         }
 
-        await supabaseRetry(() =>
-            supabase.from('final_votes').upsert(rawDataForDB, { onConflict: 'poll_id,option_id' })
-        );
+        await supabaseRetry(() => supabase.from('final_votes').upsert(rawDataForDB, { onConflict: 'poll_id,option_id' }));
 
         const resultString = displayResults.join('');
         cachedPollResults = resultString;
@@ -205,7 +193,6 @@ function forceStopPoll() {
         activePollTimer = null;
     }
     console.log("Poll interval cleared.");
-    // We keep realtime alive in case a new poll starts soon
 }
 
 async function getFinalPollMessageContent(pollList) {
@@ -241,16 +228,12 @@ function runPollInterval(pollMessage, endTime, characters) {
 
             if (isFinished) {
                 forceStopPoll();
-                await supabaseRetry(() =>
-                    supabase.from('auto_resume').delete().eq('message_id', pollMessage.id)
-                );
+                await supabaseRetry(() => supabase.from('auto_resume').delete().eq('message_id', pollMessage.id));
             }
         } catch (e) {
             if (e.code === 10008) {
                 forceStopPoll();
-                await supabaseRetry(() =>
-                    supabase.from('auto_resume').delete().eq('message_id', pollMessage.id)
-                );
+                await supabaseRetry(() => supabase.from('auto_resume').delete().eq('message_id', pollMessage.id));
             } else {
                 console.error("Poll interval error:", e);
             }
