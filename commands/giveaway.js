@@ -2,16 +2,30 @@
 
 const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, PermissionsBitField, AttachmentBuilder, MessageFlags } = require('discord.js');
 const path = require('path');
-const fs = require('fs');
-const supabase = require(path.join(__dirname, '..', 'services', 'supabase'));
+const fs = require('fs').promises;
 const { colors, releaseEmojis } = require('../utils/helpers');
 
 // In-memory cache for quick access
 const activeGiveaways = new Map();
 
 // Get image configuration from environment
-const GIVEAWAY_IMAGE_URL = process.env.GIVEAWAY_IMAGE_URL; // e.g., https://i.imgur.com/abc123.jpg
+const GIVEAWAY_IMAGE_URL = process.env.GIVEAWAY_IMAGE_URL;
 const USE_HOSTED_IMAGE = !!GIVEAWAY_IMAGE_URL;
+
+// Dynamic imports for supabase and path (to avoid top-level await)
+let supabase;
+let supabasePromise;
+
+async function getSupabase() {
+    if (supabase) return supabase;
+    if (!supabasePromise) {
+        supabasePromise = import('../services/supabase.js').then(module => {
+            supabase = module.default;
+            return supabase;
+        });
+    }
+    return supabasePromise;
+}
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -36,9 +50,9 @@ module.exports = {
 
     async execute(interaction) {
         if (!interaction.memberPermissions.has(PermissionsBitField.Flags.ManageGuild)) {
-            return interaction.reply({ 
-                content: 'You need `Manage Server` permission to create giveaways.', 
-                flags: [MessageFlags.Ephemeral] 
+            return interaction.reply({
+                content: 'You need `Manage Server` permission to create giveaways.',
+                flags: [MessageFlags.Ephemeral]
             });
         }
 
@@ -49,9 +63,9 @@ module.exports = {
 
         const durationMs = parseDuration(durationStr);
         if (!durationMs) {
-            return interaction.reply({ 
-                content: 'Invalid duration format. Use e.g., `7d`, `12h`, `30m`.', 
-                flags: [MessageFlags.Ephemeral] 
+            return interaction.reply({
+                content: 'Invalid duration format. Use e.g., `7d`, `12h`, `30m`.',
+                flags: [MessageFlags.Ephemeral]
             });
         }
 
@@ -65,16 +79,18 @@ module.exports = {
             imageUrl = GIVEAWAY_IMAGE_URL;
         } else {
             const imagePath = path.join(__dirname, '..', 'assets', 'giveaway.jpg');
-            if (fs.existsSync(imagePath)) {
+            try {
+                await fs.access(imagePath);
                 imageAttachment = new AttachmentBuilder(imagePath);
                 imageUrl = 'attachment://giveaway.jpg';
                 console.warn('Using local file – image will appear as attachment AND in embed if set. Set GIVEAWAY_IMAGE_URL to avoid duplication.');
+            } catch {
+                // No local image, ignore
             }
         }
 
-        const giveawayId = Date.now(); // unique ID used in footer
+        const giveawayId = Date.now();
 
-        // Create embed
         const embed = new EmbedBuilder()
             .setTitle(prize)
             .setDescription(`${releaseEmojis.CHAT} Click the button below to join the giveaway! ${releaseEmojis.CHAT}`)
@@ -101,12 +117,10 @@ module.exports = {
         if (imageAttachment) messageOptions.files = [imageAttachment];
 
         const giveawayMessage = await channel.send(messageOptions);
-
-        // Log startup
         console.log(`Starting giveaway ID: ${giveawayId} - ${prize} for ${durationStr}`);
 
-        // Insert into database
-        const { error } = await supabase
+        const supabaseClient = await getSupabase();
+        const { error } = await supabaseClient
             .from('giveaways')
             .insert({
                 message_id: giveawayMessage.id,
@@ -124,7 +138,6 @@ module.exports = {
             await channel.send('⚠️ Giveaway created but failed to save to database. It may not persist after restart.');
         }
 
-        // Store in memory cache with setTimeout
         const timeoutId = setTimeout(() => endGiveaway(giveawayMessage.id, interaction.client), durationMs);
         activeGiveaways.set(giveawayMessage.id, {
             messageId: giveawayMessage.id,
@@ -140,9 +153,9 @@ module.exports = {
             timeoutId
         });
 
-        await interaction.reply({ 
-            content: `Giveaway created in ${channel}!`, 
-            flags: [MessageFlags.Ephemeral] 
+        await interaction.reply({
+            content: `Giveaway created in ${channel}!`,
+            flags: [MessageFlags.Ephemeral]
         });
     }
 };
@@ -161,7 +174,8 @@ async function handleGiveawayButton(interaction) {
 
     let giveaway = activeGiveaways.get(interaction.message.id);
     if (!giveaway) {
-        const { data, error } = await supabase
+        const supabaseClient = await getSupabase();
+        const { data, error } = await supabaseClient
             .from('giveaways')
             .select('*')
             .eq('message_id', interaction.message.id)
@@ -169,9 +183,9 @@ async function handleGiveawayButton(interaction) {
             .single();
 
         if (error || !data) {
-            return interaction.reply({ 
-                content: 'This giveaway has already ended or does not exist.', 
-                flags: [MessageFlags.Ephemeral] 
+            return interaction.reply({
+                content: 'This giveaway has already ended or does not exist.',
+                flags: [MessageFlags.Ephemeral]
             });
         }
 
@@ -200,22 +214,23 @@ async function handleGiveawayButton(interaction) {
     }
 
     if (giveaway.ended) {
-        return interaction.reply({ 
-            content: 'This giveaway has already ended.', 
-            flags: [MessageFlags.Ephemeral] 
+        return interaction.reply({
+            content: 'This giveaway has already ended.',
+            flags: [MessageFlags.Ephemeral]
         });
     }
 
     if (giveaway.entrants.has(interaction.user.id)) {
-        return interaction.reply({ 
-            content: 'You have already entered!', 
-            flags: [MessageFlags.Ephemeral] 
+        return interaction.reply({
+            content: 'You have already entered!',
+            flags: [MessageFlags.Ephemeral]
         });
     }
 
     giveaway.entrants.add(interaction.user.id);
 
-    const { error } = await supabase
+    const supabaseClient = await getSupabase();
+    const { error } = await supabaseClient
         .from('giveaways')
         .update({ entrants: Array.from(giveaway.entrants) })
         .eq('message_id', interaction.message.id);
@@ -223,16 +238,16 @@ async function handleGiveawayButton(interaction) {
     if (error) {
         console.error('Failed to update entrants:', error);
         giveaway.entrants.delete(interaction.user.id);
-        return interaction.reply({ 
-            content: 'Failed to enter giveaway due to a database error.', 
-            flags: [MessageFlags.Ephemeral] 
+        return interaction.reply({
+            content: 'Failed to enter giveaway due to a database error.',
+            flags: [MessageFlags.Ephemeral]
         });
     }
 
-await interaction.reply({ 
-    content: `${releaseEmojis.VERIFY} You entered the giveaway!`, 
-    flags: [MessageFlags.Ephemeral] 
-});
+    await interaction.reply({
+        content: `${releaseEmojis.VERIFY} You entered the giveaway!`,
+        flags: [MessageFlags.Ephemeral]
+    });
 }
 
 async function endGiveaway(messageId, client) {
@@ -243,7 +258,8 @@ async function endGiveaway(messageId, client) {
     activeGiveaways.delete(messageId);
 
     try {
-        const { data: dbGiveaway, error: fetchError } = await supabase
+        const supabaseClient = await getSupabase();
+        const { data: dbGiveaway, error: fetchError } = await supabaseClient
             .from('giveaways')
             .select('*')
             .eq('message_id', messageId)
@@ -255,7 +271,7 @@ async function endGiveaway(messageId, client) {
         }
 
         const channel = await client.channels.fetch(dbGiveaway.channel_id);
-        
+
         // Delete the reminder message if it exists
         if (dbGiveaway.reminder_message_id) {
             try {
@@ -283,7 +299,6 @@ async function endGiveaway(messageId, client) {
             await channel.send(`${releaseEmojis.CONFETTI} Congratulations to ${winnerMentions} for winning **${dbGiveaway.prize}**!`);
         }
 
-        // Update embed to ended state (existing code)
         const embed = message.embeds[0];
         const newEmbed = EmbedBuilder.from(embed)
             .setTitle(`${dbGiveaway.prize} Giveaway Ended`)
@@ -303,16 +318,17 @@ async function endGiveaway(messageId, client) {
         }
 
         await message.edit({ embeds: [newEmbed], components: [] });
-        await supabase.from('giveaways').delete().eq('message_id', messageId);
+        await supabaseClient.from('giveaways').delete().eq('message_id', messageId);
     } catch (err) {
         console.error('Error ending giveaway:', err);
     }
 }
 
 async function restoreGiveaways(client) {
+    const supabaseClient = await getSupabase();
     const now = new Date().toISOString();
 
-    const { data, error } = await supabase
+    const { data, error } = await supabaseClient
         .from('giveaways')
         .select('*')
         .eq('ended', false)
@@ -323,9 +339,7 @@ async function restoreGiveaways(client) {
         return;
     }
 
-    if (!data || data.length === 0) {
-        return; // silent
-    }
+    if (!data || data.length === 0) return;
 
     for (const g of data) {
         const endTime = new Date(g.end_time).getTime();
@@ -356,8 +370,19 @@ async function restoreGiveaways(client) {
 
 async function endGiveawayFromDB(g, client) {
     try {
+        const supabaseClient = await getSupabase();
         const channel = await client.channels.fetch(g.channel_id);
         const message = await channel.messages.fetch(g.message_id);
+
+        // Delete reminder message if stored
+        if (g.reminder_message_id) {
+            try {
+                const reminderMsg = await channel.messages.fetch(g.reminder_message_id).catch(() => null);
+                if (reminderMsg) await reminderMsg.delete();
+            } catch (err) {
+                console.warn('Could not delete reminder message from DB restore:', err.message);
+            }
+        }
 
         const entrantsArray = g.entrants || [];
         const totalEntries = entrantsArray.length;
@@ -377,9 +402,9 @@ async function endGiveawayFromDB(g, client) {
 
         const embed = message.embeds[0];
         const newEmbed = EmbedBuilder.from(embed)
-            .setTitle(`${g.prize} Giveaway Ended`)  // ← changed here
+            .setTitle(`${g.prize} Giveaway Ended`)
             .setDescription(null)
-            .setColor('#808080')
+            .setColor(colors.ended)
             .setFooter({ text: 'Ended' })
             .setFields(
                 { name: 'Hosts', value: `<@${g.host_id}>`, inline: true },
@@ -394,8 +419,7 @@ async function endGiveawayFromDB(g, client) {
         }
 
         await message.edit({ embeds: [newEmbed], components: [] });
-
-        await supabase.from('giveaways').delete().eq('message_id', g.message_id);
+        await supabaseClient.from('giveaways').delete().eq('message_id', g.message_id);
     } catch (err) {
         console.error(`Error ending giveaway from DB ${g.message_id}:`, err);
     }
