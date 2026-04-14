@@ -43,16 +43,26 @@ async function refreshDashboard() {
     }
 }
 
-// ==================== REAL-TIME SETUP ====================
+// ==================== REAL-TIME SETUP (Improved) ====================
+let realtimeChannel = null;
+let reconnectAttempts = 0;
+const MAX_RECONNECT_ATTEMPTS = 8; // slightly higher
+const BASE_RECONNECT_DELAY = 1500;
+
 function setupRealtimeListeners() {
-    // Clean up previous channel
+    // Full cleanup
     if (realtimeChannel) {
+        realtimeChannel.unsubscribe().catch(() => {});
         supabase.removeChannel(realtimeChannel).catch(() => {});
         realtimeChannel = null;
     }
 
     realtimeChannel = supabase.channel('poll-votes-realtime', {
-        config: { heartbeat: true }
+        config: {
+            heartbeat: true,           // Keep this
+            heartbeatIntervalMs: 15000, // Explicit 15s heartbeat (helps prevent idle drops)
+            timeout: 20000,            // Give more time before considering timed out
+        }
     });
 
     realtimeChannel
@@ -77,12 +87,13 @@ function setupRealtimeListeners() {
             handleVoteChange
         )
         .subscribe((status, err) => {
-            console.log(`[Realtime] Status: ${status}${err ? ` - ${err.message}` : ''}`);
+            console.log(`[Realtime] Status: ${status}${err ? ` - ${err.message || err}` : ''}`);
+
             if (status === 'SUBSCRIBED') {
-                console.log('✅ Supabase Realtime: Successfully listening for votes (Discord + Website)');
+                console.log('✅ Supabase Realtime: Successfully subscribed and listening for votes');
                 reconnectAttempts = 0;
-            } else if (['TIMED_OUT', 'CLOSED', 'CHANNEL_ERROR'].includes(status)) {
-                console.warn(`⚠️ Realtime ${status}`);
+            } else if (['TIMED_OUT', 'CLOSED', 'CHANNEL_ERROR', 'CLOSED'].includes(status)) {
+                console.warn(`⚠️ Realtime ${status} - will attempt reconnect`);
                 attemptReconnect();
             }
         });
@@ -90,40 +101,42 @@ function setupRealtimeListeners() {
 
 function attemptReconnect() {
     if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
-        console.error('❌ Max realtime reconnect attempts reached. Falling back to interval only.');
+        console.error('❌ Max realtime reconnect attempts reached. Falling back to poll interval only.');
         return;
     }
+
     reconnectAttempts++;
-    const delay = 2000 * reconnectAttempts;
+    const delay = Math.min(BASE_RECONNECT_DELAY * Math.pow(1.6, reconnectAttempts), 30000); // capped exponential backoff
+
     console.log(`🔄 Reconnecting realtime in ${delay}ms... (Attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})`);
+
     setTimeout(() => {
-        if (currentPollMessage) setupRealtimeListeners();
+        if (currentPollMessage) {  // only reconnect if poll is still active
+            setupRealtimeListeners();
+        }
     }, delay);
 }
-
 // ==================== VOTE HANDLER (Now updates BOTH Discord + Dashboard) ====================
 async function handleVoteChange(payload) {
-    console.log(`🗳️ Realtime vote detected → ${payload.eventType} on ${payload.table}`);
+    console.log(`🗳️ Realtime vote → ${payload.eventType} on ${payload.table}`);
 
-    // Force cache invalidation
+    // Force cache refresh
     cachedPollResults = null;
     cachedPollTimestamp = 0;
 
-    // 1. Update Discord poll message (if active)
     if (currentPollMessage && currentCharacters) {
         try {
             const results = await getPollResults(currentPollMessage, currentCharacters);
             const isFinished = Date.now() >= currentEndTime;
             const content = await generateMessageContent(currentEndTime, results, currentCharacters, isFinished);
             await currentPollMessage.edit({ content });
-            console.log('✅ Discord poll message updated via realtime');
+            console.log('✅ Discord poll updated via realtime');
         } catch (err) {
-            console.error('❌ Discord realtime update failed:', err.message);
+            if (err.code !== 10008) console.error('❌ Discord realtime update failed:', err.message);
         }
     }
 
-    // 2. Refresh the Dashboard immediately
-    await refreshDashboard();
+    await refreshDashboard(); // your dashboard callback
 }
 
 // ==================== CORE FUNCTIONS ====================
