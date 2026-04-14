@@ -39,11 +39,9 @@ async function loadGiveawayData() {
             <strong>Entrants:</strong> ${data.entrants.length} &nbsp;|&nbsp;
             <strong>Ending at:</strong> ${endingStr}
             <div style="margin-top: 12px;">
-                <label style="font-size:0.9rem;">Adjust time: </label>
-                <input type="number" id="adjust-hours" step="1" value="0" style="width:70px; background:#1e293b; border:1px solid #475569; color:white; border-radius:4px; padding:4px;">
-                <button onclick="adjustGiveawayTime(1)" style="background:#3b82f6; padding:4px 12px;">+1h</button>
-                <button onclick="adjustGiveawayTime(-1)" style="background:#ef4444; padding:4px 12px;">-1h</button>
-                <button onclick="adjustGiveawayTime(parseInt(document.getElementById('adjust-hours').value) || 0)" style="background:#10b981;">Apply</button>
+                <label style="font-size:0.9rem;">Adjust time (hours): </label>
+                <input type="number" id="adjust-hours" step="1" value="0" style="width:80px; background:#1e293b; border:1px solid #475569; color:white; border-radius:4px; padding:4px;">
+                <button onclick="adjustGiveawayTime()" style="background:#10b981; padding:4px 12px;">Apply</button>
             </div>
         `;
         currentGiveawayData = data.entrants;
@@ -151,7 +149,11 @@ async function removeFromGiveaway(userId) {
     }
 }
 
-async function adjustGiveawayTime(hours) {
+async function adjustGiveawayTime() {
+    const hoursInput = document.getElementById('adjust-hours');
+    let hours = parseInt(hoursInput.value, 10);
+    if (isNaN(hours)) hours = 0;
+
     const statusDiv = document.getElementById('giveaway-status');
     statusDiv.innerHTML = 'Updating...';
     try {
@@ -170,5 +172,5 @@ async function adjustGiveawayTime(hours) {
     }
 }
 
-// Expose globally so HTML buttons can call it
+// Expose globally so HTML button can call it
 window.adjustGiveawayTime = adjustGiveawayTime;
