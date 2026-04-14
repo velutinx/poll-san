@@ -4,21 +4,22 @@ const { createClient } = require('@supabase/supabase-js');
 const WebSocket = require('ws');
 
 const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseKey = process.env.SUPABASE_KEY;   // Note: you used SUPABASE_KEY, not ANON_KEY
+const supabaseKey = process.env.SUPABASE_KEY;
 
 if (!supabaseUrl || !supabaseKey) {
-    console.error('❌ Missing SUPABASE_URL or SUPABASE_KEY environment variables');
-    process.exit(1); // Stop if config is broken
+    console.error('❌ Missing SUPABASE_URL or SUPABASE_KEY');
+    process.exit(1);
 }
 
 const supabase = createClient(supabaseUrl, supabaseKey, {
     realtime: {
-        transport: WebSocket,           // This fixes the TIMED_OUT issue on Node 20
-        heartbeatIntervalMs: 25000,
-        timeout: 30000,
+        transport: WebSocket,
+        heartbeatIntervalMs: 15000,     // Send heartbeats more frequently
+        timeout: 20000,                 // Shorter timeout for detection
+        params: {
+            heartbeat: true
+        }
     }
 });
-
-console.log('✅ Supabase client initialized with WebSocket transport for better stability');
-
+console.log('✅ Supabase client initialized with aggressive WebSocket settings');
 module.exports = supabase;
