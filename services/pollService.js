@@ -127,6 +127,7 @@ function setActivePollContext(pollMessage, endTime, characters) {
 }
 
 async function refreshActivePollMessage() {
+    console.log("🔄 refreshActivePollMessage called"); // <-- add this
     if (!currentPollContext) return;
     const { pollMessage, endTime, characters } = currentPollContext;
     cachedPollResults = null;
