@@ -21,5 +21,4 @@ const supabase = createClient(supabaseUrl, supabaseKey, {
         }
     }
 });
-console.log('✅ Supabase client initialized with aggressive WebSocket settings');
 module.exports = supabase;
