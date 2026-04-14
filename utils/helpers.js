@@ -57,6 +57,7 @@ module.exports = {
         EIGHTEEN: '<a:18:1491670036799029288>',
         LINK: '<a:Link:1491670128562274475>',
         HOURGLASS: '<a:Hourglass:1491762676416905267>',
+        CHAT: '<a:chat:1491669036998594600>',
         CONFETTI: '<a:confetti:1491689074002755664>',
         SPARKLES: '<a:sparkles:1491697348718493786>',
         PROGRESS: '<a:progress:1491670111923212308>',
