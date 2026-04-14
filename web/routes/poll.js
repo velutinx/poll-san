@@ -3,6 +3,7 @@
 module.exports = function setupPollRoutes(app, client, supabase, supabaseRetry) {
     const h = require('../../utils/helpers');
     const pollService = require('../../services/pollService');
+    await pollService.refreshActivePollMessage
     
     // Cache for poll results (shared between endpoints)
     let cachedPollResultsData = null;
