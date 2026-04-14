@@ -15,6 +15,7 @@ const CACHE_TTL = 60000; // 1 minute
 // Module-level timer and realtime subscription
 let activePollTimer = null;
 let voteSubscription = null;
+let keepAliveInterval = null;   // <-- moved to module level
 
 // ----------------------------------------------------------------------
 // Core poll result calculation (unchanged)
@@ -148,9 +149,6 @@ async function refreshPollMessage(pollMessage, endTime, characters) {
 // ----------------------------------------------------------------------
 // Supabase Realtime subscription – triggers on every new vote
 // ----------------------------------------------------------------------
-let voteSubscription = null;
-let keepAliveInterval = null;
-
 async function subscribeToVoteUpdates(pollMessage, endTime, characters) {
     // Unsubscribe from any previous subscription first
     if (voteSubscription) {
