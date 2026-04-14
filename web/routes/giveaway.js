@@ -30,6 +30,28 @@ module.exports = function setupGiveawayRoutes(app, client, supabase, supabaseRet
                 return res.json({ active: false });
             }
 
+            // ---------- REMINDER LOGIC (≤24h left, only once) ----------
+            const endTimeDate = new Date(giveaway.end_time);
+            const nowDate = new Date();
+            const msLeft = endTimeDate - nowDate;
+            const hoursLeft = msLeft / (1000 * 60 * 60);
+            if (!giveaway.reminder_sent && hoursLeft <= 24 && hoursLeft > 0) {
+                try {
+                    const channel = await client.channels.fetch(giveaway.channel_id);
+                    const roleMention = `<@&${h.ids.roles.giveaway_notify_role}>`;
+                    await channel.send(`⚠️ **Last day in the current giveaway!** ${roleMention}`);
+                    await supabaseRetry(() =>
+                        supabase.from('giveaways')
+                            .update({ reminder_sent: true })
+                            .eq('message_id', giveaway.message_id)
+                    );
+                    console.log(`✅ Reminder sent for giveaway ${giveaway.message_id}`);
+                } catch (reminderErr) {
+                    console.error('Failed to send giveaway reminder:', reminderErr);
+                }
+            }
+            // ------------------------------------------------------------
+
             const guild = await client.guilds.fetch(process.env.GUILD_ID);
             const entrants = giveaway.entrants || [];
             const entrantsDetails = [];
@@ -84,7 +106,6 @@ module.exports = function setupGiveawayRoutes(app, client, supabase, supabaseRet
                         accountAge = member.user.createdTimestamp
                             ? Math.floor((Date.now() - member.user.createdTimestamp) / (24 * 60 * 60 * 1000))
                             : null;
-                        
                         isSupporter = member.roles.cache.has(h.ids.roles.supporter);
                     }
                 } catch (err) {
