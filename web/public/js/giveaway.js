@@ -27,10 +27,11 @@ async function loadGiveawayData() {
         const minutes = Math.floor((timeLeft % (3600000)) / 60000);
         const seconds = Math.floor((timeLeft % 60000) / 1000);
 
-        // Format ending time: e.g., "Tuesday, 4:00 PM"
-        const endingStr = endTime.toLocaleString(undefined, {
-            weekday: 'long', hour: 'numeric', minute: '2-digit', hour12: true
-        }).replace(':00', ''); // remove seconds if zero
+        // Format ending time as "1 of May at 9:28 PM"
+        const day = endTime.getDate();
+        const month = endTime.toLocaleString(undefined, { month: 'long' });
+        const timeStr = endTime.toLocaleString(undefined, { hour: 'numeric', minute: '2-digit', hour12: true });
+        const endingStr = `${day} of ${month} at ${timeStr}`;
 
         infoDiv.innerHTML = `
             <strong>Prize:</strong> ${escapeHtml(data.prize)} &nbsp;|&nbsp;
