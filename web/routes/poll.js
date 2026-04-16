@@ -80,10 +80,8 @@ module.exports = function setupPollRoutes(app, client, supabase, supabaseRetry) 
     // ────────────────────────────────────────────────
     app.post('/api/stop-poll', async (req, res) => {
         try {
-            // 1. Physically stop the Node.js update interval
             pollService.forceStopPoll();
 
-            // 2. Fetch the active poll to update the message UI to "Ended"
             const { data: poll } = await supabaseRetry(() =>
                 supabase.from('auto_resume')
                     .select('*')
@@ -95,19 +93,15 @@ module.exports = function setupPollRoutes(app, client, supabase, supabaseRetry) 
             if (poll) {
                 const channel = await client.channels.fetch(poll.channel_id);
                 const pollMessage = await channel.messages.fetch(poll.message_id);
-                
-                // Update message to static "Ended" state
                 const characters = poll.poll_list
                     .split(/(?=:female_sign:|:male_sign:|♀️|♂️|\n)/)
                     .map(s => s.trim())
                     .filter(s => s.length > 1);
-                
                 const results = await pollService.getPollResults(pollMessage, characters);
                 const content = await pollService.generateMessageContent(0, results, characters, true);
                 await pollMessage.edit({ content });
             }
 
-            // 3. Clear the database records
             const { error: rpcError } = await supabaseRetry(() =>
                 supabase.rpc('truncate_poll_tables')
             );
@@ -123,7 +117,7 @@ module.exports = function setupPollRoutes(app, client, supabase, supabaseRetry) 
     });
 
     // ────────────────────────────────────────────────
-    // MARK WINNER (fixed – no images, single newlines)
+    // MARK WINNER – now uses the same monospaced format as the main poll
     // ────────────────────────────────────────────────
     app.post('/api/mark-winner', async (req, res) => {
         const { winner_name } = req.body;
@@ -137,17 +131,16 @@ module.exports = function setupPollRoutes(app, client, supabase, supabaseRetry) 
                     .limit(1)
                     .single()
             );
-            
             if (!poll) return res.status(404).json({ error: "No active poll found." });
 
-            // Update winner status in database
+            // Mark winner in database
             await supabaseRetry(() =>
                 supabase.from('final_votes')
                     .update({ selected_at: new Date().toISOString() })
                     .filter('character_name', 'ilike', `%${winner_name}%`)
             );
 
-            // Fetch current standings
+            // Fetch current standings (same as pollService uses)
             const { data: voteData } = await supabaseRetry(() =>
                 supabase.from('final_votes')
                     .select('character_name, score, selected_at')
@@ -157,7 +150,6 @@ module.exports = function setupPollRoutes(app, client, supabase, supabaseRetry) 
             const channel = await client.channels.fetch(poll.channel_id);
             const pollMessage = await channel.messages.fetch(poll.message_id);
             const thread = pollMessage.thread;
-            
             if (!thread) return res.status(404).json({ error: "Thread not found." });
 
             const characters = poll.poll_list
@@ -165,7 +157,7 @@ module.exports = function setupPollRoutes(app, client, supabase, supabaseRetry) 
                 .map(s => s.trim().replace(/:female_sign:/g, '♀️').replace(/:male_sign:/g, '♂️'))
                 .filter(s => s.length > 1);
 
-            // Build the scoreboard – TEXT ONLY, no image links
+            // Build the scoreboard using the same monospaced format as the main poll
             let scoreboard = `:trophy: **${winner_name}** has been marked as a winner! ${e.CONFETTI}\n\n`;
 
             characters.forEach((char, index) => {
@@ -177,12 +169,15 @@ module.exports = function setupPollRoutes(app, client, supabase, supabaseRetry) 
                     return cleanChar === cleanRecord;
                 });
                 
-                const score = record ? parseFloat(record.score).toFixed(1) : "0.0";
+                const score = record ? parseFloat(record.score).toFixed(2) : "0.00";
                 const isWinner = record && record.selected_at !== null;
                 
-                // TEXT ONLY – no image link
-                const line = `${emoji} = ${score} -- ${char}`;
-                scoreboard += isWinner ? `||${line}||\n` : `${line}\n`;
+                // Same formatting as generateMessageContent: emoji + backtick + right‑aligned score (5) + space + left‑aligned name (30) + backtick
+                const paddedScore = score.padStart(5, ' ');
+                const paddedName = char.padEnd(30, ' ');
+                let line = `${emoji} \` ${paddedScore} ${paddedName} \` \n`;
+                if (isWinner) line = `||${line}||`;
+                scoreboard += line;
             });
 
             await thread.send(scoreboard);
@@ -192,5 +187,4 @@ module.exports = function setupPollRoutes(app, client, supabase, supabaseRetry) 
             res.status(500).json({ error: err.message });
         }
     });
-
 };
