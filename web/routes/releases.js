@@ -343,7 +343,7 @@ async function getMegaStorage() {
     }
     const { Storage } = require('megajs');
     const storage = await new Storage({ email: megaEmail, password: megaPassword }).ready;
-    console.log('✅ Persistent MEGA session established');
+//  console.log('✅ Persistent MEGA session established');
     return storage;
   })();
   
