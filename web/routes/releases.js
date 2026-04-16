@@ -321,9 +321,52 @@ ${h.releaseEmojis.LINK} [megaLink](${download || 'https://mega.nz'})`;
     }
   });
 
-  // ────────────────────────────────────────────────
-  // 13. MEGA UPLOAD (with month folder and progress)
-  // ────────────────────────────────────────────────
+// ────────────────────────────────────────────────
+// MEGA UPLOAD (with persistent session and month folder)
+// ────────────────────────────────────────────────
+
+// Persistent MEGA session (initialised once)
+let megaStorage = null;
+let megaInitialising = false;
+let megaInitPromise = null;
+
+async function getMegaStorage() {
+  if (megaStorage) return megaStorage;
+  if (megaInitialising && megaInitPromise) return megaInitPromise;
+  
+  megaInitialising = true;
+  megaInitPromise = (async () => {
+    const megaEmail = process.env.MEGA_EMAIL;
+    const megaPassword = process.env.MEGA_PASSWORD;
+    if (!megaEmail || !megaPassword) {
+      throw new Error('MEGA credentials missing');
+    }
+    const { Storage } = require('megajs');
+    const storage = await new Storage({ email: megaEmail, password: megaPassword }).ready;
+    console.log('✅ Persistent MEGA session established');
+    return storage;
+  })();
+  
+  try {
+    megaStorage = await megaInitPromise;
+    return megaStorage;
+  } finally {
+    megaInitialising = false;
+    megaInitPromise = null;
+  }
+}
+
+// Helper: get or create folder recursively
+async function getOrCreateFolder(node, pathParts) {
+  let current = node;
+  for (const part of pathParts) {
+    let child = current.children.find(c => c.name === part && c.directory);
+    if (!child) child = await current.mkdir(part);
+    current = child;
+  }
+  return current;
+}
+
 app.post('/api/upload-to-mega', upload.single('file'), async (req, res) => {
   if (!req.file) {
     return res.status(400).json({ error: 'No file uploaded' });
@@ -335,13 +378,6 @@ app.post('/api/upload-to-mega', upload.single('file'), async (req, res) => {
     return res.status(400).json({ error: 'File exceeds 100MB limit' });
   }
 
-  const megaEmail = process.env.MEGA_EMAIL;
-  const megaPassword = process.env.MEGA_PASSWORD;
-  if (!megaEmail || !megaPassword) {
-    return res.status(500).json({ error: 'MEGA credentials missing' });
-  }
-
-  // --- NEW: allow custom filename for Mega (and local download) ---
   const desiredFileName = req.body.desiredName || req.file.originalname;
   const month = req.body.month;
   if (!month) return res.status(400).json({ error: 'Month folder not provided' });
@@ -350,16 +386,6 @@ app.post('/api/upload-to-mega', upload.single('file'), async (req, res) => {
   const year = `20${yearShort}`;
   const folderPath = ['Packs', year, month];
 
-  async function getOrCreateFolder(node, pathParts) {
-    let current = node;
-    for (const part of pathParts) {
-      let child = current.children.find(c => c.name === part && c.directory);
-      if (!child) child = await current.mkdir(part);
-      current = child;
-    }
-    return current;
-  }
-
   const tempDir = os.tmpdir();
   const tempFilePath = path.join(tempDir, `mega-upload-${Date.now()}-${desiredFileName}`);
 
@@ -367,7 +393,8 @@ app.post('/api/upload-to-mega', upload.single('file'), async (req, res) => {
     // Write buffer to temp file
     fs.writeFileSync(tempFilePath, req.file.buffer);
 
-    const storage = await new Storage({ email: megaEmail, password: megaPassword }).ready;
+    // Get persistent session (logs in only once)
+    const storage = await getMegaStorage();
     const targetFolder = await getOrCreateFolder(storage.root, folderPath);
     const readStream = fs.createReadStream(tempFilePath);
 
@@ -381,38 +408,36 @@ app.post('/api/upload-to-mega', upload.single('file'), async (req, res) => {
     const megaLink = await uploadResult.link();
     console.log(`✅ Uploaded to Mega: ${megaLink}`);
 
-    // --- NEW: automatically download the file from Mega (if requested) ---
+    // Optional local download
     let localPath = null;
     if (req.body.downloadAfterUpload === 'true') {
       const downloadDir = req.body.localDownloadPath || './downloads/';
       if (!fs.existsSync(downloadDir)) fs.mkdirSync(downloadDir, { recursive: true });
 
-      // Use megajs to download the file via its link
       const { File } = require('megajs');
       const megaFile = File.fromURL(megaLink);
+      const localFile = path.join(downloadDir, desiredFileName);
 
       await new Promise((resolve, reject) => {
-        const localFileStream = fs.createWriteStream(path.join(downloadDir, desiredFileName));
+        const writeStream = fs.createWriteStream(localFile);
         megaFile.download((err, data) => {
           if (err) return reject(err);
-          localFileStream.write(data);
-          localFileStream.end();
-          localFileStream.on('finish', resolve);
-          localFileStream.on('error', reject);
+          writeStream.write(data);
+          writeStream.end();
+          writeStream.on('finish', resolve);
+          writeStream.on('error', reject);
         });
       });
-      localPath = path.join(downloadDir, desiredFileName);
-//      console.log(`📥 Downloaded from Mega to ${localPath}`);
+      localPath = localFile;
     }
 
     // Cleanup temp file
     fs.unlinkSync(tempFilePath);
-    storage.close();
 
     res.json({
       success: true,
       link: megaLink,
-      localPath: localPath,     // only if downloadAfterUpload was true
+      localPath: localPath,
       fileName: desiredFileName
     });
 
