@@ -1,19 +1,16 @@
 // This is poll-san/commands/tickets/shop.js
 
-const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder } = require('discord.js');
 const h = require('../../utils/helpers');
-const supabase = require('../../services/supabase');
 
-// Define shop items (easily add more later)
 const SHOP_ITEMS = [
     {
         id: 'custom_request',
         name: 'Custom Request',
-        description: 'Fully custom AI art piece',
+        description: 'Fully custom AI art piece tailored to your request.',
         cost: 15,
         emoji: '🎨'
     }
-    // Add more items here in the future
 ];
 
 module.exports = {
@@ -23,10 +20,10 @@ module.exports = {
 
     async execute(interaction) {
         const embed = new EmbedBuilder()
-            .setTitle(`${h.releaseEmojis.CONFETTI} Ticket Shop`)
+            .setTitle(`${h.releaseEmojis.CHAT} Ticket Shop ${h.releaseEmojis.CHAT}`)
             .setDescription('Select an item from the dropdown below to purchase.')
             .setColor('#FFD700')
-            .setFooter({ text: `You have tickets? Use /tickets to check` });
+            .setFooter({ text: 'Use /tickets to check your balance' });
 
         const selectMenu = new StringSelectMenuBuilder()
             .setCustomId('shop_select')
@@ -45,7 +42,7 @@ module.exports = {
         await interaction.reply({
             embeds: [embed],
             components: [row],
-            ephemeral: true
+            flags: { ephemeral: true }
         });
     }
 };
