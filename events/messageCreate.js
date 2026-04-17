@@ -1,4 +1,5 @@
-// events/messageCreate.js
+// This is poll-san/events/messageCreate.js
+
 const supabase = require('../services/supabase');
 const h = require('../utils/helpers');
 
@@ -59,11 +60,25 @@ async function awardTicket(userId) {
 }
 
 module.exports = async (message) => {
-    // Ignore bot messages except WordleBot
-    if (message.author.bot && message.author.id !== WORDLE_BOT_ID) return;
-    // Only listen in the designated Wordle channel
+    // --- 1. HANDLE WORDLEBOT'S OWN MESSAGES (Auto-delete spam) ---
+    if (message.author.id === WORDLE_BOT_ID) {
+        // Only act if the message is in the designated Wordle channel
+        if (message.channel.id !== WORDLE_CHANNEL_ID) return;
+
+        const content = message.content.toLowerCase();
+        // Delete achievement and FAQ messages after a short delay
+        if (content.includes('congratulations! you\'ve unlocked an achievement') ||
+            content.includes('here is the faq page')) {
+            setTimeout(() => message.delete().catch(() => {}), 1500);
+        }
+        return; // Stop processing – we don't award tickets to a bot
+    }
+
+    // --- 2. IGNORE OTHER BOTS AND WRONG CHANNEL ---
+    if (message.author.bot) return;
     if (message.channel.id !== WORDLE_CHANNEL_ID) return;
 
+    // --- 3. CHECK FOR WORDLE WIN & AWARD TICKET ---
     if (!isWordleWin(message)) return;
 
     const result = await awardTicket(message.author.id);
