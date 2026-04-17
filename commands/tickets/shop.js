@@ -1,3 +1,5 @@
+// This is poll-san/commands/tickets/shop.js
+
 const { SlashCommandBuilder } = require('discord.js');
 
 module.exports = {
