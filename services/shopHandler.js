@@ -1,11 +1,19 @@
-// services/shopHandler.js
+// This is poll-san/services/shopHandler.js
+
 const { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } = require('discord.js');
 const h = require('../utils/helpers');
 const supabase = require('./supabase');
 
 // Shop items definition (same as in shop command)
 const SHOP_ITEMS = [
-    { id: 'custom_request', name: 'Custom Request', cost: 15, emoji: '🎨' }
+    {
+        id: 'custom_request',
+        name: 'Custom Request',
+        description: 'Fully custom AI art piece tailored to your request.',
+        cost: 15,
+        emoji: '🎨'
+    }
+    // Add more items here in the future
 ];
 
 /**
@@ -15,7 +23,7 @@ async function handleShopSelect(interaction) {
     const selectedId = interaction.values[0];
     const item = SHOP_ITEMS.find(i => i.id === selectedId);
     if (!item) {
-        return interaction.reply({ content: '❌ Item not found.', ephemeral: true });
+        return interaction.reply({ content: '❌ Item not found.', flags: { ephemeral: true } });
     }
 
     // Check user's ticket balance
@@ -25,11 +33,19 @@ async function handleShopSelect(interaction) {
         .eq('discord_id', interaction.user.id)
         .maybeSingle();
 
+    if (error) {
+        console.error('Balance fetch error in shop select:', error);
+        return interaction.reply({ content: '❌ Could not retrieve your balance.', flags: { ephemeral: true } });
+    }
+
     const balance = userData?.ticket_count || 0;
+
+    // Ensure description exists
+    const itemDescription = item.description || 'No description available.';
 
     const embed = new EmbedBuilder()
         .setTitle(`${item.emoji} ${item.name}`)
-        .setDescription(item.description)
+        .setDescription(itemDescription)
         .addFields(
             { name: 'Cost', value: `${item.cost} Tickets`, inline: true },
             { name: 'Your Balance', value: `${balance} Tickets`, inline: true },
@@ -48,7 +64,7 @@ async function handleShopSelect(interaction) {
     await interaction.update({
         embeds: [embed],
         components: [row],
-        ephemeral: true
+        flags: { ephemeral: true }
     });
 }
 
@@ -56,9 +72,8 @@ async function handleShopSelect(interaction) {
  * Handle the actual purchase when user clicks "Buy"
  */
 async function handleShopPurchase(interaction) {
-    // Extract item info from the embed (since we didn't store state, we'll parse or assume only one item)
-    // For simplicity, we'll assume the only item is Custom Request (15 tickets)
-    const item = SHOP_ITEMS[0]; // Later you can pass customId with item info
+    // For now, only one item exists, but we can prepare for future expansion
+    const item = SHOP_ITEMS[0]; // Custom Request
 
     // Get user's current balance
     const { data: userData, error: fetchError } = await supabase
@@ -69,13 +84,13 @@ async function handleShopPurchase(interaction) {
 
     if (fetchError) {
         console.error('Fetch balance error:', fetchError);
-        return interaction.reply({ content: '❌ Error checking balance.', ephemeral: true });
+        return interaction.reply({ content: '❌ Error checking balance.', flags: { ephemeral: true } });
     }
 
     const balance = userData?.ticket_count || 0;
 
     if (balance < item.cost) {
-        return interaction.reply({ content: '❌ You do not have enough tickets.', ephemeral: true });
+        return interaction.reply({ content: '❌ You do not have enough tickets.', flags: { ephemeral: true } });
     }
 
     // Deduct tickets using RPC (atomic)
@@ -84,11 +99,11 @@ async function handleShopPurchase(interaction) {
 
     if (deductError) {
         console.error('Deduct error:', deductError);
-        return interaction.reply({ content: '❌ Purchase failed. Please try again.', ephemeral: true });
+        return interaction.reply({ content: '❌ Purchase failed. Please try again.', flags: { ephemeral: true } });
     }
 
     // Log purchase
-        const { error: logError } = await supabase
+    const { error: logError } = await supabase
         .from('games_purchases')
         .insert({
             discord_id: interaction.user.id,
@@ -124,7 +139,7 @@ async function handleShopPurchase(interaction) {
     await interaction.update({
         embeds: [embed],
         components: [],
-        ephemeral: true
+        flags: { ephemeral: true }
     });
 }
 
