@@ -135,9 +135,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
                 case 'shop':
                     await require('./commands/tickets/shop').execute(interaction);
                     break;
-                 case 'post_wordle_ui':
-                    await require('./commands/admin/post-wordle-ui').execute(interaction);
-                break;
             }
         } else if (interaction.isUserContextMenuCommand() && interaction.commandName === 'View Level') {
             require('./commands/level')(interaction);
