@@ -119,25 +119,34 @@ const commandsData = [
 // --- 2. INTERACTION HANDLER ---
 client.on(Events.InteractionCreate, async (interaction) => {
     try {
-if (interaction.isChatInputCommand()) {
-    switch (interaction.commandName) {
-        case 'level':
-            require('./commands/level')(interaction);
-            break;
-        case 'giveaway':
-            await giveawayCommand.execute(interaction);
-            break;
-        case 'tickets':
-            await require('./commands/tickets/balance').execute(interaction);
-            break;
-        case 'shop':
-            await require('./commands/tickets/shop').execute(interaction);
-            break;
-    }
-} else if (interaction.isUserContextMenuCommand() && interaction.commandName === 'View Level') {
+        if (interaction.isChatInputCommand()) {
+            switch (interaction.commandName) {
+                case 'level':
+                    require('./commands/level')(interaction);
+                    break;
+                case 'giveaway':
+                    await giveawayCommand.execute(interaction);
+                    break;
+                case 'tickets':
+                    await require('./commands/tickets/balance').execute(interaction);
+                    break;
+                case 'shop':
+                    await require('./commands/tickets/shop').execute(interaction);
+                    break;
+            }
+        } else if (interaction.isUserContextMenuCommand() && interaction.commandName === 'View Level') {
             require('./commands/level')(interaction);
         } else if (interaction.isButton()) {
-            await giveawayCommand.handleGiveawayButton(interaction);
+            // Handle shop purchase confirmation
+            if (interaction.customId === 'shop_buy_confirm') {
+                await handleShopPurchase(interaction);
+            } else {
+                await giveawayCommand.handleGiveawayButton(interaction);
+            }
+        } else if (interaction.isStringSelectMenu()) {
+            if (interaction.customId === 'shop_select') {
+                await handleShopSelect(interaction);
+            }
         }
     } catch (err) {
         console.error('Interaction Error:', err);
