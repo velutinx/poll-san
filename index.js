@@ -22,6 +22,7 @@ const { cleanRoles } = require('./services/roleCleaner');
 const XPLib = require('./utils/xputils');
 const { syncMembershipRoles } = require('./services/membershipSync');
 const giveawayCommand = require('./commands/giveaway');
+const messageCreateEvent = require('./events/messageCreate');
 
 // ==================== DISCORD CLIENT SETUP ====================
 const client = new Client({
@@ -140,6 +141,7 @@ client.on(Events.GuildMemberAdd, (member) => require('./events/guildMemberAdd')(
 client.on(Events.MessageReactionAdd, (reaction, user) => require('./events/reactions')(reaction, user, 'add'));
 client.on(Events.MessageReactionRemove, (reaction, user) => require('./events/reactions')(reaction, user, 'remove'));
 client.on('guildMemberRemove', require('./events/guildMemberPollRemove'));
+client.on('messageCreate', messageCreateEvent);
 
 // --- 4. XP SYSTEM ---
 client.on(Events.MessageCreate, async (message) => {
