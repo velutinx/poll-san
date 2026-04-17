@@ -57,6 +57,7 @@ const commandsData = [
     giveawayCommand.data.toJSON(),
     require('./commands/tickets/balance').data.toJSON(),
     require('./commands/tickets/shop').data.toJSON()
+    require('./commands/admin/post-wordle-ui').data.toJSON()
 ];
 
     const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
@@ -134,6 +135,9 @@ client.on(Events.InteractionCreate, async (interaction) => {
                 case 'shop':
                     await require('./commands/tickets/shop').execute(interaction);
                     break;
+                 case 'post_wordle_ui':
+                    await require('./commands/admin/post-wordle-ui').execute(interaction);
+                break;
             }
         } else if (interaction.isUserContextMenuCommand() && interaction.commandName === 'View Level') {
             require('./commands/level')(interaction);
