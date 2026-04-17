@@ -1,3 +1,5 @@
+// This is poll-san/commands/tickets/balance.js
+
 const { SlashCommandBuilder } = require('discord.js');
 const supabase = require('../../services/supabase');
 
