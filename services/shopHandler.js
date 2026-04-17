@@ -1,6 +1,6 @@
 // This is poll-san/services/shopHandler.js
 
-const { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } = require('discord.js');
+const { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, MessageFlags } = require('discord.js');
 const h = require('../utils/helpers');
 const supabase = require('./supabase');
 
@@ -64,13 +64,10 @@ async function handleShopSelect(interaction) {
     await interaction.update({
         embeds: [embed],
         components: [row],
-        flags: { ephemeral: true }
+        flags: MessageFlags.Ephemeral
     });
 }
 
-/**
- * Handle the actual purchase when user clicks "Buy"
- */
 async function handleShopPurchase(interaction) {
     // For now, only one item exists, but we can prepare for future expansion
     const item = SHOP_ITEMS[0]; // Custom Request
@@ -139,7 +136,7 @@ async function handleShopPurchase(interaction) {
     await interaction.update({
         embeds: [embed],
         components: [],
-        flags: { ephemeral: true }
+        flags: MessageFlags.Ephemeral
     });
 }
 
