@@ -27,9 +27,9 @@ module.exports = {
             ? `<t:${Math.floor(new Date(data.last_win_at).getTime() / 1000)}:R>` 
             : 'Never';
 
-        await interaction.editReply({
-            content: `🎟️ **Your Tickets:** ${count}\n📅 Last win: ${lastWin}`,
-            ephemeral: true
-        });
+await interaction.reply({
+    content: `🎟️ **Your Tickets:** ${count}\n📅 Last win: ${lastWin}`,
+    flags: { ephemeral: true }
+});
     }
 };
