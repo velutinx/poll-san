@@ -127,6 +127,12 @@ if (interaction.isChatInputCommand()) {
         case 'giveaway':
             await giveawayCommand.execute(interaction);
             break;
+        case 'tickets':
+            await require('./commands/tickets/balance').execute(interaction);
+            break;
+        case 'shop':
+            await require('./commands/tickets/shop').execute(interaction);
+            break;
     }
 } else if (interaction.isUserContextMenuCommand() && interaction.commandName === 'View Level') {
             require('./commands/level')(interaction);
