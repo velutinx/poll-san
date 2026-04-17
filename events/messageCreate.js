@@ -3,19 +3,13 @@
 const supabase = require('../services/supabase');
 const h = require('../utils/helpers');
 
-// Pull configuration from helpers
 const { botId: WORDLE_BOT_ID, channelId: WORDLE_CHANNEL_ID, cooldownHours: COOLDOWN_HOURS, winPattern: WORDLE_WIN_PATTERN } = h.games.wordle;
 
-/**
- * Checks if a message is a winning Wordle result from WordleBot
- */
 function isWordleWin(message) {
     const content = message.content;
     const match = content.match(WORDLE_WIN_PATTERN);
     if (!match) return false;
-    // If it's "X/6", they lost
     if (match[1] === 'X') return false;
-    // It's a win (number/6)
     return true;
 }
 
@@ -44,7 +38,6 @@ async function awardTicket(userId, username) {
             return { awarded: false, reason: 'cooldown' };
         }
 
-        // Call RPC with both user_id and user_name
         const { data: newCount, error: rpcError } = await supabase
             .rpc('increment_wordle_ticket', { 
                 user_id: userId, 
@@ -61,28 +54,22 @@ async function awardTicket(userId, username) {
 }
 
 module.exports = async (message) => {
-    // --- 1. HANDLE WORDLEBOT'S OWN MESSAGES (Auto-delete spam) ---
     if (message.author.id === WORDLE_BOT_ID) {
-        // Only act if the message is in the designated Wordle channel
         if (message.channel.id !== WORDLE_CHANNEL_ID) return;
-
         const content = message.content.toLowerCase();
-        // Delete achievement and FAQ messages after a short delay
         if (content.includes('congratulations! you\'ve unlocked an achievement') ||
             content.includes('here is the faq page')) {
             setTimeout(() => message.delete().catch(() => {}), 1500);
         }
-        return; // Stop processing – we don't award tickets to a bot
+        return;
     }
 
-    // --- 2. IGNORE OTHER BOTS AND WRONG CHANNEL ---
     if (message.author.bot) return;
     if (message.channel.id !== WORDLE_CHANNEL_ID) return;
 
-    // --- 3. CHECK FOR WORDLE WIN & AWARD TICKET ---
     if (!isWordleWin(message)) return;
 
-    const result = await awardTicket(message.author.id);
+    const result = await awardTicket(message.author.id, message.author.username);
 
     if (result.awarded) {
         await message.react('🎟️').catch(() => {});
@@ -91,5 +78,4 @@ module.exports = async (message) => {
             allowedMentions: { repliedUser: true }
         }).catch(() => {});
     }
-    // Cooldown case is silent to avoid spam
 };
