@@ -23,6 +23,7 @@ const XPLib = require('./utils/xputils');
 const { syncMembershipRoles } = require('./services/membershipSync');
 const giveawayCommand = require('./commands/giveaway');
 const messageCreateEvent = require('./events/messageCreate');
+const { handleShopSelect, handleShopPurchase } = require('./services/shopHandler');
 
 // ==================== DISCORD CLIENT SETUP ====================
 const client = new Client({
