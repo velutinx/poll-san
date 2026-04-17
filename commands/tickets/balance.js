@@ -1,6 +1,6 @@
 // This is poll-san/commands/tickets/balance.js
 
-const { SlashCommandBuilder } = require('discord.js');
+const { SlashCommandBuilder, MessageFlags } = require('discord.js');
 const supabase = require('../../services/supabase');
 
 module.exports = {
@@ -9,7 +9,7 @@ module.exports = {
         .setDescription('Check your ticket balance'),
 
     async execute(interaction) {
-        await interaction.deferReply({ ephemeral: true });
+        await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
         const { data, error } = await supabase
             .from('games_wordle')
@@ -27,9 +27,9 @@ module.exports = {
             ? `<t:${Math.floor(new Date(data.last_win_at).getTime() / 1000)}:R>` 
             : 'Never';
 
-await interaction.reply({
-    content: `🎟️ **Your Tickets:** ${count}\n📅 Last win: ${lastWin}`,
-    flags: { ephemeral: true }
-});
+        await interaction.editReply({
+            content: `🎟️ **Your Tickets:** ${count}\n📅 Last win: ${lastWin}`,
+            flags: MessageFlags.Ephemeral
+        });
     }
 };
