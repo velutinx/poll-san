@@ -89,20 +89,20 @@ module.exports = async (message) => {
         message.delete().catch(() => {});
     }, 2000);
 
-    // --- 3. Send a private DM with the success message ---
-    const dmMessage = `🎉 Nice win! You've earned **1 ticket**! You now have **${result.newCount}** ticket(s).`;
+// --- 3. Send a private DM with the success message ---
+const dmMessage = `${h.releaseEmojis.CONFETTI} Nice win! You've earned **1 ticket**! You now have **${result.newCount}** ticket(s).`;
 
-    try {
-        await message.author.send(dmMessage);
-    } catch (dmError) {
-        // If DMs are disabled, send a temporary channel message that self-destructs
-        const tempMsg = await message.channel.send({
-            content: `<@${message.author.id}> ${dmMessage}\n*(Enable DMs to receive these privately)*`,
-            allowedMentions: { users: [message.author.id] }
-        }).catch(() => {});
+try {
+    await message.author.send(dmMessage);
+} catch (dmError) {
+    // If DMs are disabled, send a temporary channel message that self-destructs
+    const tempMsg = await message.channel.send({
+        content: `<@${message.author.id}> ${dmMessage}\n*(Enable DMs to receive these privately)*`,
+        allowedMentions: { users: [message.author.id] }
+    }).catch(() => {});
 
-        if (tempMsg) {
-            setTimeout(() => tempMsg.delete().catch(() => {}), 8000);
-        }
+    if (tempMsg) {
+        setTimeout(() => tempMsg.delete().catch(() => {}), 8000);
     }
+}
 };
