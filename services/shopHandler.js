@@ -88,8 +88,8 @@ async function handleShopPurchase(interaction) {
     }
 
     // Log purchase
-    const { error: logError } = await supabase
-        .from('purchases')
+        const { error: logError } = await supabase
+        .from('games_purchases')
         .insert({
             discord_id: interaction.user.id,
             discord_username: interaction.user.username,
