@@ -56,7 +56,7 @@ const commandsData = [
     new ContextMenuCommandBuilder().setName('View Level').setType(ApplicationCommandType.User).toJSON(),
     giveawayCommand.data.toJSON(),
     require('./commands/tickets/balance').data.toJSON(),
-    require('./commands/tickets/shop').data.toJSON()
+    require('./commands/tickets/shop').data.toJSON(),
     require('./commands/admin/post-wordle-ui').data.toJSON()
 ];
 
