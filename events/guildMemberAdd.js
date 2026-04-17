@@ -17,10 +17,16 @@ module.exports = async (member) => {
             const channel = await member.guild.channels.fetch(settings.welcome_channel_id);
             if (channel) {
                 // Prepending the member mention so you can click their profile easily
-                const parsedContent = parseMessage(settings.welcome_message, member);
-                const finalMessage = `<@${member.id}> ${parsedContent}`;
-                
-                const sent = await channel.send(finalMessage);
+const parsedContent = parseMessage(settings.welcome_message, member);
+
+// Remove the member's username from the start of the parsed message to avoid duplication
+let cleanedContent = parsedContent;
+const username = member.user.username;
+if (cleanedContent.startsWith(username)) {
+    cleanedContent = cleanedContent.slice(username.length).trimStart();
+}
+
+const finalMessage = `<@${member.id}> ${cleanedContent}`;
                 
                 // Uses the ID from helpers to react with the animated wave
                 await sent.react(h.releaseEmojis.waveId).catch(err => console.error("Failed to react:", err));
