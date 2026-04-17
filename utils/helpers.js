@@ -156,7 +156,6 @@ games: {
         cooldownHours: 24,
         // Regex pattern to detect a winning Wordle result
         winPattern: /Wordle\s+[\d,]+\s+(\d|X)\/6/,
-        activityAppId: '947466344113963018'  // Wordle's official embedded activity ID
     },
     // Future games can be added here:
     // quordle: { ... },
