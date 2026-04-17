@@ -19,10 +19,7 @@ function isWordleWin(message) {
     return true;
 }
 
-/**
- * Awards a ticket to a user if cooldown has passed
- */
-async function awardTicket(userId) {
+async function awardTicket(userId, username) {
     try {
         const { data: userData, error: fetchError } = await supabase
             .from('games_wordle')
@@ -47,8 +44,12 @@ async function awardTicket(userId) {
             return { awarded: false, reason: 'cooldown' };
         }
 
+        // Call RPC with both user_id and user_name
         const { data: newCount, error: rpcError } = await supabase
-            .rpc('increment_wordle_ticket', { user_id: userId });
+            .rpc('increment_wordle_ticket', { 
+                user_id: userId, 
+                user_name: username 
+            });
 
         if (rpcError) throw rpcError;
 
