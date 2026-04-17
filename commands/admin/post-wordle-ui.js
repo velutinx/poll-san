@@ -1,6 +1,6 @@
 // This is poll-san/commands/admin/post-wordle-ui.js
 
-const { SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, PermissionFlagsBits, ChannelType, InviteTargetType, MessageFlags } = require('discord.js');
+const { SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, PermissionFlagsBits, ChannelType, MessageFlags } = require('discord.js');
 const h = require('../../utils/helpers');
 
 module.exports = {
@@ -9,41 +9,35 @@ module.exports = {
         .setDescription('[ADMIN] Posts the Wordle button interface in this channel.')
         .addChannelOption(option =>
             option.setName('voice_channel')
-                .setDescription('Select the voice channel where the Wordle activity will take place')
+                .setDescription('Select the voice channel for the Wordle activity')
                 .addChannelTypes(ChannelType.GuildVoice)
                 .setRequired(true))
         .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
 
     async execute(interaction) {
         const voiceChannel = interaction.options.getChannel('voice_channel');
-        const wordleAppId = h.games.wordle.activityAppId;
+        const guildId = interaction.guildId;
 
-        try {
-            const invite = await voiceChannel.createInvite({
-                maxAge: 0,
-                maxUses: 0,
-                unique: true,
-                targetType: InviteTargetType.EmbeddedApplication,
-                targetApplication: wordleAppId
-            });
+        // --- 1. Build the direct link to the Activity Shelf ---
+        const activityLink = `https://discord.com/channels/${guildId}/${voiceChannel.id}`;
 
-            const row = new ActionRowBuilder()
-                .addComponents(
-                    new ButtonBuilder()
-                        .setLabel('🎮 Play Wordle')
-                        .setStyle(ButtonStyle.Link)
-                        .setURL(invite.url)
-                );
+        // --- 2. Create the button with the direct link ---
+        const row = new ActionRowBuilder()
+            .addComponents(
+                new ButtonBuilder()
+                    .setLabel('🎮 Play Wordle')
+                    .setStyle(ButtonStyle.Link)
+                    .setURL(activityLink)
+                    .setEmoji('🎮') // A little extra flair
+            );
 
-            await interaction.channel.send({
-                content: `# 🎮 Wordle Arena\nClick the button below to start a session in **${voiceChannel.name}**!`,
-                components: [row]
-            });
+        // --- 3. Send the persistent message in the current channel ---
+        await interaction.channel.send({
+            content: `# 🎮 Wordle Arena\nClick the button below and then start the **Wordle** activity in the **${voiceChannel.name}** voice channel!`,
+            components: [row]
+        });
 
-            await interaction.reply({ content: '✅ Wordle button has been posted!', flags: MessageFlags.Ephemeral });
-        } catch (error) {
-            console.error('Failed to create Wordle invite:', error);
-            await interaction.reply({ content: '❌ Failed to create Wordle invite. Ensure the bot has permission to create invites.', flags: MessageFlags.Ephemeral });
-        }
+        // --- 4. Confirm to the admin ---
+        await interaction.reply({ content: '✅ Wordle button has been posted!', flags: MessageFlags.Ephemeral });
     }
 };
