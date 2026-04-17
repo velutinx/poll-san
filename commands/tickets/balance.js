@@ -18,6 +18,7 @@ module.exports = {
             .maybeSingle();
 
         if (error) {
+            console.error('Balance fetch error:', error);
             return interaction.editReply('❌ Error fetching your tickets.');
         }
 
