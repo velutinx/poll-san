@@ -119,16 +119,16 @@ const commandsData = [
 // --- 2. INTERACTION HANDLER ---
 client.on(Events.InteractionCreate, async (interaction) => {
     try {
-        if (interaction.isChatInputCommand()) {
-            switch (interaction.commandName) {
-                case 'level':
-                    require('./commands/level')(interaction);
-                    break;
-                case 'giveaway':
-                    await giveawayCommand.execute(interaction);
-                    break;
-            }
-        } else if (interaction.isUserContextMenuCommand() && interaction.commandName === 'View Level') {
+if (interaction.isChatInputCommand()) {
+    switch (interaction.commandName) {
+        case 'level':
+            require('./commands/level')(interaction);
+            break;
+        case 'giveaway':
+            await giveawayCommand.execute(interaction);
+            break;
+    }
+} else if (interaction.isUserContextMenuCommand() && interaction.commandName === 'View Level') {
             require('./commands/level')(interaction);
         } else if (interaction.isButton()) {
             await giveawayCommand.handleGiveawayButton(interaction);
