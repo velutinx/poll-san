@@ -20,6 +20,6 @@ module.exports = {
             .setColor('#FFD700')
             .setFooter({ text: 'Use /buy <item> to redeem' });
 
-        await interaction.reply({ embeds: [embed] });
+        await interaction.reply({ embeds: [embed], ephemeral: true });
     }
 };
