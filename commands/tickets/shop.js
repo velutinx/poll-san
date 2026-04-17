@@ -1,6 +1,6 @@
 // This is poll-san/commands/tickets/shop.js
 
-const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder } = require('discord.js');
+const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder, MessageFlags } = require('discord.js');
 const h = require('../../utils/helpers');
 
 const SHOP_ITEMS = [
@@ -42,7 +42,7 @@ module.exports = {
         await interaction.reply({
             embeds: [embed],
             components: [row],
-            flags: { ephemeral: true }
+            flags: MessageFlags.Ephemeral
         });
     }
 };
