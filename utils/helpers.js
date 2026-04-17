@@ -149,6 +149,20 @@ module.exports = {
         xpFactor: 0.02
     },
 
+games: {
+    wordle: {
+        botId: '1326731868137062492',
+        channelId: '1494747527801470986',
+        cooldownHours: 24,
+        // Regex pattern to detect a winning Wordle result
+        winPattern: /Wordle\s+[\d,]+\s+(\d|X)\/6/,
+    },
+    // Future games can be added here:
+    // quordle: { ... },
+    // connections: { ... },
+},
+
+    
     colors: {
         success: 0x00FFCC,
         giveaway: '#FF69B4',
