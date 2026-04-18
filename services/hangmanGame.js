@@ -86,24 +86,24 @@ async function startHangmanGame(interaction) {
             .setFooter({ text: footerText });
     };
 
-    const createButtonRows = () => {
-        const alphabet = 'abcdefghijklmnopqrstuvwxyz'.split('');
-        const rows = [];
-        for (let i = 0; i < alphabet.length; i += 6) {
-            const row = new ActionRowBuilder();
-            alphabet.slice(i, i + 6).forEach(letter => {
-                row.addComponents(
-                    new ButtonBuilder()
-                        .setCustomId(`hangman_${letter}`)
-                        .setLabel(letter.toUpperCase())
-                        .setStyle(ButtonStyle.Primary)
-                        .setDisabled(usedLetters.includes(letter) || gameOver)
-                );
-            });
-            rows.push(row);
-        }
-        return rows;
-    };
+const createButtonRows = () => {
+    const alphabet = 'abcdefghijklmnopqrstuvwxyz'.split('');
+    const rows = [];
+    for (let i = 0; i < alphabet.length; i += 5) {  // Changed from 6 to 5
+        const row = new ActionRowBuilder();
+        alphabet.slice(i, i + 5).forEach(letter => {  // Changed from 6 to 5
+            row.addComponents(
+                new ButtonBuilder()
+                    .setCustomId(`hangman_${letter}`)
+                    .setLabel(letter.toUpperCase())
+                    .setStyle(ButtonStyle.Primary)
+                    .setDisabled(usedLetters.includes(letter) || gameOver)
+            );
+        });
+        rows.push(row);
+    }
+    return rows;
+};
 
     const embed = generateEmbed();
     const rows = createButtonRows();
