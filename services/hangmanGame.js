@@ -1,6 +1,6 @@
 // This is poll-san/services/hangmanGame.js
 
-const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ComponentType, MessageFlags } = require('discord.js');
+const { EmbedBuilder, MessageFlags } = require('discord.js');
 const supabase = require('./supabase');
 const h = require('../utils/helpers');
 const fs = require('fs');
@@ -14,16 +14,15 @@ const COOLDOWN_HOURS = 24;
 
 // Hangman stages as emoji art
 const HANGMAN_STAGES = [
-    '🟫🟫🟫🟫🟫\n🟫😀🟫\n🟫\n🟫\n🟫',                          // 0 wrong
-    '🟫🟫🟫🟫🟫\n🟫😀🟫\n🟫💪\n🟫\n🟫',                        // 1 wrong
-    '🟫🟫🟫🟫🟫\n🟫😀🟫\n🟫💪💪\n🟫\n🟫',                      // 2 wrong
-    '🟫🟫🟫🟫🟫\n🟫😧🟫\n🟫💪💪\n🟫 🦵\n🟫',                   // 3 wrong
-    '🟫🟫🟫🟫🟫\n🟫😧🟫\n🟫💪💪\n🟫🦵🦵\n🟫',                 // 4 wrong
-    '🟫🟫🟫🟫🟫\n🟫😵🟫\n🟫💪💪\n🟫🦵🦵\n🟫',                 // 5 wrong
-    '🟫🟫🟫🟫🟫\n🟫💀🟫\n🟫💪💪\n🟫🦵🦵\n🟫'                  // 6 wrong (game over)
+    '🟫🟫🟫🟫🟫\n🟫😀🟫\n🟫\n🟫\n🟫',
+    '🟫🟫🟫🟫🟫\n🟫😀🟫\n🟫💪\n🟫\n🟫',
+    '🟫🟫🟫🟫🟫\n🟫😀🟫\n🟫💪💪\n🟫\n🟫',
+    '🟫🟫🟫🟫🟫\n🟫😧🟫\n🟫💪💪\n🟫 🦵\n🟫',
+    '🟫🟫🟫🟫🟫\n🟫😧🟫\n🟫💪💪\n🟫🦵🦵\n🟫',
+    '🟫🟫🟫🟫🟫\n🟫😵🟫\n🟫💪💪\n🟫🦵🦵\n🟫',
+    '🟫🟫🟫🟫🟫\n🟫💀🟫\n🟫💪💪\n🟫🦵🦵\n🟫'
 ];
 
-// Award ticket (same logic as before)
 async function awardTicket(userId, username) {
     try {
         const { data: userData, error: fetchError } = await supabase
@@ -60,13 +59,14 @@ async function startHangmanGame(interaction) {
 
     const word = words[Math.floor(Math.random() * words.length)].toLowerCase();
     let wrongGuesses = 0;
-    const usedLetters = [];
+    const usedLetters = new Set();
     let gameOver = false;
     let gameWon = false;
 
     const generateEmbed = () => {
-        const wordDisplay = word.split('').map(l => usedLetters.includes(l) ? l.toUpperCase() : '\\_').join(' ');
+        const wordDisplay = word.split('').map(l => usedLetters.has(l) ? l.toUpperCase() : '\\_').join(' ');
         const stage = HANGMAN_STAGES[Math.min(wrongGuesses, MAX_WRONG_GUESSES)];
+        const usedList = [...usedLetters].sort().join(', ') || 'None';
 
         let color = 0x0099FF;
         let footerText = `Guesses left: ${MAX_WRONG_GUESSES - wrongGuesses}`;
@@ -82,55 +82,46 @@ async function startHangmanGame(interaction) {
         return new EmbedBuilder()
             .setTitle('🎮 Hangman')
             .setDescription(`\`\`\`${wordDisplay}\`\`\`\n${stage}`)
+            .addFields({ name: 'Letters used', value: usedList, inline: false })
             .setColor(color)
             .setFooter({ text: footerText });
     };
 
-const createButtonRows = () => {
-    const alphabet = 'abcdefghijklmnopqrstuvwxyz'.split('');
-    const rows = [];
-    for (let i = 0; i < alphabet.length; i += 5) {  // Changed from 6 to 5
-        const row = new ActionRowBuilder();
-        alphabet.slice(i, i + 5).forEach(letter => {  // Changed from 6 to 5
-            row.addComponents(
-                new ButtonBuilder()
-                    .setCustomId(`hangman_${letter}`)
-                    .setLabel(letter.toUpperCase())
-                    .setStyle(ButtonStyle.Primary)
-                    .setDisabled(usedLetters.includes(letter) || gameOver)
-            );
-        });
-        rows.push(row);
-    }
-    return rows;
-};
-
     const embed = generateEmbed();
-    const rows = createButtonRows();
-
     await interaction.editReply({
         embeds: [embed],
-        components: rows,
+        content: 'Type a single letter in this channel to guess!'
     });
 
-    const message = await interaction.fetchReply();
-    const collector = message.createMessageComponentCollector({
-        componentType: ComponentType.Button,
-        time: 120000,
-    });
+    // Create message collector for this user in the channel
+    const filter = (msg) => {
+        return msg.author.id === interaction.user.id && 
+               msg.channel.id === interaction.channel.id &&
+               msg.content.length === 1 &&
+               /[a-zA-Z]/.test(msg.content) &&
+               !gameOver;
+    };
 
-    collector.on('collect', async (buttonInteraction) => {
-        if (buttonInteraction.user.id !== interaction.user.id) {
-            return buttonInteraction.reply({ content: '❌ This game is not for you!', flags: MessageFlags.Ephemeral });
+    const collector = interaction.channel.createMessageCollector({ filter, time: 120000 });
+
+    collector.on('collect', async (msg) => {
+        const letter = msg.content.toLowerCase();
+        
+        // Delete the guess message to keep channel clean
+        msg.delete().catch(() => {});
+
+        if (usedLetters.has(letter)) {
+            const warning = await interaction.followUp({ content: `⚠️ You already guessed "${letter}".`, flags: MessageFlags.Ephemeral });
+            setTimeout(() => warning.delete().catch(() => {}), 2000);
+            return;
         }
 
-        const guessedLetter = buttonInteraction.customId.replace('hangman_', '');
-        if (!usedLetters.includes(guessedLetter)) {
-            usedLetters.push(guessedLetter);
-            if (!word.includes(guessedLetter)) wrongGuesses++;
+        usedLetters.add(letter);
+        if (!word.includes(letter)) {
+            wrongGuesses++;
         }
 
-        const wordGuessed = word.split('').every(l => usedLetters.includes(l));
+        const wordGuessed = word.split('').every(l => usedLetters.has(l));
         if (wordGuessed) {
             gameOver = true;
             gameWon = true;
@@ -141,12 +132,7 @@ const createButtonRows = () => {
         }
 
         const newEmbed = generateEmbed();
-        const newRows = createButtonRows();
-
-        await buttonInteraction.update({
-            embeds: [newEmbed],
-            components: newRows,
-        });
+        await interaction.editReply({ embeds: [newEmbed], content: gameOver ? 'Game ended.' : 'Type a single letter in this channel to guess!' });
     });
 
     collector.on('end', async () => {
@@ -160,6 +146,8 @@ const createButtonRows = () => {
                     await interaction.followUp({ content: dmMessage, flags: MessageFlags.Ephemeral });
                 }
             }
+        } else if (!gameOver) {
+            await interaction.editReply({ content: '⏰ Game timed out.', embeds: [], components: [] }).catch(() => {});
         }
     });
 }
