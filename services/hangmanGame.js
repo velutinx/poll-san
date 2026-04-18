@@ -1,7 +1,7 @@
 // This is poll-san/services/hangmanGame.js
 
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ComponentType, MessageFlags } = require('discord.js');
-const { createCanvas } = require('@napi-rs/canvas');
+const { createCanvas } = require('canvas');
 const supabase = require('./supabase');
 const h = require('../utils/helpers');
 const fs = require('fs');
@@ -14,19 +14,47 @@ const MAX_WRONG_GUESSES = 6;
 const COOLDOWN_HOURS = 24;
 
 async function createHangmanImage(wrongGuesses) {
-    try {
-        const canvas = createCanvas(300, 350);
-        const ctx = canvas.getContext('2d');
-        
-        // Just fill a rectangle to test
-        ctx.fillStyle = '#FF0000';
-        ctx.fillRect(10, 10, 100, 100);
-        
-        return canvas.toBuffer();
-    } catch (error) {
-        console.error('Canvas error details:', error);
-        throw error;
-    }
+    const canvas = createCanvas(300, 350);
+    const ctx = canvas.getContext('2d');
+    ctx.lineWidth = 5;
+
+    const guesses = Number(wrongGuesses) || 0;
+
+    const drawLine = (fromX, fromY, toX, toY, color = "#000000") => {
+        ctx.beginPath();
+        ctx.strokeStyle = color;
+        ctx.moveTo(fromX, fromY);
+        ctx.lineTo(toX, toY);
+        ctx.stroke();
+        ctx.closePath();
+    };
+
+    // Base
+    drawLine(50, 330, 150, 330);
+    // Mid
+    drawLine(100, 330, 100, 50);
+    // Top
+    drawLine(100, 50, 200, 50);
+    // Rope
+    drawLine(200, 50, 200, 80);
+
+    // Head
+    ctx.strokeStyle = guesses < 1 ? "#a3a3a3" : "#000000";
+    ctx.beginPath();
+    ctx.arc(200, 100, 20, 0, 2 * Math.PI);
+    ctx.stroke();
+    ctx.closePath();
+
+    // Body
+    drawLine(200, 120, 200, 200, guesses < 2 ? "#a3a3a3" : "#000000");
+    // Arms
+    drawLine(200, 150, 170, 130, guesses < 3 ? "#a3a3a3" : "#000000");
+    drawLine(200, 150, 230, 130, guesses < 4 ? "#a3a3a3" : "#000000");
+    // Legs
+    drawLine(200, 200, 180, 230, guesses < 5 ? "#a3a3a3" : "#000000");
+    drawLine(200, 200, 220, 230, guesses < 6 ? "#a3a3a3" : "#000000");
+
+    return canvas.toBuffer();
 }
 
 // Award ticket
