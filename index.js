@@ -57,6 +57,7 @@ const commandsData = [
     giveawayCommand.data.toJSON(),
     require('./commands/tickets/balance').data.toJSON(),
     require('./commands/tickets/shop').data.toJSON()
+    require('./commands/games/slots').data.toJSON(),
 ];
 
     const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
@@ -122,18 +123,11 @@ client.on(Events.InteractionCreate, async (interaction) => {
     try {
         if (interaction.isChatInputCommand()) {
             switch (interaction.commandName) {
-                case 'level':
-                    require('./commands/level')(interaction);
-                    break;
-                case 'giveaway':
-                    await giveawayCommand.execute(interaction);
-                    break;
-                case 'tickets':
-                    await require('./commands/tickets/balance').execute(interaction);
-                    break;
-                case 'shop':
-                    await require('./commands/tickets/shop').execute(interaction);
-                    break;
+                case 'level': require('./commands/level')(interaction); break;
+                case 'giveaway': await giveawayCommand.execute(interaction); break;
+                case 'tickets': await require('./commands/tickets/balance').execute(interaction); break;
+                case 'shop': await require('./commands/tickets/shop').execute(interaction); break;
+                case 'slots': await require('./commands/games/slots').execute(interaction); break;
             }
         } else if (interaction.isUserContextMenuCommand() && interaction.commandName === 'View Level') {
             require('./commands/level')(interaction);
