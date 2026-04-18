@@ -1,5 +1,5 @@
-apple
-house
-computer
-javascript
-discord
+apple {a common fruit}
+house {where you live}
+computer {electronic device}
+square {four equal sides}
+heart {symbol of love}
