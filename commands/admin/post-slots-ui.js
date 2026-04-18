@@ -1,6 +1,6 @@
 // This is poll-san/commands/admin/post-slots-ui.js
 
-/const { SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, PermissionFlagsBits, EmbedBuilder } = require('discord.js');
+const { SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, PermissionFlagsBits, EmbedBuilder } = require('discord.js');
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -18,7 +18,7 @@ module.exports = {
             .addComponents(
                 new ButtonBuilder()
                     .setCustomId('slots_spin_button')
-                    .setLabel('🎲 Spin')
+                    .setLabel('Spin')
                     .setStyle(ButtonStyle.Primary)
                     .setEmoji('🎰')
             );
