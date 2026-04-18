@@ -157,15 +157,11 @@ games: {
         winPattern: /Wordle\s+[\d,]+\s+(\d|X)\/6/,
         activityAppId: '947466344113963018'
     },
-
     hangman: {
         channelId: '1494747527801470986',
         cooldownHours: 24,
         winPattern: /^You win!$/
     }
-    
-},
-    
 },
 
 colors: {
