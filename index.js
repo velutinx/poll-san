@@ -27,6 +27,7 @@ const { handleShopSelect, handleShopPurchase } = require('./services/shopHandler
 const { handleSlotsModal } = require('./services/slotsHandler');
 const { ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder: ModalActionRowBuilder } = require('discord.js');
 const { startHangmanGame } = require('./services/hangmanGame');
+const { checkAndNotifyCooldowns } = require('./services/cooldownNotifier');
 
 // ==================== DISCORD CLIENT SETUP ====================
 const client = new Client({
@@ -79,10 +80,7 @@ client.once(Events.ClientReady, async (c) => {
     const guild = client.guilds.cache.get(process.env.GUILD_ID);
     if (guild) cleanRoles(guild);
 
-    setInterval(() => {
-        const activeGuild = client.guilds.cache.get(process.env.GUILD_ID);
-        if (activeGuild) cleanRoles(activeGuild);
-    }, 3600000);
+    setInterval(() => { const activeGuild = client.guilds.cache.get(process.env.GUILD_ID); if (activeGuild) cleanRoles(activeGuild); }, 3600000);
 
     // Membership sync
     try {
@@ -91,9 +89,8 @@ client.once(Events.ClientReady, async (c) => {
         console.error('[MembershipSync] Initial sync failed:', err);
     }
 
-    setInterval(() => {
-        syncMembershipRoles(client).catch(err => console.error('[MembershipSync] Sync error:', err));
-    }, 300000);
+    setInterval(() => { syncMembershipRoles(client).catch(err => console.error('[MembershipSync] Sync error:', err)); }, 300000);
+    setInterval(() => { checkAndNotifyCooldowns(client).catch(err => console.error('Cooldown notifier error:', err)); }, 300000); // 5 minutes
 
     // Auto-resume active polls
     const { data: activePolls } = await supabase
