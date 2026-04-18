@@ -1,6 +1,6 @@
 // commands/games/hangman.js
 const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ComponentType, MessageFlags } = require('discord.js');
-const { createCanvas } = require('canvas');
+const { createCanvas } = require('@napi-rs/canvas');
 const supabase = require('../../services/supabase');
 const h = require('../../utils/helpers');
 const fs = require('fs');
