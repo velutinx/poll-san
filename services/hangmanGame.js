@@ -1,7 +1,6 @@
 // This is poll-san/services/hangmanGame.js
 
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ComponentType, MessageFlags } = require('discord.js');
-const { createCanvas } = require('canvas');
 const supabase = require('./supabase');
 const h = require('../utils/helpers');
 const fs = require('fs');
@@ -13,51 +12,18 @@ const words = fs.readFileSync(path.join(__dirname, '../utility/words.txt'), { en
 const MAX_WRONG_GUESSES = 6;
 const COOLDOWN_HOURS = 24;
 
-async function createHangmanImage(wrongGuesses) {
-    const canvas = createCanvas(300, 350);
-    const ctx = canvas.getContext('2d');
-    ctx.lineWidth = 5;
+// Hangman stages as emoji art
+const HANGMAN_STAGES = [
+    '🟫🟫🟫🟫🟫\n🟫😀🟫\n🟫\n🟫\n🟫',                          // 0 wrong
+    '🟫🟫🟫🟫🟫\n🟫😀🟫\n🟫💪\n🟫\n🟫',                        // 1 wrong
+    '🟫🟫🟫🟫🟫\n🟫😀🟫\n🟫💪💪\n🟫\n🟫',                      // 2 wrong
+    '🟫🟫🟫🟫🟫\n🟫😧🟫\n🟫💪💪\n🟫 🦵\n🟫',                   // 3 wrong
+    '🟫🟫🟫🟫🟫\n🟫😧🟫\n🟫💪💪\n🟫🦵🦵\n🟫',                 // 4 wrong
+    '🟫🟫🟫🟫🟫\n🟫😵🟫\n🟫💪💪\n🟫🦵🦵\n🟫',                 // 5 wrong
+    '🟫🟫🟫🟫🟫\n🟫💀🟫\n🟫💪💪\n🟫🦵🦵\n🟫'                  // 6 wrong (game over)
+];
 
-    const guesses = Number(wrongGuesses) || 0;
-
-    const drawLine = (fromX, fromY, toX, toY, color = "#000000") => {
-        ctx.beginPath();
-        ctx.strokeStyle = color;
-        ctx.moveTo(fromX, fromY);
-        ctx.lineTo(toX, toY);
-        ctx.stroke();
-        ctx.closePath();
-    };
-
-    // Base
-    drawLine(50, 330, 150, 330);
-    // Mid
-    drawLine(100, 330, 100, 50);
-    // Top
-    drawLine(100, 50, 200, 50);
-    // Rope
-    drawLine(200, 50, 200, 80);
-
-    // Head
-    ctx.strokeStyle = guesses < 1 ? "#a3a3a3" : "#000000";
-    ctx.beginPath();
-    ctx.arc(200, 100, 20, 0, 2 * Math.PI);
-    ctx.stroke();
-    ctx.closePath();
-
-    // Body
-    drawLine(200, 120, 200, 200, guesses < 2 ? "#a3a3a3" : "#000000");
-    // Arms
-    drawLine(200, 150, 170, 130, guesses < 3 ? "#a3a3a3" : "#000000");
-    drawLine(200, 150, 230, 130, guesses < 4 ? "#a3a3a3" : "#000000");
-    // Legs
-    drawLine(200, 200, 180, 230, guesses < 5 ? "#a3a3a3" : "#000000");
-    drawLine(200, 200, 220, 230, guesses < 6 ? "#a3a3a3" : "#000000");
-
-    return canvas.toBuffer();
-}
-
-// Award ticket
+// Award ticket (same logic as before)
 async function awardTicket(userId, username) {
     try {
         const { data: userData, error: fetchError } = await supabase
@@ -89,12 +55,7 @@ async function awardTicket(userId, username) {
     }
 }
 
-/**
- * Start a Hangman game for a given interaction (can be slash command or button)
- * @param {Interaction} interaction - The interaction that triggered the game
- */
 async function startHangmanGame(interaction) {
-    // Defer reply ephemerally so only the player sees it
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
     const word = words[Math.floor(Math.random() * words.length)].toLowerCase();
@@ -103,9 +64,9 @@ async function startHangmanGame(interaction) {
     let gameOver = false;
     let gameWon = false;
 
-    const generateEmbed = async () => {
+    const generateEmbed = () => {
         const wordDisplay = word.split('').map(l => usedLetters.includes(l) ? l.toUpperCase() : '\\_').join(' ');
-        const hangmanImage = await createHangmanImage(wrongGuesses);
+        const stage = HANGMAN_STAGES[Math.min(wrongGuesses, MAX_WRONG_GUESSES)];
 
         let color = 0x0099FF;
         let footerText = `Guesses left: ${MAX_WRONG_GUESSES - wrongGuesses}`;
@@ -120,10 +81,9 @@ async function startHangmanGame(interaction) {
 
         return new EmbedBuilder()
             .setTitle('🎮 Hangman')
-            .setDescription(`\`\`\`${wordDisplay}\`\`\``)
+            .setDescription(`\`\`\`${wordDisplay}\`\`\`\n${stage}`)
             .setColor(color)
-            .setFooter({ text: footerText })
-            .setImage('attachment://hangman.png');
+            .setFooter({ text: footerText });
     };
 
     const createButtonRows = () => {
@@ -145,13 +105,11 @@ async function startHangmanGame(interaction) {
         return rows;
     };
 
-    const initialImage = await createHangmanImage(0);
-    const embed = await generateEmbed();
+    const embed = generateEmbed();
     const rows = createButtonRows();
 
     await interaction.editReply({
         embeds: [embed],
-        files: [{ attachment: initialImage, name: 'hangman.png' }],
         components: rows,
     });
 
@@ -182,13 +140,11 @@ async function startHangmanGame(interaction) {
             collector.stop();
         }
 
-        const newEmbed = await generateEmbed();
-        const newImage = await createHangmanImage(wrongGuesses);
+        const newEmbed = generateEmbed();
         const newRows = createButtonRows();
 
         await buttonInteraction.update({
             embeds: [newEmbed],
-            files: [{ attachment: newImage, name: 'hangman.png' }],
             components: newRows,
         });
     });
