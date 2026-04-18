@@ -74,16 +74,17 @@ async function awardTicket(userId, username) {
         return { awarded: false, reason: 'error' };
     }
 
-    // Update/insert cooldown record and reset notification flag
-    const { error: upsertError } = await supabase
-        .from('games_cooldowns')
-        .upsert({
-            discord_id: userId,
-            game_type: GAME_TYPE,
-            last_win_at: now.toISOString(),
-            notified_reset: false,
-            updated_at: now.toISOString()
-        }, { onConflict: 'discord_id,game_type' });
+// Inside awardTicket function, update the upsert:
+const { error: upsertError } = await supabase
+    .from('games_cooldowns')
+    .upsert({
+        discord_id: userId,
+        discord_username: username,          // <-- Added
+        game_type: GAME_TYPE,
+        last_win_at: now.toISOString(),
+        notified_reset: false,
+        updated_at: now.toISOString()
+    }, { onConflict: 'discord_id,game_type' });
 
     if (upsertError) console.error('Cooldown upsert error:', upsertError);
 
