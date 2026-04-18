@@ -14,6 +14,7 @@ const MAX_WRONG_GUESSES = 6;
 const COOLDOWN_HOURS = 24;
 
 // Draw hangman image
+// Helper function to draw the hangman
 async function createHangmanImage(wrongGuesses) {
     const canvas = createCanvas(300, 350);
     const ctx = canvas.getContext('2d');
@@ -28,11 +29,14 @@ async function createHangmanImage(wrongGuesses) {
         ctx.closePath();
     };
 
-    // Base, pole, etc.
-    createLine(ctx, 50, 330, 150, 330);
-    createLine(ctx, 100, 330, 100, 50);
-    createLine(ctx, 100, 50, 200, 50);
-    createLine(ctx, 200, 50, 200, 80);
+    // Base (fixed: removed 'ctx' argument)
+    createLine(50, 330, 150, 330);
+    // Mid
+    createLine(100, 330, 100, 50);
+    // Head connector
+    createLine(100, 50, 200, 50);
+    // Man connector
+    createLine(200, 50, 200, 80);
 
     // Head
     ctx.strokeStyle = wrongGuesses < 1 ? "#a3a3a3" : "#000000";
@@ -42,13 +46,13 @@ async function createHangmanImage(wrongGuesses) {
     ctx.closePath();
 
     // Body
-    createLine(ctx, 200, 120, 200, 200, wrongGuesses < 2 ? "#a3a3a3" : "#000000");
+    createLine(200, 120, 200, 200, wrongGuesses < 2 ? "#a3a3a3" : "#000000");
     // Arms
-    createLine(ctx, 200, 150, 170, 130, wrongGuesses < 3 ? "#a3a3a3" : "#000000");
-    createLine(ctx, 200, 150, 230, 130, wrongGuesses < 4 ? "#a3a3a3" : "#000000");
+    createLine(200, 150, 170, 130, wrongGuesses < 3 ? "#a3a3a3" : "#000000");
+    createLine(200, 150, 230, 130, wrongGuesses < 4 ? "#a3a3a3" : "#000000");
     // Legs
-    createLine(ctx, 200, 200, 180, 230, wrongGuesses < 5 ? "#a3a3a3" : "#000000");
-    createLine(ctx, 200, 200, 220, 230, wrongGuesses < 6 ? "#a3a3a3" : "#000000");
+    createLine(200, 200, 180, 230, wrongGuesses < 5 ? "#a3a3a3" : "#000000");
+    createLine(200, 200, 220, 230, wrongGuesses < 6 ? "#a3a3a3" : "#000000");
 
     return canvas.toBuffer();
 }
