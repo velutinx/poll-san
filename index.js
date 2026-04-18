@@ -1,7 +1,5 @@
 // this is poll-san/index.js
 
-// this is poll-san/index.js
-
 const path = require('path');
 const pollService = require('./services/pollService');
 require('dotenv').config({ path: path.resolve(__dirname, '.env'), quiet: true });
@@ -28,6 +26,7 @@ const messageCreateEvent = require('./events/messageCreate');
 const { handleShopSelect, handleShopPurchase } = require('./services/shopHandler');
 const { handleSlotsModal } = require('./services/slotsHandler');
 const { ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder: ModalActionRowBuilder } = require('discord.js');
+const { startHangmanGame } = require('./services/hangmanGame');
 
 // ==================== DISCORD CLIENT SETUP ====================
 const client = new Client({
@@ -63,6 +62,7 @@ client.once(Events.ClientReady, async (c) => {
         require('./commands/tickets/shop').data.toJSON(),
         require('./commands/games/slots').data.toJSON(),
         require('./commands/admin/post-slots-ui').data.toJSON(),
+        require('./commands/admin/post-hangman-ui').data.toJSON(),
     ];
 
     const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
@@ -134,6 +134,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
                 case 'shop': await require('./commands/tickets/shop').execute(interaction); break;
                 case 'slots': await require('./commands/games/slots').execute(interaction); break;
                 case 'post_slots_ui': await require('./commands/admin/post-slots-ui').execute(interaction); break;
+                case 'post_hangman_ui': await require('./commands/admin/post-hangman-ui').execute(interaction); break;
             }
         } else if (interaction.isUserContextMenuCommand() && interaction.commandName === 'View Level') {
             require('./commands/level')(interaction);
@@ -158,6 +159,8 @@ client.on(Events.InteractionCreate, async (interaction) => {
                 modal.addComponents(actionRow);
 
                 await interaction.showModal(modal);
+            } else if (interaction.customId === 'hangman_start_button') {
+                await startHangmanGame(interaction);
             } else {
                 await giveawayCommand.handleGiveawayButton(interaction);
             }
