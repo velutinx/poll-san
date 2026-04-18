@@ -1,5 +1,7 @@
 // this is poll-san/index.js
 
+// this is poll-san/index.js
+
 const path = require('path');
 const pollService = require('./services/pollService');
 require('dotenv').config({ path: path.resolve(__dirname, '.env'), quiet: true });
@@ -53,15 +55,15 @@ client.once(Events.ClientReady, async (c) => {
     }
 
     // Sync slash commands
-const commandsData = [
-    new SlashCommandBuilder().setName('level').setDescription('Shows your current XP/level').toJSON(),
-    new ContextMenuCommandBuilder().setName('View Level').setType(ApplicationCommandType.User).toJSON(),
-    giveawayCommand.data.toJSON(),
-    require('./commands/tickets/balance').data.toJSON(),
-    require('./commands/tickets/shop').data.toJSON(),
-    require('./commands/games/slots').data.toJSON(),
-    require('./commands/admin/post-slots-ui').data.toJSON(),
-];
+    const commandsData = [
+        new SlashCommandBuilder().setName('level').setDescription('Shows your current XP/level').toJSON(),
+        new ContextMenuCommandBuilder().setName('View Level').setType(ApplicationCommandType.User).toJSON(),
+        giveawayCommand.data.toJSON(),
+        require('./commands/tickets/balance').data.toJSON(),
+        require('./commands/tickets/shop').data.toJSON(),
+        require('./commands/games/slots').data.toJSON(),
+        require('./commands/admin/post-slots-ui').data.toJSON(),
+    ];
 
     const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
     try {
@@ -132,44 +134,41 @@ client.on(Events.InteractionCreate, async (interaction) => {
                 case 'shop': await require('./commands/tickets/shop').execute(interaction); break;
                 case 'slots': await require('./commands/games/slots').execute(interaction); break;
                 case 'post_slots_ui': await require('./commands/admin/post-slots-ui').execute(interaction); break;
-                    
             }
         } else if (interaction.isUserContextMenuCommand() && interaction.commandName === 'View Level') {
             require('./commands/level')(interaction);
-} else if (interaction.isButton()) {
-    if (interaction.customId === 'shop_buy_confirm') {
-        await handleShopPurchase(interaction);
-    } else if (interaction.customId === 'slots_spin_button') {
-        const modal = new ModalBuilder()
-            .setCustomId('slots_bet_modal')
-            .setTitle('Place Your Bet');
+        } else if (interaction.isButton()) {
+            if (interaction.customId === 'shop_buy_confirm') {
+                await handleShopPurchase(interaction);
+            } else if (interaction.customId === 'slots_spin_button') {
+                const modal = new ModalBuilder()
+                    .setCustomId('slots_bet_modal')
+                    .setTitle('Place Your Bet');
 
-        const betInput = new TextInputBuilder()
-            .setCustomId('bet_amount')
-            .setLabel('How many tickets do you want to bet?')
-            .setStyle(TextInputStyle.Short)
-            .setPlaceholder('Enter a number (1-100)')
-            .setRequired(true)
-            .setMinLength(1)
-            .setMaxLength(3);
+                const betInput = new TextInputBuilder()
+                    .setCustomId('bet_amount')
+                    .setLabel('How many tickets do you want to bet?')
+                    .setStyle(TextInputStyle.Short)
+                    .setPlaceholder('Enter a number (1-100)')
+                    .setRequired(true)
+                    .setMinLength(1)
+                    .setMaxLength(3);
 
-        const actionRow = new ModalActionRowBuilder().addComponents(betInput);
-        modal.addComponents(actionRow);
+                const actionRow = new ModalActionRowBuilder().addComponents(betInput);
+                modal.addComponents(actionRow);
 
-        await interaction.showModal(modal);
-    } else {
-        await giveawayCommand.handleGiveawayButton(interaction);
-    }
-}
+                await interaction.showModal(modal);
+            } else {
+                await giveawayCommand.handleGiveawayButton(interaction);
+            }
         } else if (interaction.isStringSelectMenu()) {
             if (interaction.customId === 'shop_select') {
                 await handleShopSelect(interaction);
             }
         } else if (interaction.isModalSubmit()) {
-    if (interaction.customId === 'slots_bet_modal') {
-        await handleSlotsModal(interaction);
-    }
-}
+            if (interaction.customId === 'slots_bet_modal') {
+                await handleSlotsModal(interaction);
+            }
         }
     } catch (err) {
         console.error('Interaction Error:', err);
