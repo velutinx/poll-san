@@ -152,11 +152,12 @@ module.exports = {
 games: {
     wordle: {
         botId: '1326731868137062492',
-        channelId: '1494747527801470986',
+        channelId: '1494747527801470986',  // Wordle channel
         cooldownHours: 24,
-        // Regex pattern to detect a winning Wordle result
         winPattern: /Wordle\s+[\d,]+\s+(\d|X)\/6/,
+        activityAppId: '947466344113963018'   // Official Discord Wordle Activity
     },
+},
     // Future games can be added here:
     // quordle: { ... },
     // connections: { ... },
