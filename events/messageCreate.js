@@ -3,7 +3,13 @@
 const supabase = require('../services/supabase');
 const h = require('../utils/helpers');
 
-const { botId: WORDLE_BOT_ID, channelId: WORDLE_CHANNEL_ID, cooldownHours: COOLDOWN_HOURS, winPattern: WORDLE_WIN_PATTERN } = h.games.wordle;
+const {
+    botId: WORDLE_BOT_ID,
+    channelId: WORDLE_CHANNEL_ID,
+    cooldownHours: COOLDOWN_HOURS,
+    winPattern: WORDLE_WIN_PATTERN,
+    activityAppId: WORDLE_ACTIVITY_APP_ID
+} = h.games.wordle;
 
 function isWordleWin(message) {
     const content = message.content;
@@ -39,9 +45,9 @@ async function awardTicket(userId, username) {
         }
 
         const { data: newCount, error: rpcError } = await supabase
-            .rpc('increment_wordle_ticket', { 
-                user_id: userId, 
-                user_name: username 
+            .rpc('increment_wordle_ticket', {
+                user_id: userId,
+                user_name: username
             });
 
         if (rpcError) throw rpcError;
@@ -54,7 +60,16 @@ async function awardTicket(userId, username) {
 }
 
 module.exports = async (message) => {
-    // Handle WordleBot's own messages (auto-delete spam)
+    // --- 0. SILENCE THE OFFICIAL WORDLE ACTIVITY APP ---
+    if (message.author.id === WORDLE_ACTIVITY_APP_ID) {
+        if (message.channel.id === WORDLE_CHANNEL_ID) {
+            // Delete any message from the official Wordle activity immediately
+            message.delete().catch(() => {});
+        }
+        return;
+    }
+
+    // --- 1. HANDLE WORDLEBOT'S OWN MESSAGES (auto-delete spam) ---
     if (message.author.id === WORDLE_BOT_ID) {
         if (message.channel.id !== WORDLE_CHANNEL_ID) return;
         const content = message.content.toLowerCase();
@@ -65,14 +80,13 @@ module.exports = async (message) => {
         return;
     }
 
-    // Ignore other bots and wrong channel
+    // --- 2. IGNORE OTHER BOTS AND WRONG CHANNEL ---
     if (message.author.bot) return;
     if (message.channel.id !== WORDLE_CHANNEL_ID) return;
 
-    // Check if it's a winning Wordle post
+    // --- 3. CHECK FOR WORDLE WIN & AWARD TICKET ---
     if (!isWordleWin(message)) return;
 
-    // Award ticket (cooldown enforced)
     const result = await awardTicket(message.author.id, message.author.username);
 
     if (!result.awarded) {
@@ -80,29 +94,28 @@ module.exports = async (message) => {
         return;
     }
 
-    // --- 1. React with ticket emoji on the original message ---
+    // React with ticket emoji
     await message.react('🎟️').catch(() => {});
 
-    // --- 2. Delete the original message after a short delay ---
-    // This gives WordleBot time to process/react before deletion
+    // Delete the user's original result message after a short delay
     setTimeout(() => {
         message.delete().catch(() => {});
     }, 2000);
 
-// --- 3. Send a private DM with the success message ---
-const dmMessage = `${h.releaseEmojis.CONFETTI} Nice win! You've earned **1 ticket**! You now have **${result.newCount}** ticket(s).`;
+    // Send DM confirmation
+    const dmMessage = `${h.releaseEmojis.CONFETTI} Nice win! You've earned **1 ticket**! You now have **${result.newCount}** ticket(s).`;
 
-try {
-    await message.author.send(dmMessage);
-} catch (dmError) {
-    // If DMs are disabled, send a temporary channel message that self-destructs
-    const tempMsg = await message.channel.send({
-        content: `<@${message.author.id}> ${dmMessage}\n*(Enable DMs to receive these privately)*`,
-        allowedMentions: { users: [message.author.id] }
-    }).catch(() => {});
+    try {
+        await message.author.send(dmMessage);
+    } catch (dmError) {
+        // Fallback to temporary channel message
+        const tempMsg = await message.channel.send({
+            content: `<@${message.author.id}> ${dmMessage}\n*(Enable DMs to receive these privately)*`,
+            allowedMentions: { users: [message.author.id] }
+        }).catch(() => {});
 
-    if (tempMsg) {
-        setTimeout(() => tempMsg.delete().catch(() => {}), 8000);
+        if (tempMsg) {
+            setTimeout(() => tempMsg.delete().catch(() => {}), 8000);
+        }
     }
-}
 };
