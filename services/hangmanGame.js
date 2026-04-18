@@ -6,11 +6,23 @@ const h = require('../utils/helpers');
 const fs = require('fs');
 const path = require('path');
 
-// Load words
-const words = fs.readFileSync(path.join(__dirname, '../utility/words.txt'), { encoding: 'utf-8' }).split('\n').filter(w => w.length > 3);
+// Load words with optional hints: "word {hint}"
+const rawLines = fs.readFileSync(path.join(__dirname, '../utility/words.txt'), { encoding: 'utf-8' })
+    .split('\n')
+    .map(line => line.trim())
+    .filter(line => line.length > 0);
+
+const words = rawLines.map(line => {
+    const hintMatch = line.match(/^(.+?)\s*\{\s*(.+?)\s*\}$/);
+    if (hintMatch) {
+        return { word: hintMatch[1].toLowerCase().trim(), hint: hintMatch[2].trim() };
+    }
+    return { word: line.toLowerCase().trim(), hint: null };
+}).filter(item => item.word.length > 3);
 
 const MAX_WRONG_GUESSES = 6;
 const COOLDOWN_HOURS = 24;
+const GAME_TYPE = 'hangman';
 
 // Hangman stages as emoji art
 const HANGMAN_STAGES = [
@@ -23,41 +35,89 @@ const HANGMAN_STAGES = [
     '🟫🟫🟫🟫🟫\n🟫💀🟫\n🟫💪💪\n🟫🦵🦵\n🟫'
 ];
 
+/**
+ * Check cooldown and award ticket if eligible.
+ * Also records the win in games_cooldowns.
+ */
 async function awardTicket(userId, username) {
-    try {
-        const { data: userData, error: fetchError } = await supabase
-            .from('games_wordle')
-            .select('last_win_at')
-            .eq('discord_id', userId)
-            .maybeSingle();
+    const now = new Date();
 
-        if (fetchError) throw fetchError;
+    // Check if user has a recent win for this game type
+    const { data: cooldownData, error: fetchError } = await supabase
+        .from('games_cooldowns')
+        .select('last_win_at')
+        .eq('discord_id', userId)
+        .eq('game_type', GAME_TYPE)
+        .maybeSingle();
 
-        const now = new Date();
-        if (userData?.last_win_at) {
-            const lastWin = new Date(userData.last_win_at);
-            const hoursSince = (now - lastWin) / (1000 * 60 * 60);
-            if (hoursSince < COOLDOWN_HOURS) {
-                return { awarded: false, reason: 'cooldown' };
-            }
-        }
-
-        const { data: newCount, error: rpcError } = await supabase
-            .rpc('increment_wordle_ticket', { user_id: userId, user_name: username });
-
-        if (rpcError) throw rpcError;
-
-        return { awarded: true, newCount };
-    } catch (error) {
-        console.error('Ticket award error:', error);
+    if (fetchError) {
+        console.error('Cooldown fetch error:', fetchError);
         return { awarded: false, reason: 'error' };
     }
+
+    if (cooldownData?.last_win_at) {
+        const lastWin = new Date(cooldownData.last_win_at);
+        const hoursSince = (now - lastWin) / (1000 * 60 * 60);
+        if (hoursSince < COOLDOWN_HOURS) {
+            const remainingHours = COOLDOWN_HOURS - hoursSince;
+            const remainingMinutes = Math.floor(remainingHours * 60);
+            return { awarded: false, reason: 'cooldown', remainingMinutes };
+        }
+    }
+
+    // Award the ticket (increment in games_wordle)
+    const { data: newCount, error: rpcError } = await supabase
+        .rpc('increment_wordle_ticket', { user_id: userId, user_name: username });
+
+    if (rpcError) {
+        console.error('Ticket increment error:', rpcError);
+        return { awarded: false, reason: 'error' };
+    }
+
+    // Update/insert cooldown record and reset notification flag
+    const { error: upsertError } = await supabase
+        .from('games_cooldowns')
+        .upsert({
+            discord_id: userId,
+            game_type: GAME_TYPE,
+            last_win_at: now.toISOString(),
+            notified_reset: false,
+            updated_at: now.toISOString()
+        }, { onConflict: 'discord_id,game_type' });
+
+    if (upsertError) console.error('Cooldown upsert error:', upsertError);
+
+    return { awarded: true, newCount };
+}
+
+/**
+ * Get remaining cooldown time for a user (in minutes)
+ */
+async function getCooldownRemaining(userId) {
+    const { data } = await supabase
+        .from('games_cooldowns')
+        .select('last_win_at')
+        .eq('discord_id', userId)
+        .eq('game_type', GAME_TYPE)
+        .maybeSingle();
+
+    if (!data?.last_win_at) return 0;
+
+    const lastWin = new Date(data.last_win_at);
+    const now = new Date();
+    const hoursSince = (now - lastWin) / (1000 * 60 * 60);
+    if (hoursSince >= COOLDOWN_HOURS) return 0;
+
+    return Math.floor((COOLDOWN_HOURS - hoursSince) * 60);
 }
 
 async function startHangmanGame(interaction) {
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
-    const word = words[Math.floor(Math.random() * words.length)].toLowerCase();
+    const item = words[Math.floor(Math.random() * words.length)];
+    const word = item.word;
+    const hint = item.hint;
+
     let wrongGuesses = 0;
     const usedLetters = new Set();
     let gameOver = false;
@@ -73,18 +133,23 @@ async function startHangmanGame(interaction) {
 
         if (gameWon) {
             color = 0x00FF00;
-            footerText = '🎉 You won!';
+            footerText = `${h.releaseEmojis.CONFETTI} You won!`;
         } else if (wrongGuesses >= MAX_WRONG_GUESSES) {
             color = 0xFF0000;
             footerText = `💀 Game Over! The word was "${word}".`;
         }
 
-        return new EmbedBuilder()
+        const embed = new EmbedBuilder()
             .setTitle('🎮 Hangman')
             .setDescription(`\`\`\`${wordDisplay}\`\`\`\n${stage}`)
-            .addFields({ name: 'Letters used', value: usedList, inline: false })
-            .setColor(color)
-            .setFooter({ text: footerText });
+            .addFields({ name: '📝 Letters used', value: usedList, inline: true });
+
+        if (hint) {
+            embed.addFields({ name: '💡 Hint', value: hint, inline: true });
+        }
+
+        embed.setColor(color).setFooter({ text: footerText });
+        return embed;
     };
 
     const embed = generateEmbed();
@@ -93,21 +158,18 @@ async function startHangmanGame(interaction) {
         content: 'Type a single letter in this channel to guess!'
     });
 
-    // Create message collector for this user in the channel
     const filter = (msg) => {
-        return msg.author.id === interaction.user.id && 
+        return msg.author.id === interaction.user.id &&
                msg.channel.id === interaction.channel.id &&
                msg.content.length === 1 &&
                /[a-zA-Z]/.test(msg.content) &&
                !gameOver;
     };
 
-    const collector = interaction.channel.createMessageCollector({ filter, time: 120000 });
+    const collector = interaction.channel.createMessageCollector({ filter, time: 180000 }); // 3 min
 
     collector.on('collect', async (msg) => {
         const letter = msg.content.toLowerCase();
-        
-        // Delete the guess message to keep channel clean
         msg.delete().catch(() => {});
 
         if (usedLetters.has(letter)) {
@@ -145,6 +207,13 @@ async function startHangmanGame(interaction) {
                 } catch {
                     await interaction.followUp({ content: dmMessage, flags: MessageFlags.Ephemeral });
                 }
+            } else if (result.reason === 'cooldown') {
+                const minutes = result.remainingMinutes;
+                const hours = Math.floor(minutes / 60);
+                const mins = minutes % 60;
+                const timeStr = hours > 0 ? `${hours}h ${mins}m` : `${mins} minutes`;
+                const cooldownMsg = `⏳ You can earn another ticket from Hangman in **${timeStr}**. I'll DM you when it's available!`;
+                await interaction.followUp({ content: cooldownMsg, flags: MessageFlags.Ephemeral });
             }
         } else if (!gameOver) {
             await interaction.editReply({ content: '⏰ Game timed out.', embeds: [], components: [] }).catch(() => {});
