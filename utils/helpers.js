@@ -157,6 +157,9 @@ games: {
         winPattern: /Wordle\s+[\d,]+\s+(\d|X)\/6/,
         activityAppId: '947466344113963018'
     },
+
+},
+    
 },
 
 colors: {
