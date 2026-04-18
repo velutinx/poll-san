@@ -1,4 +1,5 @@
-// commands/admin/post-hangman-ui.js
+// This is poll-sam/commands/admin/post-hangman-ui.js
+
 const { SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, PermissionFlagsBits, EmbedBuilder, MessageFlags } = require('discord.js');
 
 module.exports = {
