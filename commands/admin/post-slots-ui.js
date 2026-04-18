@@ -1,6 +1,6 @@
 // This is poll-san/commands/admin/post-slots-ui.js
 
-const { SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, PermissionFlagsBits, EmbedBuilder } = require('discord.js');
+const { SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, PermissionFlagsBits, EmbedBuilder, MessageFlags } = require('discord.js');
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -28,6 +28,6 @@ module.exports = {
             components: [row]
         });
 
-        await interaction.reply({ content: '✅ Slots UI has been posted!', flags: { ephemeral: true } });
+        await interaction.reply({ content: '✅ Slots UI has been posted!', flags: MessageFlags.Ephemeral });
     }
 };
