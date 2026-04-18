@@ -20,19 +20,24 @@ const words = rawLines.map(line => {
     return { word: line.toLowerCase().trim(), hint: null };
 }).filter(item => item.word.length > 3);
 
-const MAX_WRONG_GUESSES = 6;
 const COOLDOWN_HOURS = 24;
 const GAME_TYPE = 'hangman';
 
-// Hangman stages as emoji art
+// Hangman stages as emoji art (up to 12 wrong guesses)
 const HANGMAN_STAGES = [
-    '🟫🟫🟫🟫🟫\n🟫😀🟫\n🟫\n🟫\n🟫',
-    '🟫🟫🟫🟫🟫\n🟫😀🟫\n🟫💪\n🟫\n🟫',
-    '🟫🟫🟫🟫🟫\n🟫😀🟫\n🟫💪💪\n🟫\n🟫',
-    '🟫🟫🟫🟫🟫\n🟫😧🟫\n🟫💪💪\n🟫 🦵\n🟫',
-    '🟫🟫🟫🟫🟫\n🟫😧🟫\n🟫💪💪\n🟫🦵🦵\n🟫',
-    '🟫🟫🟫🟫🟫\n🟫😵🟫\n🟫💪💪\n🟫🦵🦵\n🟫',
-    '🟫🟫🟫🟫🟫\n🟫💀🟫\n🟫💪💪\n🟫🦵🦵\n🟫'
+    '🟫🟫🟫🟫🟫\n🟫😀🟫\n🟫\n🟫\n🟫',                          // 0 wrong
+    '🟫🟫🟫🟫🟫\n🟫😀🟫\n🟫💪\n🟫\n🟫',                        // 1 wrong
+    '🟫🟫🟫🟫🟫\n🟫😀🟫\n🟫💪💪\n🟫\n🟫',                      // 2 wrong
+    '🟫🟫🟫🟫🟫\n🟫😧🟫\n🟫💪💪\n🟫 🦵\n🟫',                   // 3 wrong
+    '🟫🟫🟫🟫🟫\n🟫😧🟫\n🟫💪💪\n🟫🦵🦵\n🟫',                 // 4 wrong
+    '🟫🟫🟫🟫🟫\n🟫😵🟫\n🟫💪💪\n🟫🦵🦵\n🟫',                 // 5 wrong
+    '🟫🟫🟫🟫🟫\n🟫💀🟫\n🟫💪💪\n🟫🦵🦵\n🟫',                 // 6 wrong
+    '🟫🟫🟫🟫🟫\n🟫💀🟫💧\n🟫💪💪\n🟫🦵🦵\n🟫',               // 7 wrong
+    '🟫🟫🟫🟫🟫\n🟫💀🟫💧💧\n🟫💪💪\n🟫🦵🦵\n🟫',             // 8 wrong
+    '🟫🟫🟫🟫🟫\n🟫💀🟫💧💧💧\n🟫💪💪\n🟫🦵🦵\n🟫',           // 9 wrong
+    '🟫🟫🟫🟫🟫\n🟫💀🟫💧💧💧💧\n🟫💪💪\n🟫🦵🦵\n🟫',         // 10 wrong
+    '🟫🟫🟫🟫🟫\n🟫💀🟫💧💧💧💧💧\n🟫💪💪\n🟫🦵🦵\n🟫',       // 11 wrong
+    '🟫🟫🟫🟫🟫\n🟫💀🟫💧💧💧💧💧💧\n🟫💪💪\n🟫🦵🦵\n🟫'    // 12 wrong
 ];
 
 /**
@@ -74,17 +79,17 @@ async function awardTicket(userId, username) {
         return { awarded: false, reason: 'error' };
     }
 
-// Inside awardTicket function, update the upsert:
-const { error: upsertError } = await supabase
-    .from('games_cooldowns')
-    .upsert({
-        discord_id: userId,
-        discord_username: username,          // <-- Added
-        game_type: GAME_TYPE,
-        last_win_at: now.toISOString(),
-        notified_reset: false,
-        updated_at: now.toISOString()
-    }, { onConflict: 'discord_id,game_type' });
+    // Update/insert cooldown record and reset notification flag
+    const { error: upsertError } = await supabase
+        .from('games_cooldowns')
+        .upsert({
+            discord_id: userId,
+            discord_username: username,
+            game_type: GAME_TYPE,
+            last_win_at: now.toISOString(),
+            notified_reset: false,
+            updated_at: now.toISOString()
+        }, { onConflict: 'discord_id,game_type' });
 
     if (upsertError) console.error('Cooldown upsert error:', upsertError);
 
@@ -119,43 +124,48 @@ async function startHangmanGame(interaction) {
     const word = item.word;
     const hint = item.hint;
 
+    // Determine max wrong guesses based on word length
+    let maxWrongGuesses = word.length >= 7 ? word.length : 6;
+    // Cap to avoid exceeding available stages
+    maxWrongGuesses = Math.min(maxWrongGuesses, HANGMAN_STAGES.length - 1);
+
     let wrongGuesses = 0;
     const usedLetters = new Set();
     let gameOver = false;
     let gameWon = false;
 
-// Inside startHangmanGame, modify generateEmbed:
-const generateEmbed = () => {
-    const wordDisplay = word.split('').map(l => usedLetters.has(l) ? l.toUpperCase() : '\\_').join(' ');
-    const stage = HANGMAN_STAGES[Math.min(wrongGuesses, MAX_WRONG_GUESSES)];
-    const usedList = [...usedLetters].sort().join(', ') || 'None';
+    const generateEmbed = () => {
+        const wordDisplay = word.split('').map(l => usedLetters.has(l) ? l.toUpperCase() : '\\_').join(' ');
+        const stageIndex = Math.min(wrongGuesses, maxWrongGuesses);
+        const stage = HANGMAN_STAGES[stageIndex];
+        const usedList = [...usedLetters].sort().join(', ') || 'None';
 
-    let color = 0x0099FF;
-    let title = '🎮 Hangman';
-    let footerText = `Guesses left: ${MAX_WRONG_GUESSES - wrongGuesses}`;
+        let color = 0x0099FF;
+        let title = '🎮 Hangman';
+        let footerText = `Guesses left: ${maxWrongGuesses - wrongGuesses}`;
 
-    if (gameWon) {
-        color = 0x00FF00;
-        title = `${h.releaseEmojis.CONFETTI} You won!`;
-        footerText = 'Great job!';
-    } else if (wrongGuesses >= MAX_WRONG_GUESSES) {
-        color = 0xFF0000;
-        title = '💀 Game Over';
-        footerText = `The word was "${word}".`;
-    }
+        if (gameWon) {
+            color = 0x00FF00;
+            title = `${h.releaseEmojis.CONFETTI} You won!`;
+            footerText = 'Great job!';
+        } else if (wrongGuesses >= maxWrongGuesses) {
+            color = 0xFF0000;
+            title = '💀 Game Over';
+            footerText = `The word was "${word}".`;
+        }
 
-    const embed = new EmbedBuilder()
-        .setTitle(title)
-        .setDescription(`\`\`\`${wordDisplay}\`\`\`\n${stage}`)
-        .addFields({ name: '📝 Letters used', value: usedList, inline: true });
+        const embed = new EmbedBuilder()
+            .setTitle(title)
+            .setDescription(`\`\`\`${wordDisplay}\`\`\`\n${stage}`)
+            .addFields({ name: '📝 Letters used', value: usedList, inline: true });
 
-    if (hint && !gameWon && wrongGuesses < MAX_WRONG_GUESSES) {
-        embed.addFields({ name: '💡 Hint', value: hint, inline: true });
-    }
+        if (hint && !gameWon && wrongGuesses < maxWrongGuesses) {
+            embed.addFields({ name: '💡 Hint', value: hint, inline: true });
+        }
 
-    embed.setColor(color).setFooter({ text: footerText });
-    return embed;
-};
+        embed.setColor(color).setFooter({ text: footerText });
+        return embed;
+    };
 
     const embed = generateEmbed();
     await interaction.editReply({
@@ -193,7 +203,7 @@ const generateEmbed = () => {
             gameOver = true;
             gameWon = true;
             collector.stop();
-        } else if (wrongGuesses >= MAX_WRONG_GUESSES) {
+        } else if (wrongGuesses >= maxWrongGuesses) {
             gameOver = true;
             collector.stop();
         }
@@ -205,15 +215,14 @@ const generateEmbed = () => {
     collector.on('end', async () => {
         if (gameWon) {
             const result = await awardTicket(interaction.user.id, interaction.user.username);
-// In collector.on('end', ...) where gameWon is true:
-if (result.awarded) {
-    const dmMessage = `${h.releaseEmojis.CONFETTI} You solved the hangman! You've earned **1 ticket**! You now have **${result.newCount}** ticket(s).\n\n*You can earn another ticket from Hangman in 24 hours. I'll DM you when it's available.*`;
-    try {
-        await interaction.user.send(dmMessage);
-    } catch {
-        await interaction.followUp({ content: dmMessage, flags: MessageFlags.Ephemeral });
-    }
-} else if (result.reason === 'cooldown') {
+            if (result.awarded) {
+                const dmMessage = `${h.releaseEmojis.CONFETTI} You solved the hangman! You've earned **1 ticket**! You now have **${result.newCount}** ticket(s).\n\n*You can earn another ticket from Hangman in 24 hours. I'll DM you when it's available.*`;
+                try {
+                    await interaction.user.send(dmMessage);
+                } catch {
+                    await interaction.followUp({ content: dmMessage, flags: MessageFlags.Ephemeral });
+                }
+            } else if (result.reason === 'cooldown') {
                 const minutes = result.remainingMinutes;
                 const hours = Math.floor(minutes / 60);
                 const mins = minutes % 60;
