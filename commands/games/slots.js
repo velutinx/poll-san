@@ -1,14 +1,13 @@
 // This is poll-san/commands/games/slots.js
 
-const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
+const { SlashCommandBuilder, EmbedBuilder, MessageFlags } = require('discord.js');
 const supabase = require('../../services/supabase');
 
-// Slot configuration
 const SYMBOLS = ['🍒', '🍇', '🍊', '🍋', '7️⃣', '💎'];
 const PAYOUTS = {
-    threeDiamond: 10,   // 3x 💎
-    threeOther: 2,      // 3x any other symbol
-    twoOfKind: 0.5      // 2x any symbol
+    threeDiamond: 10,
+    threeOther: 2,
+    twoOfKind: 0.5
 };
 
 module.exports = {
@@ -20,11 +19,14 @@ module.exports = {
                 .setDescription('Number of tickets to bet')
                 .setRequired(true)
                 .setMinValue(1)
-                .setMaxValue(100)), // Optional: cap to prevent huge losses
+                .setMaxValue(100)),
 
     async execute(interaction) {
         const bet = interaction.options.getInteger('bet');
         const userId = interaction.user.id;
+
+        // Defer reply as ephemeral to give us time to process
+        await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
         // 1. Check and deduct bet
         const { data: userData, error: fetchError } = await supabase
@@ -35,21 +37,20 @@ module.exports = {
 
         if (fetchError) {
             console.error('Slot balance fetch error:', fetchError);
-            return interaction.reply({ content: '❌ Error checking your ticket balance.', flags: { ephemeral: true } });
+            return interaction.editReply({ content: '❌ Error checking your ticket balance.' });
         }
 
         const balance = userData?.ticket_count || 0;
         if (balance < bet) {
-            return interaction.reply({ content: `❌ You only have ${balance} ticket(s). You can't bet ${bet}.`, flags: { ephemeral: true } });
+            return interaction.editReply({ content: `❌ You only have ${balance} ticket(s). You can't bet ${bet}.` });
         }
 
-        // Deduct bet first
         const { error: deductError } = await supabase
             .rpc('deduct_tickets', { user_id: userId, amount: bet });
 
         if (deductError) {
             console.error('Slot deduct error:', deductError);
-            return interaction.reply({ content: '❌ Failed to place bet. Please try again.', flags: { ephemeral: true } });
+            return interaction.editReply({ content: '❌ Failed to place bet. Please try again.' });
         }
 
         // 2. Spin the reels
@@ -70,20 +71,18 @@ module.exports = {
                 winDescription = `🎉 Three ${slot1}!`;
             }
         } else if (slot1 === slot2 || slot2 === slot3 || slot1 === slot3) {
-            winAmount = Math.floor(bet * PAYOUTS.twoOfKind); // 0.5x may give half tickets, round down
+            winAmount = Math.floor(bet * PAYOUTS.twoOfKind);
             winDescription = `✨ Pair of ${slot1 === slot2 ? slot1 : slot2 === slot3 ? slot2 : slot1}!`;
         }
 
         // 4. Update balance with winnings (if any)
         if (winAmount > 0) {
-            // Use a custom RPC to add tickets (we'll create it below)
             const { error: addError } = await supabase
                 .rpc('add_tickets', { user_id: userId, amount: winAmount });
 
             if (addError) {
                 console.error('Slot add winnings error:', addError);
-                // If this fails, the user lost their bet unfairly; we could log and manually fix.
-                return interaction.reply({ content: '❌ Error checking your ticket balance.', flags: MessageFlags.Ephemeral });
+                return interaction.editReply({ content: '❌ Error awarding winnings. Please contact an admin.' });
             }
         }
 
@@ -95,7 +94,7 @@ module.exports = {
             .maybeSingle();
         const newBalance = newData?.ticket_count || 0;
 
-        // 6. Build response embed
+        // 6. Build the result embed
         const embed = new EmbedBuilder()
             .setTitle('🎰 Slot Machine')
             .setDescription(`**${slot1}  |  ${slot2}  |  ${slot3}**`)
@@ -107,6 +106,15 @@ module.exports = {
             )
             .setFooter({ text: winAmount > 0 ? winDescription : 'Better luck next time!' });
 
-        await interaction.reply({ embeds: [embed] });
+        // 7. Send ephemeral reply to the user
+        await interaction.editReply({ embeds: [embed] });
+
+        // 8. Send a temporary public message for logging (Sapphire)
+        try {
+            const publicMsg = await interaction.channel.send({ embeds: [embed] });
+            setTimeout(() => publicMsg.delete().catch(() => {}), 3000); // Delete after 3 seconds
+        } catch (err) {
+            console.error('Failed to send public slots log:', err);
+        }
     }
 };
