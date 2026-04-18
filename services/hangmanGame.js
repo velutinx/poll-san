@@ -14,57 +14,19 @@ const MAX_WRONG_GUESSES = 6;
 const COOLDOWN_HOURS = 24;
 
 async function createHangmanImage(wrongGuesses) {
-    const canvas = createCanvas(300, 350);
-    const ctx = canvas.getContext('2d');
-    
-    // Ensure lineWidth is a number
-    ctx.lineWidth = 5;
-
-    // Ensure wrongGuesses is a number
-    const guesses = Number(wrongGuesses) || 0;
-
-    // Helper inline function to draw a line safely
-    const drawLine = (fx, fy, tx, ty, col) => {
-        const fromX = Number(fx);
-        const fromY = Number(fy);
-        const toX = Number(tx);
-        const toY = Number(ty);
-        const color = String(col || "#000000");
+    try {
+        const canvas = createCanvas(300, 350);
+        const ctx = canvas.getContext('2d');
         
-        ctx.beginPath();
-        ctx.strokeStyle = color;
-        ctx.moveTo(fromX, fromY);
-        ctx.lineTo(toX, toY);
-        ctx.stroke();
-        ctx.closePath();
-    };
-
-    // Base
-    drawLine(50, 330, 150, 330, "#000000");
-    // Mid
-    drawLine(100, 330, 100, 50, "#000000");
-    // Head connector
-    drawLine(100, 50, 200, 50, "#000000");
-    // Man connector
-    drawLine(200, 50, 200, 80, "#000000");
-
-    // Head (circle)
-    ctx.strokeStyle = guesses < 1 ? "#a3a3a3" : "#000000";
-    ctx.beginPath();
-    ctx.arc(200, 100, 20, 0, 2 * Math.PI);
-    ctx.stroke();
-    ctx.closePath();
-
-    // Body
-    drawLine(200, 120, 200, 200, guesses < 2 ? "#a3a3a3" : "#000000");
-    // Arms
-    drawLine(200, 150, 170, 130, guesses < 3 ? "#a3a3a3" : "#000000");
-    drawLine(200, 150, 230, 130, guesses < 4 ? "#a3a3a3" : "#000000");
-    // Legs
-    drawLine(200, 200, 180, 230, guesses < 5 ? "#a3a3a3" : "#000000");
-    drawLine(200, 200, 220, 230, guesses < 6 ? "#a3a3a3" : "#000000");
-
-    return canvas.toBuffer();
+        // Just fill a rectangle to test
+        ctx.fillStyle = '#FF0000';
+        ctx.fillRect(10, 10, 100, 100);
+        
+        return canvas.toBuffer();
+    } catch (error) {
+        console.error('Canvas error details:', error);
+        throw error;
+    }
 }
 
 // Award ticket
