@@ -101,7 +101,7 @@ async function handleSlotsModal(interaction) {
     // Send temporary public message for logging (Sapphire)
     try {
         const publicMsg = await interaction.channel.send({ embeds: [embed] });
-        setTimeout(() => publicMsg.delete().catch(() => {}), 3000);
+        setTimeout(() => publicMsg.delete().catch(() => {}), 100);
     } catch (err) {
         // ignore
     }
