@@ -83,7 +83,7 @@ module.exports = {
             if (addError) {
                 console.error('Slot add winnings error:', addError);
                 // If this fails, the user lost their bet unfairly; we could log and manually fix.
-                return interaction.reply({ content: '❌ Error awarding winnings. Please contact an admin.', flags: { ephemeral: true } });
+                return interaction.reply({ content: '❌ Error checking your ticket balance.', flags: MessageFlags.Ephemeral });
             }
         }
 
