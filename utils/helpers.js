@@ -152,26 +152,21 @@ module.exports = {
 games: {
     wordle: {
         botId: '1326731868137062492',
-        channelId: '1494747527801470986',  // Wordle channel
+        channelId: '1494747527801470986',
         cooldownHours: 24,
         winPattern: /Wordle\s+[\d,]+\s+(\d|X)\/6/,
-        activityAppId: '947466344113963018'   // Official Discord Wordle Activity
+        activityAppId: '947466344113963018'
     },
 },
-    // Future games can be added here:
-    // quordle: { ... },
-    // connections: { ... },
+
+colors: {
+    success: 0x00FFCC,
+    giveaway: '#FF69B4',
+    ended: '#808080'
 },
 
-    
-    colors: {
-        success: 0x00FFCC,
-        giveaway: '#FF69B4',
-        ended: '#808080'
-    },
-
-    urls: {
-        base: "https://www.velutinx.com",
-        pollImages: "https://www.velutinx.com/images/poll/"
-    },
+urls: {
+    base: "https://www.velutinx.com",
+    pollImages: "https://www.velutinx.com/images/poll/"
+},
 };
