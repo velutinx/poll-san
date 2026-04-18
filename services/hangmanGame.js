@@ -21,15 +21,20 @@ async function createHangmanImage(wrongGuesses) {
     ctx.lineWidth = 5;
 
     const createLine = (fromX, fromY, toX, toY, color = "#000000") => {
+        // Ensure color is a string
+        const strokeColor = typeof color === 'string' ? color : String(color);
         ctx.beginPath();
-        ctx.strokeStyle = color;
-        ctx.moveTo(fromX, fromY);
-        ctx.lineTo(toX, toY);
+        ctx.strokeStyle = strokeColor;
+        ctx.moveTo(Number(fromX), Number(fromY));
+        ctx.lineTo(Number(toX), Number(toY));
         ctx.stroke();
         ctx.closePath();
     };
 
-    // Base (fixed: removed 'ctx' argument)
+    // Ensure wrongGuesses is a number
+    const guesses = Number(wrongGuesses) || 0;
+
+    // Base
     createLine(50, 330, 150, 330);
     // Mid
     createLine(100, 330, 100, 50);
@@ -39,20 +44,20 @@ async function createHangmanImage(wrongGuesses) {
     createLine(200, 50, 200, 80);
 
     // Head
-    ctx.strokeStyle = wrongGuesses < 1 ? "#a3a3a3" : "#000000";
+    ctx.strokeStyle = guesses < 1 ? "#a3a3a3" : "#000000";
     ctx.beginPath();
     ctx.arc(200, 100, 20, 0, 2 * Math.PI);
     ctx.stroke();
     ctx.closePath();
 
     // Body
-    createLine(200, 120, 200, 200, wrongGuesses < 2 ? "#a3a3a3" : "#000000");
+    createLine(200, 120, 200, 200, guesses < 2 ? "#a3a3a3" : "#000000");
     // Arms
-    createLine(200, 150, 170, 130, wrongGuesses < 3 ? "#a3a3a3" : "#000000");
-    createLine(200, 150, 230, 130, wrongGuesses < 4 ? "#a3a3a3" : "#000000");
+    createLine(200, 150, 170, 130, guesses < 3 ? "#a3a3a3" : "#000000");
+    createLine(200, 150, 230, 130, guesses < 4 ? "#a3a3a3" : "#000000");
     // Legs
-    createLine(200, 200, 180, 230, wrongGuesses < 5 ? "#a3a3a3" : "#000000");
-    createLine(200, 200, 220, 230, wrongGuesses < 6 ? "#a3a3a3" : "#000000");
+    createLine(200, 200, 180, 230, guesses < 5 ? "#a3a3a3" : "#000000");
+    createLine(200, 200, 220, 230, guesses < 6 ? "#a3a3a3" : "#000000");
 
     return canvas.toBuffer();
 }
