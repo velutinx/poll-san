@@ -1,4 +1,4 @@
-// poll-san/utils/helpers.js
+// This is poll-san/utils/helpers.js
 
 module.exports = {
     POLL_UPDATE_INTERVAL_MS: 10000,
@@ -105,7 +105,7 @@ module.exports = {
             male_supporter: '1465967964804350160',
             server_booster: '1469284491456548976',
             supporter: '1466155709547675795',
-            giveaway_notify_role: '1472273843665113139',   // <-- ADDED
+            giveaway_notify_role: '1472273843665113139',
             restricted: ['1468666174102442227', '1467233133362544642', '1487554855068368916']
         },
         tags: {
@@ -116,10 +116,14 @@ module.exports = {
             poll_mention: '1472273843665113139',
         },
         channels: {
-            QUEUE: '1473730427318435860'
+            QUEUE: '1473730427318435860',
+            TRIVIA: '1495387346990928003'                     // <-- ADDED
         },
         users: {
             Velutinx: '1380051214766444617'
+        },
+        bots: {                                              // <-- ADDED (optional but useful)
+            rinbot: '429656936435286016'
         }
     },
 
@@ -137,7 +141,7 @@ module.exports = {
             3: '1465904476417163457',
             4: '1465904548320378956',
             5: '1465952085026541804'
-        },    
+        },
         tierNames: {
             1: 'Bronze',
             2: 'Copper',
@@ -149,29 +153,36 @@ module.exports = {
         xpFactor: 0.02
     },
 
-games: {
-    wordle: {
-        botId: '1326731868137062492',
-        channelId: '1494747527801470986',
-        cooldownHours: 24,
-        winPattern: /Wordle\s+[\d,]+\s+(\d|X)\/6/,
-        activityAppId: '947466344113963018'
+    // ==================== GAMES CONFIGURATION ====================
+    games: {
+        wordle: {
+            botId: '1326731868137062492',
+            channelId: '1494747527801470986',
+            cooldownHours: 24,
+            winPattern: /Wordle\s+[\d,]+\s+(\d|X)\/6/,
+            activityAppId: '947466344113963018'
+        },
+        hangman: {
+            channelId: '1494747527801470986',
+            cooldownHours: 24,
+            winPattern: /^You win!$/
+        },
+        trivia: {                                             // <-- ADDED
+            botId: '429656936435286016',                     // RinBot ID
+            channelId: '1495387346990928003',                // #trivia channel
+            dailyTicketCap: 10,
+            cleanupDelayMs: 15000                            // 15 seconds
+        }
     },
-    hangman: {
-        channelId: '1494747527801470986',
-        cooldownHours: 24,
-        winPattern: /^You win!$/
-    }
-},
 
-colors: {
-    success: 0x00FFCC,
-    giveaway: '#FF69B4',
-    ended: '#808080'
-},
+    colors: {
+        success: 0x00FFCC,
+        giveaway: '#FF69B4',
+        ended: '#808080'
+    },
 
-urls: {
-    base: "https://www.velutinx.com",
-    pollImages: "https://www.velutinx.com/images/poll/"
-},
+    urls: {
+        base: "https://www.velutinx.com",
+        pollImages: "https://www.velutinx.com/images/poll/"
+    },
 };
