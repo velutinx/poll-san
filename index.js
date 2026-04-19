@@ -24,8 +24,7 @@ const { syncMembershipRoles } = require('./services/membershipSync');
 const giveawayCommand = require('./commands/giveaway');
 const messageCreateEvent = require('./events/messageCreate');
 const { handleShopSelect, handleShopPurchase } = require('./services/shopHandler');
-const { handleSlotsModal } = require('./services/slotsHandler');
-const { ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder: ModalActionRowBuilder } = require('discord.js');
+const { handleSlotsBet } = require('./services/slotsHandler');               // Changed from handleSlotsModal
 const { startHangmanGame } = require('./services/hangmanGame');
 const { checkAndNotifyCooldowns } = require('./services/cooldownNotifier');
 const { handleTriviaMessage } = require('./services/triviaJanitor');
@@ -81,7 +80,10 @@ client.once(Events.ClientReady, async (c) => {
     const guild = client.guilds.cache.get(process.env.GUILD_ID);
     if (guild) cleanRoles(guild);
 
-    setInterval(() => { const activeGuild = client.guilds.cache.get(process.env.GUILD_ID); if (activeGuild) cleanRoles(activeGuild); }, 3600000);
+    setInterval(() => {
+        const activeGuild = client.guilds.cache.get(process.env.GUILD_ID);
+        if (activeGuild) cleanRoles(activeGuild);
+    }, 3600000);
 
     // Membership sync
     try {
@@ -90,8 +92,13 @@ client.once(Events.ClientReady, async (c) => {
         console.error('[MembershipSync] Initial sync failed:', err);
     }
 
-    setInterval(() => { syncMembershipRoles(client).catch(err => console.error('[MembershipSync] Sync error:', err)); }, 300000);
-    setInterval(() => { checkAndNotifyCooldowns(client).catch(err => console.error('Cooldown notifier error:', err)); }, 300000); // 5 minutes
+    setInterval(() => {
+        syncMembershipRoles(client).catch(err => console.error('[MembershipSync] Sync error:', err));
+    }, 300000);
+
+    setInterval(() => {
+        checkAndNotifyCooldowns(client).catch(err => console.error('Cooldown notifier error:', err));
+    }, 300000); // 5 minutes
 
     // Auto-resume active polls
     const { data: activePolls } = await supabase
@@ -137,40 +144,16 @@ client.on(Events.InteractionCreate, async (interaction) => {
         } else if (interaction.isUserContextMenuCommand() && interaction.commandName === 'View Level') {
             require('./commands/level')(interaction);
         } else if (interaction.isButton()) {
-            if (interaction.customId === 'shop_buy_confirm') {
-                await handleShopPurchase(interaction);
-            } else if (interaction.customId === 'slots_spin_button') {
-                const modal = new ModalBuilder()
-                    .setCustomId('slots_bet_modal')
-                    .setTitle('Place Your Bet');
-
-                const betInput = new TextInputBuilder()
-                    .setCustomId('bet_amount')
-                    .setLabel('How many tickets do you want to bet?')
-                    .setStyle(TextInputStyle.Short)
-                    .setPlaceholder('Enter a number (1-100)')
-                    .setRequired(true)
-                    .setMinLength(1)
-                    .setMaxLength(3);
-
-                const actionRow = new ModalActionRowBuilder().addComponents(betInput);
-                modal.addComponents(actionRow);
-
-                await interaction.showModal(modal);
-            } else if (interaction.customId === 'hangman_start_button') {
-                await startHangmanGame(interaction);
-            } else {
-                await giveawayCommand.handleGiveawayButton(interaction);
-            }
-        } else if (interaction.isStringSelectMenu()) {
-            if (interaction.customId === 'shop_select') {
+            if (interaction.customId === 'shop_buy_confirm') { await handleShopPurchase(interaction); }
+            else if (interaction.customId === 'slots_bet_1') { await handleSlotsBet(interaction, 1); }
+            else if (interaction.customId === 'slots_bet_5') { await handleSlotsBet(interaction, 5); }
+            else if (interaction.customId === 'slots_bet_25') { await handleSlotsBet(interaction, 25); }
+            else if (interaction.customId === 'hangman_start_button') { await startHangmanGame(interaction); }
+            else { await giveawayCommand.handleGiveawayButton(interaction); }
+        } else if (interaction.isStringSelectMenu()) { if (interaction.customId === 'shop_select') {
                 await handleShopSelect(interaction);
             }
-        } else if (interaction.isModalSubmit()) {
-            if (interaction.customId === 'slots_bet_modal') {
-                await handleSlotsModal(interaction);
-            }
-        }
+        } // Modal submit handler for slots removed entirely
     } catch (err) {
         console.error('Interaction Error:', err);
     }
@@ -182,7 +165,9 @@ client.on(Events.MessageReactionAdd, (reaction, user) => require('./events/react
 client.on(Events.MessageReactionRemove, (reaction, user) => require('./events/reactions')(reaction, user, 'remove'));
 client.on('guildMemberRemove', require('./events/guildMemberPollRemove'));
 client.on('messageCreate', messageCreateEvent);
-client.on('messageCreate', (message) => { handleTriviaMessage(message).catch(err => console.error('Trivia handler error:', err)); });
+client.on('messageCreate', (message) => {
+    handleTriviaMessage(message).catch(err => console.error('Trivia handler error:', err));
+});
 
 // --- 4. XP SYSTEM ---
 client.on(Events.MessageCreate, async (message) => {
