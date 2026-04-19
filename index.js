@@ -1,5 +1,7 @@
 // this is poll-san/index.js
 
+// this is poll-san/index.js
+
 const path = require('path');
 const pollService = require('./services/pollService');
 require('dotenv').config({ path: path.resolve(__dirname, '.env'), quiet: true });
@@ -13,7 +15,8 @@ const {
     ContextMenuCommandBuilder,
     ApplicationCommandType,
     Partials,
-    Events
+    Events,
+    MessageFlags
 } = require('discord.js');
 
 const supabase = require('./services/supabase');
@@ -24,7 +27,7 @@ const { syncMembershipRoles } = require('./services/membershipSync');
 const giveawayCommand = require('./commands/giveaway');
 const messageCreateEvent = require('./events/messageCreate');
 const { handleShopSelect, handleShopPurchase } = require('./services/shopHandler');
-const { handleSlotsBet } = require('./services/slotsHandler');               // Changed from handleSlotsModal
+const { handleSlotsBet } = require('./services/slotsHandler');
 const { startHangmanGame } = require('./services/hangmanGame');
 const { checkAndNotifyCooldowns } = require('./services/cooldownNotifier');
 const { handleTriviaMessage } = require('./services/triviaJanitor');
@@ -64,6 +67,7 @@ client.once(Events.ClientReady, async (c) => {
         require('./commands/games/slots').data.toJSON(),
         require('./commands/admin/post-slots-ui').data.toJSON(),
         require('./commands/admin/post-hangman-ui').data.toJSON(),
+        require('./commands/admin/post-trivia-ui').data.toJSON(),   // <-- ADDED
     ];
 
     const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
@@ -140,20 +144,36 @@ client.on(Events.InteractionCreate, async (interaction) => {
                 case 'slots': await require('./commands/games/slots').execute(interaction); break;
                 case 'post_slots_ui': await require('./commands/admin/post-slots-ui').execute(interaction); break;
                 case 'post_hangman_ui': await require('./commands/admin/post-hangman-ui').execute(interaction); break;
+                case 'post_trivia_ui': await require('./commands/admin/post-trivia-ui').execute(interaction); break;  // <-- ADDED
             }
         } else if (interaction.isUserContextMenuCommand() && interaction.commandName === 'View Level') {
             require('./commands/level')(interaction);
         } else if (interaction.isButton()) {
-            if (interaction.customId === 'shop_buy_confirm') { await handleShopPurchase(interaction); }
-            else if (interaction.customId === 'slots_bet_1') { await handleSlotsBet(interaction, 1); }
-            else if (interaction.customId === 'slots_bet_5') { await handleSlotsBet(interaction, 5); }
-            else if (interaction.customId === 'slots_bet_25') { await handleSlotsBet(interaction, 25); }
-            else if (interaction.customId === 'hangman_start_button') { await startHangmanGame(interaction); }
-            else { await giveawayCommand.handleGiveawayButton(interaction); }
-        } else if (interaction.isStringSelectMenu()) { if (interaction.customId === 'shop_select') {
+            if (interaction.customId === 'shop_buy_confirm') {
+                await handleShopPurchase(interaction);
+            } else if (interaction.customId === 'slots_bet_1') {
+                await handleSlotsBet(interaction, 1);
+            } else if (interaction.customId === 'slots_bet_5') {
+                await handleSlotsBet(interaction, 5);
+            } else if (interaction.customId === 'slots_bet_25') {
+                await handleSlotsBet(interaction, 25);
+            } else if (interaction.customId === 'hangman_start_button') {
+                await startHangmanGame(interaction);
+            } else if (interaction.customId === 'trivia_start_hard') {               // <-- ADDED
+                const commandString = '/sb number-of-rounds:5 multiple-winners:Yes difficulty:Hard';
+                await interaction.channel.send(commandString);
+                await interaction.reply({
+                    content: `RinBot command prepared! Press the up arrow in the chat, then Enter to send it.`,
+                    flags: MessageFlags.Ephemeral
+                });
+            } else {
+                await giveawayCommand.handleGiveawayButton(interaction);
+            }
+        } else if (interaction.isStringSelectMenu()) {
+            if (interaction.customId === 'shop_select') {
                 await handleShopSelect(interaction);
             }
-        } // Modal submit handler for slots removed entirely
+        }
     } catch (err) {
         console.error('Interaction Error:', err);
     }
