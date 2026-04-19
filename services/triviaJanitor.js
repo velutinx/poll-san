@@ -8,280 +8,197 @@ const TRIVIA_CONFIG = h.games?.trivia || {};
 const TRIVIA_BOT_ID = TRIVIA_CONFIG.botId || h.ids?.bots?.rinbot || '429656936435286016';
 const TRIVIA_CHANNEL_ID = TRIVIA_CONFIG.channelId || h.ids?.channels?.TRIVIA || '1495387346990928003';
 const DAILY_TICKET_CAP = TRIVIA_CONFIG.dailyTicketCap || 10;
-const CLEANUP_DELAY = 30000; // 30 seconds – gives RinBot time to finish
+const CLEANUP_DELAY = 60000; // 1 minute
+const WHITELISTED_MESSAGE_ID = '1495466224476360754'; // The message with the repeat button
 
-const activeSessions = new Map();
+// Track the highest score per user per day (in memory as backup, but DB is source of truth)
+const dailyHighScores = new Map(); // key: userId, value: highest points today
 
-async function awardTriviaTickets(userId, username, pointsEarned) {
+/**
+ * Update the daily high score for a user.
+ * Only keeps the highest score seen so far for the day.
+ */
+async function updateDailyHighScore(userId, username, points) {
     const today = new Date().toISOString().split('T')[0];
 
+    // Fetch current high score for today
     const { data: dailyData, error: fetchError } = await supabase
         .from('games_trivia_daily')
-        .select('tickets_earned')
+        .select('highest_score')
         .eq('discord_id', userId)
         .eq('date', today)
         .maybeSingle();
 
     if (fetchError) {
-        console.error('Trivia daily fetch error:', fetchError);
-        return { awarded: 0, totalToday: 0, capped: false };
+        console.error('Trivia high score fetch error:', fetchError);
+        return;
     }
 
-    const currentTickets = dailyData?.tickets_earned || 0;
-    const availableCap = DAILY_TICKET_CAP - currentTickets;
-    const ticketsToAward = Math.min(pointsEarned, availableCap);
-    const newTotal = currentTickets + ticketsToAward;
+    const currentHigh = dailyData?.highest_score || 0;
+    const newHigh = Math.max(currentHigh, points);
 
-    const { error: upsertError } = await supabase
+    if (newHigh > currentHigh) {
+        const { error: upsertError } = await supabase
+            .from('games_trivia_daily')
+            .upsert({
+                discord_id: userId,
+                discord_username: username,
+                date: today,
+                highest_score: newHigh,
+                participated: true,
+                last_updated: new Date().toISOString()
+            }, { onConflict: 'discord_id,date' });
+
+        if (upsertError) console.error('Trivia high score upsert error:', upsertError);
+        else console.log(`[Trivia] Updated high score for ${username}: ${newHigh}`);
+    }
+}
+
+/**
+ * Award tickets based on the highest score of the day (capped).
+ * Called at end of day or when user requests.
+ */
+async function awardTicketsFromHighScore(userId, username) {
+    const today = new Date().toISOString().split('T')[0];
+
+    const { data: dailyData, error: fetchError } = await supabase
         .from('games_trivia_daily')
-        .upsert({
-            discord_id: userId,
-            discord_username: username,
-            date: today,
-            tickets_earned: newTotal,
-            participated: true,
-            last_updated: new Date().toISOString()
-        }, { onConflict: 'discord_id,date' });
+        .select('highest_score, tickets_awarded')
+        .eq('discord_id', userId)
+        .eq('date', today)
+        .maybeSingle();
 
-    if (upsertError) console.error('Trivia daily upsert error:', upsertError);
+    if (fetchError || !dailyData) return;
 
-    if (ticketsToAward > 0) {
-        const { error: addError } = await supabase
-            .rpc('add_tickets', { user_id: userId, amount: ticketsToAward });
-        if (addError) console.error('Trivia ticket add error:', addError);
+    const highScore = dailyData.highest_score || 0;
+    const alreadyAwarded = dailyData.tickets_awarded || 0;
+
+    if (alreadyAwarded) return; // Already awarded for today
+
+    const ticketsToAward = Math.min(highScore, DAILY_TICKET_CAP);
+    if (ticketsToAward <= 0) return;
+
+    const { error: addError } = await supabase
+        .rpc('add_tickets', { user_id: userId, amount: ticketsToAward });
+
+    if (addError) {
+        console.error('Trivia ticket award error:', addError);
+        return;
     }
 
-    return {
-        awarded: ticketsToAward,
-        totalToday: newTotal,
-        capped: ticketsToAward < pointsEarned
-    };
-}
+    await supabase
+        .from('games_trivia_daily')
+        .update({ tickets_awarded: ticketsToAward })
+        .eq('discord_id', userId)
+        .eq('date', today);
 
-function getTimeUntilReset() {
-    const now = new Date();
-    const reset = new Date(now);
-    reset.setUTCHours(24, 0, 0, 0);
-    const msUntilReset = reset - now;
-    const hours = Math.floor(msUntilReset / (1000 * 60 * 60));
-    const minutes = Math.floor((msUntilReset % (1000 * 60 * 60)) / (1000 * 60));
-    return `${hours}h ${minutes}m`;
-}
-
-function parseRankingFromEmbed(embed) {
-    const participants = new Map();
-    if (!embed) return participants;
-
-    const textSources = [];
-    if (embed.description) textSources.push(embed.description);
-    if (embed.fields) {
-        for (const field of embed.fields) {
-            textSources.push(field.value);
+    // Notify user
+    const user = await client.users.fetch(userId).catch(() => null);
+    if (user) {
+        const dmMessage = `${h.releaseEmojis.CONFETTI} Your daily trivia high score was **${highScore}**! You've earned **${ticketsToAward}** ticket(s) (capped at ${DAILY_TICKET_CAP}).`;
+        try {
+            await user.send(dmMessage);
+        } catch {
+            // ignore
         }
     }
+    console.log(`[Trivia] Awarded ${ticketsToAward} tickets to ${username} (high score: ${highScore})`);
+}
 
-    const allText = textSources.join('\n');
-    console.log('[Trivia] Parsing text:', allText.substring(0, 300));
+/**
+ * Parse round result messages to extract points.
+ * Examples:
+ *   "Velutinx has won! ... 9 points were gained"
+ *   "No one guessed right" (no points)
+ */
+function extractPointsFromContent(content) {
+    const pointsMatch = content.match(/(\d+)\s+points?\s+were\s+gained/i);
+    return pointsMatch ? parseInt(pointsMatch[1], 10) : 0;
+}
 
-    const lines = allText.split('\n');
-    for (const line of lines) {
-        // Detect ranking lines by the presence of placement emojis
-        if (!line.includes(':first_place:') && !line.includes(':second_place:') && !line.includes(':third_place:')) continue;
+function extractWinnerUsername(content) {
+    const winMatch = content.match(/(.+?)\s+has\s+won!/i);
+    return winMatch ? winMatch[1].trim() : null;
+}
 
-        // Extract points: digits immediately before time in parentheses
-        const pointsMatch = line.match(/(\d+)\s*\([\d:.]+\)/);
-        if (!pointsMatch) continue;
-        const points = parseInt(pointsMatch[1], 10);
+async function handleTriviaMessage(message) {
+    if (message.author.id !== TRIVIA_BOT_ID) return;
+    if (message.channel.id !== TRIVIA_CHANNEL_ID) return;
+    if (message.id === WHITELISTED_MESSAGE_ID) return; // Never delete the button message
 
-        // Extract username: remove emoji and everything after points/time
-        let username = line
-            .replace(/<a?:[^:]+:\d+>|:[^:]+:/g, '') // Remove custom emojis
-            .replace(/\*\*|\*/g, '') // Remove bold
-            .trim();
+    // Schedule deletion for all other RinBot messages
+    setTimeout(() => {
+        message.delete().catch(() => {});
+    }, CLEANUP_DELAY);
 
-        username = username.split(/\s*\d+\s*\(/)[0].trim();
+    const content = message.content || '';
 
-        // Try to find a Discord mention first (if RinBot ever includes them)
-        const mentionMatch = line.match(/<@!?(\d+)>/);
-        if (mentionMatch) {
-            participants.set(mentionMatch[1], { points, username });
-        } else {
-            participants.set(username, { points, username });
+    // Detect a round result: either someone won or nobody guessed right
+    if (content.includes('has won!') || content.includes('No one guessed right')) {
+        const points = extractPointsFromContent(content);
+        const winnerUsername = extractWinnerUsername(content);
+
+        if (winnerUsername && points > 0) {
+            // Find the member by username
+            const member = await resolveUsernameToMember(message.guild, winnerUsername);
+            if (member) {
+                await updateDailyHighScore(member.id, member.user.username, points);
+            }
         }
+        // If no winner or zero points, do nothing
     }
-
-    console.log('[Trivia] Parsed participants:', [...participants.entries()].map(([k, v]) => `${k} -> ${v.points}`));
-    return participants;
 }
 
 async function resolveUsernameToMember(guild, username) {
     try {
         const members = await guild.members.fetch();
-        const member = members.find(m =>
+        return members.find(m =>
             m.displayName.toLowerCase() === username.toLowerCase() ||
             m.user.username.toLowerCase() === username.toLowerCase()
         );
-        return member;
     } catch (err) {
         console.error('Error fetching members:', err);
         return null;
     }
 }
 
-async function cleanupSessionMessages(message, sessionData) {
-    try {
-        const channel = message.channel;
-        const startId = sessionData.startMessageId;
-        const endId = message.id;
+// End-of-day awards: run this periodically (e.g., every hour) to award tickets for yesterday
+async function processEndOfDayAwards(client) {
+    const yesterday = new Date();
+    yesterday.setUTCDate(yesterday.getUTCDate() - 1);
+    const dateStr = yesterday.toISOString().split('T')[0];
 
-        const messageIdsToDelete = [endId];
-        let lastId = endId;
+    const { data: records, error } = await supabase
+        .from('games_trivia_daily')
+        .select('discord_id, discord_username, highest_score')
+        .eq('date', dateStr)
+        .is('tickets_awarded', null);
 
-        while (true) {
-            const messages = await channel.messages.fetch({ limit: 100, before: lastId });
-            if (messages.size === 0) break;
+    if (error || !records) return;
 
-            for (const [id, msg] of messages) {
-                if (id < startId) break;
-                if (msg.author.id === TRIVIA_BOT_ID) {
-                    messageIdsToDelete.push(id);
-                }
+    for (const record of records) {
+        const userId = record.discord_id;
+        const username = record.discord_username;
+        const highScore = record.highest_score || 0;
+        const ticketsToAward = Math.min(highScore, DAILY_TICKET_CAP);
+
+        if (ticketsToAward > 0) {
+            await supabase.rpc('add_tickets', { user_id: userId, amount: ticketsToAward });
+            await supabase
+                .from('games_trivia_daily')
+                .update({ tickets_awarded: ticketsToAward })
+                .eq('discord_id', userId)
+                .eq('date', dateStr);
+
+            const user = await client.users.fetch(userId).catch(() => null);
+            if (user) {
+                const dmMessage = `${h.releaseEmojis.CONFETTI} Your trivia high score for yesterday was **${highScore}**! You've earned **${ticketsToAward}** ticket(s).`;
+                try {
+                    await user.send(dmMessage);
+                } catch {}
             }
-
-            const oldest = messages.last();
-            if (oldest.id <= startId) break;
-            lastId = oldest.id;
         }
-
-        console.log(`[Trivia] Attempting to delete ${messageIdsToDelete.length} messages`);
-
-        const chunkSize = 100;
-        for (let i = 0; i < messageIdsToDelete.length; i += chunkSize) {
-            const chunk = messageIdsToDelete.slice(i, i + chunkSize);
-            try {
-                const deleted = await channel.bulkDelete(chunk, true);
-                console.log(`[Trivia] Bulk deleted ${deleted.size} messages`);
-            } catch (bulkErr) {
-                console.warn('[Trivia] Bulk delete failed, falling back:', bulkErr.message);
-                for (const id of chunk) {
-                    try {
-                        const msg = await channel.messages.fetch(id);
-                        await msg.delete();
-                    } catch (err) {
-                        // ignore
-                    }
-                }
-            }
-            await new Promise(resolve => setTimeout(resolve, 1000));
-        }
-
-        console.log(`[Trivia] Cleaned up session messages in ${channel.id}`);
-    } catch (err) {
-        console.error('Trivia cleanup error:', err);
     }
 }
 
-async function processSessionEnd(message) {
-    console.log(`[Trivia] Processing session end in channel ${message.channel.id}`);
-    const channelId = message.channel.id;
-    const sessionData = activeSessions.get(channelId);
-    if (!sessionData) {
-        console.log('[Trivia] No active session found for this channel');
-        return;
-    }
-    activeSessions.delete(channelId);
-
-    const embed = message.embeds[0];
-    if (!embed) {
-        console.log('[Trivia] No embed found in ranking message');
-        return;
-    }
-
-    const participants = parseRankingFromEmbed(embed);
-    if (participants.size === 0) {
-        console.log('[Trivia] No participants parsed from embed');
-        setTimeout(() => cleanupSessionMessages(message, sessionData), CLEANUP_DELAY);
-        return;
-    }
-
-    const resetTime = getTimeUntilReset();
-    for (const [identifier, data] of participants) {
-        try {
-            let userId, member;
-            const points = data.points;
-
-            if (/^\d+$/.test(identifier)) {
-                userId = identifier;
-                member = await message.guild.members.fetch(userId).catch(() => null);
-            } else {
-                member = await resolveUsernameToMember(message.guild, identifier);
-                userId = member?.id;
-            }
-
-            if (!userId || !member) {
-                console.log(`[Trivia] Could not resolve user: ${identifier}`);
-                continue;
-            }
-
-            const result = await awardTriviaTickets(userId, member.user.username, points);
-
-            let dmContent = '';
-            if (result.awarded > 0) {
-                dmContent = `${h.releaseEmojis.CONFETTI} You earned **${result.awarded} ticket(s)** from trivia! You now have **${result.totalToday}/${DAILY_TICKET_CAP}** tickets today.\n`;
-            } else {
-                dmContent = `ℹ️ You participated in trivia but have already reached the daily cap of ${DAILY_TICKET_CAP} tickets.\n`;
-            }
-            dmContent += `🕒 Daily cap resets in **${resetTime}**.`;
-
-            try {
-                await member.send(dmContent);
-            } catch {
-                const tempMsg = await message.channel.send({ content: `<@${userId}> ${dmContent}` });
-                setTimeout(() => tempMsg.delete().catch(() => {}), 10000);
-            }
-
-            console.log(`[Trivia] Awarded ${result.awarded} tickets to ${member.user.username} (${userId})`);
-        } catch (err) {
-            console.error(`Failed to process trivia award for ${identifier}:`, err);
-        }
-    }
-
-    setTimeout(() => cleanupSessionMessages(message, sessionData), CLEANUP_DELAY);
-}
-
-async function handleTriviaMessage(message) {
-    if (message.author.id !== TRIVIA_BOT_ID) return;
-    if (message.channel.id !== TRIVIA_CHANNEL_ID) return;
-
-    const content = message.content || '';
-    const embed = message.embeds[0];
-    const embedTitle = embed?.title || '';
-    const embedDescription = embed?.description || '';
-
-    // Session start detection
-    if (content.includes('Started a session with') || embedTitle.includes('Started a session')) {
-        const roundsMatch = content.match(/with (\d+) rounds/) || embedDescription.match(/with (\d+) rounds/);
-        const rounds = roundsMatch ? parseInt(roundsMatch[1], 10) : 0;
-        activeSessions.set(message.channel.id, {
-            startMessageId: message.id,
-            rounds
-        });
-        console.log(`[Trivia] Session started with ${rounds} rounds in ${message.channel.id}`);
-        return;
-    }
-
-    // Session end detection: look for "Ranking for this session" OR the presence of :first_place: emoji in description/fields
-    const hasFirstPlaceEmoji = embedDescription.includes(':first_place:') ||
-        (embed?.fields && embed.fields.some(f => f.value.includes(':first_place:')));
-
-    if (content.includes('Ranking for this session') || 
-        embedTitle.includes('Ranking for this session') ||
-        embedDescription.includes('Ranking for this session') ||
-        hasFirstPlaceEmoji) {
-        console.log(`[Trivia] Detected ranking message in ${message.channel.id}`);
-        await processSessionEnd(message);
-        return;
-    }
-}
-
-module.exports = { handleTriviaMessage };
+module.exports = { handleTriviaMessage, processEndOfDayAwards };
