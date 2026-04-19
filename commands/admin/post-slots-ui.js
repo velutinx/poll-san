@@ -11,16 +11,23 @@ module.exports = {
     async execute(interaction) {
         const embed = new EmbedBuilder()
             .setTitle('🎰 Ticket Slot Machine')
-            .setDescription('Click the button below to spin the slots!\n\n**Payouts:**\n💎💎💎 = **10x**\n🍒🍒🍒 = **2x**\nAny pair = **0.5x**')
+            .setDescription('Click a button below to spin the slots!\n\n**Payouts:**\n💎💎💎 = **10x**\n🍒🍒🍒 = **2x**\nAny pair = **0.5x**')
             .setColor('#FFD700');
 
         const row = new ActionRowBuilder()
             .addComponents(
                 new ButtonBuilder()
-                    .setCustomId('slots_spin_button')
-                    .setLabel('Spin')
+                    .setCustomId('slots_bet_1')
+                    .setLabel('Spin 1🎟️')
+                    .setStyle(ButtonStyle.Primary),
+                new ButtonBuilder()
+                    .setCustomId('slots_bet_5')
+                    .setLabel('Spin 5🎟️')
+                    .setStyle(ButtonStyle.Primary),
+                new ButtonBuilder()
+                    .setCustomId('slots_bet_25')
+                    .setLabel('Spin 25🎟️')
                     .setStyle(ButtonStyle.Primary)
-                    .setEmoji('🎰')
             );
 
         await interaction.channel.send({
