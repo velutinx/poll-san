@@ -11,7 +11,7 @@ module.exports = {
     async execute(interaction) {
         const embed = new EmbedBuilder()
             .setTitle('🎰 Ticket Slot Machine')
-            .setDescription('Click a button below to spin the slots!\n\n**Payouts:**\n💎💎💎 = **10x**\n🍒🍒🍒 = **2x**\nAny pair = **0.5x**')
+            .setDescription('Click a button below to spin the slots!\n\n**Payouts:**\n💎💎💎 = **10x**\n🍒🍒🍒 = **2x**\nAny pair = **2.1x**')
             .setColor('#FFD700');
 
         const row = new ActionRowBuilder()
