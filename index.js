@@ -28,7 +28,7 @@ const { handleShopSelect, handleShopPurchase } = require('./services/shopHandler
 const { handleSlotsBet } = require('./services/slotsHandler');
 const { startHangmanGame } = require('./services/hangmanGame');
 const { checkAndNotifyCooldowns } = require('./services/cooldownNotifier');
-const { handleTriviaMessage } = require('./services/triviaJanitor');
+const { handleTriviaMessage, processEndOfDayAwards } = require('./services/triviaJanitor');
 
 // ==================== DISCORD CLIENT SETUP ====================
 const client = new Client({
@@ -46,7 +46,7 @@ const client = new Client({
 client.once(Events.ClientReady, async (c) => {
     console.log(`🚀 ${c.user.tag} online and ready!`);
 
-    // Start the dashboard (clean version - no realtime stuff)
+    // Start the dashboard
     try {
         const dashboardModule = await import('./web/server.js');
         const startDashboard = dashboardModule.default || dashboardModule;
@@ -55,7 +55,7 @@ client.once(Events.ClientReady, async (c) => {
         console.error('❌ Failed to start dashboard:', err.message);
     }
 
-    // Sync slash commands
+    // Sync slash commands (trivia UI command removed)
     const commandsData = [
         new SlashCommandBuilder().setName('level').setDescription('Shows your current XP/level').toJSON(),
         new ContextMenuCommandBuilder().setName('View Level').setType(ApplicationCommandType.User).toJSON(),
@@ -65,7 +65,6 @@ client.once(Events.ClientReady, async (c) => {
         require('./commands/games/slots').data.toJSON(),
         require('./commands/admin/post-slots-ui').data.toJSON(),
         require('./commands/admin/post-hangman-ui').data.toJSON(),
-        require('./commands/admin/post-trivia-ui').data.toJSON(),   // <-- ADDED
     ];
 
     const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
@@ -101,6 +100,11 @@ client.once(Events.ClientReady, async (c) => {
     setInterval(() => {
         checkAndNotifyCooldowns(client).catch(err => console.error('Cooldown notifier error:', err));
     }, 300000); // 5 minutes
+
+    // End-of-day trivia awards: check every hour
+    setInterval(() => {
+        processEndOfDayAwards(client).catch(err => console.error('Trivia end-of-day awards error:', err));
+    }, 3600000); // Every hour
 
     // Auto-resume active polls
     const { data: activePolls } = await supabase
@@ -142,7 +146,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
                 case 'slots': await require('./commands/games/slots').execute(interaction); break;
                 case 'post_slots_ui': await require('./commands/admin/post-slots-ui').execute(interaction); break;
                 case 'post_hangman_ui': await require('./commands/admin/post-hangman-ui').execute(interaction); break;
-                case 'post_trivia_ui': await require('./commands/admin/post-trivia-ui').execute(interaction); break;  // <-- ADDED
             }
         } else if (interaction.isUserContextMenuCommand() && interaction.commandName === 'View Level') {
             require('./commands/level')(interaction);
@@ -157,14 +160,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
                 await handleSlotsBet(interaction, 25);
             } else if (interaction.customId === 'hangman_start_button') {
                 await startHangmanGame(interaction);
-} else if (interaction.customId === 'trivia_start_hard') {
-    const commandString = '!sb rounds:5 winners:yes difficulty:hard';
-    
-    await interaction.reply({
-        content: `**RinBot Command Ready**\n\`\`\`${commandString}\`\`\`\nClick the code block to copy, then paste and send it in this channel.`,
-        flags: MessageFlags.Ephemeral
-    });
-} else {
+            } else {
                 await giveawayCommand.handleGiveawayButton(interaction);
             }
         } else if (interaction.isStringSelectMenu()) {
