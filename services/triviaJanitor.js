@@ -74,42 +74,68 @@ function getTimeUntilReset() {
  */
 function parseRankingFromEmbed(embed) {
     const participants = new Map();
-    if (!embed || !embed.fields) return participants;
+    if (!embed) return participants;
 
-    for (const field of embed.fields) {
-        const text = field.value;
-        const lines = text.split('\n');
-        for (const line of lines) {
-            // Match pattern: ":emoji: Username points (time)"
-            const match = line.match(/<a?:[^:]+:\d+>|:[^:]+:|\*\*.*?\*\*|__.*?__/g); // skip emoji extraction, focus on points
-            const pointsMatch = line.match(/(\d+)\s*\([\d:.]+\)/); // points before time in parentheses
-            if (pointsMatch) {
-                const points = parseInt(pointsMatch[1], 10);
-                // Extract username: everything between emoji/prefix and the points number
-                const usernamePart = line.replace(/<a?:[^:]+:\d+>|:[^:]+:/g, '').trim();
-                const username = usernamePart.split(/\s*\d+\s*\(/)[0].trim();
-                
-                // Try to get user ID from mention, if not present we'll need to fetch by username
-                const mentionMatch = line.match(/<@!?(\d+)>/);
-                if (mentionMatch) {
-                    participants.set(mentionMatch[1], points);
-                } else {
-                    // No mention, store username for later resolution (will attempt to find member by display name)
-                    participants.set(username, points);
-                }
-            }
+    // Try description first
+    const textSources = [];
+    if (embed.description) textSources.push(embed.description);
+    if (embed.fields) {
+        for (const field of embed.fields) {
+            textSources.push(field.value);
         }
     }
+
+    const allText = textSources.join('\n');
+    console.log('[Trivia] Parsing text:', allText.substring(0, 200));
+
+    // Pattern: emoji/prefix followed by username, then points, then time in parentheses
+    // Examples: ":first_place: Velutinx 1 (0:07.335)" or "**1st** Velutinx 1 (0:07.335)"
+    const lines = allText.split('\n');
+    for (const line of lines) {
+        // Skip lines that don't look like ranking entries
+        if (!line.match(/[:*].+[:*]|\d+\s*\([\d:.]+\)/)) continue;
+
+        // Extract points: digits immediately before time in parentheses
+        const pointsMatch = line.match(/(\d+)\s*\([\d:.]+\)/);
+        if (!pointsMatch) continue;
+        const points = parseInt(pointsMatch[1], 10);
+
+        // Extract username: remove emoji prefixes and everything after the points
+        let usernamePart = line
+            .replace(/<a?:[^:]+:\d+>|:[^:]+:/g, '') // Remove custom emojis
+            .replace(/\*\*.*?\*\*/g, '') // Remove bold markdown
+            .replace(/__.*?__/g, '') // Remove underline
+            .trim();
+
+        // Remove the points and time portion
+        usernamePart = usernamePart.split(/\s*\d+\s*\(/)[0].trim();
+
+        // Try to find user mention in the line
+        const mentionMatch = line.match(/<@!?(\d+)>/);
+        if (mentionMatch) {
+            participants.set(mentionMatch[1], { points, username: usernamePart });
+        } else {
+            // No mention; store username for resolution
+            participants.set(usernamePart, { points, username: usernamePart });
+        }
+    }
+
+    console.log('[Trivia] Parsed participants:', [...participants.entries()].map(([k, v]) => `${k} -> ${v.points}`));
     return participants;
 }
 
 async function resolveUsernameToMember(guild, username) {
-    // Try to find member by display name or username (case-insensitive)
-    const members = await guild.members.fetch();
-    return members.find(m => 
-        m.displayName.toLowerCase() === username.toLowerCase() ||
-        m.user.username.toLowerCase() === username.toLowerCase()
-    );
+    try {
+        const members = await guild.members.fetch();
+        const member = members.find(m =>
+            m.displayName.toLowerCase() === username.toLowerCase() ||
+            m.user.username.toLowerCase() === username.toLowerCase()
+        );
+        return member;
+    } catch (err) {
+        console.error('Error fetching members:', err);
+        return null;
+    }
 }
 
 async function processSessionEnd(message) {
@@ -123,38 +149,46 @@ async function processSessionEnd(message) {
     activeSessions.delete(channelId);
 
     const embed = message.embeds[0];
-    if (!embed || !embed.fields) {
-        console.log('[Trivia] No embed or fields found in ranking message');
+    if (!embed) {
+        console.log('[Trivia] No embed found in ranking message');
         return;
     }
 
     const participants = parseRankingFromEmbed(embed);
-    console.log(`[Trivia] Parsed participants:`, [...participants.entries()]);
+    if (participants.size === 0) {
+        console.log('[Trivia] No participants parsed from embed');
+        // Still cleanup after delay even if no participants
+        setTimeout(() => cleanupSessionMessages(message, sessionData), CLEANUP_DELAY);
+        return;
+    }
 
     const resetTime = getTimeUntilReset();
-    for (const [identifier, points] of participants) {
+    for (const [identifier, data] of participants) {
         try {
             let userId, member;
+            const points = data.points;
+            const usernameHint = data.username;
+
             if (/^\d+$/.test(identifier)) {
                 userId = identifier;
-                member = await message.guild.members.fetch(userId);
+                member = await message.guild.members.fetch(userId).catch(() => null);
             } else {
-                // Resolve by username
                 member = await resolveUsernameToMember(message.guild, identifier);
                 userId = member?.id;
-                if (!userId) {
-                    console.log(`[Trivia] Could not find user: ${identifier}`);
-                    continue;
-                }
+            }
+
+            if (!userId || !member) {
+                console.log(`[Trivia] Could not resolve user: ${identifier}`);
+                continue;
             }
 
             const result = await awardTriviaTickets(userId, member.user.username, points);
 
             let dmContent = '';
             if (result.awarded > 0) {
-                dmContent = `${h.releaseEmojis.CONFETTI} You earned **${result.awarded} ticket(s)** from trivia! You now have **${result.totalToday}/10** tickets today.\n`;
+                dmContent = `${h.releaseEmojis.CONFETTI} You earned **${result.awarded} ticket(s)** from trivia! You now have **${result.totalToday}/${DAILY_TICKET_CAP}** tickets today.\n`;
             } else {
-                dmContent = `ℹ️ You participated in trivia but have already reached the daily cap of 10 tickets.\n`;
+                dmContent = `ℹ️ You participated in trivia but have already reached the daily cap of ${DAILY_TICKET_CAP} tickets.\n`;
             }
             dmContent += `🕒 Daily cap resets in **${resetTime}**.`;
 
@@ -164,10 +198,45 @@ async function processSessionEnd(message) {
                 const tempMsg = await message.channel.send({ content: `<@${userId}> ${dmContent}` });
                 setTimeout(() => tempMsg.delete().catch(() => {}), 10000);
             }
+
+            console.log(`[Trivia] Awarded ${result.awarded} tickets to ${member.user.username} (${userId})`);
         } catch (err) {
             console.error(`Failed to process trivia award for ${identifier}:`, err);
         }
     }
+
+    // Cleanup after delay
+    setTimeout(() => cleanupSessionMessages(message, sessionData), CLEANUP_DELAY);
+}
+
+// Separate cleanup function for reuse
+async function cleanupSessionMessages(message, sessionData) {
+    try {
+        const channel = message.channel;
+        const startId = sessionData.startMessageId;
+        const endId = message.id;
+
+        let lastId = endId;
+        while (true) {
+            const messages = await channel.messages.fetch({ limit: 100, before: lastId });
+            if (messages.size === 0) break;
+
+            const toDelete = messages.filter(m => m.id >= startId && m.author.id === TRIVIA_BOT_ID);
+            for (const [, msg] of toDelete) {
+                await msg.delete().catch(() => {});
+            }
+
+            const oldest = messages.last();
+            if (oldest.id <= startId) break;
+            lastId = oldest.id;
+        }
+
+        await message.delete().catch(() => {});
+        console.log(`[Trivia] Cleaned up session messages in ${channel.id}`);
+    } catch (err) {
+        console.error('Trivia cleanup error:', err);
+    }
+}
 
     // Cleanup messages from session start to ranking
     setTimeout(async () => {
