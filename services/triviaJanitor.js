@@ -4,7 +4,6 @@ const { EmbedBuilder, MessageFlags } = require('discord.js');
 const supabase = require('./supabase');
 const h = require('../utils/helpers');
 
-// Use the games.trivia block from helpers
 const TRIVIA_CONFIG = h.games?.trivia || {};
 const TRIVIA_BOT_ID = TRIVIA_CONFIG.botId || h.ids?.bots?.rinbot || '429656936435286016';
 const TRIVIA_CHANNEL_ID = TRIVIA_CONFIG.channelId || h.ids?.channels?.TRIVIA || '1495387346990928003';
@@ -69,35 +68,86 @@ function getTimeUntilReset() {
     return `${hours}h ${minutes}m`;
 }
 
-async function processSessionEnd(message) {
-    const channelId = message.channel.id;
-    const sessionData = activeSessions.get(channelId);
-    if (!sessionData) return;
-    activeSessions.delete(channelId);
-
-    const embed = message.embeds[0];
-    if (!embed || !embed.fields) return;
-
+/**
+ * Parse ranking from embed fields.
+ * Format: ":first_place: Username points (time)" or ":second_place: Username points (time)"
+ */
+function parseRankingFromEmbed(embed) {
     const participants = new Map();
+    if (!embed || !embed.fields) return participants;
 
     for (const field of embed.fields) {
         const text = field.value;
         const lines = text.split('\n');
         for (const line of lines) {
-            const mentionMatch = line.match(/<@!?(\d+)>/);
-            const pointsMatch = line.match(/(\d+)\s*$/);
-            if (mentionMatch && pointsMatch) {
-                const userId = mentionMatch[1];
+            // Match pattern: ":emoji: Username points (time)"
+            const match = line.match(/<a?:[^:]+:\d+>|:[^:]+:|\*\*.*?\*\*|__.*?__/g); // skip emoji extraction, focus on points
+            const pointsMatch = line.match(/(\d+)\s*\([\d:.]+\)/); // points before time in parentheses
+            if (pointsMatch) {
                 const points = parseInt(pointsMatch[1], 10);
-                participants.set(userId, (participants.get(userId) || 0) + points);
+                // Extract username: everything between emoji/prefix and the points number
+                const usernamePart = line.replace(/<a?:[^:]+:\d+>|:[^:]+:/g, '').trim();
+                const username = usernamePart.split(/\s*\d+\s*\(/)[0].trim();
+                
+                // Try to get user ID from mention, if not present we'll need to fetch by username
+                const mentionMatch = line.match(/<@!?(\d+)>/);
+                if (mentionMatch) {
+                    participants.set(mentionMatch[1], points);
+                } else {
+                    // No mention, store username for later resolution (will attempt to find member by display name)
+                    participants.set(username, points);
+                }
             }
         }
     }
+    return participants;
+}
+
+async function resolveUsernameToMember(guild, username) {
+    // Try to find member by display name or username (case-insensitive)
+    const members = await guild.members.fetch();
+    return members.find(m => 
+        m.displayName.toLowerCase() === username.toLowerCase() ||
+        m.user.username.toLowerCase() === username.toLowerCase()
+    );
+}
+
+async function processSessionEnd(message) {
+    console.log(`[Trivia] Processing session end in channel ${message.channel.id}`);
+    const channelId = message.channel.id;
+    const sessionData = activeSessions.get(channelId);
+    if (!sessionData) {
+        console.log('[Trivia] No active session found for this channel');
+        return;
+    }
+    activeSessions.delete(channelId);
+
+    const embed = message.embeds[0];
+    if (!embed || !embed.fields) {
+        console.log('[Trivia] No embed or fields found in ranking message');
+        return;
+    }
+
+    const participants = parseRankingFromEmbed(embed);
+    console.log(`[Trivia] Parsed participants:`, [...participants.entries()]);
 
     const resetTime = getTimeUntilReset();
-    for (const [userId, points] of participants) {
+    for (const [identifier, points] of participants) {
         try {
-            const member = await message.guild.members.fetch(userId);
+            let userId, member;
+            if (/^\d+$/.test(identifier)) {
+                userId = identifier;
+                member = await message.guild.members.fetch(userId);
+            } else {
+                // Resolve by username
+                member = await resolveUsernameToMember(message.guild, identifier);
+                userId = member?.id;
+                if (!userId) {
+                    console.log(`[Trivia] Could not find user: ${identifier}`);
+                    continue;
+                }
+            }
+
             const result = await awardTriviaTickets(userId, member.user.username, points);
 
             let dmContent = '';
@@ -115,7 +165,7 @@ async function processSessionEnd(message) {
                 setTimeout(() => tempMsg.delete().catch(() => {}), 10000);
             }
         } catch (err) {
-            console.error(`Failed to process trivia award for user ${userId}:`, err);
+            console.error(`Failed to process trivia award for ${identifier}:`, err);
         }
     }
 
@@ -142,6 +192,7 @@ async function processSessionEnd(message) {
             }
 
             await message.delete().catch(() => {});
+            console.log(`[Trivia] Cleaned up session messages in ${channel.id}`);
         } catch (err) {
             console.error('Trivia cleanup error:', err);
         }
@@ -152,19 +203,27 @@ async function handleTriviaMessage(message) {
     if (message.author.id !== TRIVIA_BOT_ID) return;
     if (message.channel.id !== TRIVIA_CHANNEL_ID) return;
 
-    const content = message.content;
+    const content = message.content || '';
+    const embedTitle = message.embeds[0]?.title || '';
+    const embedDescription = message.embeds[0]?.description || '';
 
-    if (content.includes('Started a session with') && content.includes('rounds')) {
-        const roundsMatch = content.match(/with (\d+) rounds/);
+    // Session start detection (check both content and embed)
+    if (content.includes('Started a session with') || embedTitle.includes('Started a session')) {
+        const roundsMatch = content.match(/with (\d+) rounds/) || embedDescription.match(/with (\d+) rounds/);
         const rounds = roundsMatch ? parseInt(roundsMatch[1], 10) : 0;
         activeSessions.set(message.channel.id, {
             startMessageId: message.id,
             rounds
         });
+        console.log(`[Trivia] Session started with ${rounds} rounds in ${message.channel.id}`);
         return;
     }
 
-    if (content.includes('Ranking for this session')) {
+    // Session end detection (check content, embed title, or description)
+    if (content.includes('Ranking for this session') || 
+        embedTitle.includes('Ranking for this session') ||
+        embedDescription.includes('Ranking for this session')) {
+        console.log(`[Trivia] Detected ranking message in ${message.channel.id}`);
         await processSessionEnd(message);
         return;
     }
