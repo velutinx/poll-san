@@ -1,7 +1,5 @@
 // this is poll-san/index.js
 
-// this is poll-san/index.js
-
 const path = require('path');
 const pollService = require('./services/pollService');
 require('dotenv').config({ path: path.resolve(__dirname, '.env'), quiet: true });
@@ -160,15 +158,10 @@ client.on(Events.InteractionCreate, async (interaction) => {
             } else if (interaction.customId === 'hangman_start_button') {
                 await startHangmanGame(interaction);
 } else if (interaction.customId === 'trivia_start_hard') {
-    // Use RinBot's legacy prefix command format
     const commandString = '!sb rounds:5 winners:yes difficulty:hard';
     
-    // Send the command as a normal message
-    await interaction.channel.send(commandString);
-    
-    // Optional: Send an ephemeral confirmation
     await interaction.reply({
-        content: `✅ RinBot command sent! If it doesn't start automatically, just press Enter to send the message above.`,
+        content: `**RinBot Command Ready**\n\`\`\`${commandString}\`\`\`\nClick the code block to copy, then paste and send it in this channel.`,
         flags: MessageFlags.Ephemeral
     });
 } else {
