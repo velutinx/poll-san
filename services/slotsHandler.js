@@ -10,19 +10,19 @@ const PAYOUTS = {
     twoOfKind: 0.5
 };
 
-/**
- * Handle the modal submission for slot machine bets
- */
-async function handleSlotsModal(interaction) {
-    const betAmount = parseInt(interaction.fields.getTextInputValue('bet_amount'));
+// Reusable function to spin and process the bet
+async function handleSlotsBet(interaction, betAmount) {
     const userId = interaction.user.id;
 
-    // Validate bet
-    if (isNaN(betAmount) || betAmount < 1 || betAmount > 100) {
-        return interaction.reply({ content: '❌ Please enter a valid number between 1 and 100.', flags: MessageFlags.Ephemeral });
+    // Defer reply ephemerally so only the player sees it
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+    // Validate bet (already guaranteed by button, but double-check)
+    if (isNaN(betAmount) || betAmount < 1) {
+        return interaction.editReply({ content: '❌ Invalid bet amount.' });
     }
 
-    // Check balance
+    // Check balance and deduct
     const { data: userData, error: fetchError } = await supabase
         .from('games_wordle')
         .select('ticket_count')
@@ -31,21 +31,20 @@ async function handleSlotsModal(interaction) {
 
     if (fetchError) {
         console.error('Slot balance fetch error:', fetchError);
-        return interaction.reply({ content: '❌ Error checking your ticket balance.', flags: MessageFlags.Ephemeral });
+        return interaction.editReply({ content: '❌ Error checking your ticket balance.' });
     }
 
     const balance = userData?.ticket_count || 0;
     if (balance < betAmount) {
-        return interaction.reply({ content: `❌ You only have ${balance} ticket(s). You can't bet ${betAmount}.`, flags: MessageFlags.Ephemeral });
+        return interaction.editReply({ content: `❌ You only have ${balance} ticket(s). You can't bet ${betAmount}.` });
     }
 
-    // Deduct bet
     const { error: deductError } = await supabase
         .rpc('deduct_tickets', { user_id: userId, amount: betAmount });
 
     if (deductError) {
         console.error('Slot deduct error:', deductError);
-        return interaction.reply({ content: '❌ Failed to place bet. Please try again.', flags: MessageFlags.Ephemeral });
+        return interaction.editReply({ content: '❌ Failed to place bet. Please try again.' });
     }
 
     // Spin the reels
@@ -95,10 +94,9 @@ async function handleSlotsModal(interaction) {
         )
         .setFooter({ text: winAmount > 0 ? winDescription : 'Better luck next time!' });
 
-    // Send ephemeral reply to user
-    await interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
+    await interaction.editReply({ embeds: [embed] });
 
-    // Send temporary public message for logging (Sapphire)
+    // Public log for Sapphire (auto-delete)
     try {
         const publicMsg = await interaction.channel.send({ embeds: [embed] });
         setTimeout(() => publicMsg.delete().catch(() => {}), 100);
@@ -107,4 +105,4 @@ async function handleSlotsModal(interaction) {
     }
 }
 
-module.exports = { handleSlotsModal };
+module.exports = { handleSlotsBet };
