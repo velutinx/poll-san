@@ -8,7 +8,7 @@ const TRIVIA_CONFIG = h.games?.trivia || {};
 const TRIVIA_BOT_ID = TRIVIA_CONFIG.botId || h.ids?.bots?.rinbot || '429656936435286016';
 const TRIVIA_CHANNEL_ID = TRIVIA_CONFIG.channelId || h.ids?.channels?.TRIVIA || '1495387346990928003';
 const DAILY_TICKET_CAP = TRIVIA_CONFIG.dailyTicketCap || 10;
-const CLEANUP_DELAY = TRIVIA_CONFIG.cleanupDelayMs || 30000;
+const CLEANUP_DELAY = 30000; // 30 seconds – gives RinBot time to finish
 
 const activeSessions = new Map();
 
@@ -81,29 +81,32 @@ function parseRankingFromEmbed(embed) {
     }
 
     const allText = textSources.join('\n');
-    console.log('[Trivia] Parsing text:', allText.substring(0, 200));
+    console.log('[Trivia] Parsing text:', allText.substring(0, 300));
 
     const lines = allText.split('\n');
     for (const line of lines) {
-        if (!line.match(/[:*].+[:*]|\d+\s*\([\d:.]+\)/)) continue;
+        // Detect ranking lines by the presence of placement emojis
+        if (!line.includes(':first_place:') && !line.includes(':second_place:') && !line.includes(':third_place:')) continue;
 
+        // Extract points: digits immediately before time in parentheses
         const pointsMatch = line.match(/(\d+)\s*\([\d:.]+\)/);
         if (!pointsMatch) continue;
         const points = parseInt(pointsMatch[1], 10);
 
-        let usernamePart = line
-            .replace(/<a?:[^:]+:\d+>|:[^:]+:/g, '')
-            .replace(/\*\*.*?\*\*/g, '')
-            .replace(/__.*?__/g, '')
+        // Extract username: remove emoji and everything after points/time
+        let username = line
+            .replace(/<a?:[^:]+:\d+>|:[^:]+:/g, '') // Remove custom emojis
+            .replace(/\*\*|\*/g, '') // Remove bold
             .trim();
 
-        usernamePart = usernamePart.split(/\s*\d+\s*\(/)[0].trim();
+        username = username.split(/\s*\d+\s*\(/)[0].trim();
 
+        // Try to find a Discord mention first (if RinBot ever includes them)
         const mentionMatch = line.match(/<@!?(\d+)>/);
         if (mentionMatch) {
-            participants.set(mentionMatch[1], { points, username: usernamePart });
+            participants.set(mentionMatch[1], { points, username });
         } else {
-            participants.set(usernamePart, { points, username: usernamePart });
+            participants.set(username, { points, username });
         }
     }
 
@@ -125,17 +128,13 @@ async function resolveUsernameToMember(guild, username) {
     }
 }
 
-
-
-
 async function cleanupSessionMessages(message, sessionData) {
     try {
         const channel = message.channel;
         const startId = sessionData.startMessageId;
         const endId = message.id;
 
-        // Collect all message IDs to delete
-        const messageIdsToDelete = [endId]; // Include ranking message itself
+        const messageIdsToDelete = [endId];
         let lastId = endId;
 
         while (true) {
@@ -143,10 +142,7 @@ async function cleanupSessionMessages(message, sessionData) {
             if (messages.size === 0) break;
 
             for (const [id, msg] of messages) {
-                if (id < startId) {
-                    // We've passed the start of the session
-                    break;
-                }
+                if (id < startId) break;
                 if (msg.author.id === TRIVIA_BOT_ID) {
                     messageIdsToDelete.push(id);
                 }
@@ -159,8 +155,6 @@ async function cleanupSessionMessages(message, sessionData) {
 
         console.log(`[Trivia] Attempting to delete ${messageIdsToDelete.length} messages`);
 
-        // Discord allows bulk deletion of up to 100 messages at a time, and only messages under 14 days old.
-        // We'll chunk the IDs into groups of 100 and use bulkDelete.
         const chunkSize = 100;
         for (let i = 0; i < messageIdsToDelete.length; i += chunkSize) {
             const chunk = messageIdsToDelete.slice(i, i + chunkSize);
@@ -168,18 +162,16 @@ async function cleanupSessionMessages(message, sessionData) {
                 const deleted = await channel.bulkDelete(chunk, true);
                 console.log(`[Trivia] Bulk deleted ${deleted.size} messages`);
             } catch (bulkErr) {
-                // Fallback to individual deletion if bulk fails (e.g., messages too old)
-                console.warn('[Trivia] Bulk delete failed, falling back to individual:', bulkErr.message);
+                console.warn('[Trivia] Bulk delete failed, falling back:', bulkErr.message);
                 for (const id of chunk) {
                     try {
                         const msg = await channel.messages.fetch(id);
                         await msg.delete();
                     } catch (err) {
-                        // Message already deleted or not found
+                        // ignore
                     }
                 }
             }
-            // Small delay between bulk delete calls to avoid rate limiting
             await new Promise(resolve => setTimeout(resolve, 1000));
         }
 
@@ -262,9 +254,11 @@ async function handleTriviaMessage(message) {
     if (message.channel.id !== TRIVIA_CHANNEL_ID) return;
 
     const content = message.content || '';
-    const embedTitle = message.embeds[0]?.title || '';
-    const embedDescription = message.embeds[0]?.description || '';
+    const embed = message.embeds[0];
+    const embedTitle = embed?.title || '';
+    const embedDescription = embed?.description || '';
 
+    // Session start detection
     if (content.includes('Started a session with') || embedTitle.includes('Started a session')) {
         const roundsMatch = content.match(/with (\d+) rounds/) || embedDescription.match(/with (\d+) rounds/);
         const rounds = roundsMatch ? parseInt(roundsMatch[1], 10) : 0;
@@ -276,9 +270,14 @@ async function handleTriviaMessage(message) {
         return;
     }
 
+    // Session end detection: look for "Ranking for this session" OR the presence of :first_place: emoji in description/fields
+    const hasFirstPlaceEmoji = embedDescription.includes(':first_place:') ||
+        (embed?.fields && embed.fields.some(f => f.value.includes(':first_place:')));
+
     if (content.includes('Ranking for this session') || 
         embedTitle.includes('Ranking for this session') ||
-        embedDescription.includes('Ranking for this session')) {
+        embedDescription.includes('Ranking for this session') ||
+        hasFirstPlaceEmoji) {
         console.log(`[Trivia] Detected ranking message in ${message.channel.id}`);
         await processSessionEnd(message);
         return;
