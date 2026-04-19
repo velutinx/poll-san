@@ -8,7 +8,7 @@ const TRIVIA_CONFIG = h.games?.trivia || {};
 const TRIVIA_BOT_ID = TRIVIA_CONFIG.botId || h.ids?.bots?.rinbot || '429656936435286016';
 const TRIVIA_CHANNEL_ID = TRIVIA_CONFIG.channelId || h.ids?.channels?.TRIVIA || '1495387346990928003';
 const DAILY_TICKET_CAP = TRIVIA_CONFIG.dailyTicketCap || 10;
-const CLEANUP_DELAY = TRIVIA_CONFIG.cleanupDelayMs || 15000;
+const CLEANUP_DELAY = TRIVIA_CONFIG.cleanupDelayMs || 30000;
 
 const activeSessions = new Map();
 
@@ -125,20 +125,31 @@ async function resolveUsernameToMember(guild, username) {
     }
 }
 
+
+
+
 async function cleanupSessionMessages(message, sessionData) {
     try {
         const channel = message.channel;
         const startId = sessionData.startMessageId;
         const endId = message.id;
 
+        // Collect all message IDs to delete
+        const messageIdsToDelete = [endId]; // Include ranking message itself
         let lastId = endId;
+
         while (true) {
             const messages = await channel.messages.fetch({ limit: 100, before: lastId });
             if (messages.size === 0) break;
 
-            const toDelete = messages.filter(m => m.id >= startId && m.author.id === TRIVIA_BOT_ID);
-            for (const [, msg] of toDelete) {
-                await msg.delete().catch(() => {});
+            for (const [id, msg] of messages) {
+                if (id < startId) {
+                    // We've passed the start of the session
+                    break;
+                }
+                if (msg.author.id === TRIVIA_BOT_ID) {
+                    messageIdsToDelete.push(id);
+                }
             }
 
             const oldest = messages.last();
@@ -146,7 +157,32 @@ async function cleanupSessionMessages(message, sessionData) {
             lastId = oldest.id;
         }
 
-        await message.delete().catch(() => {});
+        console.log(`[Trivia] Attempting to delete ${messageIdsToDelete.length} messages`);
+
+        // Discord allows bulk deletion of up to 100 messages at a time, and only messages under 14 days old.
+        // We'll chunk the IDs into groups of 100 and use bulkDelete.
+        const chunkSize = 100;
+        for (let i = 0; i < messageIdsToDelete.length; i += chunkSize) {
+            const chunk = messageIdsToDelete.slice(i, i + chunkSize);
+            try {
+                const deleted = await channel.bulkDelete(chunk, true);
+                console.log(`[Trivia] Bulk deleted ${deleted.size} messages`);
+            } catch (bulkErr) {
+                // Fallback to individual deletion if bulk fails (e.g., messages too old)
+                console.warn('[Trivia] Bulk delete failed, falling back to individual:', bulkErr.message);
+                for (const id of chunk) {
+                    try {
+                        const msg = await channel.messages.fetch(id);
+                        await msg.delete();
+                    } catch (err) {
+                        // Message already deleted or not found
+                    }
+                }
+            }
+            // Small delay between bulk delete calls to avoid rate limiting
+            await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+
         console.log(`[Trivia] Cleaned up session messages in ${channel.id}`);
     } catch (err) {
         console.error('Trivia cleanup error:', err);
