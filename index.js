@@ -159,14 +159,19 @@ client.on(Events.InteractionCreate, async (interaction) => {
                 await handleSlotsBet(interaction, 25);
             } else if (interaction.customId === 'hangman_start_button') {
                 await startHangmanGame(interaction);
-            } else if (interaction.customId === 'trivia_start_hard') {               // <-- ADDED
-                const commandString = '/sb number-of-rounds:5 multiple-winners:Yes difficulty:Hard';
-                await interaction.channel.send(commandString);
-                await interaction.reply({
-                    content: `RinBot command prepared! Press the up arrow in the chat, then Enter to send it.`,
-                    flags: MessageFlags.Ephemeral
-                });
-            } else {
+} else if (interaction.customId === 'trivia_start_hard') {
+    // Use RinBot's legacy prefix command format
+    const commandString = '!sb rounds:5 winners:yes difficulty:hard';
+    
+    // Send the command as a normal message
+    await interaction.channel.send(commandString);
+    
+    // Optional: Send an ephemeral confirmation
+    await interaction.reply({
+        content: `✅ RinBot command sent! If it doesn't start automatically, just press Enter to send the message above.`,
+        flags: MessageFlags.Ephemeral
+    });
+} else {
                 await giveawayCommand.handleGiveawayButton(interaction);
             }
         } else if (interaction.isStringSelectMenu()) {
