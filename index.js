@@ -28,6 +28,7 @@ const { handleSlotsModal } = require('./services/slotsHandler');
 const { ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder: ModalActionRowBuilder } = require('discord.js');
 const { startHangmanGame } = require('./services/hangmanGame');
 const { checkAndNotifyCooldowns } = require('./services/cooldownNotifier');
+const { handleTriviaMessage } = require('./services/triviaJanitor');
 
 // ==================== DISCORD CLIENT SETUP ====================
 const client = new Client({
@@ -181,6 +182,7 @@ client.on(Events.MessageReactionAdd, (reaction, user) => require('./events/react
 client.on(Events.MessageReactionRemove, (reaction, user) => require('./events/reactions')(reaction, user, 'remove'));
 client.on('guildMemberRemove', require('./events/guildMemberPollRemove'));
 client.on('messageCreate', messageCreateEvent);
+client.on('messageCreate', (message) => { handleTriviaMessage(message).catch(err => console.error('Trivia handler error:', err)); });
 
 // --- 4. XP SYSTEM ---
 client.on(Events.MessageCreate, async (message) => {
