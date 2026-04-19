@@ -5,9 +5,9 @@ const supabase = require('./supabase');
 
 const SYMBOLS = ['🍒', '🍇', '🍊', '🍋', '7️⃣', '💎'];
 const PAYOUTS = {
-    threeDiamond: 10,
-    threeOther: 2,
-    twoOfKind: 0.5
+    threeDiamond: 10,   // 3× 💎 (jackpot)
+    threeOther: 2,      // 3× any other symbol
+    twoOfKind: 2.1      // Pair (increased from 0.5 to 2.1)
 };
 
 // Reusable function to spin and process the bet
