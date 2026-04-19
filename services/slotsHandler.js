@@ -22,7 +22,11 @@ async function handleSlotsBet(interaction, betAmount) {
     // We don't show anything yet—just acknowledge the interaction
     await interaction.deferUpdate();
 
-    // Validate and deduct tickets (same as before)
+    // Fetch the member to get their server nickname
+    const member = await interaction.guild.members.fetch(userId).catch(() => null);
+    const playerName = member?.displayName || user.username; // Prefer server nickname, fallback to username
+
+    // Validate and deduct tickets
     const { data: userData, error: fetchError } = await supabase
         .from('games_wordle')
         .select('ticket_count')
@@ -82,7 +86,7 @@ async function handleSlotsBet(interaction, betAmount) {
     const newBalance = newData?.ticket_count || 0;
 
     const embed = new EmbedBuilder()
-        .setTitle('🎰 Slot Machine')
+        .setTitle(`🎰 Slot Machine — ${playerName}`)
         .setDescription(`**${slot1}  |  ${slot2}  |  ${slot3}**`)
         .setColor(winAmount > 0 ? '#00FFCC' : '#FF5555')
         .addFields(
@@ -121,23 +125,11 @@ async function handleSlotsBet(interaction, betAmount) {
         slotMessage._timeout = timeout;
         activeSlotMessages.set(userId, slotMessage);
 
-        // Optional: send ephemeral confirmation that spin was processed (can be silent if preferred)
-        // await interaction.followUp({ content: 'Spin complete!', flags: MessageFlags.Ephemeral });
-
     } catch (err) {
         console.error('Failed to send/edit slot message:', err);
         // Fallback to ephemeral reply if public message fails
         await interaction.followUp({ embeds: [embed], flags: MessageFlags.Ephemeral });
     }
-
-    // Sapphire logging: we can also send a temporary public copy if needed, but the main message already serves as public log.
-    // If you still want an extra flash message for Sapphire, uncomment below:
-    /*
-    try {
-        const publicMsg = await interaction.channel.send({ embeds: [embed] });
-        setTimeout(() => publicMsg.delete().catch(() => {}), 100);
-    } catch (err) {}
-    */
 }
 
 module.exports = { handleSlotsBet };
