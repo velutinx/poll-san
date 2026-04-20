@@ -66,17 +66,26 @@ router.post('/api/verify', async (req, res) => {
     const unverifiedRole = guild.roles.cache.get(unverifiedRoleId);
     const memberRole = guild.roles.cache.get(memberRoleId);
 
-    try {
-        if (hasSupporter) {
-            if (unverifiedRole) await member.roles.remove(unverifiedRole);
-        } else {
-            if (memberRole && unverifiedRole) {
-                await member.roles.add(memberRole);
-                await member.roles.remove(unverifiedRole);
-            }
+try {
+    if (hasSupporter) {
+        if (unverifiedRole) await member.roles.remove(unverifiedRole);
+    } else {
+        if (memberRole && unverifiedRole) {
+            await member.roles.add(memberRole);
+            await member.roles.remove(unverifiedRole);
         }
-        return res.json({ success: true, message: 'Verification successful' });
+    }
+    // Send DM confirmation
+    try {
+        await member.send(`✅ You have successfully verified in **${guild.name}**! You now have access to the server.`);
     } catch (err) {
+        console.log(`Could not send DM to ${member.user.tag}`);
+    }
+    return res.json({ success: true, message: 'Verification successful' });
+} catch (err) {
+    console.error('Role assignment error:', err);
+    return res.status(500).json({ success: false, error: 'Failed to assign roles' });
+} catch (err) {
         console.error('Role assignment error:', err);
         return res.status(500).json({ success: false, error: 'Failed to assign roles' });
     }
