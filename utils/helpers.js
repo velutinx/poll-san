@@ -106,7 +106,10 @@ module.exports = {
             server_booster: '1469284491456548976',
             supporter: '1466155709547675795',
             giveaway_notify_role: '1472273843665113139',
-            restricted: ['1468666174102442227', '1467233133362544642', '1487554855068368916']
+            restricted: ['1468666174102442227', '1467233133362544642', '1487554855068368916'],
+            // ========== VERIFICATION ROLES (ADDED) ==========
+            unverified: '1495679222264627321',   // role assigned on join
+            member: '1495684657730158724'        // free verified member role
         },
         tags: {
             preview_female: '1465939310720192637',
@@ -117,12 +120,14 @@ module.exports = {
         },
         channels: {
             QUEUE: '1473730427318435860',
-            TRIVIA: '1495387346990928003'                     // <-- ADDED
+            TRIVIA: '1495387346990928003',
+            // ========== VERIFICATION CHANNEL (ADDED) ==========
+            verify: '1495679452489977897'       // #verify channel
         },
         users: {
             Velutinx: '1380051214766444617'
         },
-        bots: {                                              // <-- ADDED (optional but useful)
+        bots: {
             rinbot: '429656936435286016'
         }
     },
@@ -167,11 +172,11 @@ module.exports = {
             cooldownHours: 24,
             winPattern: /^You win!$/
         },
-        trivia: {                                             // <-- ADDED
-            botId: '429656936435286016',                     // RinBot ID
-            channelId: '1495387346990928003',                // #trivia channel
+        trivia: {
+            botId: '429656936435286016',
+            channelId: '1495387346990928003',
             dailyTicketCap: 10,
-            cleanupDelayMs: 15000                            // 15 seconds
+            cleanupDelayMs: 15000
         }
     },
 
