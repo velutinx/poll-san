@@ -32,8 +32,8 @@ module.exports = {
                 `# Welcome To Your Community\n\n` +
                 `To unlock full server access please click the button below.\n\n` +
                 `See you in there...`
-            )
-            .setImage('https://www.velutinx.com/images/LogoDiscord.png'); // Fixed image URL
+            );
+        // No .setImage() here – that was causing the extra image inside the embed
 
         const row = new ActionRowBuilder().addComponents(
             new ButtonBuilder()
