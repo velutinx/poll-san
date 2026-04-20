@@ -133,7 +133,7 @@ module.exports = (client) => {
     const setupReleasesRoutes = require('./routes/releases');
     const setupMonitoringRoutes = require('./routes/monitoring');
     const setupGiveawayRoutes = require('./routes/giveaway');
-    const verifyRouter = require('./verifyCallback');
+    const verifyRouter = require('./routes/verifyCallback');
     
     setupGiveawayRoutes(app, client, supabase, supabaseRetry, getGuildMembers);
     setupQueueRoutes(app, client, queueService);
