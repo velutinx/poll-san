@@ -1,7 +1,6 @@
-// poll-san/index.js
+// index.js
 
 const path = require('path');
-const pollService = require('./services/pollService');
 require('dotenv').config({ path: path.resolve(__dirname, '.env'), quiet: true });
 
 const {
@@ -13,8 +12,7 @@ const {
     ContextMenuCommandBuilder,
     ApplicationCommandType,
     Partials,
-    Events,
-    MessageFlags
+    Events
 } = require('discord.js');
 
 const supabase = require('./services/supabase');
@@ -24,14 +22,9 @@ const XPLib = require('./utils/xputils');
 const { syncMembershipRoles } = require('./services/membershipSync');
 const giveawayCommand = require('./commands/giveaway');
 const messageCreateEvent = require('./events/messageCreate');
-const { handleShopSelect, handleShopPurchase } = require('./services/shopHandler');
-const { handleSlotsBet } = require('./services/slotsHandler');
-const { startHangmanGame } = require('./services/hangmanGame');
 const { checkAndNotifyCooldowns } = require('./services/cooldownNotifier');
 const { handleTriviaMessage, processEndOfDayAwards } = require('./services/triviaJanitor');
-const helpers = require('./utils/helpers');
-
-// ========== VERIFICATION MODULE ==========
+const handleInteraction = require('./handlers/interactionHandler');
 const verification = require('./events/verification');
 
 // ==================== DISCORD CLIENT SETUP ====================
@@ -70,7 +63,7 @@ client.once(Events.ClientReady, async (c) => {
         require('./commands/admin/post-slots-ui').data.toJSON(),
         require('./commands/admin/post-hangman-ui').data.toJSON(),
         require('./commands/admin/post-verify-ui').data.toJSON(),
-        require('./commands/admin/post-checkin-ui').data.toJSON(),   // 👈 NEW
+        require('./commands/admin/post-checkin-ui').data.toJSON(),
     ];
 
     const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
@@ -86,18 +79,13 @@ client.once(Events.ClientReady, async (c) => {
     // Role cleanup
     const guild = client.guilds.cache.get(process.env.GUILD_ID);
     if (guild) cleanRoles(guild);
-
     setInterval(() => {
         const activeGuild = client.guilds.cache.get(process.env.GUILD_ID);
         if (activeGuild) cleanRoles(activeGuild);
     }, 3600000);
 
     // Membership sync
-    try {
-        await syncMembershipRoles(client);
-    } catch (err) {
-        console.error('[MembershipSync] Initial sync failed:', err);
-    }
+    try { await syncMembershipRoles(client); } catch (err) { console.error('[MembershipSync] Initial sync failed:', err); }
     setInterval(() => {
         syncMembershipRoles(client).catch(err => console.error('[MembershipSync] Sync error:', err));
     }, 300000);
@@ -115,7 +103,6 @@ client.once(Events.ClientReady, async (c) => {
         .from('auto_resume')
         .select('*')
         .gt('ends_at', new Date().toISOString());
-
     if (activePolls && activePolls.length > 0) {
         for (const poll of activePolls) {
             try {
@@ -137,156 +124,15 @@ client.once(Events.ClientReady, async (c) => {
     await restoreGiveaways(client).catch(console.error);
 });
 
-// --- 2. INTERACTION HANDLER ---
-client.on(Events.InteractionCreate, async (interaction) => {
-    try {
-        if (interaction.isChatInputCommand()) {
-            switch (interaction.commandName) {
-                case 'level': require('./commands/level')(interaction); break;
-                case 'giveaway': await giveawayCommand.execute(interaction); break;
-                case 'tickets': await require('./commands/tickets/balance').execute(interaction); break;
-                case 'shop': await require('./commands/tickets/shop').execute(interaction); break;
-                case 'slots': await require('./commands/games/slots').execute(interaction); break;
-                case 'post_slots_ui': await require('./commands/admin/post-slots-ui').execute(interaction); break;
-                case 'post_hangman_ui': await require('./commands/admin/post-hangman-ui').execute(interaction); break;
-                case 'post_verify_ui': await require('./commands/admin/post-verify-ui').execute(interaction); break;
-                case 'post_checkin_ui': await require('./commands/admin/post-checkin-ui').execute(interaction); break; // 👈 NEW
-            }
-        } else if (interaction.isUserContextMenuCommand() && interaction.commandName === 'View Level') {
-            require('./commands/level')(interaction);
-        } else if (interaction.isButton()) {
-            if (interaction.customId === 'shop_buy_confirm') {
-                await handleShopPurchase(interaction);
-            } else if (interaction.customId === 'slots_bet_1') {
-                await handleSlotsBet(interaction, 1);
-            } else if (interaction.customId === 'slots_bet_5') {
-                await handleSlotsBet(interaction, 5);
-            } else if (interaction.customId === 'slots_bet_25') {
-                await handleSlotsBet(interaction, 25);
-            } else if (interaction.customId === 'hangman_start_button') {
-                await startHangmanGame(interaction);
-            } else if (interaction.customId === 'verify_start') {
-                const member = interaction.member;
-                const supporterRoleId = helpers.ids.roles.supporter;
-                const memberRoleId = helpers.ids.roles.member;
-                const hasSupporter = member.roles.cache.has(supporterRoleId);
-                const hasMember = member.roles.cache.has(memberRoleId);
-                
-                if (hasSupporter || hasMember) {
-                    return interaction.reply({
-                        content: '✅ You are already verified! No need to verify again.',
-                        flags: 64
-                    });
-                }
-                
-                const workerUrl = process.env.VERIFY_WORKER_URL;
-                if (!workerUrl) {
-                    return interaction.reply({
-                        content: '❌ Verification service is not configured. Please contact an admin.',
-                        flags: 64
-                    });
-                }
-                const uniqueUrl = `${workerUrl}?user=${interaction.user.id}&guild=${interaction.guild.id}`;
-                await interaction.reply({
-                    content: `🔗 **Your verification link** (expires after 10 minutes):\n${uniqueUrl}\n\nComplete the CAPTCHA in your browser to gain access.`,
-                    flags: 64
-                });
-            } else if (interaction.customId === 'checkin_claim') {      // 👈 DAILY CHECK‑IN BUTTON
-                const userId = interaction.user.id;
-                const guildId = interaction.guild.id;
-                
-                await interaction.deferReply({ flags: 64 });
-                
-                // Check last check-in from games_daily_checkins table
-                const { data: checkin, error } = await supabase
-                    .from('games_daily_checkins')
-                    .select('last_checkin')
-                    .eq('user_id', userId)
-                    .maybeSingle();  // use maybeSingle to avoid error when no row
-                
-                const now = new Date();
-                let canClaim = true;
-                let timeLeft = '';
-                
-                if (checkin && checkin.last_checkin) {
-                    const last = new Date(checkin.last_checkin);
-                    const diffHours = (now - last) / (1000 * 60 * 60);
-                    if (diffHours < 24) {
-                        canClaim = false;
-                        const hoursLeft = 24 - diffHours;
-                        const minutesLeft = Math.ceil((hoursLeft % 1) * 60);
-                        const hours = Math.floor(hoursLeft);
-                        timeLeft = `${hours}h ${minutesLeft}m`;
-                    }
-                }
-                
-                if (!canClaim) {
-                    return interaction.editReply({
-                        content: `⏳ You already claimed your daily reward! Come back in **${timeLeft}**.`
-                    });
-                }
-                
-                // --- 1. Add tickets (using user_tickets table) ---
-                const ticketAmount = helpers.CHECKIN_REWARD_TICKETS;
-                const { data: userTickets } = await supabase
-                    .from('user_tickets')
-                    .select('balance')
-                    .eq('user_id', userId)
-                    .maybeSingle();
-                
-                if (userTickets) {
-                    await supabase
-                        .from('user_tickets')
-                        .update({ balance: userTickets.balance + ticketAmount })
-                        .eq('user_id', userId);
-                } else {
-                    await supabase
-                        .from('user_tickets')
-                        .insert({ user_id: userId, balance: ticketAmount });
-                }
-                
-                // --- 2. Reset game cooldowns (set last_played to a past date or null) ---
-                // Adjust table names and column names to match your actual schema.
-                // Here I assume each game has a table with a `last_played` column.
-                const gameTables = ['wordle_stats', 'hangman_stats', 'trivia_stats'];
-                for (const table of gameTables) {
-                    await supabase
-                        .from(table)
-                        .update({ last_played: null, cooldown_end: null })
-                        .eq('user_id', userId);
-                }
-                
-                // --- 3. Update last_checkin in games_daily_checkins ---
-                await supabase
-                    .from('games_daily_checkins')
-                    .upsert({ user_id: userId, last_checkin: now.toISOString() }, { onConflict: 'user_id' });
-                
-                // --- 4. Send ephemeral success message ---
-                await interaction.editReply({
-                    content: `${helpers.releaseEmojis.VERIFY} **Daily Check-In Successful!**\n\n` +
-                             `You received **${ticketAmount} tickets**! 🎫\n` +
-                             `All your game cooldowns have been reset. You can play Wordle, Hangman, and Trivia again now!`
-                });
-            } else {
-                await giveawayCommand.handleGiveawayButton(interaction);
-            }
-        } else if (interaction.isStringSelectMenu()) {
-            if (interaction.customId === 'shop_select') {
-                await handleShopSelect(interaction);
-            }
-        }
-    } catch (err) {
-        console.error('Interaction Error:', err);
-    }
-});
+// --- 2. INTERACTION HANDLER (delegated) ---
+client.on(Events.InteractionCreate, handleInteraction);
 
-// --- 3. VERIFICATION HANDLER (for math modal - optional, keep for fallback) ---
+// --- 3. VERIFICATION HANDLER (separate for modal) ---
 client.on(Events.InteractionCreate, verification.handleInteraction);
 
 // --- 4. EVENT LISTENERS ---
 client.on(Events.GuildMemberAdd, (member) => require('./events/guildMemberAdd')(member));
 client.on(Events.GuildMemberAdd, verification.execute);
-
 client.on(Events.MessageReactionAdd, (reaction, user) => require('./events/reactions')(reaction, user, 'add'));
 client.on(Events.MessageReactionRemove, (reaction, user) => require('./events/reactions')(reaction, user, 'remove'));
 client.on('guildMemberRemove', require('./events/guildMemberPollRemove'));
