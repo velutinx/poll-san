@@ -34,6 +34,9 @@ const helpers = require('./utils/helpers');
 // ========== VERIFICATION MODULE ==========
 const verification = require('./events/verification');
 
+// TEMPORARY - REMOVE AFTER RUNNING ONCE
+const giveMemberToAll = require('./commands/admin/give-member-to-all');
+
 // ==================== DISCORD CLIENT SETUP ====================
 const client = new Client({
     intents: [
@@ -70,6 +73,8 @@ client.once(Events.ClientReady, async (c) => {
         require('./commands/admin/post-slots-ui').data.toJSON(),
         require('./commands/admin/post-hangman-ui').data.toJSON(),
         require('./commands/admin/post-verify-ui').data.toJSON(),
+        // TEMPORARY - REMOVE AFTER RUNNING ONCE
+        giveMemberToAll.data.toJSON(),
     ];
 
     const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
@@ -149,6 +154,8 @@ client.on(Events.InteractionCreate, async (interaction) => {
                 case 'post_slots_ui': await require('./commands/admin/post-slots-ui').execute(interaction); break;
                 case 'post_hangman_ui': await require('./commands/admin/post-hangman-ui').execute(interaction); break;
                 case 'post_verify_ui': await require('./commands/admin/post-verify-ui').execute(interaction); break;
+                // TEMPORARY - REMOVE AFTER RUNNING ONCE
+                case 'give_member_to_all': await giveMemberToAll.execute(interaction); break;
             }
         } else if (interaction.isUserContextMenuCommand() && interaction.commandName === 'View Level') {
             require('./commands/level')(interaction);
