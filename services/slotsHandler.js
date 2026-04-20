@@ -3,27 +3,23 @@ const supabase = require('./supabase');
 
 const activeGames = new Map();
 
-// ========== TUNABLE SLOT MACHINE SETTINGS ==========
-// Symbol weights (total 100)
-const SYMBOL_WEIGHTS = {
-    '🍒': 20,   // cherry – low payout
-    '💎': 15,   // diamond – high payout
-    '⭐': 65    // star – losing symbol (pairs pay nothing)
-};
+// 5 symbols with different frequencies and multipliers
+// More common symbols have lower multipliers, rarer symbols have higher multipliers
+const SYMBOLS = [
+    '🍒', '🍒', '🍒', '🍒', '🍒', '🍒', '🍒', '🍒', '🍒', '🍒', // 10 cherries
+    '🍋', '🍋', '🍋', '🍋', '🍋', '🍋', '🍋',                     // 7 lemons
+    '🍊', '🍊', '🍊', '🍊', '🍊',                                 // 5 oranges
+    '💎', '💎', '💎',                                             // 3 diamonds
+    '7️⃣', '7️⃣'                                                  // 2 sevens (jackpot)
+]; // total 27 symbols
 
-// Payout multipliers (times bet)
 const PAYOUTS = {
-    '💎💎💎': 8,   // three diamonds
-    '🍒🍒🍒': 2,   // three cherries
-    'pair': 1.5    // pair of cherries or diamonds (net +0.5x)
+    '🍒': 2,   // triple cherry pays 2x bet
+    '🍋': 3,   // triple lemon pays 3x
+    '🍊': 5,   // triple orange pays 5x
+    '💎': 10,  // triple diamond pays 10x
+    '7️⃣': 50   // triple sevens pays 50x (jackpot)
 };
-
-// Build symbol array from weights
-const SYMBOLS = [];
-for (const [sym, weight] of Object.entries(SYMBOL_WEIGHTS)) {
-    for (let i = 0; i < weight; i++) SYMBOLS.push(sym);
-}
-// ===============================================
 
 function spin() {
     return [
@@ -35,21 +31,11 @@ function spin() {
 
 function calculateWin(reels, bet) {
     const [a, b, c] = reels;
-    // Triple check
     if (a === b && b === c) {
-        const key = `${a}${b}${c}`;
-        const multiplier = PAYOUTS[key];
+        const multiplier = PAYOUTS[a];
         if (multiplier) return Math.floor(bet * multiplier);
-        return 0; // triple star pays nothing
     }
-    // Pair check – only cherries or diamonds pay
-    if (a === b || b === c || a === c) {
-        const matched = (a === b) ? a : (b === c) ? b : c;
-        if (matched === '🍒' || matched === '💎') {
-            return Math.floor(bet * PAYOUTS.pair);
-        }
-    }
-    return 0;
+    return 0; // no win
 }
 
 async function getSlotsWebhook(channel) {
@@ -84,7 +70,7 @@ async function handleSlotsBet(interaction, betAmount) {
 
     const currentTickets = userData?.tickets || 0;
     if (currentTickets < betAmount) {
-        await interaction.followUp({ content: `❌ You need ${betAmount} tickets, but you only have ${currentTickets}.`, ephemeral: true });
+        await interaction.followUp({ content: `❌ You need ${betAmount} tickets, but you have only ${currentTickets}.`, ephemeral: true });
         return;
     }
 
@@ -104,21 +90,24 @@ async function handleSlotsBet(interaction, betAmount) {
     const reels = spin();
     const winAmount = calculateWin(reels, betAmount);
     let finalBalance = newBalance;
+    let winMessage = '';
     if (winAmount > 0) {
         finalBalance = newBalance + winAmount;
         await supabase
             .from('games_user_data')
             .update({ tickets: finalBalance })
             .eq('user_id', userId);
+        winMessage = `**You won ${winAmount} tickets!** 🎉`;
+    } else {
+        winMessage = '**You lost.** Better luck next time!';
     }
 
     // Build embed
     const resultLine = `${reels.join(' | ')}`;
-    const winLine = winAmount > 0 ? `**You won ${winAmount} tickets!** 🎉` : '**You lost.** Better luck next time!';
     const embed = {
         color: 0xFFD700,
         title: `🎰 ${interaction.user.displayName}'s Slots`,
-        description: `${resultLine}\n\n${winLine}\n\n**Balance:** ${finalBalance} tickets 🎫\n**Bet:** ${betAmount} tickets`,
+        description: `${resultLine}\n\n${winMessage}\n\n**Balance:** ${finalBalance} tickets 🎫\n**Bet:** ${betAmount} tickets`,
         footer: { text: 'Auto‑delete after 60s of inactivity' }
     };
 
