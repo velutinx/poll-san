@@ -100,7 +100,7 @@ async function handleVerifyStart(interaction) {
 async function handleCheckinClaim(interaction) {
     const userId = interaction.user.id;
     
-    // In-memory rate limit (prevents double-click within 5 seconds)
+    // Rate limit (5 seconds)
     const cooldownMap = global.checkinCooldown || new Map();
     if (!global.checkinCooldown) global.checkinCooldown = cooldownMap;
     const lastClick = cooldownMap.get(userId);
@@ -111,33 +111,23 @@ async function handleCheckinClaim(interaction) {
         });
     }
     cooldownMap.set(userId, Date.now());
-    
     await interaction.deferReply({ flags: 64 });
     
-    // ---- LOG: check current ticket balance ----
-    const { data: beforeTickets, error: beforeError } = await supabase
-        .from('user_tickets')
-        .select('balance')
-        .eq('user_id', userId)
-        .maybeSingle();
-    console.log(`[Checkin] User ${userId} - before balance: ${beforeTickets?.balance ?? 0}`);
-    
-    // ---- Check last check-in ----
-    const { data: checkin, error } = await supabase
-        .from('games_daily_checkins')
-        .select('last_checkin')
+    // Get or create user data
+    let { data: userData, error } = await supabase
+        .from('games_user_data')
+        .select('*')
         .eq('user_id', userId)
         .maybeSingle();
     
-    if (error) console.error('Checkin DB error:', error);
-    console.log(`[Checkin] Last checkin: ${checkin?.last_checkin ?? 'never'}`);
+    if (error) console.error('Fetch error:', error);
     
     const now = new Date();
     let canClaim = true;
     let timeLeft = '';
     
-    if (checkin && checkin.last_checkin) {
-        const last = new Date(checkin.last_checkin);
+    if (userData && userData.last_checkin) {
+        const last = new Date(userData.last_checkin);
         const diffMs = now - last;
         const diffHours = diffMs / (1000 * 60 * 60);
         if (diffHours < 24) {
@@ -156,49 +146,40 @@ async function handleCheckinClaim(interaction) {
         });
     }
     
-    // ---- Add tickets ----
+    // Calculate new ticket balance
     const ticketAmount = helpers.CHECKIN_REWARD_TICKETS;
-    let newBalance;
-    if (beforeTickets) {
-        newBalance = beforeTickets.balance + ticketAmount;
-        const { error: updateError } = await supabase
-            .from('user_tickets')
-            .update({ balance: newBalance })
+    const currentTickets = userData?.tickets || 0;
+    const newBalance = currentTickets + ticketAmount;
+    
+    // Prepare update object
+    const updateData = {
+        tickets: newBalance,
+        last_checkin: now.toISOString(),
+        wordle_last_played: null,
+        hangman_last_played: null,
+        trivia_last_played: null,
+        updated_at: now.toISOString()
+    };
+    
+    if (userData) {
+        await supabase
+            .from('games_user_data')
+            .update(updateData)
             .eq('user_id', userId);
-        if (updateError) console.error('Ticket update error:', updateError);
     } else {
-        newBalance = ticketAmount;
-        const { error: insertError } = await supabase
-            .from('user_tickets')
-            .insert({ user_id: userId, balance: ticketAmount });
-        if (insertError) console.error('Ticket insert error:', insertError);
-    }
-    console.log(`[Checkin] Added ${ticketAmount} tickets. New balance: ${newBalance}`);
-    
-    // ---- Reset game cooldowns (database) ----
-    const gameTables = ['wordle_stats', 'hangman_stats', 'trivia_stats'];
-    for (const table of gameTables) {
-        const { error: resetError } = await supabase
-            .from(table)
-            .update({ last_played: null, cooldown_end: null })
-            .eq('user_id', userId);
-        if (resetError) console.error(`Reset error on ${table}:`, resetError);
+        await supabase
+            .from('games_user_data')
+            .insert({ user_id: userId, ...updateData });
     }
     
-    // ---- Update last checkin ----
-    const { error: upsertError } = await supabase
-        .from('games_daily_checkins')
-        .upsert({ user_id: userId, last_checkin: now.toISOString() }, { onConflict: 'user_id' });
-    if (upsertError) console.error('Upsert error:', upsertError);
-    else console.log(`[Checkin] Updated last_checkin to ${now.toISOString()}`);
+    console.log(`[Checkin] User ${userId} - tickets: ${currentTickets} → ${newBalance}`);
     
-    // ---- Success message with new balance ----
+    // Success message
     await interaction.editReply({
         content: `${helpers.releaseEmojis.VERIFY} **Daily Check-In Successful!**\n\n` +
                  `You received **${ticketAmount} tickets**! New balance: **${newBalance}** 🎫\n` +
                  `Your Wordle, Hangman, and Trivia cooldowns have been reset.`
     });
     
-    // Clean up rate limit after 5 seconds
     setTimeout(() => cooldownMap.delete(userId), 5000);
 }
