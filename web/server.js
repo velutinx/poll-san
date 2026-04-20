@@ -135,6 +135,8 @@ module.exports = (client) => {
     const setupReleasesRoutes = require('./routes/releases');
     const setupMonitoringRoutes = require('./routes/monitoring');
     const setupGiveawayRoutes = require('./routes/giveaway');
+    const reminderRouter = require('./routes/reminder'); 
+    app.use(reminderRouter);
     // ❌ Remove the duplicate require for verifyRouter – it's already loaded at the top
     
     setupGiveawayRoutes(app, client, supabase, supabaseRetry, getGuildMembers);
