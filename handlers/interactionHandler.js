@@ -146,33 +146,47 @@ async function handleCheckinClaim(interaction) {
         });
     }
     
-    // Calculate new ticket balance
-    const ticketAmount = helpers.CHECKIN_REWARD_TICKETS;
-    const currentTickets = userData?.tickets || 0;
-    const newBalance = currentTickets + ticketAmount;
-    
-    // Prepare update object
-    const updateData = {
-        tickets: newBalance,
-        last_checkin: now.toISOString(),
-        wordle_last_played: null,
-        hangman_last_played: null,
-        trivia_last_played: null,
-        updated_at: now.toISOString()
-    };
-    
-    if (userData) {
-        await supabase
-            .from('games_user_data')
-            .update(updateData)
-            .eq('user_id', userId);
-    } else {
-        await supabase
-            .from('games_user_data')
-            .insert({ user_id: userId, ...updateData });
+// Add tickets & reset cooldowns
+const ticketAmount = helpers.CHECKIN_REWARD_TICKETS;
+const currentTickets = userData?.tickets || 0;
+const newBalance = currentTickets + ticketAmount;
+const nowIso = now.toISOString();
+
+if (userData) {
+    const { error: updateError } = await supabase
+        .from('games_user_data')
+        .update({
+            tickets: newBalance,
+            last_checkin: nowIso,
+            wordle_last_played: null,
+            hangman_last_played: null,
+            trivia_last_played: null,
+            updated_at: nowIso
+        })
+        .eq('user_id', userId);
+    if (updateError) {
+        console.error('Update error:', updateError);
+        return interaction.editReply({ content: '❌ Database error. Please try again later.' });
     }
-    
-    console.log(`[Checkin] User ${userId} - tickets: ${currentTickets} → ${newBalance}`);
+    console.log(`[Checkin] Updated user ${userId} tickets: ${currentTickets} → ${newBalance}`);
+} else {
+    const { error: insertError } = await supabase
+        .from('games_user_data')
+        .insert({
+            user_id: userId,
+            tickets: newBalance,
+            last_checkin: nowIso,
+            wordle_last_played: null,
+            hangman_last_played: null,
+            trivia_last_played: null,
+            updated_at: nowIso
+        });
+    if (insertError) {
+        console.error('Insert error:', insertError);
+        return interaction.editReply({ content: '❌ Database error. Please try again later.' });
+    }
+    console.log(`[Checkin] Inserted user ${userId} with tickets ${newBalance}`);
+}
     
     // Success message
     await interaction.editReply({
