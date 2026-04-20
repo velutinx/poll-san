@@ -4,7 +4,8 @@ const { createClient } = require('@supabase/supabase-js');
 const WebSocket = require('ws');
 
 const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseKey = process.env.SUPABASE_KEY;
+// Use service role key if available, fallback to anon
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_KEY;
 
 if (!supabaseUrl || !supabaseKey) {
     console.error('❌ Missing SUPABASE_URL or SUPABASE_KEY');
@@ -14,11 +15,9 @@ if (!supabaseUrl || !supabaseKey) {
 const supabase = createClient(supabaseUrl, supabaseKey, {
     realtime: {
         transport: WebSocket,
-        heartbeatIntervalMs: 15000,     // Send heartbeats more frequently
-        timeout: 20000,                 // Shorter timeout for detection
-        params: {
-            heartbeat: true
-        }
+        heartbeatIntervalMs: 15000,
+        timeout: 20000,
+        params: { heartbeat: true }
     }
 });
 module.exports = supabase;
