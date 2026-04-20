@@ -30,6 +30,7 @@ const { startHangmanGame } = require('./services/hangmanGame');
 const { checkAndNotifyCooldowns } = require('./services/cooldownNotifier');
 const { handleTriviaMessage, processEndOfDayAwards } = require('./services/triviaJanitor');
 const helpers = require('./utils/helpers');
+
 // ========== VERIFICATION MODULE ==========
 const verification = require('./events/verification');
 
@@ -58,7 +59,7 @@ client.once(Events.ClientReady, async (c) => {
         console.error('❌ Failed to start dashboard:', err.message);
     }
 
-    // Sync slash commands (trivia UI command removed)
+    // Sync slash commands
     const commandsData = [
         new SlashCommandBuilder().setName('level').setDescription('Shows your current XP/level').toJSON(),
         new ContextMenuCommandBuilder().setName('View Level').setType(ApplicationCommandType.User).toJSON(),
@@ -68,7 +69,6 @@ client.once(Events.ClientReady, async (c) => {
         require('./commands/games/slots').data.toJSON(),
         require('./commands/admin/post-slots-ui').data.toJSON(),
         require('./commands/admin/post-hangman-ui').data.toJSON(),
-        // Optional: add a command to post the verification message (run once)
         require('./commands/admin/post-verify-ui').data.toJSON(),
     ];
 
@@ -97,19 +97,17 @@ client.once(Events.ClientReady, async (c) => {
     } catch (err) {
         console.error('[MembershipSync] Initial sync failed:', err);
     }
-
     setInterval(() => {
         syncMembershipRoles(client).catch(err => console.error('[MembershipSync] Sync error:', err));
     }, 300000);
 
     setInterval(() => {
         checkAndNotifyCooldowns(client).catch(err => console.error('Cooldown notifier error:', err));
-    }, 300000); // 5 minutes
+    }, 300000);
 
-    // End-of-day trivia awards: check every hour
     setInterval(() => {
         processEndOfDayAwards(client).catch(err => console.error('Trivia end-of-day awards error:', err));
-    }, 3600000); // Every hour
+    }, 3600000);
 
     // Auto-resume active polls
     const { data: activePolls } = await supabase
@@ -126,7 +124,6 @@ client.once(Events.ClientReady, async (c) => {
                     .split(/(?=:female_sign:|:male_sign:|♀️|♂️)/)
                     .map(s => s.trim())
                     .filter(s => s.length > 0);
-
                 runPollInterval(pollMsg, new Date(poll.ends_at).getTime(), characters);
             } catch (e) {
                 console.error(`Failed to resume poll ${poll.message_id}:`, e.message);
@@ -139,7 +136,7 @@ client.once(Events.ClientReady, async (c) => {
     await restoreGiveaways(client).catch(console.error);
 });
 
-// --- 2. INTERACTION HANDLER (existing) ---
+// --- 2. INTERACTION HANDLER ---
 client.on(Events.InteractionCreate, async (interaction) => {
     try {
         if (interaction.isChatInputCommand()) {
@@ -155,55 +152,61 @@ client.on(Events.InteractionCreate, async (interaction) => {
             }
         } else if (interaction.isUserContextMenuCommand() && interaction.commandName === 'View Level') {
             require('./commands/level')(interaction);
-} else if (interaction.isButton()) {
-    if (interaction.customId === 'shop_buy_confirm') {
-        await handleShopPurchase(interaction);
-    } else if (interaction.customId === 'slots_bet_1') {
-        await handleSlotsBet(interaction, 1);
-    } else if (interaction.customId === 'slots_bet_5') {
-        await handleSlotsBet(interaction, 5);
-    } else if (interaction.customId === 'slots_bet_25') {
-        await handleSlotsBet(interaction, 25);
-    } else if (interaction.customId === 'hangman_start_button') {
-        await startHangmanGame(interaction);
-    } else if (interaction.customId === 'verify_start') {
-        // Check if user already has Member or Supporter role
-        const member = interaction.member;
-        const supporterRoleId = helpers.ids.roles.supporter;
-        const memberRoleId = helpers.ids.roles.member;
-        const hasSupporter = member.roles.cache.has(supporterRoleId);
-        const hasMember = member.roles.cache.has(memberRoleId);
-        
-        if (hasSupporter || hasMember) {
-            return interaction.reply({
-                content: '✅ You are already verified! No need to verify again.',
-                flags: 64
-            });
+        } else if (interaction.isButton()) {
+            if (interaction.customId === 'shop_buy_confirm') {
+                await handleShopPurchase(interaction);
+            } else if (interaction.customId === 'slots_bet_1') {
+                await handleSlotsBet(interaction, 1);
+            } else if (interaction.customId === 'slots_bet_5') {
+                await handleSlotsBet(interaction, 5);
+            } else if (interaction.customId === 'slots_bet_25') {
+                await handleSlotsBet(interaction, 25);
+            } else if (interaction.customId === 'hangman_start_button') {
+                await startHangmanGame(interaction);
+            } else if (interaction.customId === 'verify_start') {
+                const member = interaction.member;
+                const supporterRoleId = helpers.ids.roles.supporter;
+                const memberRoleId = helpers.ids.roles.member;
+                const hasSupporter = member.roles.cache.has(supporterRoleId);
+                const hasMember = member.roles.cache.has(memberRoleId);
+                
+                if (hasSupporter || hasMember) {
+                    return interaction.reply({
+                        content: '✅ You are already verified! No need to verify again.',
+                        flags: 64
+                    });
+                }
+                
+                const workerUrl = process.env.VERIFY_WORKER_URL;
+                if (!workerUrl) {
+                    return interaction.reply({
+                        content: '❌ Verification service is not configured. Please contact an admin.',
+                        flags: 64
+                    });
+                }
+                const uniqueUrl = `${workerUrl}?user=${interaction.user.id}&guild=${interaction.guild.id}`;
+                await interaction.reply({
+                    content: `🔗 **Your verification link** (expires after 10 minutes):\n${uniqueUrl}\n\nComplete the CAPTCHA in your browser to gain access.`,
+                    flags: 64
+                });
+            } else {
+                await giveawayCommand.handleGiveawayButton(interaction);
+            }
+        } else if (interaction.isStringSelectMenu()) {
+            if (interaction.customId === 'shop_select') {
+                await handleShopSelect(interaction);
+            }
         }
-        
-        const workerUrl = process.env.VERIFY_WORKER_URL;
-        if (!workerUrl) {
-            return interaction.reply({
-                content: '❌ Verification service is not configured. Please contact an admin.',
-                flags: 64
-            });
-        }
-        const uniqueUrl = `${workerUrl}?user=${interaction.user.id}&guild=${interaction.guild.id}`;
-        await interaction.reply({
-            content: `🔗 **Your verification link** (expires after 10 minutes):\n${uniqueUrl}\n\nComplete the CAPTCHA in your browser to gain access.`,
-            flags: 64
-        });
-    } else {
-        await giveawayCommand.handleGiveawayButton(interaction);
-    }}
+    } catch (err) {
+        console.error('Interaction Error:', err);
+    }
 });
 
-// --- 3. VERIFICATION HANDLER (adds separate listener for its own buttons/modals) ---
+// --- 3. VERIFICATION HANDLER (for math modal - optional, keep for fallback) ---
 client.on(Events.InteractionCreate, verification.handleInteraction);
 
-// --- 4. EVENT LISTENERS (existing) ---
+// --- 4. EVENT LISTENERS ---
 client.on(Events.GuildMemberAdd, (member) => require('./events/guildMemberAdd')(member));
-// Add verification's guildMemberAdd handler (runs alongside the existing one)
 client.on(Events.GuildMemberAdd, verification.execute);
 
 client.on(Events.MessageReactionAdd, (reaction, user) => require('./events/reactions')(reaction, user, 'add'));
