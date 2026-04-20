@@ -2,7 +2,7 @@
 
 const express = require('express');
 const router = express.Router();
-const helpers = require('../utils/helpers');
+const helpers = require('../../utils/helpers');  // ✅ fixed path (was '../utils/helpers')
 
 // Helper: verify Turnstile token with Cloudflare
 async function verifyTurnstileToken(token, secretKey) {
