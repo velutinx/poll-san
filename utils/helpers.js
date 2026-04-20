@@ -177,6 +177,9 @@ module.exports = {
             channelId: '1495387346990928003',
             dailyTicketCap: 10,
             cleanupDelayMs: 15000
+        },
+        checkin: {
+            checkin: '1495862994343694447',   // #check-in channel
         }
     },
 
@@ -190,4 +193,5 @@ module.exports = {
         base: "https://www.velutinx.com",
         pollImages: "https://www.velutinx.com/images/poll/"
     },
+    CHECKIN_REWARD_TICKETS: 50,
 };
