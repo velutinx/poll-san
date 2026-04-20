@@ -121,8 +121,9 @@ module.exports = {
         channels: {
             QUEUE: '1473730427318435860',
             TRIVIA: '1495387346990928003',
-            // ========== VERIFICATION CHANNEL (ADDED) ==========
-            verify: '1495679452489977897'       // #verify channel
+            verify: '1495679452489977897',
+            checkin: '1495862994343694447',   // #check-in channel
+
         },
         users: {
             Velutinx: '1380051214766444617'
@@ -177,9 +178,6 @@ module.exports = {
             channelId: '1495387346990928003',
             dailyTicketCap: 10,
             cleanupDelayMs: 15000
-        },
-        checkin: {
-            checkin: '1495862994343694447',   // #check-in channel
         }
     },
 
