@@ -166,20 +166,34 @@ client.on(Events.InteractionCreate, async (interaction) => {
         await handleSlotsBet(interaction, 25);
     } else if (interaction.customId === 'hangman_start_button') {
         await startHangmanGame(interaction);
-    } else if (interaction.customId === 'verify_start') {   // 👈 ADD THIS BLOCK
-        const workerUrl = process.env.VERIFY_WORKER_URL;
-        if (!workerUrl) {
-            return interaction.reply({
-                content: '❌ Verification service is not configured. Please contact an admin.',
-                flags: 64  // ephemeral
-            });
-        }
-        const uniqueUrl = `${workerUrl}?user=${interaction.user.id}&guild=${interaction.guild.id}`;
-        await interaction.reply({
-            content: `🔗 **Your verification link** (expires after 10 minutes):\n${uniqueUrl}\n\nComplete the CAPTCHA in your browser to gain access.`,
-            flags: 64  // ephemeral (use flags instead of deprecated ephemeral: true)
+else if (interaction.customId === 'verify_start') {
+    // Check if user already has Member or Supporter role
+    const member = interaction.member;
+    const supporterRoleId = helpers.ids.roles.supporter;
+    const memberRoleId = helpers.ids.roles.member;
+    const hasSupporter = member.roles.cache.has(supporterRoleId);
+    const hasMember = member.roles.cache.has(memberRoleId);
+    
+    if (hasSupporter || hasMember) {
+        return interaction.reply({
+            content: '✅ You are already verified! No need to verify again.',
+            flags: 64
         });
-    } else {
+    }
+    
+    const workerUrl = process.env.VERIFY_WORKER_URL;
+    if (!workerUrl) {
+        return interaction.reply({
+            content: '❌ Verification service is not configured. Please contact an admin.',
+            flags: 64
+        });
+    }
+    const uniqueUrl = `${workerUrl}?user=${interaction.user.id}&guild=${interaction.guild.id}`;
+    await interaction.reply({
+        content: `🔗 **Your verification link** (expires after 10 minutes):\n${uniqueUrl}\n\nComplete the CAPTCHA in your browser to gain access.`,
+        flags: 64
+    });
+} else {
         await giveawayCommand.handleGiveawayButton(interaction);
     }
 }
