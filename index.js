@@ -30,6 +30,9 @@ const { startHangmanGame } = require('./services/hangmanGame');
 const { checkAndNotifyCooldowns } = require('./services/cooldownNotifier');
 const { handleTriviaMessage, processEndOfDayAwards } = require('./services/triviaJanitor');
 
+// ========== VERIFICATION MODULE ==========
+const verification = require('./events/verification');
+
 // ==================== DISCORD CLIENT SETUP ====================
 const client = new Client({
     intents: [
@@ -65,6 +68,8 @@ client.once(Events.ClientReady, async (c) => {
         require('./commands/games/slots').data.toJSON(),
         require('./commands/admin/post-slots-ui').data.toJSON(),
         require('./commands/admin/post-hangman-ui').data.toJSON(),
+        // Optional: add a command to post the verification message (run once)
+        require('./commands/admin/post-verify-ui').data.toJSON(),
     ];
 
     const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
@@ -134,7 +139,7 @@ client.once(Events.ClientReady, async (c) => {
     await restoreGiveaways(client).catch(console.error);
 });
 
-// --- 2. INTERACTION HANDLER ---
+// --- 2. INTERACTION HANDLER (existing) ---
 client.on(Events.InteractionCreate, async (interaction) => {
     try {
         if (interaction.isChatInputCommand()) {
@@ -146,6 +151,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
                 case 'slots': await require('./commands/games/slots').execute(interaction); break;
                 case 'post_slots_ui': await require('./commands/admin/post-slots-ui').execute(interaction); break;
                 case 'post_hangman_ui': await require('./commands/admin/post-hangman-ui').execute(interaction); break;
+                case 'post_verify_ui': await require('./commands/admin/post-verify-ui').execute(interaction); break;
             }
         } else if (interaction.isUserContextMenuCommand() && interaction.commandName === 'View Level') {
             require('./commands/level')(interaction);
@@ -173,8 +179,14 @@ client.on(Events.InteractionCreate, async (interaction) => {
     }
 });
 
-// --- 3. EVENT LISTENERS ---
+// --- 3. VERIFICATION HANDLER (adds separate listener for its own buttons/modals) ---
+client.on(Events.InteractionCreate, verification.handleInteraction);
+
+// --- 4. EVENT LISTENERS (existing) ---
 client.on(Events.GuildMemberAdd, (member) => require('./events/guildMemberAdd')(member));
+// Add verification's guildMemberAdd handler (runs alongside the existing one)
+client.on(Events.GuildMemberAdd, verification.execute);
+
 client.on(Events.MessageReactionAdd, (reaction, user) => require('./events/reactions')(reaction, user, 'add'));
 client.on(Events.MessageReactionRemove, (reaction, user) => require('./events/reactions')(reaction, user, 'remove'));
 client.on('guildMemberRemove', require('./events/guildMemberPollRemove'));
@@ -183,7 +195,7 @@ client.on('messageCreate', (message) => {
     handleTriviaMessage(message).catch(err => console.error('Trivia handler error:', err));
 });
 
-// --- 4. XP SYSTEM ---
+// --- 5. XP SYSTEM ---
 client.on(Events.MessageCreate, async (message) => {
     await XPLib.updateXP(message);
 });
