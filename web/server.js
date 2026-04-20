@@ -1,4 +1,4 @@
-// this is poll-san/web/server.js
+// web/server.js – corrected version
 
 const express = require('express');
 const path = require('path');
@@ -8,6 +8,9 @@ const cors = require('cors');
 const supabase = require('../services/supabase');
 const { supabaseRetry } = require('../utils/db');
 const queueService = require('../services/queueService');
+
+// ✅ MOVE THE ROUTER REQUIREMENT HERE (before it's used)
+const verifyRouter = require('./routes/verifyCallback');
 
 module.exports = (client) => {
     const app = express();
@@ -42,9 +45,10 @@ module.exports = (client) => {
     app.use(express.static(path.join(__dirname, 'public')));
     app.use(express.json());
 
+    // ✅ Now verifyRouter is defined, so this works
     app.use(verifyRouter);
-    app.set('client', client);  // assuming `client` is your Discord client instance
-    
+    app.set('client', client);
+
     const upload = multer({ storage: multer.memoryStorage() });
     const FORUM_ID = '1465938599378812980';
     const SUPPORTER_FORUM_ID = '1465937644394512516';
@@ -112,11 +116,9 @@ module.exports = (client) => {
 
     // ====================== GREETINGS SETTINGS (mock, replace with your DB) ======================
     app.get('/api/get-settings', async (req, res) => {
-        // Example: fetch from your settings table
         res.json({ welcome_channel_id: '', welcome_message: '' });
     });
     app.post('/api/save-settings', async (req, res) => {
-        // Example: save to DB
         res.json({ success: true });
     });
 
@@ -133,7 +135,7 @@ module.exports = (client) => {
     const setupReleasesRoutes = require('./routes/releases');
     const setupMonitoringRoutes = require('./routes/monitoring');
     const setupGiveawayRoutes = require('./routes/giveaway');
-    const verifyRouter = require('./routes/verifyCallback');
+    // ❌ Remove the duplicate require for verifyRouter – it's already loaded at the top
     
     setupGiveawayRoutes(app, client, supabase, supabaseRetry, getGuildMembers);
     setupQueueRoutes(app, client, queueService);
