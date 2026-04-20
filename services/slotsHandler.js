@@ -1,15 +1,15 @@
 // services/slotsHandler.js
 const supabase = require('./supabase');
-const helpers = require('../utils/helpers');
 
-// In‑memory store for active slot games
-// Key: `${userId}-${channelId}` → { messageId, webhook, timeout }
 const activeGames = new Map();
 
-const SYMBOLS = ['🍒', '🍒', '🍒', '💎', '💎', '🍒'];
-const MULTIPLIERS = {
+// Symbol pool with weights: 40% cherry, 35% diamond, 25% star
+const SYMBOLS = ['🍒', '🍒', '🍒', '🍒', '💎', '💎', '💎', '⭐', '⭐', '⭐']; // 4 cherries, 3 diamonds, 3 stars = 10 total
+
+const PAYOUTS = {
     '💎💎💎': 10,
     '🍒🍒🍒': 2,
+    '⭐⭐⭐': 5,
     'pair': 2.1
 };
 
@@ -23,18 +23,22 @@ function spin() {
 
 function calculateWin(reels, bet) {
     const [a, b, c] = reels;
+    // Triple check
     if (a === b && b === c) {
         const key = `${a}${b}${c}`;
-        const multiplier = MULTIPLIERS[key] || 0;
-        return Math.floor(bet * multiplier);
+        const multiplier = PAYOUTS[key];
+        if (multiplier) return Math.floor(bet * multiplier);
     }
+    // Pair check – only cherries or diamonds pay on pairs
     if (a === b || b === c || a === c) {
-        return Math.floor(bet * MULTIPLIERS.pair);
+        const matched = (a === b) ? a : (b === c) ? b : c;
+        if (matched === '🍒' || matched === '💎') {
+            return Math.floor(bet * PAYOUTS.pair);
+        }
     }
-    return 0;
+    return 0; // losing spin
 }
 
-// Helper to get or create the "Slots" webhook in a channel
 async function getSlotsWebhook(channel) {
     let webhook = (await channel.fetchWebhooks()).find(w => w.name === 'Slots');
     if (!webhook) {
@@ -51,10 +55,9 @@ async function handleSlotsBet(interaction, betAmount) {
     const channel = interaction.channel;
     const gameKey = `${userId}-${channel.id}`;
 
-    // Acknowledge button click silently (no ephemeral message)
     await interaction.deferUpdate();
 
-    // Fetch current tickets
+    // Fetch tickets
     const { data: userData, error } = await supabase
         .from('games_user_data')
         .select('tickets')
@@ -63,35 +66,31 @@ async function handleSlotsBet(interaction, betAmount) {
 
     if (error) {
         console.error('Slots fetch error:', error);
-        // Could send a follow-up ephemeral, but for simplicity, just log.
         return;
     }
 
     const currentTickets = userData?.tickets || 0;
     if (currentTickets < betAmount) {
-        // Not enough tickets – send an ephemeral error (only visible to the user)
-        await interaction.followUp({ content: `❌ You don't have enough tickets! You have ${currentTickets} tickets.`, ephemeral: true });
+        await interaction.followUp({ content: `❌ You need ${betAmount} tickets, but you only have ${currentTickets}.`, ephemeral: true });
         return;
     }
 
     // Deduct bet
-    const newBalance = currentTickets - betAmount;
+    let newBalance = currentTickets - betAmount;
     const { error: updateError } = await supabase
         .from('games_user_data')
         .update({ tickets: newBalance })
         .eq('user_id', userId);
-
     if (updateError) {
         console.error('Slots deduct error:', updateError);
         await interaction.followUp({ content: '❌ Database error. Please try again later.', ephemeral: true });
         return;
     }
 
-    // Perform spin
+    // Spin
     const reels = spin();
     const winAmount = calculateWin(reels, betAmount);
     let finalBalance = newBalance;
-
     if (winAmount > 0) {
         finalBalance = newBalance + winAmount;
         await supabase
@@ -107,25 +106,20 @@ async function handleSlotsBet(interaction, betAmount) {
         color: 0xFFD700,
         title: `🎰 ${interaction.user.displayName}'s Slots`,
         description: `${resultLine}\n\n${winLine}\n\n**Balance:** ${finalBalance} tickets 🎫\n**Bet:** ${betAmount} tickets`,
-        footer: { text: 'This message will auto‑delete after 60 seconds of inactivity.' }
+        footer: { text: 'Auto‑delete after 60s of inactivity' }
     };
 
-    // Get the webhook
     const webhook = await getSlotsWebhook(channel);
     const existing = activeGames.get(gameKey);
 
     if (existing && existing.messageId) {
-        // Edit existing webhook message
         await webhook.editMessage(existing.messageId, { embeds: [embed] });
-        // Clear previous timeout
         clearTimeout(existing.timeout);
     } else {
-        // Send new webhook message
         const sentMsg = await webhook.send({ embeds: [embed], username: 'Slots', avatarURL: 'https://www.velutinx.com/images/LogoDiscord.png' });
         activeGames.set(gameKey, { messageId: sentMsg.id, webhook, timeout: null });
     }
 
-    // Set new timeout to delete the message after 60 seconds
     const timeout = setTimeout(async () => {
         const game = activeGames.get(gameKey);
         if (game && game.messageId && game.webhook) {
@@ -138,7 +132,6 @@ async function handleSlotsBet(interaction, betAmount) {
         }
     }, 60 * 1000);
 
-    // Update stored timeout
     const updatedGame = activeGames.get(gameKey);
     updatedGame.timeout = timeout;
     activeGames.set(gameKey, updatedGame);
