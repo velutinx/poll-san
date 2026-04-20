@@ -5,6 +5,31 @@ const { parseMessage } = require('../services/parserService');
 const h = require('../utils/helpers');
 
 module.exports = async (member) => {
+    // --- 0. ASSIGN UNVERIFIED ROLE (skip if supporter or bot) ---
+    try {
+        const supporterRoleId = h.ids.roles.supporter;
+        const unverifiedRoleId = h.ids.roles.unverified;
+        
+        // Skip bots
+        if (member.user.bot) return;
+        
+        // Check if member already has Supporter role (from external sync like Patreon)
+        const hasSupporter = member.roles.cache.has(supporterRoleId);
+        if (!hasSupporter) {
+            const unverifiedRole = member.guild.roles.cache.get(unverifiedRoleId);
+            if (unverifiedRole) {
+                await member.roles.add(unverifiedRole);
+                console.log(`✅ Assigned Unverified role to ${member.user.tag}`);
+            } else {
+                console.error(`❌ Unverified role not found (ID: ${unverifiedRoleId})`);
+            }
+        } else {
+            console.log(`⏭️ Skipped Unverified role for ${member.user.tag} (already Supporter)`);
+        }
+    } catch (err) {
+        console.error('Error assigning Unverified role:', err);
+    }
+
     // --- 1. WELCOME MESSAGE LOGIC ---
     try {
         const { data: settings } = await supabase
