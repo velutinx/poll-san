@@ -100,7 +100,7 @@ async function handleVerifyStart(interaction) {
 async function handleCheckinClaim(interaction) {
     const userId = interaction.user.id;
     
-    // Rate limiting (memory)
+    // In-memory rate limit (prevents double-click within 5 seconds)
     const cooldownMap = global.checkinCooldown || new Map();
     if (!global.checkinCooldown) global.checkinCooldown = cooldownMap;
     const lastClick = cooldownMap.get(userId);
@@ -114,7 +114,15 @@ async function handleCheckinClaim(interaction) {
     
     await interaction.deferReply({ flags: 64 });
     
-    // Database cooldown check
+    // ---- LOG: check current ticket balance ----
+    const { data: beforeTickets, error: beforeError } = await supabase
+        .from('user_tickets')
+        .select('balance')
+        .eq('user_id', userId)
+        .maybeSingle();
+    console.log(`[Checkin] User ${userId} - before balance: ${beforeTickets?.balance ?? 0}`);
+    
+    // ---- Check last check-in ----
     const { data: checkin, error } = await supabase
         .from('games_daily_checkins')
         .select('last_checkin')
@@ -122,6 +130,7 @@ async function handleCheckinClaim(interaction) {
         .maybeSingle();
     
     if (error) console.error('Checkin DB error:', error);
+    console.log(`[Checkin] Last checkin: ${checkin?.last_checkin ?? 'never'}`);
     
     const now = new Date();
     let canClaim = true;
@@ -147,42 +156,46 @@ async function handleCheckinClaim(interaction) {
         });
     }
     
-    // Add tickets
+    // ---- Add tickets ----
     const ticketAmount = helpers.CHECKIN_REWARD_TICKETS;
-    const { data: userTickets } = await supabase
-        .from('user_tickets')
-        .select('balance')
-        .eq('user_id', userId)
-        .maybeSingle();
-    
-    if (userTickets) {
-        await supabase
+    let newBalance;
+    if (beforeTickets) {
+        newBalance = beforeTickets.balance + ticketAmount;
+        const { error: updateError } = await supabase
             .from('user_tickets')
-            .update({ balance: userTickets.balance + ticketAmount })
+            .update({ balance: newBalance })
             .eq('user_id', userId);
+        if (updateError) console.error('Ticket update error:', updateError);
     } else {
-        await supabase
+        newBalance = ticketAmount;
+        const { error: insertError } = await supabase
             .from('user_tickets')
             .insert({ user_id: userId, balance: ticketAmount });
+        if (insertError) console.error('Ticket insert error:', insertError);
     }
+    console.log(`[Checkin] Added ${ticketAmount} tickets. New balance: ${newBalance}`);
     
-    // Reset game cooldowns (database)
+    // ---- Reset game cooldowns (database) ----
     const gameTables = ['wordle_stats', 'hangman_stats', 'trivia_stats'];
     for (const table of gameTables) {
-        await supabase
+        const { error: resetError } = await supabase
             .from(table)
             .update({ last_played: null, cooldown_end: null })
             .eq('user_id', userId);
+        if (resetError) console.error(`Reset error on ${table}:`, resetError);
     }
     
-    // Update last checkin
-    await supabase
+    // ---- Update last checkin ----
+    const { error: upsertError } = await supabase
         .from('games_daily_checkins')
         .upsert({ user_id: userId, last_checkin: now.toISOString() }, { onConflict: 'user_id' });
+    if (upsertError) console.error('Upsert error:', upsertError);
+    else console.log(`[Checkin] Updated last_checkin to ${now.toISOString()}`);
     
+    // ---- Success message with new balance ----
     await interaction.editReply({
         content: `${helpers.releaseEmojis.VERIFY} **Daily Check-In Successful!**\n\n` +
-                 `You received **${ticketAmount} tickets**! 🎫\n` +
+                 `You received **${ticketAmount} tickets**! New balance: **${newBalance}** 🎫\n` +
                  `Your Wordle, Hangman, and Trivia cooldowns have been reset.`
     });
     
