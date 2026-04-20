@@ -3,15 +3,27 @@ const supabase = require('./supabase');
 
 const activeGames = new Map();
 
-// Symbol pool with weights: 40% cherry, 35% diamond, 25% star
-const SYMBOLS = ['🍒', '🍒', '🍒', '🍒', '💎', '💎', '💎', '⭐', '⭐', '⭐']; // 4 cherries, 3 diamonds, 3 stars = 10 total
-
-const PAYOUTS = {
-    '💎💎💎': 10,
-    '🍒🍒🍒': 2,
-    '⭐⭐⭐': 5,
-    'pair': 2.1
+// ========== TUNABLE SLOT MACHINE SETTINGS ==========
+// Symbol weights (total 100)
+const SYMBOL_WEIGHTS = {
+    '🍒': 20,   // cherry – low payout
+    '💎': 15,   // diamond – high payout
+    '⭐': 65    // star – losing symbol (pairs pay nothing)
 };
+
+// Payout multipliers (times bet)
+const PAYOUTS = {
+    '💎💎💎': 8,   // three diamonds
+    '🍒🍒🍒': 2,   // three cherries
+    'pair': 1.5    // pair of cherries or diamonds (net +0.5x)
+};
+
+// Build symbol array from weights
+const SYMBOLS = [];
+for (const [sym, weight] of Object.entries(SYMBOL_WEIGHTS)) {
+    for (let i = 0; i < weight; i++) SYMBOLS.push(sym);
+}
+// ===============================================
 
 function spin() {
     return [
@@ -28,15 +40,16 @@ function calculateWin(reels, bet) {
         const key = `${a}${b}${c}`;
         const multiplier = PAYOUTS[key];
         if (multiplier) return Math.floor(bet * multiplier);
+        return 0; // triple star pays nothing
     }
-    // Pair check – only cherries or diamonds pay on pairs
+    // Pair check – only cherries or diamonds pay
     if (a === b || b === c || a === c) {
         const matched = (a === b) ? a : (b === c) ? b : c;
         if (matched === '🍒' || matched === '💎') {
             return Math.floor(bet * PAYOUTS.pair);
         }
     }
-    return 0; // losing spin
+    return 0;
 }
 
 async function getSlotsWebhook(channel) {
