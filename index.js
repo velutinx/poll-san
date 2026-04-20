@@ -195,7 +195,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         });
     } else {
         await giveawayCommand.handleGiveawayButton(interaction);
-    }
+    }}
 });
 
 // --- 3. VERIFICATION HANDLER (adds separate listener for its own buttons/modals) ---
