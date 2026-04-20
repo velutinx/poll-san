@@ -1,4 +1,4 @@
-// This is poll-san/commands/admin/post-verify-ui.js
+// commands/admin/post-verify-ui.js
 
 const { SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } = require('discord.js');
 const helpers = require('../../utils/helpers');
@@ -17,6 +17,15 @@ module.exports = {
             return interaction.reply({ content: '❌ Verify channel not found. Check helpers.ids.channels.verify', ephemeral: true });
         }
 
+        // Find or create a webhook named "Verification Bot"
+        let webhook = (await verifyChannel.fetchWebhooks()).find(w => w.name === 'Verification Bot');
+        if (!webhook) {
+            webhook = await verifyChannel.createWebhook({
+                name: 'Verification Bot',
+                avatar: 'https://www.velutinx.com/images/LogoDiscord.png'
+            });
+        }
+
         const embed = new EmbedBuilder()
             .setColor(0x2f3136)
             .setDescription(
@@ -24,7 +33,7 @@ module.exports = {
                 `To unlock full server access please click the button below.\n\n` +
                 `See you in there...`
             )
-            .setImage('https://cdn.discordapp.com/attachments/1163490254221738015/1167472390213730335/Embed_Extender_Invisible_Space.png');
+            .setImage('https://www.velutinx.com/images/LogoDiscord.png'); // Fixed image URL
 
         const row = new ActionRowBuilder().addComponents(
             new ButtonBuilder()
@@ -34,7 +43,14 @@ module.exports = {
                 .setEmoji('✅')
         );
 
-        await verifyChannel.send({ embeds: [embed], components: [row] });
-        await interaction.reply({ content: '✅ Verification message posted!', ephemeral: true });
+        // Send the message using the webhook
+        await webhook.send({
+            embeds: [embed],
+            components: [row],
+            username: 'Verification Bot',
+            avatarURL: 'https://www.velutinx.com/images/LogoDiscord.png'
+        });
+
+        await interaction.reply({ content: '✅ Verification message posted via **Verification Bot** webhook!', ephemeral: true });
     }
 };
