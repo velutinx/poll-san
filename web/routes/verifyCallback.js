@@ -69,9 +69,9 @@ router.post('/api/verify', async (req, res) => {
                 await member.roles.remove(unverifiedRole);
             }
         }
-        // Send DM confirmation
+        // Send DM confirmation with custom animated emoji
         try {
-            await member.send(`✅ You have successfully verified in **${guild.name}**! You now have access to the server.`);
+            await member.send(`${helpers.releaseEmojis.VERIFY} You have successfully verified in **${guild.name}**! You now have access to the server.`);
         } catch (err) {
             console.log(`Could not send DM to ${member.user.tag}`);
         }
