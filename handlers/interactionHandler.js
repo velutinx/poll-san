@@ -1,11 +1,11 @@
 // handlers/interactionHandler.js
+
 const supabase = require('../services/supabase');
 const helpers = require('../utils/helpers');
 const giveawayCommand = require('../commands/giveaway');
 const { handleShopSelect, handleShopPurchase } = require('../services/shopHandler');
 const { handleSlotsBet } = require('../services/slotsHandler');
 const { startHangmanGame } = require('../services/hangmanGame');
-const { handleTriviaMessage, processEndOfDayAwards } = require('../services/triviaJanitor'); // if needed
 
 module.exports = async function handleInteraction(interaction) {
     try {
@@ -61,14 +61,13 @@ module.exports = async function handleInteraction(interaction) {
         }
     } catch (err) {
         console.error('Interaction Error:', err);
-        // Avoid double-reply if already replied
         if (!interaction.replied && !interaction.deferred) {
             await interaction.reply({ content: 'An error occurred.', ephemeral: true }).catch(() => {});
         }
     }
 };
 
-// ----- Helper functions for button handlers -----
+// ----- Helper functions -----
 async function handleVerifyStart(interaction) {
     const member = interaction.member;
     const supporterRoleId = helpers.ids.roles.supporter;
@@ -113,7 +112,7 @@ async function handleCheckinClaim(interaction) {
     cooldownMap.set(userId, Date.now());
     await interaction.deferReply({ flags: 64 });
     
-    // Get or create user data
+    // Get user data
     let { data: userData, error } = await supabase
         .from('games_user_data')
         .select('*')
@@ -146,53 +145,53 @@ async function handleCheckinClaim(interaction) {
         });
     }
     
-// Add tickets & reset cooldowns
-const ticketAmount = helpers.CHECKIN_REWARD_TICKETS;
-const currentTickets = userData?.tickets || 0;
-const newBalance = currentTickets + ticketAmount;
-const nowIso = now.toISOString();
-const discordUsername = interaction.user.tag; // e.g., "Velutinx#1234"
-const displayName = interaction.member?.displayName || interaction.user.globalName || interaction.user.username;
-
-if (userData) {
-    const { error: updateError } = await supabase
-        .from('games_user_data')
-        .update({
-            tickets: newBalance,
-            last_checkin: nowIso,
-            wordle_last_played: null,
-            hangman_last_played: null,
-            trivia_last_played: null,
-            updated_at: nowIso,
-            discord_username: discordUsername,
-            display_name: displayName
-        })
-        .eq('user_id', userId);
-    if (updateError) {
-        console.error('Update error:', updateError);
-        return interaction.editReply({ content: '❌ Database error. Please try again later.' });
+    // Add tickets & reset cooldowns
+    const ticketAmount = helpers.CHECKIN_REWARD_TICKETS;
+    const currentTickets = userData?.tickets || 0;
+    const newBalance = currentTickets + ticketAmount;
+    const nowIso = now.toISOString();
+    const discordUsername = interaction.user.tag;
+    const displayName = interaction.member?.displayName || interaction.user.globalName || interaction.user.username;
+    
+    if (userData) {
+        const { error: updateError } = await supabase
+            .from('games_user_data')
+            .update({
+                tickets: newBalance,
+                last_checkin: nowIso,
+                wordle_last_played: null,
+                hangman_last_played: null,
+                trivia_last_played: null,
+                updated_at: nowIso,
+                discord_username: discordUsername,
+                display_name: displayName
+            })
+            .eq('user_id', userId);
+        if (updateError) {
+            console.error('Update error:', updateError);
+            return interaction.editReply({ content: '❌ Database error. Please try again later.' });
+        }
+        console.log(`[Checkin] Updated user ${userId} tickets: ${currentTickets} → ${newBalance}`);
+    } else {
+        const { error: insertError } = await supabase
+            .from('games_user_data')
+            .insert({
+                user_id: userId,
+                tickets: newBalance,
+                last_checkin: nowIso,
+                wordle_last_played: null,
+                hangman_last_played: null,
+                trivia_last_played: null,
+                updated_at: nowIso,
+                discord_username: discordUsername,
+                display_name: displayName
+            });
+        if (insertError) {
+            console.error('Insert error:', insertError);
+            return interaction.editReply({ content: '❌ Database error. Please try again later.' });
+        }
+        console.log(`[Checkin] Inserted user ${userId} with tickets ${newBalance}`);
     }
-} else {
-    const { error: insertError } = await supabase
-        .from('games_user_data')
-        .insert({
-            user_id: userId,
-            tickets: newBalance,
-            last_checkin: nowIso,
-            wordle_last_played: null,
-            hangman_last_played: null,
-            trivia_last_played: null,
-            updated_at: nowIso,
-            discord_username: discordUsername,
-            display_name: displayName
-        });
-    if (insertError) {
-        console.error('Insert error:', insertError);
-        return interaction.editReply({ content: '❌ Database error. Please try again later.' });
-    }
-}
-    console.log(`[Checkin] Inserted user ${userId} with tickets ${newBalance}`);
-}
     
     // Success message
     await interaction.editReply({
