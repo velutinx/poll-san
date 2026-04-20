@@ -1,5 +1,4 @@
 // commands/admin/post-slots-ui.js
-
 const { SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, PermissionFlagsBits, EmbedBuilder, MessageFlags } = require('discord.js');
 
 module.exports = {
@@ -11,7 +10,17 @@ module.exports = {
     async execute(interaction) {
         const embed = new EmbedBuilder()
             .setTitle('🎰 Ticket Slot Machine')
-            .setDescription('Click a button below to spin the slots!\n\n**Payouts:**\n💎💎💎 = **10x**\n🍒🍒🍒 = **2x**\nAny pair = **2.1x**')
+            .setDescription(
+                'Click a button below to spin the slots!\n\n' +
+                '**Winning Combinations:**\n' +
+                '• 🍒🍒🍒 = **2x** your bet\n' +
+                '• 🍋🍋🍋 = **3x** your bet\n' +
+                '• 🍊🍊🍊 = **5x** your bet\n' +
+                '• 💎💎💎 = **10x** your bet\n' +
+                '• 7️⃣7️⃣7️⃣ = **50x** your bet (jackpot!)\n' +
+                '• Any pair = **0.4x** your bet\n\n' +
+                '**Good luck!**'
+            )
             .setColor('#FFD700');
 
         const row = new ActionRowBuilder()
