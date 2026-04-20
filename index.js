@@ -1,4 +1,4 @@
-// this is poll-san/index.js
+// poll-san/index.js
 
 const path = require('path');
 const pollService = require('./services/pollService');
@@ -70,6 +70,7 @@ client.once(Events.ClientReady, async (c) => {
         require('./commands/admin/post-slots-ui').data.toJSON(),
         require('./commands/admin/post-hangman-ui').data.toJSON(),
         require('./commands/admin/post-verify-ui').data.toJSON(),
+        require('./commands/admin/post-checkin-ui').data.toJSON(),   // 👈 NEW
     ];
 
     const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
@@ -149,6 +150,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
                 case 'post_slots_ui': await require('./commands/admin/post-slots-ui').execute(interaction); break;
                 case 'post_hangman_ui': await require('./commands/admin/post-hangman-ui').execute(interaction); break;
                 case 'post_verify_ui': await require('./commands/admin/post-verify-ui').execute(interaction); break;
+                case 'post_checkin_ui': await require('./commands/admin/post-checkin-ui').execute(interaction); break; // 👈 NEW
             }
         } else if (interaction.isUserContextMenuCommand() && interaction.commandName === 'View Level') {
             require('./commands/level')(interaction);
@@ -188,6 +190,82 @@ client.on(Events.InteractionCreate, async (interaction) => {
                 await interaction.reply({
                     content: `🔗 **Your verification link** (expires after 10 minutes):\n${uniqueUrl}\n\nComplete the CAPTCHA in your browser to gain access.`,
                     flags: 64
+                });
+            } else if (interaction.customId === 'checkin_claim') {      // 👈 DAILY CHECK‑IN BUTTON
+                const userId = interaction.user.id;
+                const guildId = interaction.guild.id;
+                
+                await interaction.deferReply({ flags: 64 });
+                
+                // Check last check-in from games_daily_checkins table
+                const { data: checkin, error } = await supabase
+                    .from('games_daily_checkins')
+                    .select('last_checkin')
+                    .eq('user_id', userId)
+                    .maybeSingle();  // use maybeSingle to avoid error when no row
+                
+                const now = new Date();
+                let canClaim = true;
+                let timeLeft = '';
+                
+                if (checkin && checkin.last_checkin) {
+                    const last = new Date(checkin.last_checkin);
+                    const diffHours = (now - last) / (1000 * 60 * 60);
+                    if (diffHours < 24) {
+                        canClaim = false;
+                        const hoursLeft = 24 - diffHours;
+                        const minutesLeft = Math.ceil((hoursLeft % 1) * 60);
+                        const hours = Math.floor(hoursLeft);
+                        timeLeft = `${hours}h ${minutesLeft}m`;
+                    }
+                }
+                
+                if (!canClaim) {
+                    return interaction.editReply({
+                        content: `⏳ You already claimed your daily reward! Come back in **${timeLeft}**.`
+                    });
+                }
+                
+                // --- 1. Add tickets (using user_tickets table) ---
+                const ticketAmount = helpers.CHECKIN_REWARD_TICKETS;
+                const { data: userTickets } = await supabase
+                    .from('user_tickets')
+                    .select('balance')
+                    .eq('user_id', userId)
+                    .maybeSingle();
+                
+                if (userTickets) {
+                    await supabase
+                        .from('user_tickets')
+                        .update({ balance: userTickets.balance + ticketAmount })
+                        .eq('user_id', userId);
+                } else {
+                    await supabase
+                        .from('user_tickets')
+                        .insert({ user_id: userId, balance: ticketAmount });
+                }
+                
+                // --- 2. Reset game cooldowns (set last_played to a past date or null) ---
+                // Adjust table names and column names to match your actual schema.
+                // Here I assume each game has a table with a `last_played` column.
+                const gameTables = ['wordle_stats', 'hangman_stats', 'trivia_stats'];
+                for (const table of gameTables) {
+                    await supabase
+                        .from(table)
+                        .update({ last_played: null, cooldown_end: null })
+                        .eq('user_id', userId);
+                }
+                
+                // --- 3. Update last_checkin in games_daily_checkins ---
+                await supabase
+                    .from('games_daily_checkins')
+                    .upsert({ user_id: userId, last_checkin: now.toISOString() }, { onConflict: 'user_id' });
+                
+                // --- 4. Send ephemeral success message ---
+                await interaction.editReply({
+                    content: `${helpers.releaseEmojis.VERIFY} **Daily Check-In Successful!**\n\n` +
+                             `You received **${ticketAmount} tickets**! 🎫\n` +
+                             `All your game cooldowns have been reset. You can play Wordle, Hangman, and Trivia again now!`
                 });
             } else {
                 await giveawayCommand.handleGiveawayButton(interaction);
