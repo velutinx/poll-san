@@ -156,17 +156,17 @@ async function handleCheckinClaim(interaction) {
     if (userData) {
         const { error: updateError } = await supabase
             .from('games_user_data')
-.update({
-    tickets: newBalance,
-    last_checkin: nowIso,
-    wordle_last_played: null,
-    hangman_last_played: null,
-    trivia_last_played: null,
-    updated_at: nowIso,
-    discord_username: discordUsername,
-    display_name: displayName,
-    reminder_sent: false   // reset for next period
-})
+            .update({
+                tickets: newBalance,
+                last_checkin: nowIso,
+                wordle_last_played: null,
+                hangman_last_played: null,
+                trivia_last_played: null,
+                updated_at: nowIso,
+                discord_username: discordUsername,
+                display_name: displayName,
+                reminder_sent: false
+            })
             .eq('user_id', userId);
         if (updateError) {
             console.error('Update error:', updateError);
@@ -182,10 +182,11 @@ async function handleCheckinClaim(interaction) {
                 last_checkin: nowIso,
                 wordle_last_played: null,
                 hangman_last_played: null,
-                trivia_last_played: null,11
+                trivia_last_played: null,
                 updated_at: nowIso,
                 discord_username: discordUsername,
-                display_name: displayName
+                display_name: displayName,
+                reminder_sent: false
             });
         if (insertError) {
             console.error('Insert error:', insertError);
