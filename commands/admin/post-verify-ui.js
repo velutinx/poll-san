@@ -6,7 +6,7 @@ const helpers = require('../../utils/helpers');
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('post_verify_ui')
-        .setDescription('[ADMIN] Post the verification message in #verify'),
+        .setDescription('[ADMIN] Post the Turnstile verification message'),
     async execute(interaction) {
         if (!interaction.memberPermissions.has('Administrator')) {
             return interaction.reply({ content: '❌ Admin only.', ephemeral: true });
@@ -14,10 +14,27 @@ module.exports = {
 
         const verifyChannel = interaction.guild.channels.cache.get(helpers.ids.channels.verify);
         if (!verifyChannel) {
-            return interaction.reply({ content: '❌ Verify channel not found. Check helpers.ids.channels.verify', ephemeral: true });
+            return interaction.reply({ content: '❌ Verify channel not found.', ephemeral: true });
         }
 
-        // Find or create a webhook named "Verification Bot"
+        const embed = new EmbedBuilder()
+            .setColor(0x2f3136)
+            .setDescription(
+                `# Welcome To Your Community\n\n` +
+                `To unlock full server access, click the **Verify** button below.\n` +
+                `You will receive a unique link to complete the CAPTCHA in your browser.\n\n` +
+                `See you in there...`
+            );
+
+        const row = new ActionRowBuilder().addComponents(
+            new ButtonBuilder()
+                .setCustomId('verify_start')
+                .setLabel('Verify')
+                .setStyle(ButtonStyle.Primary)
+                .setEmoji('🔒')
+        );
+
+        // Use webhook to send as "Verification Bot"
         let webhook = (await verifyChannel.fetchWebhooks()).find(w => w.name === 'Verification Bot');
         if (!webhook) {
             webhook = await verifyChannel.createWebhook({
@@ -26,24 +43,6 @@ module.exports = {
             });
         }
 
-        const embed = new EmbedBuilder()
-            .setColor(0x2f3136)
-            .setDescription(
-                `# Welcome To Your Community\n\n` +
-                `To unlock full server access please click the button below.\n\n` +
-                `See you in there...`
-            );
-        // No .setImage() here – that was causing the extra image inside the embed
-
-        const row = new ActionRowBuilder().addComponents(
-            new ButtonBuilder()
-                .setCustomId('verify_modal_btn')
-                .setLabel('Verify')
-                .setStyle(ButtonStyle.Primary)
-                .setEmoji('✅')
-        );
-
-        // Send the message using the webhook
         await webhook.send({
             embeds: [embed],
             components: [row],
@@ -51,6 +50,6 @@ module.exports = {
             avatarURL: 'https://www.velutinx.com/images/LogoDiscord.png'
         });
 
-        await interaction.reply({ content: '✅ Verification message posted via **Verification Bot** webhook!', ephemeral: true });
+        await interaction.reply({ content: '✅ Verification message posted! Click the button to test.', ephemeral: true });
     }
 };
