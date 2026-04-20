@@ -1,4 +1,4 @@
-// This is poll-san/commands/admin/post-slots-ui.js
+// commands/admin/post-slots-ui.js
 
 const { SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, PermissionFlagsBits, EmbedBuilder, MessageFlags } = require('discord.js');
 
@@ -18,21 +18,33 @@ module.exports = {
             .addComponents(
                 new ButtonBuilder()
                     .setCustomId('slots_bet_1')
-                    .setLabel('Spin 1🎟️')
+                    .setLabel('Spin 1 🎟️')
                     .setStyle(ButtonStyle.Primary),
                 new ButtonBuilder()
                     .setCustomId('slots_bet_5')
-                    .setLabel('Spin 5🎟️')
+                    .setLabel('Spin 5 🎟️')
                     .setStyle(ButtonStyle.Primary),
                 new ButtonBuilder()
                     .setCustomId('slots_bet_25')
-                    .setLabel('Spin 25🎟️')
+                    .setLabel('Spin 25 🎟️')
                     .setStyle(ButtonStyle.Primary)
             );
 
-        await interaction.channel.send({
+        // Use webhook to send as "Slots"
+        const channel = interaction.channel;
+        let webhook = (await channel.fetchWebhooks()).find(w => w.name === 'Slots');
+        if (!webhook) {
+            webhook = await channel.createWebhook({
+                name: 'Slots',
+                avatar: 'https://www.velutinx.com/images/LogoDiscord.png'
+            });
+        }
+
+        await webhook.send({
             embeds: [embed],
-            components: [row]
+            components: [row],
+            username: 'Slots',
+            avatarURL: 'https://www.velutinx.com/images/LogoDiscord.png'
         });
 
         await interaction.reply({ content: '✅ Slots UI has been posted!', flags: MessageFlags.Ephemeral });
