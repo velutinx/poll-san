@@ -29,7 +29,7 @@ const { handleSlotsBet } = require('./services/slotsHandler');
 const { startHangmanGame } = require('./services/hangmanGame');
 const { checkAndNotifyCooldowns } = require('./services/cooldownNotifier');
 const { handleTriviaMessage, processEndOfDayAwards } = require('./services/triviaJanitor');
-
+const helpers = require('./utils/helpers');
 // ========== VERIFICATION MODULE ==========
 const verification = require('./events/verification');
 
@@ -166,39 +166,35 @@ client.on(Events.InteractionCreate, async (interaction) => {
         await handleSlotsBet(interaction, 25);
     } else if (interaction.customId === 'hangman_start_button') {
         await startHangmanGame(interaction);
-else if (interaction.customId === 'verify_start') {
-    // Check if user already has Member or Supporter role
-    const member = interaction.member;
-    const supporterRoleId = helpers.ids.roles.supporter;
-    const memberRoleId = helpers.ids.roles.member;
-    const hasSupporter = member.roles.cache.has(supporterRoleId);
-    const hasMember = member.roles.cache.has(memberRoleId);
-    
-    if (hasSupporter || hasMember) {
-        return interaction.reply({
-            content: '✅ You are already verified! No need to verify again.',
+    } else if (interaction.customId === 'verify_start') {
+        // Check if user already has Member or Supporter role
+        const member = interaction.member;
+        const supporterRoleId = helpers.ids.roles.supporter;
+        const memberRoleId = helpers.ids.roles.member;
+        const hasSupporter = member.roles.cache.has(supporterRoleId);
+        const hasMember = member.roles.cache.has(memberRoleId);
+        
+        if (hasSupporter || hasMember) {
+            return interaction.reply({
+                content: '✅ You are already verified! No need to verify again.',
+                flags: 64
+            });
+        }
+        
+        const workerUrl = process.env.VERIFY_WORKER_URL;
+        if (!workerUrl) {
+            return interaction.reply({
+                content: '❌ Verification service is not configured. Please contact an admin.',
+                flags: 64
+            });
+        }
+        const uniqueUrl = `${workerUrl}?user=${interaction.user.id}&guild=${interaction.guild.id}`;
+        await interaction.reply({
+            content: `🔗 **Your verification link** (expires after 10 minutes):\n${uniqueUrl}\n\nComplete the CAPTCHA in your browser to gain access.`,
             flags: 64
         });
-    }
-    
-    const workerUrl = process.env.VERIFY_WORKER_URL;
-    if (!workerUrl) {
-        return interaction.reply({
-            content: '❌ Verification service is not configured. Please contact an admin.',
-            flags: 64
-        });
-    }
-    const uniqueUrl = `${workerUrl}?user=${interaction.user.id}&guild=${interaction.guild.id}`;
-    await interaction.reply({
-        content: `🔗 **Your verification link** (expires after 10 minutes):\n${uniqueUrl}\n\nComplete the CAPTCHA in your browser to gain access.`,
-        flags: 64
-    });
-} else {
+    } else {
         await giveawayCommand.handleGiveawayButton(interaction);
-    }
-}
-    } catch (err) {
-        console.error('Interaction Error:', err);
     }
 });
 
