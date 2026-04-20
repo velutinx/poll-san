@@ -155,25 +155,34 @@ client.on(Events.InteractionCreate, async (interaction) => {
             }
         } else if (interaction.isUserContextMenuCommand() && interaction.commandName === 'View Level') {
             require('./commands/level')(interaction);
-        } else if (interaction.isButton()) {
-            if (interaction.customId === 'shop_buy_confirm') {
-                await handleShopPurchase(interaction);
-            } else if (interaction.customId === 'slots_bet_1') {
-                await handleSlotsBet(interaction, 1);
-            } else if (interaction.customId === 'slots_bet_5') {
-                await handleSlotsBet(interaction, 5);
-            } else if (interaction.customId === 'slots_bet_25') {
-                await handleSlotsBet(interaction, 25);
-            } else if (interaction.customId === 'hangman_start_button') {
-                await startHangmanGame(interaction);
-            } else {
-                await giveawayCommand.handleGiveawayButton(interaction);
-            }
-        } else if (interaction.isStringSelectMenu()) {
-            if (interaction.customId === 'shop_select') {
-                await handleShopSelect(interaction);
-            }
+} else if (interaction.isButton()) {
+    if (interaction.customId === 'shop_buy_confirm') {
+        await handleShopPurchase(interaction);
+    } else if (interaction.customId === 'slots_bet_1') {
+        await handleSlotsBet(interaction, 1);
+    } else if (interaction.customId === 'slots_bet_5') {
+        await handleSlotsBet(interaction, 5);
+    } else if (interaction.customId === 'slots_bet_25') {
+        await handleSlotsBet(interaction, 25);
+    } else if (interaction.customId === 'hangman_start_button') {
+        await startHangmanGame(interaction);
+    } else if (interaction.customId === 'verify_start') {   // 👈 ADD THIS BLOCK
+        const workerUrl = process.env.VERIFY_WORKER_URL;
+        if (!workerUrl) {
+            return interaction.reply({
+                content: '❌ Verification service is not configured. Please contact an admin.',
+                flags: 64  // ephemeral
+            });
         }
+        const uniqueUrl = `${workerUrl}?user=${interaction.user.id}&guild=${interaction.guild.id}`;
+        await interaction.reply({
+            content: `🔗 **Your verification link** (expires after 10 minutes):\n${uniqueUrl}\n\nComplete the CAPTCHA in your browser to gain access.`,
+            flags: 64  // ephemeral (use flags instead of deprecated ephemeral: true)
+        });
+    } else {
+        await giveawayCommand.handleGiveawayButton(interaction);
+    }
+}
     } catch (err) {
         console.error('Interaction Error:', err);
     }
