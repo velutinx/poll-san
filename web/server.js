@@ -42,8 +42,10 @@ module.exports = (client) => {
     app.use(express.static(path.join(__dirname, 'public')));
     app.use(express.json());
 
+    app.use(verifyRouter);
+    app.set('client', client);  // assuming `client` is your Discord client instance
+    
     const upload = multer({ storage: multer.memoryStorage() });
-
     const FORUM_ID = '1465938599378812980';
     const SUPPORTER_FORUM_ID = '1465937644394512516';
 
@@ -131,7 +133,8 @@ module.exports = (client) => {
     const setupReleasesRoutes = require('./routes/releases');
     const setupMonitoringRoutes = require('./routes/monitoring');
     const setupGiveawayRoutes = require('./routes/giveaway');
-
+    const verifyRouter = require('./verifyCallback');
+    
     setupGiveawayRoutes(app, client, supabase, supabaseRetry, getGuildMembers);
     setupQueueRoutes(app, client, queueService);
     setupPollRoutes(app, client, supabase, supabaseRetry);
