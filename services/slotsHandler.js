@@ -3,23 +3,26 @@ const supabase = require('./supabase');
 
 const activeGames = new Map();
 
-// 5 symbols with different frequencies and multipliers
-// More common symbols have lower multipliers, rarer symbols have higher multipliers
+// Symbol frequencies (total 27)
 const SYMBOLS = [
     '🍒', '🍒', '🍒', '🍒', '🍒', '🍒', '🍒', '🍒', '🍒', '🍒', // 10 cherries
     '🍋', '🍋', '🍋', '🍋', '🍋', '🍋', '🍋',                     // 7 lemons
     '🍊', '🍊', '🍊', '🍊', '🍊',                                 // 5 oranges
     '💎', '💎', '💎',                                             // 3 diamonds
-    '7️⃣', '7️⃣'                                                  // 2 sevens (jackpot)
-]; // total 27 symbols
+    '7️⃣', '7️⃣'                                                  // 2 sevens
+];
 
-const PAYOUTS = {
-    '🍒': 2,   // triple cherry pays 2x bet
-    '🍋': 3,   // triple lemon pays 3x
-    '🍊': 5,   // triple orange pays 5x
-    '💎': 10,  // triple diamond pays 10x
-    '7️⃣': 50   // triple sevens pays 50x (jackpot)
+// Triple payouts (multiplier)
+const TRIPLE_PAYOUTS = {
+    '🍒': 2,
+    '🍋': 3,
+    '🍊': 5,
+    '💎': 10,
+    '7️⃣': 50
 };
+
+// Pair payout (multiplier) – win back 40% of bet
+const PAIR_PAYOUT = 0.4;
 
 function spin() {
     return [
@@ -31,11 +34,16 @@ function spin() {
 
 function calculateWin(reels, bet) {
     const [a, b, c] = reels;
+    // Check for triple first
     if (a === b && b === c) {
-        const multiplier = PAYOUTS[a];
+        const multiplier = TRIPLE_PAYOUTS[a];
         if (multiplier) return Math.floor(bet * multiplier);
     }
-    return 0; // no win
+    // Check for any pair (two identical, not triple)
+    if (a === b || b === c || a === c) {
+        return Math.floor(bet * PAIR_PAYOUT);
+    }
+    return 0;
 }
 
 async function getSlotsWebhook(channel) {
@@ -97,7 +105,11 @@ async function handleSlotsBet(interaction, betAmount) {
             .from('games_user_data')
             .update({ tickets: finalBalance })
             .eq('user_id', userId);
-        winMessage = `**You won ${winAmount} tickets!** 🎉`;
+        if (winAmount >= betAmount) {
+            winMessage = `**You won ${winAmount} tickets!** 🎉`;
+        } else {
+            winMessage = `**You got a small win of ${winAmount} tickets!** 🎲`;
+        }
     } else {
         winMessage = '**You lost.** Better luck next time!';
     }
