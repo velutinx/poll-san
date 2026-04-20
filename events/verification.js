@@ -3,117 +3,145 @@
 const { Events, ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle, EmbedBuilder } = require('discord.js');
 const helpers = require('../utils/helpers');
 
-// A simple in‑memory store to prevent spam (optional)
-const cooldown = new Set();
+// Store expected captcha answers temporarily (user ID -> answer)
+const pendingCaptchas = new Map();
 
+// ======================== GUILD MEMBER ADD ========================
 module.exports = {
     name: Events.GuildMemberAdd,
     async execute(member) {
-        // Assign the Unverified role when someone joins
+        // If user already has Supporter (e.g., from external sync), skip Unverified role
+        const supporterRoleId = helpers.ids.roles.supporter;
+        if (member.roles.cache.has(supporterRoleId)) {
+            console.log(`[Verify] ${member.user.tag} is already a supporter – skipping unverified role.`);
+            return;
+        }
+
         const unverifiedRole = member.guild.roles.cache.get(helpers.ids.roles.unverified);
         if (unverifiedRole) {
             await member.roles.add(unverifiedRole).catch(console.error);
         }
 
-        // Optional: send a welcome DM
+        // Optional: DM welcome message
         try {
-            await member.send(`Welcome to **${member.guild.name}**! Please verify in the <#${helpers.ids.channels.verify}> channel.`);
+            await member.send(`Welcome to **${member.guild.name}**!\nPlease verify in <#${helpers.ids.channels.verify}> to unlock the server.`);
         } catch (error) {
             console.log(`Could not DM ${member.user.tag}`);
-        }
-    },
-
-    // Also listen for interactions (buttons, modals)
-    [Events.InteractionCreate]: {
-        async execute(interaction) {
-            if (!interaction.isButton() && !interaction.isModalSubmit()) return;
-
-            // ---------- BUTTON: open the verification modal ----------
-            if (interaction.isButton() && interaction.customId === 'verify_modal_btn') {
-                // Cooldown check (e.g. 30 seconds)
-                if (cooldown.has(interaction.user.id)) {
-                    return interaction.reply({ content: '⏳ Please wait a moment before trying again.', ephemeral: true });
-                }
-
-                const modal = new ModalBuilder()
-                    .setCustomId('verify_modal')
-                    .setTitle('Verification – Math Captcha');
-
-                const mathQuestion = generateMathQuestion(); // see function below
-                // Store the correct answer in a temporary place (attached to the modal)
-                modal.setComponents(
-                    new ActionRowBuilder().addComponents(
-                        new TextInputBuilder()
-                            .setCustomId('captcha_answer')
-                            .setLabel(mathQuestion.text)
-                            .setStyle(TextInputStyle.Short)
-                            .setPlaceholder('Enter your answer')
-                            .setRequired(true)
-                    )
-                );
-                // Attach the expected answer to the modal as custom data (hack: use a Map)
-                modal.expectedAnswer = mathQuestion.answer;
-
-                await interaction.showModal(modal);
-                cooldown.add(interaction.user.id);
-                setTimeout(() => cooldown.delete(interaction.user.id), 30000);
-            }
-
-            // ---------- MODAL SUBMIT: check answer and verify ----------
-            if (interaction.isModalSubmit() && interaction.customId === 'verify_modal') {
-                const userAnswer = interaction.fields.getTextInputValue('captcha_answer');
-                const expectedAnswer = interaction.expectedAnswer; // from the button handler
-
-                if (parseInt(userAnswer) === expectedAnswer) {
-                    // Success – assign Verified role, remove Unverified
-                    const member = interaction.member;
-                    const unverifiedRole = interaction.guild.roles.cache.get(helpers.ids.roles.unverified);
-                    const verifiedRole = interaction.guild.roles.cache.get(helpers.ids.roles.verified);
-
-                    if (verifiedRole && unverifiedRole) {
-                        await member.roles.add(verifiedRole);
-                        await member.roles.remove(unverifiedRole);
-                    }
-
-                    // Send success embed (style from your video)
-                    const successEmbed = new EmbedBuilder()
-                        .setColor(0x2f3136)
-                        .setDescription(
-                            `# You Successfully Verified!\n` +
-                            `Thanks for verifying!\n` +
-                            `You now have access to the rest of the server.`
-                        )
-                        .setImage('https://cdn.discordapp.com/attachments/1163490254221738015/1167472390213730335/Embed_Extender_Invisible_Space.png');
-
-                    await interaction.reply({ embeds: [successEmbed], ephemeral: true });
-                    // Optional: log success to a staff channel
-                    logVerification(interaction.guild, member.user, true);
-                } else {
-                    // Failure
-                    const failEmbed = new EmbedBuilder()
-                        .setDescription('❌ Verification unsuccessful. Please try again.')
-                        .setColor(0xff8b1f);
-                    await interaction.reply({ embeds: [failEmbed], ephemeral: true });
-                    logVerification(interaction.guild, interaction.user, false);
-                }
-            }
         }
     }
 };
 
-// Helper: generate a random math question (e.g. "12 + 7")
+// ======================== INTERACTION HANDLER ========================
+// You need to also register this separately in your main file.
+// See note at the bottom of this file.
+module.exports.handleInteraction = async (interaction) => {
+    if (!interaction.isButton() && !interaction.isModalSubmit()) return;
+
+    // ---------- BUTTON: open verification modal ----------
+    if (interaction.isButton() && interaction.customId === 'verify_modal_btn') {
+        // Cooldown (30 seconds)
+        const cooldownKey = `verify_cooldown_${interaction.user.id}`;
+        if (pendingCaptchas.has(cooldownKey)) {
+            return interaction.reply({ content: '⏳ Please wait 30 seconds before trying again.', ephemeral: true });
+        }
+
+        const mathQuestion = generateMathQuestion();
+        const modal = new ModalBuilder()
+            .setCustomId('verify_modal')
+            .setTitle('Verification – Math Captcha');
+
+        modal.addComponents(
+            new ActionRowBuilder().addComponents(
+                new TextInputBuilder()
+                    .setCustomId('captcha_answer')
+                    .setLabel(mathQuestion.text)
+                    .setStyle(TextInputStyle.Short)
+                    .setPlaceholder('Enter your answer')
+                    .setRequired(true)
+            )
+        );
+
+        // Store the expected answer for this user
+        pendingCaptchas.set(interaction.user.id, mathQuestion.answer);
+        // Set cooldown
+        pendingCaptchas.set(cooldownKey, true);
+        setTimeout(() => {
+            pendingCaptchas.delete(cooldownKey);
+            pendingCaptchas.delete(interaction.user.id);
+        }, 30000);
+
+        await interaction.showModal(modal);
+        return;
+    }
+
+    // ---------- MODAL SUBMIT: check answer ----------
+    if (interaction.isModalSubmit() && interaction.customId === 'verify_modal') {
+        const userAnswer = interaction.fields.getTextInputValue('captcha_answer');
+        const expectedAnswer = pendingCaptchas.get(interaction.user.id);
+
+        if (!expectedAnswer) {
+            return interaction.reply({ content: '❌ Verification session expired. Please click the button again.', ephemeral: true });
+        }
+
+        const member = interaction.member;
+        const supporterRoleId = helpers.ids.roles.supporter;
+        const memberRoleId = helpers.ids.roles.member;
+        const unverifiedRoleId = helpers.ids.roles.unverified;
+
+        const hasSupporter = member.roles.cache.has(supporterRoleId);
+        const unverifiedRole = interaction.guild.roles.cache.get(unverifiedRoleId);
+        const memberRole = interaction.guild.roles.cache.get(memberRoleId);
+
+        if (parseInt(userAnswer) === expectedAnswer) {
+            // Success
+            if (hasSupporter) {
+                // Supporter: just remove Unverified, do NOT give Member
+                if (unverifiedRole) await member.roles.remove(unverifiedRole);
+                await interaction.reply({
+                    content: '✅ You are already a Supporter – access granted.',
+                    ephemeral: true
+                });
+            } else {
+                // Free user: give Member, remove Unverified
+                if (memberRole && unverifiedRole) {
+                    await member.roles.add(memberRole);
+                    await member.roles.remove(unverifiedRole);
+                }
+                const successEmbed = new EmbedBuilder()
+                    .setColor(0x2f3136)
+                    .setDescription(
+                        `# You Successfully Verified!\n` +
+                        `Thanks for verifying!\n` +
+                        `You now have the **Member** role and full access.`
+                    )
+                    .setImage('https://cdn.discordapp.com/attachments/1163490254221738015/1167472390213730335/Embed_Extender_Invisible_Space.png');
+                await interaction.reply({ embeds: [successEmbed], ephemeral: true });
+            }
+            await logVerification(interaction.guild, member.user, true);
+        } else {
+            // Failure
+            const failEmbed = new EmbedBuilder()
+                .setDescription('❌ Verification unsuccessful. Please try again.')
+                .setColor(0xff8b1f);
+            await interaction.reply({ embeds: [failEmbed], ephemeral: true });
+            await logVerification(interaction.guild, interaction.user, false);
+        }
+        // Clean up stored answer
+        pendingCaptchas.delete(interaction.user.id);
+    }
+};
+
+// ======================== HELPER FUNCTIONS ========================
 function generateMathQuestion() {
     const a = Math.floor(Math.random() * 20) + 1;
     const b = Math.floor(Math.random() * 20) + 1;
     const operators = ['+', '-'];
     const op = operators[Math.floor(Math.random() * operators.length)];
-    let answer;
-    let text;
+    let answer, text;
     if (op === '+') {
         answer = a + b;
         text = `${a} + ${b} = ?`;
     } else {
-        // ensure positive result
         const max = Math.max(a, b);
         const min = Math.min(a, b);
         answer = max - min;
@@ -122,9 +150,10 @@ function generateMathQuestion() {
     return { text, answer };
 }
 
-// Optional: log to a staff channel (create a #verification-logs channel)
 async function logVerification(guild, user, success) {
-    const logChannelId = 'PUT_LOG_CHANNEL_ID_HERE'; // optional
+    // Optional: replace with your log channel ID, or remove if not needed
+    const logChannelId = null; // e.g., '123456789012345678'
+    if (!logChannelId) return;
     const logChannel = guild.channels.cache.get(logChannelId);
     if (!logChannel) return;
 
@@ -137,5 +166,5 @@ async function logVerification(guild, user, success) {
             { name: 'User Info', value: `> **User:** ${user.tag} (<@${user.id}>)\n> **ID:** \`${user.id}\``, inline: false },
             { name: 'Action', value: success ? 'User passed verification' : 'User failed the captcha', inline: false }
         );
-    logChannel.send({ embeds: [embed] });
+    await logChannel.send({ embeds: [embed] });
 }
