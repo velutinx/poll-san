@@ -98,7 +98,6 @@ async function handleVerifyStart(interaction) {
 
 async function handleCheckinClaim(interaction) {
     const userId = interaction.user.id;
-    const channel = interaction.channel;
     
     // Rate limit (5 seconds)
     const cooldownMap = global.checkinCooldown || new Map();
@@ -111,9 +110,7 @@ async function handleCheckinClaim(interaction) {
         });
     }
     cooldownMap.set(userId, Date.now());
-    
-    // Acknowledge button silently (no ephemeral reply)
-    await interaction.deferUpdate();
+    await interaction.deferReply({ flags: 64 });
     
     // Get user data
     let { data: userData, error } = await supabase
@@ -143,12 +140,9 @@ async function handleCheckinClaim(interaction) {
     
     if (!canClaim) {
         cooldownMap.delete(userId);
-        // Send ephemeral error (only user sees)
-        await interaction.followUp({
-            content: `⏳ You already claimed your daily reward! Come back in **${timeLeft}**.`,
-            ephemeral: true
+        return interaction.editReply({
+            content: `⏳ You already claimed your daily reward! Come back in **${timeLeft}**.`
         });
-        return;
     }
     
     // Add tickets & reset cooldowns
@@ -176,9 +170,9 @@ async function handleCheckinClaim(interaction) {
             .eq('user_id', userId);
         if (updateError) {
             console.error('Update error:', updateError);
-            await interaction.followUp({ content: '❌ Database error. Please try again later.', ephemeral: true });
-            return;
+            return interaction.editReply({ content: '❌ Database error. Please try again later.' });
         }
+        console.log(`[Checkin] Updated user ${userId} tickets: ${currentTickets} → ${newBalance}`);
     } else {
         const { error: insertError } = await supabase
             .from('games_user_data')
@@ -196,29 +190,17 @@ async function handleCheckinClaim(interaction) {
             });
         if (insertError) {
             console.error('Insert error:', insertError);
-            await interaction.followUp({ content: '❌ Database error. Please try again later.', ephemeral: true });
-            return;
+            return interaction.editReply({ content: '❌ Database error. Please try again later.' });
         }
+        console.log(`[Checkin] Inserted user ${userId} with tickets ${newBalance}`);
     }
     
-    // Send success message via "Check in Bot" webhook
-    const webhook = await getCheckinWebhook(channel);
-    const successMsg = await webhook.send({
+    // Success message
+    await interaction.editReply({
         content: `${helpers.releaseEmojis.VERIFY} **Daily Check-In Successful!**\n\n` +
                  `You received **${ticketAmount} tickets**! New balance: **${newBalance}** 🎫\n` +
-                 `Your Wordle, Hangman, and Trivia cooldowns have been reset.`,
-        username: 'Check in Bot',
-        avatarURL: 'https://www.velutinx.com/images/LogoDiscord.png'
+                 `Your Wordle, Hangman, and Trivia cooldowns have been reset.`
     });
-    
-    // Auto‑delete the success message after 10 seconds
-    setTimeout(async () => {
-        try {
-            await successMsg.delete();
-        } catch (err) {
-            // Ignore if already deleted
-        }
-    }, 10000);
     
     setTimeout(() => cooldownMap.delete(userId), 5000);
 }
