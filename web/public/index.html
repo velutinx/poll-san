@@ -328,10 +328,18 @@
                     <label>Welcome Channel</label>
                     <select id="welcome_channel_id"></select>
                 </div>
-                <div class="form-group">
-                    <label>Welcome Message</label>
-                    <textarea id="welcome_message" placeholder="Welcome to the server, {user}!"></textarea>
-                </div>
+<div class="form-group">
+    <label>Welcome Messages (one per line)</label>
+    <textarea id="welcome_message" rows="10" placeholder="Example:
+{user(proper)} joined the party like it's episode 1.
+{user(proper)} just skipped the opening and joined the server.
+New challenger unlocked: {user(proper)}.
+{user(proper)} spawned into the server."></textarea>
+    <small style="color: #94a3b8; font-size: 0.8rem;">
+        Write each message on a new line. The bot will randomly pick one when someone joins.<br>
+        Use <code>{user(proper)}</code> for the member's name (capitalised), or <code>{user}</code> for lowercase.
+    </small>
+</div>
                 <button style="background: var(--accent)" onclick="saveGreetings()">Save Greetings</button>
                 <div id="greetings-status" class="status"></div>
             </div>
