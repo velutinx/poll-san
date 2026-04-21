@@ -1,4 +1,4 @@
-// web/server.js – corrected version
+// web/server.js
 
 const express = require('express');
 const path = require('path');
@@ -8,6 +8,7 @@ const cors = require('cors');
 const supabase = require('../services/supabase');
 const { supabaseRetry } = require('../utils/db');
 const queueService = require('../services/queueService');
+const greetingsRouter = require('./routes/greetings');
 
 // ✅ MOVE THE ROUTER REQUIREMENT HERE (before it's used)
 const verifyRouter = require('./routes/verifyCallback');
@@ -23,7 +24,7 @@ module.exports = (client) => {
         allowedHeaders: ['Content-Type', 'Authorization']
     }));
 
-    // Quick probe blocker (same as yours)
+    // Quick probe blocker
     app.use((req, res, next) => {
         const url = req.url.toLowerCase();
         const probePatterns = [
@@ -45,7 +46,7 @@ module.exports = (client) => {
     app.use(express.static(path.join(__dirname, 'public')));
     app.use(express.json());
 
-    // ✅ Now verifyRouter is defined, so this works
+    // Verification webhook route
     app.use(verifyRouter);
     app.set('client', client);
 
@@ -114,14 +115,6 @@ module.exports = (client) => {
         }
     });
 
-    // ====================== GREETINGS SETTINGS (mock, replace with your DB) ======================
-    app.get('/api/get-settings', async (req, res) => {
-        res.json({ welcome_channel_id: '', welcome_message: '' });
-    });
-    app.post('/api/save-settings', async (req, res) => {
-        res.json({ success: true });
-    });
-
     // ====================== STATIC DASHBOARD PAGE ======================
     app.get('/poll-san', (req, res) => {
         res.sendFile(path.join(__dirname, 'public', 'index.html'));
@@ -135,10 +128,13 @@ module.exports = (client) => {
     const setupReleasesRoutes = require('./routes/releases');
     const setupMonitoringRoutes = require('./routes/monitoring');
     const setupGiveawayRoutes = require('./routes/giveaway');
-    const reminderRouter = require('./routes/reminder'); 
+    const reminderRouter = require('./routes/reminder');
+
+    // Mount additional routers
     app.use(reminderRouter);
-    // ❌ Remove the duplicate require for verifyRouter – it's already loaded at the top
-    
+    app.use(greetingsRouter);   // this provides /api/get-settings and /api/save-settings
+
+    // Setup all feature routes
     setupGiveawayRoutes(app, client, supabase, supabaseRetry, getGuildMembers);
     setupQueueRoutes(app, client, queueService);
     setupPollRoutes(app, client, supabase, supabaseRetry);
