@@ -33,6 +33,6 @@ module.exports = {
         );
 
         await verifyChannel.send({ embeds: [embed], components: [row] });
-        await interaction.reply({ content: 'Verification message posted!', ephemeral: true });
+        await interaction.reply({ content: 'Verification message posted!', flags: 64 });
     }
 };
