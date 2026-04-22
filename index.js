@@ -128,7 +128,7 @@ client.once(Events.ClientReady, async (c) => {
 client.on(Events.InteractionCreate, handleInteraction);
 
 // --- 3. VERIFICATION HANDLER (separate for modal) ---
-client.on(Events.InteractionCreate, verification.handleInteraction);
+//client.on(Events.InteractionCreate, verification.handleInteraction);
 
 // --- 4. EVENT LISTENERS ---
 client.on(Events.GuildMemberAdd, (member) => require('./events/guildMemberAdd')(member));
