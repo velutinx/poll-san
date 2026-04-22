@@ -333,8 +333,6 @@ async function loadSupporterEditData() {
     const post = window.globalSupporterPosts.find(p => p.id === postId);
     if (!post) return;
 
-    console.log("Loading supporter post:", post.name, "ID:", postId);
-
     const title = post.name;
     const titleRegex = /\[(.*?)\] (.*?) — (?:Pack #)?(\d+)(?: — (.*))?$/i;
     const titleMatch = title.match(titleRegex);
@@ -367,11 +365,9 @@ async function loadSupporterEditData() {
     }
 
     try {
-        console.log('Fetching supporter post content:', postId);
         const res = await fetch(`/api/get-post-content?id=${postId}`);
         const data = await res.json();
         const content = data.content || "";
-        console.log("DEBUG - Full Content Received:", content);
 
         const sizeMatch = content.match(/Set size:\s*(\d+)/i);
         if (sizeMatch) document.getElementById('supSize').value = sizeMatch[1];
@@ -388,13 +384,13 @@ async function loadSupporterEditData() {
         }
 
         // FIX: remove trailing punctuation from URL
-        if (megaUrl) {
-            megaUrl = megaUrl.replace(/[)\]},.]+$/, '');
-            document.getElementById('supDownload').value = megaUrl.replace(/[<>*]/g, '').trim();
-        } else {
-            document.getElementById('supDownload').value = "";
-            console.warn("MEGA Link not found.");
-        }
+if (megaUrl) {
+    // Remove trailing punctuation: ), ], }, ., , and also any closing parentheses
+    megaUrl = megaUrl.replace(/[)\]},.]+$/, '');
+    // Also remove any leftover ) that might be inside the URL (rare)
+    megaUrl = megaUrl.replace(/\)$/, '');
+    document.getElementById('supDownload').value = megaUrl.replace(/[<>*]/g, '').trim();
+}
 
         const imageContainer = document.getElementById('supporter-existing-images');
         imageContainer.innerHTML = '';
