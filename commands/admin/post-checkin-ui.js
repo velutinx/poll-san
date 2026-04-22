@@ -1,17 +1,17 @@
 // commands/admin/post-checkin-ui.js
-
 const { SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } = require('discord.js');
 const helpers = require('../../utils/helpers');
 
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('post_checkin_ui')
-        .setDescription('[ADMIN] Post the daily check-in message in #check-in'),
+        .setDescription('[ADMIN] Post the daily check-in message in #check-in (and add reaction to verify message)'),
     async execute(interaction) {
         if (!interaction.memberPermissions.has('Administrator')) {
             return interaction.reply({ content: '❌ Admin only.', ephemeral: true });
         }
 
+        // --- 1. Post the check-in message (original functionality) ---
         const checkinChannel = interaction.guild.channels.cache.get(helpers.ids.channels.checkin);
         if (!checkinChannel) {
             return interaction.reply({ content: '❌ Check-in channel not found.', ephemeral: true });
@@ -33,7 +33,6 @@ module.exports = {
                 .setEmoji('🎁')
         );
 
-        // Use webhook to send as "Check in Bot"
         let webhook = (await checkinChannel.fetchWebhooks()).find(w => w.name === 'Check in Bot');
         if (!webhook) {
             webhook = await checkinChannel.createWebhook({
@@ -49,6 +48,28 @@ module.exports = {
             avatarURL: 'https://www.velutinx.com/images/LogoDiscord.png'
         });
 
-        await interaction.reply({ content: '✅ Daily check-in message posted!', ephemeral: true });
+        // --- 2. Add VERIFY reaction to the target message in verify channel (one-time) ---
+        const verifyChannelId = helpers.ids.channels.verify; // 1495679452489977897
+        const targetMessageId = '1495692823603839018';
+        const emoji = helpers.releaseEmojis.VERIFY; // '<a:Verify:1491669023245729924>'
+
+        let reactionResult = '';
+        try {
+            const verifyChannel = interaction.guild.channels.cache.get(verifyChannelId);
+            if (verifyChannel) {
+                const targetMsg = await verifyChannel.messages.fetch(targetMessageId);
+                await targetMsg.react(emoji);
+                reactionResult = `\n✅ Also added reaction ${emoji} to message ${targetMessageId} in <#${verifyChannelId}>.`;
+            } else {
+                reactionResult = `\n⚠️ Verify channel not found – could not add reaction.`;
+            }
+        } catch (err) {
+            reactionResult = `\n⚠️ Failed to add reaction: ${err.message}`;
+        }
+
+        await interaction.reply({
+            content: `✅ Daily check-in message posted!${reactionResult}`,
+            ephemeral: true
+        });
     }
 };
