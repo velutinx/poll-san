@@ -9,6 +9,7 @@ const supabase = require('../services/supabase');
 const { supabaseRetry } = require('../utils/db');
 const queueService = require('../services/queueService');
 const greetingsRouter = require('./routes/greetings');
+const helpers = require('../utils/helpers');        // <-- ADDED for centralised IDs
 
 // ✅ MOVE THE ROUTER REQUIREMENT HERE (before it's used)
 const verifyRouter = require('./routes/verifyCallback');
@@ -46,13 +47,24 @@ module.exports = (client) => {
     app.use(express.static(path.join(__dirname, 'public')));
     app.use(express.json());
 
+    // ====================== CONFIG ENDPOINT (frontend IDs) ======================
+    app.get('/api/config', (req, res) => {
+        res.json({
+            forumIds: {
+                preview: helpers.ids.channels.preview_forum,
+                supporter: helpers.ids.channels.supporter_forum
+            }
+        });
+    });
+
     // Verification webhook route
     app.use(verifyRouter);
     app.set('client', client);
 
     const upload = multer({ storage: multer.memoryStorage() });
-    const FORUM_ID = '1465938599378812980';
-    const SUPPORTER_FORUM_ID = '1465937644394512516';
+    // These are kept for backward compatibility but will be overridden by helpers when passed to releases routes
+    const FORUM_ID = helpers.ids.channels.preview_forum || '1465938599378812980';
+    const SUPPORTER_FORUM_ID = helpers.ids.channels.supporter_forum || '1465937644394512516';
 
     // ====================== MEMBER CACHE ======================
     let cachedMembers = null;
@@ -132,9 +144,9 @@ module.exports = (client) => {
 
     // Mount additional routers
     app.use(reminderRouter);
-    app.use(greetingsRouter);   // this provides /api/get-settings and /api/save-settings
+    app.use(greetingsRouter);   // provides /api/get-settings and /api/save-settings
 
-    // Setup all feature routes
+    // Setup all feature routes (pass the IDs from helpers)
     setupGiveawayRoutes(app, client, supabase, supabaseRetry, getGuildMembers);
     setupQueueRoutes(app, client, queueService);
     setupPollRoutes(app, client, supabase, supabaseRetry);
