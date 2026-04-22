@@ -449,207 +449,204 @@ New challenger unlocked: {user(proper)}.
     <script src="/js/monitoring.js" defer></script>
 
     <!-- Inline script – wrapped in DOMContentLoaded to ensure deferred scripts are loaded -->
-    <script>
-        document.addEventListener('DOMContentLoaded', () => {
-            // ======================================================
-            // GLOBAL STATE
-            // ======================================================
-            window.uploadedFiles = [];
-            window.supporterUploadedFiles = [];
-            window.globalForumPosts = [];
-            window.globalSupporterPosts = [];
-            window.currentImages = [];
-            window.selectedIndices = new Set();
-            window.testSelectedFile = null;
-            window.currentZipFile = null;
-            window.totalImagesCount = 0;
+        // ======================================================
+        // GLOBAL STATE
+        // ======================================================
+        window.uploadedFiles = [];
+        window.supporterUploadedFiles = [];
+        window.globalForumPosts = [];
+        window.globalSupporterPosts = [];
+        window.currentImages = [];
+        window.selectedIndices = new Set();
+        window.testSelectedFile = null;
+        window.currentZipFile = null;
+        window.totalImagesCount = 0;
 
-            // ======================================================
-            // TAB & SUB-TAB SWITCHING
-            // ======================================================
-            async function switchTab(tabId) {
-                document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
-                document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-                document.getElementById(tabId).classList.add('active');
+        // ======================================================
+        // TAB & SUB-TAB SWITCHING
+        // ======================================================
+        async function switchTab(tabId) {
+            document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+            document.getElementById(tabId).classList.add('active');
 
-                document.querySelectorAll('.nav-item').forEach(item => {
-                    if (item.innerText.toLowerCase().includes(tabId.split('-')[0])) {
-                        item.classList.add('active');
+            document.querySelectorAll('.nav-item').forEach(item => {
+                if (item.innerText.toLowerCase().includes(tabId.split('-')[0])) {
+                    item.classList.add('active');
+                }
+            });
+
+            if (tabId === 'poll-mgmt') {
+                const POLL_CHANNEL_ID = '1466635718930731113';
+                await loadChannels();
+                if (typeof loadActivePoll === 'function') loadActivePoll();
+            }
+            if (tabId === 'queue-mgmt' && typeof loadQueueData === 'function') loadQueueData();
+            if (tabId === 'releases-mgmt') {
+                switchSubTab('preview');
+                if (typeof fetchForumPosts === 'function') fetchForumPosts();
+                if (typeof fetchSupporterPosts === 'function') fetchSupporterPosts();
+            }
+            if (tabId === 'greetings') {
+                await loadChannels();
+                await loadSettings();
+            }
+            if (tabId === 'member-mgmt' && typeof loadMembershipData === 'function') loadMembershipData();
+            if (tabId === 'monitoring') {
+                loadMonitoringData();
+            }
+            if (tabId === 'giveaway-mgmt') {
+                if (typeof loadGiveawayData === 'function') loadGiveawayData();
+            }
+        }
+
+        function switchSubTab(subId) {
+            document.querySelectorAll('.sub-tab-content').forEach(t => t.style.display = 'none');
+            document.querySelectorAll('.sub-nav span').forEach(s => s.classList.remove('active'));
+            document.getElementById(subId).style.display = 'block';
+            document.querySelector(`.sub-nav span[onclick="switchSubTab('${subId}')"]`)?.classList.add('active');
+        }
+
+        // ======================================================
+        // CHANNEL LOADER
+        // ======================================================
+        const POLL_CHANNEL_ID = '1466635718930731113';
+
+        async function loadChannels() {
+            try {
+                const res = await fetch('/api/channels');
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                const chs = await res.json();
+
+                ['poll_channel', 'welcome_channel_id'].forEach(id => {
+                    const sel = document.getElementById(id);
+                    if (!sel) return;
+                    sel.innerHTML = '';
+                    if (!chs.length) {
+                        sel.innerHTML = '<option>No channels found</option>';
+                        return;
                     }
+                    chs.forEach(c => {
+                        const defPoll = (id === 'poll_channel' && c.id === POLL_CHANNEL_ID);
+                        const defWelcome = (id === 'welcome_channel_id' && c.name.toLowerCase() === 'poll');
+                        sel.innerHTML += `<option value="${c.id}" ${defPoll || defWelcome ? 'selected' : ''}>#${c.name}</option>`;
+                    });
                 });
+            } catch (e) {
+                console.error('Error loading channels:', e);
+                ['poll_channel', 'welcome_channel_id'].forEach(id => {
+                    const sel = document.getElementById(id);
+                    if (sel) sel.innerHTML = '<option>Error loading channels</option>';
+                });
+            }
+        }
 
-                if (tabId === 'poll-mgmt') {
-                    const POLL_CHANNEL_ID = '1466635718930731113';
-                    await loadChannels();
-                    if (typeof loadActivePoll === 'function') loadActivePoll();
-                }
-                if (tabId === 'queue-mgmt' && typeof loadQueueData === 'function') loadQueueData();
-                if (tabId === 'releases-mgmt') {
-                    switchSubTab('preview');
-                    if (typeof fetchForumPosts === 'function') fetchForumPosts();
-                    if (typeof fetchSupporterPosts === 'function') fetchSupporterPosts();
-                }
-                if (tabId === 'greetings') {
-                    await loadChannels();
-                    await loadSettings();
-                }
-                if (tabId === 'member-mgmt' && typeof loadMembershipData === 'function') loadMembershipData();
-                if (tabId === 'monitoring') {
-                    loadMonitoringData();
-                }
-                if (tabId === 'giveaway-mgmt') {
-                    if (typeof loadGiveawayData === 'function') loadGiveawayData();
-                }
+        // ======================================================
+        // GREETINGS SETTINGS & MEMBERSHIP HELPERS
+        // ======================================================
+        const MEMBERSHIP_MAP = {
+            "1": { name: "🥉 Bronze", color: "#cd7f32" },
+            "2": { name: "✨ Copper", color: "#b87333" },
+            "3": { name: "🥈 Silver", color: "#c0c0c0" },
+            "4": { name: "🥇 Gold", color: "#ffd700" },
+            "5": { name: "✨ Platinum", color: "#e5e4e2" }
+        };
+
+        let currentSort = { column: null, direction: 'asc' };
+        let membersData = [];
+
+        function sortMembers(col) {
+            if (currentSort.column === col) {
+                currentSort.direction = currentSort.direction === 'asc' ? 'desc' : 'asc';
+            } else {
+                currentSort.column = col;
+                currentSort.direction = 'asc';
+            }
+            renderMembersTable();
+        }
+
+        function escapeHtml(str) {
+            return String(str).replace(/[&<>]/g, function(m) {
+                if (m === '&') return '&amp;';
+                if (m === '<') return '&lt;';
+                if (m === '>') return '&gt;';
+                return m;
+            });
+        }
+
+        function renderMembersTable() {
+            const tb = document.getElementById('membership-list-body');
+            if (!membersData.length) {
+                tb.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:20px;">No active subscribers found.</tr></tr>';
+                return;
             }
 
-            function switchSubTab(subId) {
-                document.querySelectorAll('.sub-tab-content').forEach(t => t.style.display = 'none');
-                document.querySelectorAll('.sub-nav span').forEach(s => s.classList.remove('active'));
-                document.getElementById(subId).style.display = 'block';
-                document.querySelector(`.sub-nav span[onclick="switchSubTab('${subId}')"]`)?.classList.add('active');
-            }
-
-            // ======================================================
-            // CHANNEL LOADER
-            // ======================================================
-            const POLL_CHANNEL_ID = '1466635718930731113';
-
-            async function loadChannels() {
-                try {
-                    const res = await fetch('/api/channels');
-                    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-                    const chs = await res.json();
-
-                    ['poll_channel', 'welcome_channel_id'].forEach(id => {
-                        const sel = document.getElementById(id);
-                        if (!sel) return;
-                        sel.innerHTML = '';
-                        if (!chs.length) {
-                            sel.innerHTML = '<option>No channels found</option>';
-                            return;
-                        }
-                        chs.forEach(c => {
-                            const defPoll = (id === 'poll_channel' && c.id === POLL_CHANNEL_ID);
-                            const defWelcome = (id === 'welcome_channel_id' && c.name.toLowerCase() === 'poll');
-                            sel.innerHTML += `<option value="${c.id}" ${defPoll || defWelcome ? 'selected' : ''}>#${c.name}</option>`;
-                        });
-                    });
-                } catch (e) {
-                    console.error('Error loading channels:', e);
-                    ['poll_channel', 'welcome_channel_id'].forEach(id => {
-                        const sel = document.getElementById(id);
-                        if (sel) sel.innerHTML = '<option>Error loading channels</option>';
-                    });
-                }
-            }
-
-            // ======================================================
-            // GREETINGS SETTINGS & MEMBERSHIP HELPERS
-            // ======================================================
-            const MEMBERSHIP_MAP = {
-                "1": { name: "🥉 Bronze", color: "#cd7f32" },
-                "2": { name: "✨ Copper", color: "#b87333" },
-                "3": { name: "🥈 Silver", color: "#c0c0c0" },
-                "4": { name: "🥇 Gold", color: "#ffd700" },
-                "5": { name: "✨ Platinum", color: "#e5e4e2" }
-            };
-
-            let currentSort = { column: null, direction: 'asc' };
-            let membersData = [];
-
-            function sortMembers(col) {
-                if (currentSort.column === col) {
-                    currentSort.direction = currentSort.direction === 'asc' ? 'desc' : 'asc';
+            const sorted = [...membersData].sort((a,b) => {
+                let va = a[currentSort.column], vb = b[currentSort.column];
+                if (['daysLeft','userId'].includes(currentSort.column)) {
+                    va = Number(va); vb = Number(vb);
                 } else {
-                    currentSort.column = col;
-                    currentSort.direction = 'asc';
+                    va = String(va).toLowerCase();
+                    vb = String(vb).toLowerCase();
                 }
+                if (va < vb) return currentSort.direction === 'asc' ? -1 : 1;
+                if (va > vb) return currentSort.direction === 'asc' ? 1 : -1;
+                return 0;
+            });
+
+            document.querySelectorAll('thead th span').forEach(s => s.innerHTML = '');
+            if (currentSort.column) {
+                const arrow = currentSort.direction === 'asc' ? ' ▲' : ' ▼';
+                const span = document.getElementById(`sort-${currentSort.column}`);
+                if (span) span.innerHTML = arrow;
+            }
+
+            tb.innerHTML = sorted.map(m => {
+                const r = MEMBERSHIP_MAP[m.rank] || {name: m.rank || 'Standard', color:'#94a3b8'};
+                const days = m.daysLeft;
+                const recurringIcon = m.recurring ? `<span style="display:inline-block; margin-left:8px; vertical-align:middle;" title="Recurring subscription">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: #10b981;">
+                        <path d="M17 1L21 5L17 9"/>
+                        <path d="M21 5H9C6.79086 5 5 6.79086 5 9"/>
+                        <path d="M7 23L3 19L7 15"/>
+                        <path d="M3 19H15C17.2091 19 19 17.2091 19 15"/>
+                    </svg>
+                </span>` : '';
+                return `<tr style="border-bottom:1px solid #1e293b;">
+                    <td style="padding:12px;">${escapeHtml(m.nickname||'Unknown')}</td>
+                    <td style="padding:12px; color:#94a3b8;">${escapeHtml(m.discordTag||'Unknown')}</td>
+                    <td style="padding:12px; color:#94a3b8; font-family:monospace;">${escapeHtml(m.userId||'')}</td>
+                    <td style="padding:12px; color:${r.color}; font-weight:bold;">${escapeHtml(r.name)}</td>
+                    <td style="padding:12px; color:${days<5?'#f87171':'#10b981'};">
+                        ${days} Days${recurringIcon}
+                    </td>
+                </tr>`;
+            }).join('');
+        }
+
+        async function loadMembershipData() {
+            const tb = document.getElementById('membership-list-body');
+            tb.innerHTML = '<tr><td colspan="5" style="padding:30px; text-align:center; color:#64748b;">Loading membership data...</td></tr>';
+            try {
+                const r = await fetch('/api/memberships');
+                if (!r.ok) throw new Error('Failed');
+                membersData = await r.json();
                 renderMembersTable();
+            } catch (e) {
+                console.error(e);
+                tb.innerHTML = '<tr><td colspan="5" style="padding:30px; text-align:center; color:#f87171;">Error loading data.</td></tr>';
             }
+        }
 
-            function escapeHtml(str) {
-                return String(str).replace(/[&<>]/g, function(m) {
-                    if (m === '&') return '&amp;';
-                    if (m === '<') return '&lt;';
-                    if (m === '>') return '&gt;';
-                    return m;
-                });
-            }
-
-            function renderMembersTable() {
-                const tb = document.getElementById('membership-list-body');
-                if (!membersData.length) {
-                    tb.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:20px;">No active subscribers found.</td></tr>';
-                    return;
-                }
-
-                const sorted = [...membersData].sort((a,b) => {
-                    let va = a[currentSort.column], vb = b[currentSort.column];
-                    if (['daysLeft','userId'].includes(currentSort.column)) {
-                        va = Number(va); vb = Number(vb);
-                    } else {
-                        va = String(va).toLowerCase();
-                        vb = String(vb).toLowerCase();
-                    }
-                    if (va < vb) return currentSort.direction === 'asc' ? -1 : 1;
-                    if (va > vb) return currentSort.direction === 'asc' ? 1 : -1;
-                    return 0;
-                });
-
-                document.querySelectorAll('thead th span').forEach(s => s.innerHTML = '');
-                if (currentSort.column) {
-                    const arrow = currentSort.direction === 'asc' ? ' ▲' : ' ▼';
-                    const span = document.getElementById(`sort-${currentSort.column}`);
-                    if (span) span.innerHTML = arrow;
-                }
-
-                tb.innerHTML = sorted.map(m => {
-                    const r = MEMBERSHIP_MAP[m.rank] || {name: m.rank || 'Standard', color:'#94a3b8'};
-                    const days = m.daysLeft;
-                    const recurringIcon = m.recurring ? `<span style="display:inline-block; margin-left:8px; vertical-align:middle;" title="Recurring subscription">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: #10b981;">
-                            <path d="M17 1L21 5L17 9"/>
-                            <path d="M21 5H9C6.79086 5 5 6.79086 5 9"/>
-                            <path d="M7 23L3 19L7 15"/>
-                            <path d="M3 19H15C17.2091 19 19 17.2091 19 15"/>
-                        </svg>
-                    </span>` : '';
-                    return `<tr style="border-bottom:1px solid #1e293b;">
-                        <td style="padding:12px;">${escapeHtml(m.nickname||'Unknown')}</td>
-                        <td style="padding:12px; color:#94a3b8;">${escapeHtml(m.discordTag||'Unknown')}</td>
-                        <td style="padding:12px; color:#94a3b8; font-family:monospace;">${escapeHtml(m.userId||'')}</td>
-                        <td style="padding:12px; color:${r.color}; font-weight:bold;">${escapeHtml(r.name)}</td>
-                        <td style="padding:12px; color:${days<5?'#f87171':'#10b981'};">
-                            ${days} Days${recurringIcon}
-                        </td>
-                    </tr>`;
-                }).join('');
-            }
-
-            async function loadMembershipData() {
-                const tb = document.getElementById('membership-list-body');
-                tb.innerHTML = '<tr><td colspan="5" style="padding:30px; text-align:center; color:#64748b;">Loading membership data...</td></tr>';
-                try {
-                    const r = await fetch('/api/memberships');
-                    if (!r.ok) throw new Error('Failed');
-                    membersData = await r.json();
-                    renderMembersTable();
-                } catch (e) {
-                    console.error(e);
-                    tb.innerHTML = '<tr><td colspan="5" style="padding:30px; text-align:center; color:#f87171;">Error loading data.</td></tr>';
-                }
-            }
-
-            // ======================================================
-            // PAGE LOAD
-            // ======================================================
-            window.onload = () => {
-                switchTab('poll-mgmt');
-                if (typeof loadActivePoll === 'function') setInterval(loadActivePoll, 10000);
-                if (typeof initReleases === 'function') initReleases();
-                loadMembershipData();
-            };
-        });
+        // ======================================================
+        // PAGE LOAD
+        // ======================================================
+        window.onload = () => {
+            switchTab('poll-mgmt');
+            if (typeof loadActivePoll === 'function') setInterval(loadActivePoll, 10000);
+            if (typeof initReleases === 'function') initReleases();
+            loadMembershipData();
+        };
     </script>
 </body>
 </html>
