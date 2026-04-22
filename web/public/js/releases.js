@@ -1,18 +1,42 @@
-// this is poll-san/web/public/js/releases.js
+// This is    /web/public/js/releases.js
 
 let supporterSortable = null;
-let previewSortable = null;   // NEW: Sortable instance for SFW preview images
+let previewSortable = null;
 
+// ------------------------------------------------------------
+// Fetch configuration (forum IDs and tag IDs) from server
+// ------------------------------------------------------------
+let cachedConfig = null;
+
+async function getConfig() {
+    if (cachedConfig) return cachedConfig;
+    try {
+        const res = await fetch('/api/config');
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const config = await res.json();
+        if (!config.forumIds?.preview || !config.forumIds?.supporter) {
+            throw new Error('Missing forum IDs in config');
+        }
+        cachedConfig = config;
+        return cachedConfig;
+    } catch (err) {
+        console.error('Failed to load config:', err);
+        showToast('Error', 'Could not load configuration. Please refresh.', 'error');
+        throw err;
+    }
+}
+
+// ------------------------------------------------------------
+// Preview Sortable (unchanged)
+// ------------------------------------------------------------
 function initPreviewSortable() {
     const container = document.getElementById('preview-container');
     if (!container || previewSortable) return;
-
     previewSortable = new Sortable(container, {
         animation: 150,
-        handle: '.preview-img',        // drag by the image itself
-        ghostClass: 'sortable-ghost',  // optional: add a ghost style in your CSS
+        handle: '.preview-img',
+        ghostClass: 'sortable-ghost',
         onEnd: function() {
-            // Rebuild window.uploadedFiles to match the new DOM order
             const newOrder = [];
             container.querySelectorAll('.preview-img').forEach((img) => {
                 const idx = img.getAttribute('data-file-index');
@@ -23,7 +47,6 @@ function initPreviewSortable() {
             if (newOrder.length === window.uploadedFiles.length) {
                 window.uploadedFiles = newOrder;
             }
-            // Update data-file-index attributes to reflect new positions
             container.querySelectorAll('.preview-img').forEach((img, i) => {
                 img.setAttribute('data-file-index', i);
             });
@@ -31,15 +54,11 @@ function initPreviewSortable() {
     });
 }
 
-// ------------------------------------------------------------
-// Override handleFiles to add data attributes and init Sortable
-// ------------------------------------------------------------
 const originalHandleFiles = window.handleFiles;
 window.handleFiles = function(files) {
     if (originalHandleFiles) {
         originalHandleFiles(files);
     } else {
-        // Fallback if original was not defined
         for (let file of files) {
             window.uploadedFiles.push(file);
             const reader = new FileReader();
@@ -55,7 +74,6 @@ window.handleFiles = function(files) {
         if (dropText) dropText.style.display = 'none';
     }
 
-    // After images are added, set data-file-index and initialize Sortable
     setTimeout(() => {
         const container = document.getElementById('preview-container');
         if (container) {
@@ -71,9 +89,6 @@ window.handleFiles = function(files) {
     }, 50);
 };
 
-// ------------------------------------------------------------
-// Override clearImages to destroy Sortable and reset
-// ------------------------------------------------------------
 const originalClearImages = window.clearImages;
 window.clearImages = function() {
     if (originalClearImages) {
@@ -87,17 +102,12 @@ window.clearImages = function() {
         const fileInput = document.getElementById('file-input');
         if (fileInput) fileInput.value = '';
     }
-
     if (previewSortable) {
         previewSortable.destroy();
         previewSortable = null;
     }
 };
 
-// ------------------------------------------------------------
-// Ensure Sortable is initialized when images already exist
-// (e.g., after loading a page with pre‑filled images)
-// ------------------------------------------------------------
 function setupPreviewSortable() {
     const container = document.getElementById('preview-container');
     if (container && container.children.length > 0) {
@@ -113,7 +123,7 @@ function setupPreviewSortable() {
 }
 
 // ------------------------------------------------------------
-// Supporter Sortable (unchanged, included for completeness)
+// Supporter Sortable (unchanged)
 // ------------------------------------------------------------
 function initSupporterSortable() {
     const container = document.getElementById('sup-preview-container');
@@ -142,7 +152,6 @@ function initSupporterSortable() {
     });
 }
 
-// Override handleSupporterFiles
 if (window.handleSupporterFiles) {
     const originalHandleSupporterFiles = window.handleSupporterFiles;
     window.handleSupporterFiles = function(files) {
@@ -159,7 +168,6 @@ if (window.handleSupporterFiles) {
     };
 }
 
-// Override clearSupporterImages
 if (window.clearSupporterImages) {
     const originalClearSupporterImages = window.clearSupporterImages;
     window.clearSupporterImages = function() {
@@ -183,39 +191,37 @@ function setupSupporterSortable() {
     }
 }
 
+// ------------------------------------------------------------
+// Fetch forum posts (Preview and Supporter dropdowns) using config
+// ------------------------------------------------------------
 async function fetchForumPosts() {
-    const previewChannelId = '1465938599378812980';
     const previewDrop = document.getElementById('postDropdown');
     const supporterBaseDrop = document.getElementById('supporterPostSelect');
-
     if (previewDrop) previewDrop.innerHTML = '<option value="">Loading posts...</option>';
     if (supporterBaseDrop) supporterBaseDrop.innerHTML = '<option value="">Loading posts...</option>';
 
     try {
-        const res = await fetch(`/api/forum-posts?channelId=${previewChannelId}`);
+        const config = await getConfig();
+        const res = await fetch(`/api/forum-posts?channelId=${config.forumIds.preview}`);
         if (!res.ok) throw new Error(`Server responded with ${res.status}`);
         const data = await res.json();
         window.globalForumPosts = Array.isArray(data) ? data : [];
 
-        if (previewDrop) {
-            previewDrop.innerHTML = '<option value="">-- Select a post to edit --</option>';
-        }
-        if (supporterBaseDrop) {
-            supporterBaseDrop.innerHTML = '<option value="">-- Select a post to base this on --</option>';
-        }
+        if (previewDrop) previewDrop.innerHTML = '<option value="">-- Select a post to edit --</option>';
+        if (supporterBaseDrop) supporterBaseDrop.innerHTML = '<option value="">-- Select a post to base this on --</option>';
 
         window.globalForumPosts.forEach(post => {
             if (previewDrop) {
-                const option = document.createElement('option');
-                option.value = post.id;
-                option.textContent = post.name;
-                previewDrop.appendChild(option);
+                const opt = document.createElement('option');
+                opt.value = post.id;
+                opt.textContent = post.name;
+                previewDrop.appendChild(opt);
             }
             if (supporterBaseDrop) {
-                const option = document.createElement('option');
-                option.value = post.id;
-                option.textContent = post.name;
-                supporterBaseDrop.appendChild(option);
+                const opt = document.createElement('option');
+                opt.value = post.id;
+                opt.textContent = post.name;
+                supporterBaseDrop.appendChild(opt);
             }
         });
 
@@ -237,13 +243,15 @@ async function fetchForumPosts() {
 }
 
 async function fetchSupporterPosts() {
+    const drop = document.getElementById('supporterEditDropdown');
+    if (drop) drop.innerHTML = '<option value="">Loading supporter posts...</option>';
     try {
-        const res = await fetch('/api/forum-posts?channelId=1465937644394512516');
+        const config = await getConfig();
+        const res = await fetch(`/api/forum-posts?channelId=${config.forumIds.supporter}`);
         if (!res.ok) throw new Error(`Server responded with ${res.status}`);
         const data = await res.json();
         window.globalSupporterPosts = Array.isArray(data) ? data : [];
 
-        const drop = document.getElementById('supporterEditDropdown');
         if (drop) {
             drop.innerHTML = '<option value="">-- Select a supporter post to edit --</option>';
             window.globalSupporterPosts.forEach(p => {
@@ -256,11 +264,13 @@ async function fetchSupporterPosts() {
     } catch (e) {
         console.error("Error fetching supporter posts:", e);
         window.globalSupporterPosts = [];
-        const drop = document.getElementById('supporterEditDropdown');
         if (drop) drop.innerHTML = '<option value="">Error loading posts</option>';
     }
 }
 
+// ------------------------------------------------------------
+// Load preview post data into edit form (using dynamic tag IDs)
+// ------------------------------------------------------------
 async function loadPostData() {
     const drop = document.getElementById('postDropdown');
     const postId = drop.value;
@@ -276,13 +286,19 @@ async function loadPostData() {
         document.getElementById('editSeries').value = match[1];
         let fullName = match[2];
         const appliedTags = post.applied_tags || [];
-        const hasFemale = appliedTags.includes('1465939310720192637');
-        const hasFemboy = appliedTags.includes('1465939329120469095');
+        const config = await getConfig();
+        const previewFemaleTag = config.tagIds.preview_female;
+        const previewMaleTags = config.tagIds.preview_male; // array
         let genderValue = ":male_sign:";
-        if (hasFemale) genderValue = ":female_sign:";
-        else if (hasFemboy) genderValue = ":male_sign:";
-        else if (fullName.includes("♀️")) genderValue = ":female_sign:";
-        else if (fullName.includes("♂️")) genderValue = ":male_sign:";
+        if (appliedTags.includes(previewFemaleTag)) {
+            genderValue = ":female_sign:";
+        } else if (previewMaleTags.some(tag => appliedTags.includes(tag))) {
+            genderValue = ":male_sign:";
+        } else if (fullName.includes("♀️")) {
+            genderValue = ":female_sign:";
+        } else if (fullName.includes("♂️")) {
+            genderValue = ":male_sign:";
+        }
         document.getElementById('editGender').value = genderValue;
         document.getElementById('editName').value = fullName.replace(/♀️|♂️|:female_sign:|:male_sign:/g, "").trim();
         document.getElementById('editPack').value = match[3];
@@ -308,10 +324,9 @@ async function loadPostData() {
     }
 }
 
-
-// ────────────────────────────────────────────────────────────
-// Load supporter post data into the form (Supporters tab – edit)
-// ────────────────────────────────────────────────────────────
+// ------------------------------------------------------------
+// Load supporter post data into edit form (with download link fix and dynamic tag IDs)
+// ------------------------------------------------------------
 async function loadSupporterEditData() {
     const drop = document.getElementById('supporterEditDropdown');
     const postId = drop.value;
@@ -336,14 +351,14 @@ async function loadSupporterEditData() {
     }
 
     const appliedTags = post.applied_tags || [];
+    const config = await getConfig();
+    const femaleTag = config.tagIds.supporter_female;
+    const maleTags = config.tagIds.supporter_male; // array
     const genderSelect = document.getElementById('supGender');
-    const FEMALE_TAG = '1465939610642415921';
-    const MALE_TAG = '1465939591352680488';
-    const FEMBOY_TAG = '1467020371428642957';
 
-    if (appliedTags.includes(FEMALE_TAG)) {
+    if (appliedTags.includes(femaleTag)) {
         genderSelect.value = ':female_sign:';
-    } else if (appliedTags.includes(MALE_TAG) || appliedTags.includes(FEMBOY_TAG)) {
+    } else if (maleTags.some(tag => appliedTags.includes(tag))) {
         genderSelect.value = ':male_sign:';
     } else {
         if (title.includes('♀️')) genderSelect.value = ':female_sign:';
@@ -372,7 +387,9 @@ async function loadSupporterEditData() {
             }
         }
 
+        // FIX: remove trailing punctuation from URL
         if (megaUrl) {
+            megaUrl = megaUrl.replace(/[)\]},.]+$/, '');
             document.getElementById('supDownload').value = megaUrl.replace(/[<>*]/g, '').trim();
         } else {
             document.getElementById('supDownload').value = "";
@@ -396,9 +413,9 @@ async function loadSupporterEditData() {
     }
 }
 
-// ────────────────────────────────────────────────────────────
-// Auto-fill supporter form from a selected preview post
-// ────────────────────────────────────────────────────────────
+// ------------------------------------------------------------
+// Auto-fill supporter form from a selected preview post (using dynamic tag IDs)
+// ------------------------------------------------------------
 async function loadSupporterPostData() {
     const drop = document.getElementById('supporterPostSelect');
     const postId = drop.value;
@@ -421,14 +438,14 @@ async function loadSupporterPostData() {
     }
 
     const appliedTags = post.applied_tags || [];
+    const config = await getConfig();
+    const previewFemaleTag = config.tagIds.preview_female;
+    const previewMaleTags = config.tagIds.preview_male;
     const genderSelect = document.getElementById('supGender');
-    const PREVIEW_FEMALE = '1465939310720192637';
-    const PREVIEW_MALE = '1465939329120469095';
-    const PREVIEW_FEMBOY = '1467020233272328195';
 
-    if (appliedTags.includes(PREVIEW_FEMALE)) {
+    if (appliedTags.includes(previewFemaleTag)) {
         genderSelect.value = ':female_sign:';
-    } else if (appliedTags.includes(PREVIEW_MALE) || appliedTags.includes(PREVIEW_FEMBOY)) {
+    } else if (previewMaleTags.some(tag => appliedTags.includes(tag))) {
         genderSelect.value = ':male_sign:';
     } else {
         if (title.includes('♀️')) genderSelect.value = ':female_sign:';
@@ -447,9 +464,9 @@ async function loadSupporterPostData() {
     }
 }
 
-// ────────────────────────────────────────────────────────────
-// Submit edit for a preview post (Preview tab)
-// ────────────────────────────────────────────────────────────
+// ------------------------------------------------------------
+// Submit edit for preview post
+// ------------------------------------------------------------
 async function submitEdit() {
     const status = document.getElementById('edit-status');
     const btn = document.getElementById('edit-submit-btn');
@@ -485,13 +502,12 @@ async function submitEdit() {
     }
 }
 
-// ────────────────────────────────────────────────────────────
-// Create a new preview release (Preview tab)
-// ────────────────────────────────────────────────────────────
+// ------------------------------------------------------------
+// Create a new preview release
+// ------------------------------------------------------------
 async function submitRelease() {
     const status = document.getElementById('release-status');
     const btn = document.getElementById('rel-submit-btn');
-    
     const series = document.getElementById('rel-series').value;
     const name = document.getElementById('rel-name').value;
     if (!series || !name) {
@@ -508,17 +524,10 @@ async function submitRelease() {
     formData.append('series', series);
     formData.append('input', `${document.getElementById('rel-gender').value} ${name}`.trim());
     formData.append('suffix', document.getElementById('rel-suffix').value || '');
-
-    window.uploadedFiles.forEach(file => {
-        formData.append('images', file);
-    });
+    window.uploadedFiles.forEach(file => { formData.append('images', file); });
 
     try {
-        const res = await fetch('/api/release-preview', {
-            method: 'POST',
-            body: formData
-        });
-
+        const res = await fetch('/api/release-preview', { method: 'POST', body: formData });
         if (res.ok) {
             showToast('Success', 'New release created successfully');
             clearImages();
@@ -538,10 +547,9 @@ async function submitRelease() {
     }
 }
 
-// ────────────────────────────────────────────────────────────
+// ------------------------------------------------------------
 // Submit Supporter Release (Post/Update to #supporter-releases)
-// ────────────────────────────────────────────────────────────
-
+// ------------------------------------------------------------
 async function submitSupporterRelease() {
     const status = document.getElementById('supporter-status');
     const btn = document.querySelector('button[onclick="submitSupporterRelease()"]');
@@ -571,33 +579,18 @@ async function submitSupporterRelease() {
     formData.append('editPreview', document.getElementById('edit-preview-toggle').checked ? 'true' : 'false');
 
     const supporterThreadId = document.getElementById('supporterEditDropdown').value;
-    if (supporterThreadId) {
-        formData.append('supporterThreadId', supporterThreadId);
-    }
-
-    // FIX: Use the correct dropdown for preview thread ID
+    if (supporterThreadId) formData.append('supporterThreadId', supporterThreadId);
     const previewThreadId = document.getElementById('supporterPostSelect').value;
-    if (previewThreadId) {
-        formData.append('previewThreadId', previewThreadId);
-    }
+    if (previewThreadId) formData.append('previewThreadId', previewThreadId);
 
-    window.supporterUploadedFiles.forEach(file => {
-        formData.append('images', file);
-    });
+    window.supporterUploadedFiles.forEach(file => { formData.append('images', file); });
 
     try {
-        const res = await fetch('/api/supporter-release', {
-            method: 'POST',
-            body: formData
-        });
-
+        const res = await fetch('/api/supporter-release', { method: 'POST', body: formData });
         const data = await res.json();
         if (res.ok) {
             showToast('Success', 'Supporter release posted/updated');
-            // Show preview update error if any
-            if (data.previewError) {
-                showToast('Preview Update Warning', data.previewError, 'warning');
-            }
+            if (data.previewError) showToast('Preview Update Warning', data.previewError, 'warning');
             clearSupporterImages();
             await fetchSupporterPosts();
             if (status) status.innerText = '';
@@ -614,9 +607,9 @@ async function submitSupporterRelease() {
     }
 }
 
-// ────────────────────────────────────────────────────────────
-// Drag & drop helpers for images (preview and supporter)
-// ────────────────────────────────────────────────────────────
+// ------------------------------------------------------------
+// Drag & drop helpers (unchanged)
+// ------------------------------------------------------------
 function handleFiles(files) {
     for (let file of files) {
         window.uploadedFiles.push(file);
@@ -672,9 +665,9 @@ function clearSupporterImages() {
     if (supFileInput) supFileInput.value = '';
 }
 
-// ────────────────────────────────────────────────────────────
-// Initialize all drag-and-drop listeners (except ZIP, which is in uploading.js)
-// ────────────────────────────────────────────────────────────
+// ------------------------------------------------------------
+// Initialisation
+// ------------------------------------------------------------
 function initReleases() {
     // Preview images drop zone
     const dropZone = document.getElementById('drop-zone');
@@ -705,6 +698,4 @@ function initReleases() {
         };
     }
     if (supFileInput) supFileInput.onchange = (e) => handleSupporterFiles(e.target.files);
-
-    // NOTE: ZIP drop zone is now handled entirely by uploading.js
 }
