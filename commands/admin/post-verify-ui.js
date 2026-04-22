@@ -43,13 +43,22 @@ module.exports = {
             });
         }
 
-        await webhook.send({
+        // Send the message and capture the sent message object
+        const sentMessage = await webhook.send({
             embeds: [embed],
             components: [row],
             username: 'Verification Bot',
             avatarURL: 'https://www.velutinx.com/images/LogoDiscord.png'
         });
 
-        await interaction.reply({ content: '✅ Verification message posted! Click the button to test.', ephemeral: true });
+        // Add the VERIFY emoji reaction to the message we just posted
+        const verifyEmoji = helpers.releaseEmojis.VERIFY; // '<a:Verify:1491669023245729924>'
+        try {
+            await sentMessage.react(verifyEmoji);
+        } catch (err) {
+            console.error('Failed to add reaction:', err);
+        }
+
+        await interaction.reply({ content: '✅ Verification message posted with reaction!', ephemeral: true });
     }
 };
