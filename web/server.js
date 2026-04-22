@@ -48,14 +48,20 @@ module.exports = (client) => {
     app.use(express.json());
 
     // ====================== CONFIG ENDPOINT (frontend IDs) ======================
-    app.get('/api/config', (req, res) => {
-        res.json({
-            forumIds: {
-                preview: helpers.ids.channels.preview_forum,
-                supporter: helpers.ids.channels.supporter_forum
-            }
-        });
+app.get('/api/config', (req, res) => {
+    res.json({
+        forumIds: {
+            preview: helpers.ids.channels.preview_forum,
+            supporter: helpers.ids.channels.supporter_forum
+        },
+        tagIds: {
+            preview_female: helpers.ids.tags.preview_female,
+            preview_male: helpers.ids.tags.preview_male,   // array
+            supporter_female: helpers.ids.tags.supporter_female,
+            supporter_male: helpers.ids.tags.supporter_male    // array
+        }
     });
+});
 
     // Verification webhook route
     app.use(verifyRouter);
