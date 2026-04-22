@@ -123,7 +123,8 @@ module.exports = {
             TRIVIA: '1495387346990928003',
             verify: '1495679452489977897',
             checkin: '1495862994343694447',   // #check-in channel
-
+            preview_forum: '1465938599378812980',   // ADDED
+            supporter_forum: '1465937644394512516'  // ADDED
         },
         users: {
             Velutinx: '1380051214766444617'
