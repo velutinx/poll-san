@@ -8,40 +8,6 @@ module.exports = {
         .setDescription('[ADMIN] Post the Turnstile verification message'),
     async execute(interaction) {
         if (!interaction.memberPermissions.has('Administrator')) {
-            return interaction.reply({ content: '❌ Admin only.', ephemeral: true });
-        }
-
-        const verifyChannel = interaction.guild.channels.cache.get(helpers.ids.channels.verify);
-        if (!verifyChannel) {
-            return interaction.reply({ content: '❌ Verify channel not found.', ephemeral: true });
-        }
-
-        const embed = new EmbedBuilder()
-            .setColor(0x2f3136)
-            .setDescription(
-                `# Welcome To Your Community\n\n` +
-                `To unlock full server access, click the **Verify** button below.\n` +
-                `You will receive a unique link to complete the CAPTCHA in your browser.\n\n` +
-                `See you in there...`
-            );
-
-        const row = new ActionRowBuilder().addComponents(
-            new ButtonBuilder()
-                .setCustomId('verify_start')
-                .setLabel('Verify')
-                .setStyle(ButtonStyle.Primary)
-                .setEmoji(':melon:')
-        );
-// commands/admin/post-verify-ui.js
-const { SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } = require('discord.js');
-const helpers = require('../../utils/helpers');
-
-module.exports = {
-    data: new SlashCommandBuilder()
-        .setName('post_verify_ui')
-        .setDescription('[ADMIN] Post the Turnstile verification message'),
-    async execute(interaction) {
-        if (!interaction.memberPermissions.has('Administrator')) {
             return interaction.reply({ content: '❌ Admin only.', flags: 64 });
         }
 
@@ -76,42 +42,13 @@ module.exports = {
             });
         }
 
-        // Send message using webhook (do NOT override name/avatar if not necessary)
+        // Send the message (use only the fields required)
         const sentMessage = await webhook.send({
             embeds: [embed],
             components: [row]
-            // username and avatarURL are omitted to use the webhook's defaults
         });
 
-        // Add reaction
-        const verifyEmoji = helpers.releaseEmojis.VERIFY;
-        try {
-            await sentMessage.react(verifyEmoji);
-        } catch (err) {
-            console.error('Failed to add reaction:', err);
-        }
-
-        await interaction.reply({ content: '✅ Verification message posted with reaction!', flags: 64 });
-    }
-};
-        // Use webhook to send as "Verification Bot"
-        let webhook = (await verifyChannel.fetchWebhooks()).find(w => w.name === 'Verification Bot');
-        if (!webhook) {
-            webhook = await verifyChannel.createWebhook({
-                name: 'Verification Bot',
-                avatar: 'https://www.velutinx.com/images/LogoDiscord.png'
-            });
-        }
-
-        // Send the message and capture the sent message object
-        const sentMessage = await webhook.send({
-            embeds: [embed],
-            components: [row],
-            username: 'Verification Bot',
-            avatarURL: 'https://www.velutinx.com/images/LogoDiscord.png'
-        });
-
-        // Add the VERIFY emoji reaction to the message we just posted
+        // Add the VERIFY reaction
         const verifyEmoji = helpers.releaseEmojis.VERIFY; // '<a:Verify:1491669023245729924>'
         try {
             await sentMessage.react(verifyEmoji);
@@ -119,6 +56,6 @@ module.exports = {
             console.error('Failed to add reaction:', err);
         }
 
-        await interaction.reply({ content: '✅ Verification message posted with reaction!', ephemeral: true });
+        await interaction.reply({ content: '✅ Verification message posted with reaction!', flags: 64 });
     }
 };
