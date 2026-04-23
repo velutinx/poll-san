@@ -6,10 +6,8 @@ const giveawayCommand = require('../commands/giveaway');
 const { handleShopSelect, handleShopPurchase } = require('../services/shopHandler');
 const { handleSlotsBet } = require('../services/slotsHandler');
 const { startHangmanGame } = require('../services/hangmanGame');
-const { EmbedBuilder } = require('discord.js');
 
 module.exports = async function handleInteraction(interaction) {
-    console.log('Interaction received:', interaction.type, interaction.customId);
     try {
         // Chat input commands
         if (interaction.isChatInputCommand()) {
@@ -23,7 +21,6 @@ module.exports = async function handleInteraction(interaction) {
                 case 'post_hangman_ui': await require('../commands/admin/post-hangman-ui').execute(interaction); break;
                 case 'post_verify_ui': await require('../commands/admin/post-verify-ui').execute(interaction); break;
                 case 'post_checkin_ui': await require('../commands/admin/post-checkin-ui').execute(interaction); break;
-                case 'mudae-roll': await require('../commands/games/mudae-roll').execute(interaction); break;
                 default: break;
             }
         }
@@ -53,7 +50,7 @@ module.exports = async function handleInteraction(interaction) {
             } 
             else if (interaction.customId === 'checkin_claim') {
                 await handleCheckinClaim(interaction);
-            }
+            } 
             else {
                 await giveawayCommand.handleGiveawayButton(interaction);
             }
@@ -65,7 +62,7 @@ module.exports = async function handleInteraction(interaction) {
     } catch (err) {
         console.error('Interaction Error:', err);
         if (!interaction.replied && !interaction.deferred) {
-            await interaction.reply({ content: 'An error occurred.', flags: 64 }).catch(() => {});
+            await interaction.reply({ content: 'An error occurred.', ephemeral: true }).catch(() => {});
         }
     }
 };
@@ -97,104 +94,6 @@ async function handleVerifyStart(interaction) {
         content: `🔗 **Your verification link** (expires after 10 minutes):\n${uniqueUrl}\n\nComplete the CAPTCHA in your browser to gain access.`,
         flags: 64
     });
-}
-
-async function handleMudaeRoll(interaction) {
-    console.log('🎲 Roll button clicked by', interaction.user.id);
-    try {
-        await interaction.deferUpdate();
-
-        const userId = interaction.user.id;
-        const username = interaction.member.displayName || interaction.user.username;
-        const now = new Date();
-
-        // Get or create user state
-        let { data: userState, error } = await supabase
-            .from('games_mudae_user_state')
-            .select('*')
-            .eq('user_id', userId)
-            .maybeSingle();
-        if (error) console.error('DB error:', error);
-
-        // Hourly reset
-        if (!userState || (now - new Date(userState.last_reset)) > 60 * 60 * 1000) {
-            const resetData = {
-                user_id: userId,
-                username,
-                rolls_left: 5,
-                claims_left: 2,
-                last_reset: now.toISOString()
-            };
-            if (userState) {
-                await supabase.from('games_mudae_user_state').update(resetData).eq('user_id', userId);
-            } else {
-                await supabase.from('games_mudae_user_state').insert(resetData);
-            }
-            userState = resetData;
-        } else if (userState.username !== username) {
-            await supabase.from('games_mudae_user_state').update({ username }).eq('user_id', userId);
-            userState.username = username;
-        }
-
-        if (userState.rolls_left <= 0) {
-            return interaction.followUp({ content: '❌ You have no rolls left this hour!', flags: 64 });
-        }
-
-        // Deduct roll
-        await supabase.from('games_mudae_user_state').update({ rolls_left: userState.rolls_left - 1 }).eq('user_id', userId);
-
-        // Fetch random character
-        const { data: characters } = await supabase
-            .from('games_mudae_characters')
-            .select('*')
-            .limit(1)
-            .order('random()');
-        const character = characters?.[0];
-        if (!character) {
-            return interaction.followUp({ content: '❌ No characters in pool. Contact admin.', flags: 64 });
-        }
-
-        // Build embed
-        const embed = new EmbedBuilder()
-            .setTitle(`🎲 ${interaction.user.displayName} rolled:`)
-            .setDescription(`**${character.name}** from *${character.series}*`)
-            .setImage(character.image_url || 'https://via.placeholder.com/300?text=No+Image')
-            .setColor(0x00ffcc)
-            .setFooter({ text: 'React ✅ to claim | ❌ to pass' });
-
-        const rollMsg = await interaction.channel.send({ embeds: [embed] });
-        await rollMsg.react('✅');
-        await rollMsg.react('❌');
-
-        // Store active roll
-        const activeRolls = global.mudaeActiveRolls || new Map();
-        if (!global.mudaeActiveRolls) global.mudaeActiveRolls = activeRolls;
-        activeRolls.set(rollMsg.id, {
-            userId,
-            username,
-            characterId: character.id,
-            characterName: character.name,
-            series: character.series,
-            expiresAt: Date.now() + 5 * 60 * 1000,
-            priorityUntil: Date.now() + 10 * 1000,
-            claimed: false
-        });
-
-        // Auto‑delete after 5 minutes
-        setTimeout(async () => {
-            const active = activeRolls.get(rollMsg.id);
-            if (active && !active.claimed) {
-                try {
-                    await rollMsg.delete();
-                    activeRolls.delete(rollMsg.id);
-                } catch (err) {}
-            }
-        }, 5 * 60 * 1000);
-
-    } catch (err) {
-        console.error('Error in handleMudaeRoll:', err);
-        await interaction.followUp({ content: '❌ Something went wrong. Please try again later.', flags: 64 }).catch(() => {});
-    }
 }
 
 async function handleCheckinClaim(interaction) {
