@@ -1,5 +1,4 @@
 // commands/admin/post-verify-ui.js
-
 const { SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } = require('discord.js');
 const helpers = require('../../utils/helpers');
 
@@ -31,7 +30,7 @@ module.exports = {
                 .setCustomId('verify_start')
                 .setLabel('Verify')
                 .setStyle(ButtonStyle.Primary)
-                .setEmoji('🔒')
+                .setEmoji(':melon:')
         );
 
         // Use webhook to send as "Verification Bot"
