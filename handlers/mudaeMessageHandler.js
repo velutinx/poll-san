@@ -2,18 +2,17 @@
 const helpers = require('../utils/helpers');
 const supabase = require('../services/supabase');
 
-const activeRolls = new Map();           // messageId -> timeout for deletion
-const pendingClaims = new Map();         // characterName -> { series, messageId, timestamp }
-
-const ROLL_LIFETIME_MS = 5 * 60 * 1000;  // 5 minutes
-const CLAIM_LOOKUP_TIMEOUT_MS = 2 * 60 * 1000; // 2 minutes to match a claim
+const activeRolls = new Map();
+const pendingClaims = new Map();
+const ROLL_LIFETIME_MS = 5 * 60 * 1000;
+const CLAIM_LOOKUP_TIMEOUT_MS = 2 * 60 * 1000;
 
 function initMudaeMessageHandler(client) {
     client.on('messageCreate', async (message) => {
         if (message.author.id !== helpers.ids.bots.mudae) return;
         if (message.channel.id !== helpers.ids.channels.mudae_roll) return;
 
-        // --- 1. Handle roll messages (embed with claim instruction) ---
+        // --- 1. Roll detection (embed) ---
         let isRoll = false;
         let characterName = null;
         let series = null;
@@ -22,16 +21,12 @@ function initMudaeMessageHandler(client) {
             const description = embed.description || '';
             if (description.includes('React with any emoji to claim!')) {
                 isRoll = true;
-                // Try to extract character name and series from embed title/description
-                // Example format: "Bridgette\nTotal Drama Island\nReact with any emoji to claim!"
                 const lines = description.split('\n');
                 if (lines.length >= 2) {
                     characterName = lines[0].trim();
                     series = lines[1].trim();
                 } else if (embed.title) {
-                    // Some rolls might have title as character name
                     characterName = embed.title;
-                    // Series might be in the description
                     if (description) {
                         const seriesMatch = description.match(/^(.+?)\n/);
                         if (seriesMatch) series = seriesMatch[1];
@@ -41,13 +36,11 @@ function initMudaeMessageHandler(client) {
         }
 
         if (isRoll && characterName && series) {
-            // Store for later claim matching
             pendingClaims.set(characterName, {
                 series,
                 messageId: message.id,
                 timestamp: Date.now()
             });
-            // Auto‑remove after timeout to avoid memory leak
             setTimeout(() => {
                 if (pendingClaims.has(characterName)) {
                     const entry = pendingClaims.get(characterName);
@@ -55,7 +48,7 @@ function initMudaeMessageHandler(client) {
                 }
             }, CLAIM_LOOKUP_TIMEOUT_MS);
 
-            // Add VERIFY reaction (existing feature)
+            // Add reaction
             try {
                 await message.react(helpers.releaseEmojis.VERIFY);
                 console.log(`✅ Added VERIFY reaction to Mudae roll ${message.id} (${characterName})`);
@@ -63,7 +56,7 @@ function initMudaeMessageHandler(client) {
                 console.error(`Failed to add VERIFY reaction to ${message.id}:`, err);
             }
 
-            // Schedule auto‑deletion (existing feature)
+            // Auto‑delete
             if (activeRolls.has(message.id)) {
                 clearTimeout(activeRolls.get(message.id));
                 activeRolls.delete(message.id);
@@ -76,7 +69,6 @@ function initMudaeMessageHandler(client) {
                     if (err.code !== 10008) console.error(`Failed to delete Mudae roll ${message.id}:`, err);
                 } finally {
                     activeRolls.delete(message.id);
-                    // Also remove from pendingClaims if still there
                     if (pendingClaims.has(characterName)) {
                         const entry = pendingClaims.get(characterName);
                         if (entry.messageId === message.id) pendingClaims.delete(characterName);
@@ -86,26 +78,25 @@ function initMudaeMessageHandler(client) {
             activeRolls.set(message.id, timeout);
         }
 
-        // --- 2. Handle claim confirmation messages ("... are now married! ...") ---
+        // --- 2. Claim confirmation detection ---
         if (message.content && message.content.includes('are now married!')) {
-            // Example: "💖 velutinxx and Bridgette are now married! 💖"
+            // Regex to extract claimer and character
             const match = message.content.match(/💖\s*(.+?)\s+and\s+(.+?)\s+are now married! 💖/);
             if (match) {
-                const claimerUsername = match[1].trim();   // Discord username (not ID)
+                const claimerUsername = match[1].trim();
                 const characterName = match[2].trim();
 
-                // Look up series from pendingClaims
                 const pending = pendingClaims.get(characterName);
                 const series = pending ? pending.series : null;
 
-                // Get Discord user ID (optional – we can store username only)
+                // Try to get Discord user ID (optional, may fail)
                 let userId = null;
                 try {
                     const member = message.guild.members.cache.find(m => m.user.username === claimerUsername);
                     if (member) userId = member.id;
                 } catch (err) {}
 
-                // Insert into database
+                // Insert into database (user_id is now nullable)
                 try {
                     const { error } = await supabase.from('games_mudae_claims').insert({
                         user_id: userId,
@@ -123,13 +114,11 @@ function initMudaeMessageHandler(client) {
                     console.error('Database error on claim recording:', err);
                 }
 
-                // Optionally remove from pendingClaims (but keep for other potential claims? Usually one claim per roll)
                 if (pending) pendingClaims.delete(characterName);
             }
         }
     });
 
-    // Clean up timeouts on shutdown
     process.on('beforeExit', () => {
         for (const timeout of activeRolls.values()) clearTimeout(timeout);
         activeRolls.clear();
