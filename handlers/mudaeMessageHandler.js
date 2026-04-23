@@ -25,7 +25,7 @@ function initMudaeMessageHandler(client) {
         } catch (err) {
             console.error(`Failed to add VERIFY reaction to ${message.id}:`, err);
         }
-
+ 
         // Schedule auto‑deletion after ROLL_LIFETIME_MS
         // Clear any existing timeout for the same message (shouldn't happen)
         if (activeRolls.has(message.id)) {
