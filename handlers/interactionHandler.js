@@ -101,6 +101,8 @@ async function handleVerifyStart(interaction) {
 }
 
 async function handleMudaeRoll(interaction) {
+    await interaction.deferUpdate();
+
     const userId = interaction.user.id;
     const username = interaction.member.displayName || interaction.user.username;
     const now = new Date();
