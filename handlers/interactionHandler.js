@@ -101,7 +101,7 @@ async function handleVerifyStart(interaction) {
 }
 
 async function handleMudaeRoll(interaction) {
-    await interaction.deferUpdate();
+    await interaction.deferUpdate();  // acknowledge immediately
 
     const userId = interaction.user.id;
     const username = interaction.member.displayName || interaction.user.username;
@@ -132,13 +132,13 @@ async function handleMudaeRoll(interaction) {
         }
         userState = resetData;
     } else if (userState.username !== username) {
-        // Update username if changed
         await supabase.from('games_mudae_user_state').update({ username: username }).eq('user_id', userId);
         userState.username = username;
     }
 
     if (userState.rolls_left <= 0) {
-        return interaction.reply({ content: '❌ You have no rolls left this hour!', flags: 64 });
+        // Use followUp because interaction is already deferred
+        return interaction.followUp({ content: '❌ You have no rolls left this hour!', ephemeral: true });
     }
 
     // Deduct roll
@@ -153,7 +153,7 @@ async function handleMudaeRoll(interaction) {
     const character = characters[0];
 
     if (!character) {
-        return interaction.reply({ content: '❌ No characters in pool. Contact admin.', flags: 64 });
+        return interaction.followUp({ content: '❌ No characters in pool. Contact admin.', ephemeral: true });
     }
 
     // Build embed
@@ -168,7 +168,7 @@ async function handleMudaeRoll(interaction) {
     await rollMsg.react('✅');
     await rollMsg.react('❌');
 
-    // Store active roll in memory
+    // Store active roll
     const activeRolls = global.mudaeActiveRolls || new Map();
     if (!global.mudaeActiveRolls) global.mudaeActiveRolls = activeRolls;
 
@@ -193,10 +193,7 @@ async function handleMudaeRoll(interaction) {
             } catch (err) {}
         }
     }, 5 * 60 * 1000);
-
-    await interaction.deferUpdate();
 }
-
 
 async function handleCheckinClaim(interaction) {
     const userId = interaction.user.id;
