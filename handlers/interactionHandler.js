@@ -65,7 +65,7 @@ module.exports = async function handleInteraction(interaction) {
     } catch (err) {
         console.error('Interaction Error:', err);
         if (!interaction.replied && !interaction.deferred) {
-            await interaction.reply({ content: 'An error occurred.', ephemeral: true }).catch(() => {});
+            await interaction.reply({ content: 'An error occurred.', flags: 64 }).catch(() => {});
         }
     }
 };
@@ -137,7 +137,7 @@ async function handleMudaeRoll(interaction) {
         }
 
         if (userState.rolls_left <= 0) {
-            return interaction.followUp({ content: '❌ You have no rolls left this hour!', ephemeral: true });
+            return interaction.followUp({ content: '❌ You have no rolls left this hour!', flags: 64 });
         }
 
         // Deduct roll
@@ -151,7 +151,7 @@ async function handleMudaeRoll(interaction) {
             .order('random()');
         const character = characters?.[0];
         if (!character) {
-            return interaction.followUp({ content: '❌ No characters in pool. Contact admin.', ephemeral: true });
+            return interaction.followUp({ content: '❌ No characters in pool. Contact admin.', flags: 64 });
         }
 
         // Build embed
@@ -193,7 +193,7 @@ async function handleMudaeRoll(interaction) {
 
     } catch (err) {
         console.error('Error in handleMudaeRoll:', err);
-        await interaction.followUp({ content: '❌ Something went wrong. Please try again later.', ephemeral: true }).catch(() => {});
+        await interaction.followUp({ content: '❌ Something went wrong. Please try again later.', flags: 64 }).catch(() => {});
     }
 }
 
