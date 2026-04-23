@@ -53,7 +53,7 @@ module.exports = async function handleInteraction(interaction) {
             else if (interaction.customId === 'checkin_claim') {
                 await handleCheckinClaim(interaction);
             }
-            else if (interaction.customId === 'mudae_roll_start') {
+            else if (interaction.customId === 'roll_now') {
                 await handleMudaeRoll(interaction);
             }
             else {
