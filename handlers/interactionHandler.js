@@ -9,6 +9,7 @@ const { startHangmanGame } = require('../services/hangmanGame');
 const { EmbedBuilder } = require('discord.js');
 
 module.exports = async function handleInteraction(interaction) {
+    console.log('Interaction received:', interaction.type, interaction.customId);
     try {
         // Chat input commands
         if (interaction.isChatInputCommand()) {
