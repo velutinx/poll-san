@@ -31,40 +31,37 @@ module.exports = async function handleInteraction(interaction) {
             require('../commands/level')(interaction);
         }
         // Buttons
-else if (interaction.isButton()) {
-    if (interaction.customId === 'shop_buy_confirm') {
-        await handleShopPurchase(interaction);
-    } 
-    else if (interaction.customId === 'slots_bet_1') {
-        await handleSlotsBet(interaction, 1);
-    } 
-    else if (interaction.customId === 'slots_bet_5') {
-        await handleSlotsBet(interaction, 5);
-    } 
-    else if (interaction.customId === 'slots_bet_25') {
-        await handleSlotsBet(interaction, 25);
-    } 
-    else if (interaction.customId === 'hangman_start_button') {
-        await startHangmanGame(interaction);
-    } 
-    else if (interaction.customId === 'verify_start') {
-        await handleVerifyStart(interaction);
-    } 
-    else if (interaction.customId === 'checkin_claim') {
-        await handleCheckinClaim(interaction);
-    }
-    else if (interaction.customId === 'roll_now') {
-        await handleMudaeRoll(interaction);
-    }
-    else if (interaction.customId === 'test_button') {   // ✅ moved before final else
-        await interaction.reply({ content: 'Button works!', flags: 64 });
-    }
-    else {
-        await giveawayCommand.handleGiveawayButton(interaction);
-    }
-}
-
-        
+        else if (interaction.isButton()) {
+            if (interaction.customId === 'shop_buy_confirm') {
+                await handleShopPurchase(interaction);
+            } 
+            else if (interaction.customId === 'slots_bet_1') {
+                await handleSlotsBet(interaction, 1);
+            } 
+            else if (interaction.customId === 'slots_bet_5') {
+                await handleSlotsBet(interaction, 5);
+            } 
+            else if (interaction.customId === 'slots_bet_25') {
+                await handleSlotsBet(interaction, 25);
+            } 
+            else if (interaction.customId === 'hangman_start_button') {
+                await startHangmanGame(interaction);
+            } 
+            else if (interaction.customId === 'verify_start') {
+                await handleVerifyStart(interaction);
+            } 
+            else if (interaction.customId === 'checkin_claim') {
+                await handleCheckinClaim(interaction);
+            }
+            else if (interaction.customId === 'roll_now') {
+                await handleMudaeRoll(interaction);
+            }
+            else if (interaction.customId === 'test_button') {
+                await interaction.reply({ content: 'Button works!', flags: 64 });
+            }
+            else {
+                await giveawayCommand.handleGiveawayButton(interaction);
+            }
         }
         // Select menus
         else if (interaction.isStringSelectMenu() && interaction.customId === 'shop_select') {
