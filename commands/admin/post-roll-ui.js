@@ -5,7 +5,7 @@ const helpers = require('../../utils/helpers');
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('post_roll_ui')
-        .setDescription('[ADMIN] Post the roll button interface (Mudae style)'),
+        .setDescription('[ADMIN] Post the roll button interface'),
     async execute(interaction) {
         if (!interaction.memberPermissions.has('Administrator')) {
             return interaction.reply({ content: '❌ Admin only.', flags: 64 });
@@ -35,20 +35,8 @@ module.exports = {
                 .setStyle(ButtonStyle.Primary)
         );
 
-        let webhook = (await rollChannel.fetchWebhooks()).find(w => w.name === 'Rolling Bot');
-        if (!webhook) {
-            webhook = await rollChannel.createWebhook({
-                name: 'Rolling Bot',
-                avatar: 'https://www.velutinx.com/images/LogoDiscord.png'
-            });
-        }
-
-        await webhook.send({
-            embeds: [embed],
-            components: [row],
-            username: 'Rolling Bot',
-            avatarURL: 'https://www.velutinx.com/images/LogoDiscord.png'
-        });
+        // Send directly as the bot (not via webhook)
+        await rollChannel.send({ embeds: [embed], components: [row] });
 
         await interaction.reply({ content: '✅ Roll button posted!', flags: 64 });
     }
