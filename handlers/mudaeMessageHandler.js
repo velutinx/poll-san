@@ -6,27 +6,21 @@ const ROLL_LIFETIME_MS = 5 * 60 * 1000;
 
 function initMudaeMessageHandler(client) {
     client.on('messageCreate', async (message) => {
-        // Log every message to see if the event fires
-        console.log(`[DEBUG] Message from ${message.author.tag} in ${message.channel.name}: ${message.content?.substring(0, 50)}`);
+        // Only process messages from Mudae bot in the designated roll channel
+        if (message.author.id !== helpers.ids.bots.mudae) return;
+        if (message.channel.id !== helpers.ids.channels.mudae_roll) return;
 
-        // Only process messages from Mudae bot
-        if (message.author.id !== helpers.ids.bots.mudae) {
-            console.log(`[DEBUG] Not Mudae bot (got ${message.author.id})`);
-            return;
+        // Check embed description for the claim phrase
+        let isRoll = false;
+        if (message.embeds.length > 0) {
+            const embed = message.embeds[0];
+            const description = embed.description || '';
+            if (description.includes('React with any emoji to claim!')) {
+                isRoll = true;
+            }
         }
-        console.log(`[DEBUG] Matched Mudae bot ID`);
 
-        if (message.channel.id !== helpers.ids.channels.mudae_roll) {
-            console.log(`[DEBUG] Not in roll channel (got ${message.channel.id})`);
-            return;
-        }
-        console.log(`[DEBUG] Matched roll channel`);
-
-        if (!message.content || !message.content.includes('React with any emoji to claim!')) {
-            console.log(`[DEBUG] Content does not contain claim phrase`);
-            return;
-        }
-        console.log(`[DEBUG] Claim phrase detected, reacting...`);
+        if (!isRoll) return;
 
         // Add the VERIFY reaction
         try {
@@ -36,7 +30,7 @@ function initMudaeMessageHandler(client) {
             console.error(`Failed to add VERIFY reaction to ${message.id}:`, err);
         }
 
-        // Auto‑delete logic (unchanged)
+        // Auto-delete after ROLL_LIFETIME_MS
         if (activeRolls.has(message.id)) {
             clearTimeout(activeRolls.get(message.id));
             activeRolls.delete(message.id);
