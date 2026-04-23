@@ -23,6 +23,7 @@ module.exports = async function handleInteraction(interaction) {
                 case 'post_hangman_ui': await require('../commands/admin/post-hangman-ui').execute(interaction); break;
                 case 'post_verify_ui': await require('../commands/admin/post-verify-ui').execute(interaction); break;
                 case 'post_checkin_ui': await require('../commands/admin/post-checkin-ui').execute(interaction); break;
+                case 'mudae-roll': await require('../commands/games/mudae-roll').execute(interaction); break;
                 default: break;
             }
         }
@@ -52,12 +53,6 @@ module.exports = async function handleInteraction(interaction) {
             } 
             else if (interaction.customId === 'checkin_claim') {
                 await handleCheckinClaim(interaction);
-            }
-            else if (interaction.customId === 'roll_now') {
-                await handleMudaeRoll(interaction);
-            }
-            else if (interaction.customId === 'test_button') {
-                await interaction.reply({ content: 'Button works!', flags: 64 });
             }
             else {
                 await giveawayCommand.handleGiveawayButton(interaction);
