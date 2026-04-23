@@ -3,20 +3,17 @@ const helpers = require('../utils/helpers');
 const supabase = require('../services/supabase');
 
 const activeTimeouts = new Map();
-const pendingClaims = new Map();
-const ROLL_LIFETIME_MS = 5 * 60 * 1000;      // 5 minutes
-const CLAIM_LOOKUP_TIMEOUT_MS = 2 * 60 * 1000; // 2 minutes
+const pendingClaims = new Map();       // characterName -> { series, messageId, timestamp }
+const ROLL_LIFETIME_MS = 5 * 60 * 1000;
+const CLAIM_LOOKUP_TIMEOUT_MS = 2 * 60 * 1000;
 
 function initMudaeMessageHandler(client) {
     client.on('messageCreate', async (message) => {
-        // Only process Mudae bot messages in the designated roll channel
         if (message.author.id !== helpers.ids.bots.mudae) return;
         if (message.channel.id !== helpers.ids.channels.mudae_roll) return;
 
         // --- 1. Schedule deletion for EVERY Mudae message in this channel ---
-        if (activeTimeouts.has(message.id)) {
-            clearTimeout(activeTimeouts.get(message.id));
-        }
+        if (activeTimeouts.has(message.id)) clearTimeout(activeTimeouts.get(message.id));
         const timeout = setTimeout(async () => {
             try {
                 await message.delete();
@@ -38,15 +35,20 @@ function initMudaeMessageHandler(client) {
             const description = embed.description || '';
             if (description.includes('React with any emoji to claim!')) {
                 isRoll = true;
-                const lines = description.split('\n');
+                // Split by newline and filter out empty lines
+                const lines = description.split('\n').filter(line => line.trim().length > 0);
+                // Expected: [character, series, "React with any emoji to claim!", ...]
                 if (lines.length >= 2) {
                     characterName = lines[0].trim();
                     series = lines[1].trim();
                 } else if (embed.title) {
                     characterName = embed.title;
-                    if (description) {
-                        const seriesMatch = description.match(/^(.+?)\n/);
-                        if (seriesMatch) series = seriesMatch[1];
+                    // Try to find series in the description before the claim instruction
+                    const claimIndex = description.indexOf('React with any emoji to claim!');
+                    if (claimIndex > 0) {
+                        const beforeClaim = description.substring(0, claimIndex).trim();
+                        const seriesMatch = beforeClaim.match(/^(.+?)(?:\n|$)/);
+                        if (seriesMatch) series = seriesMatch[1].trim();
                     }
                 }
             }
@@ -68,7 +70,7 @@ function initMudaeMessageHandler(client) {
             // Add VERIFY reaction
             try {
                 await message.react(helpers.releaseEmojis.VERIFY);
-                console.log(`✅ Added VERIFY reaction to Mudae roll ${message.id} (${characterName})`);
+                console.log(`✅ Added VERIFY reaction to Mudae roll ${message.id} (${characterName} - ${series})`);
             } catch (err) {
                 console.error(`Failed to add reaction to ${message.id}:`, err.message);
             }
@@ -110,7 +112,6 @@ function initMudaeMessageHandler(client) {
         }
     });
 
-    // Clean up on shutdown
     process.on('beforeExit', () => {
         for (const timeout of activeTimeouts.values()) clearTimeout(timeout);
         activeTimeouts.clear();
