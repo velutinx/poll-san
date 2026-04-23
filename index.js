@@ -1,4 +1,5 @@
 // index.js
+
 const path = require('path');
 require('dotenv').config({ path: path.resolve(__dirname, '.env'), quiet: true });
 
@@ -25,7 +26,6 @@ const { checkAndNotifyCooldowns } = require('./services/cooldownNotifier');
 const { handleTriviaMessage, processEndOfDayAwards } = require('./services/triviaJanitor');
 const handleInteraction = require('./handlers/interactionHandler');
 const verification = require('./events/verification');
-const handleMudaeReaction = require('./handlers/mudaeReaction');
 
 // ==================== DISCORD CLIENT SETUP ====================
 const client = new Client({
@@ -64,7 +64,6 @@ client.once(Events.ClientReady, async (c) => {
         require('./commands/admin/post-hangman-ui').data.toJSON(),
         require('./commands/admin/post-verify-ui').data.toJSON(),
         require('./commands/admin/post-checkin-ui').data.toJSON(),
-        require('./commands/games/mudae-roll').data.toJSON(),
     ];
 
     const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
@@ -128,27 +127,21 @@ client.once(Events.ClientReady, async (c) => {
 // --- 2. INTERACTION HANDLER (delegated) ---
 client.on(Events.InteractionCreate, handleInteraction);
 
-// --- 3. VERIFICATION HANDLER (disabled – math captcha not used) ---
-// client.on(Events.InteractionCreate, verification.handleInteraction);
+// --- 3. VERIFICATION HANDLER (separate for modal) ---
+//client.on(Events.InteractionCreate, verification.handleInteraction);
 
 // --- 4. EVENT LISTENERS ---
 client.on(Events.GuildMemberAdd, (member) => require('./events/guildMemberAdd')(member));
 client.on(Events.GuildMemberAdd, verification.execute);
-
-// Existing reaction handler (polls, giveaways, etc.)
 client.on(Events.MessageReactionAdd, (reaction, user) => require('./events/reactions')(reaction, user, 'add'));
 client.on(Events.MessageReactionRemove, (reaction, user) => require('./events/reactions')(reaction, user, 'remove'));
-
-// Mudae reaction handler (only processes roll messages)
-client.on(Events.MessageReactionAdd, (reaction, user) => handleMudaeReaction(reaction, user, 'add'));
-
 client.on('guildMemberRemove', require('./events/guildMemberPollRemove'));
 client.on('messageCreate', messageCreateEvent);
 client.on('messageCreate', (message) => {
     handleTriviaMessage(message).catch(err => console.error('Trivia handler error:', err));
 });
 
-// XP system
+// --- 5. XP SYSTEM ---
 client.on(Events.MessageCreate, async (message) => {
     await XPLib.updateXP(message);
 });
