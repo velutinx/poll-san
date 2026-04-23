@@ -30,8 +30,8 @@ module.exports = {
 
         const row = new ActionRowBuilder().addComponents(
             new ButtonBuilder()
-                .setCustomId('mudae_roll_start')
-                .setLabel('Roll 🎲')
+.setCustomId('roll_now')
+            .setLabel('Roll 🎲')
                 .setStyle(ButtonStyle.Primary)
         );
 
