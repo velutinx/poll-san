@@ -159,4 +159,11 @@ client.on(Events.MessageCreate, async (message) => {
 client.on('error', console.error);
 process.on('unhandledRejection', console.error);
 
+client.on('raw', (event) => {
+    if (event.t === 'INTERACTION_CREATE') {
+        console.log('RAW INTERACTION DATA:', JSON.stringify(event.d, null, 2));
+    }
+});
+
+
 client.login(process.env.DISCORD_TOKEN);
