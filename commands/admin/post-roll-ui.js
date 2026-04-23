@@ -35,10 +35,10 @@ module.exports = {
                 .setStyle(ButtonStyle.Primary)
         );
 
-        let webhook = (await rollChannel.fetchWebhooks()).find(w => w.name === 'Mudae Preflix');
+        let webhook = (await rollChannel.fetchWebhooks()).find(w => w.name === 'Rolling Bot');
         if (!webhook) {
             webhook = await rollChannel.createWebhook({
-                name: 'Mudae Preflix',
+                name: 'Rolling Bot',
                 avatar: 'https://www.velutinx.com/images/LogoDiscord.png'
             });
         }
@@ -46,24 +46,9 @@ module.exports = {
         await webhook.send({
             embeds: [embed],
             components: [row],
-            username: 'Mudae Preflix',
+            username: 'Rolling Bot',
             avatarURL: 'https://www.velutinx.com/images/LogoDiscord.png'
         });
-
-        let webhook = (await rollChannel.fetchWebhooks()).find(w => w.name === 'Rolling Bot');
-if (!webhook) {
-    webhook = await rollChannel.createWebhook({
-        name: 'Rolling Bot',
-        avatar: 'https://www.velutinx.com/images/LogoDiscord.png'
-    });
-}
-
-await webhook.send({
-    embeds: [embed],
-    components: [row],
-    username: 'Rolling Bot',
-    avatarURL: 'https://www.velutinx.com/images/LogoDiscord.png'
-});
 
         await interaction.reply({ content: '✅ Roll button posted!', flags: 64 });
     }
