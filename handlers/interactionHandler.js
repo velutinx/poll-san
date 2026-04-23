@@ -6,6 +6,7 @@ const giveawayCommand = require('../commands/giveaway');
 const { handleShopSelect, handleShopPurchase } = require('../services/shopHandler');
 const { handleSlotsBet } = require('../services/slotsHandler');
 const { startHangmanGame } = require('../services/hangmanGame');
+const { EmbedBuilder } = require('discord.js');
 
 module.exports = async function handleInteraction(interaction) {
     try {
