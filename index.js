@@ -1,5 +1,4 @@
 // index.js
-
 const path = require('path');
 require('dotenv').config({ path: path.resolve(__dirname, '.env'), quiet: true });
 
@@ -26,9 +25,7 @@ const { checkAndNotifyCooldowns } = require('./services/cooldownNotifier');
 const { handleTriviaMessage, processEndOfDayAwards } = require('./services/triviaJanitor');
 const handleInteraction = require('./handlers/interactionHandler');
 const verification = require('./events/verification');
-
-// ========== MURDAE REACTION HANDLER ==========
-const handleMudaeReaction = require('./handlers/mudaeReaction');   // 👈 NEW
+const handleMudaeReaction = require('./handlers/mudaeReaction');
 
 // ==================== DISCORD CLIENT SETUP ====================
 const client = new Client({
@@ -67,7 +64,7 @@ client.once(Events.ClientReady, async (c) => {
         require('./commands/admin/post-hangman-ui').data.toJSON(),
         require('./commands/admin/post-verify-ui').data.toJSON(),
         require('./commands/admin/post-checkin-ui').data.toJSON(),
-        require('./commands/admin/post-roll-ui').data.toJSON(),   // 👈 NEW
+        require('./commands/games/mudae-roll').data.toJSON(),
     ];
 
     const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
@@ -131,19 +128,19 @@ client.once(Events.ClientReady, async (c) => {
 // --- 2. INTERACTION HANDLER (delegated) ---
 client.on(Events.InteractionCreate, handleInteraction);
 
-// --- 3. VERIFICATION HANDLER (separate for modal) ---
-//client.on(Events.InteractionCreate, verification.handleInteraction); // Disabled (math captcha)
+// --- 3. VERIFICATION HANDLER (disabled – math captcha not used) ---
+// client.on(Events.InteractionCreate, verification.handleInteraction);
 
 // --- 4. EVENT LISTENERS ---
 client.on(Events.GuildMemberAdd, (member) => require('./events/guildMemberAdd')(member));
 client.on(Events.GuildMemberAdd, verification.execute);
 
-// ---- EXISTING REACTION HANDLER (for polls, giveaways, etc.)
+// Existing reaction handler (polls, giveaways, etc.)
 client.on(Events.MessageReactionAdd, (reaction, user) => require('./events/reactions')(reaction, user, 'add'));
 client.on(Events.MessageReactionRemove, (reaction, user) => require('./events/reactions')(reaction, user, 'remove'));
 
-// ---- MURDAE REACTION HANDLER (only processes Mudae roll messages)
-client.on(Events.MessageReactionAdd, (reaction, user) => handleMudaeReaction(reaction, user, 'add')); // 👈 NEW
+// Mudae reaction handler (only processes roll messages)
+client.on(Events.MessageReactionAdd, (reaction, user) => handleMudaeReaction(reaction, user, 'add'));
 
 client.on('guildMemberRemove', require('./events/guildMemberPollRemove'));
 client.on('messageCreate', messageCreateEvent);
@@ -151,19 +148,12 @@ client.on('messageCreate', (message) => {
     handleTriviaMessage(message).catch(err => console.error('Trivia handler error:', err));
 });
 
-// --- 5. XP SYSTEM ---
+// XP system
 client.on(Events.MessageCreate, async (message) => {
     await XPLib.updateXP(message);
 });
 
 client.on('error', console.error);
 process.on('unhandledRejection', console.error);
-
-client.on('raw', (event) => {
-    if (event.t === 'INTERACTION_CREATE') {
-        console.log('RAW INTERACTION DATA:', JSON.stringify(event.d, null, 2));
-    }
-});
-
 
 client.login(process.env.DISCORD_TOKEN);
