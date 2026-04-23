@@ -3,34 +3,41 @@ const helpers = require('../utils/helpers');
 const supabase = require('../services/supabase');
 
 const activeTimeouts = new Map();
-const pendingClaims = new Map(); // characterName -> { embedDescription, messageId }
+const pendingClaims = new Map();
 const ROLL_LIFETIME_MS = 5 * 60 * 1000;
 const CLAIM_LOOKUP_TIMEOUT_MS = 2 * 60 * 1000;
 
 /**
- * Parse a Mudae embed description to extract character name and series.
- * Expected format (lines may have empty lines):
- *   Character Name
- *   Series Name
- *   React with any emoji to claim!
+ * Parse character and series from a Mudae embed description.
  * Returns { character, series } or null.
  */
-function parseRollEmbed(description) {
+function parseRollEmbed(description, embedTitle) {
     if (!description) return null;
-    const lines = description.split('\n').filter(l => l.trim().length > 0);
-    // Find the line that contains the claim phrase
-    let claimIdx = -1;
-    for (let i = 0; i < lines.length; i++) {
-        if (lines[i].includes('React with any emoji to claim!')) {
-            claimIdx = i;
-            break;
-        }
+    // Split into non‑empty lines, ignoring lines that only contain the claim phrase
+    let rawLines = description.split('\n').filter(l => l.trim().length > 0);
+    // Remove any line that is exactly "React with any emoji to claim!" (may appear multiple times)
+    const lines = rawLines.filter(l => l !== 'React with any emoji to claim!');
+    
+    // Find the index of the claim phrase (there should be at least one)
+    const claimIndex = rawLines.findIndex(l => l.includes('React with any emoji to claim!'));
+    if (claimIndex === -1) return null;
+    
+    // The series is the line immediately before the claim phrase (if any)
+    // The character is the line before that (if any)
+    let series = null;
+    let character = null;
+    if (claimIndex >= 2) {
+        character = rawLines[claimIndex - 2].trim();
+        series = rawLines[claimIndex - 1].trim();
+    } else if (claimIndex === 1) {
+        character = rawLines[0].trim();
+        // No series line; try to use embed.title (if provided)
+        if (embedTitle) series = embedTitle.trim();
+    } else {
+        // No lines before claim phrase; use embed.title for character, series = null
+        if (embedTitle) character = embedTitle.trim();
     }
-    if (claimIdx === -1) return null;
-    // The series is the line immediately before the claim phrase
-    const series = claimIdx > 0 ? lines[claimIdx - 1].trim() : null;
-    // The character is the line before that (if exists), otherwise null
-    const character = claimIdx > 1 ? lines[claimIdx - 2].trim() : null;
+    
     return { character, series };
 }
 
@@ -39,7 +46,7 @@ function initMudaeMessageHandler(client) {
         if (message.author.id !== helpers.ids.bots.mudae) return;
         if (message.channel.id !== helpers.ids.channels.mudae_roll) return;
 
-        // --- 1. Auto‑delete all Mudae messages after 5 minutes ---
+        // Auto-delete every Mudae message after 5 minutes
         if (activeTimeouts.has(message.id)) clearTimeout(activeTimeouts.get(message.id));
         const timeout = setTimeout(async () => {
             try {
@@ -53,15 +60,14 @@ function initMudaeMessageHandler(client) {
         }, ROLL_LIFETIME_MS);
         activeTimeouts.set(message.id, timeout);
 
-        // --- 2. Process roll messages ---
-        if (message.embeds.length === 0) return;
+        // Only process roll messages (embeds with claim phrase)
+        if (!message.embeds.length) return;
         const embed = message.embeds[0];
         const description = embed.description || '';
         if (!description.includes('React with any emoji to claim!')) return;
 
-        // Parse character and series
-        const parsed = parseRollEmbed(description);
-        if (!parsed || !parsed.character || !parsed.series) {
+        const parsed = parseRollEmbed(description, embed.title);
+        if (!parsed || !parsed.character) {
             console.log(`[DEBUG] Could not parse roll: ${description.substring(0, 100)}`);
             return;
         }
@@ -82,13 +88,13 @@ function initMudaeMessageHandler(client) {
         // Add VERIFY reaction
         try {
             await message.react(helpers.releaseEmojis.VERIFY);
-            console.log(`✅ Added VERIFY to ${character} (${series})`);
+            console.log(`✅ Added VERIFY to ${character} (${series || 'unknown series'})`);
         } catch (err) {
             console.error(`Failed to react: ${err.message}`);
         }
     });
 
-    // --- 3. Claim detection (separate listener to avoid clutter) ---
+    // Claim detection
     client.on('messageCreate', async (message) => {
         if (message.author.id !== helpers.ids.bots.mudae) return;
         if (message.channel.id !== helpers.ids.channels.mudae_roll) return;
@@ -100,10 +106,9 @@ function initMudaeMessageHandler(client) {
         const claimerUsername = match[1].trim();
         const characterName = match[2].trim();
         const pending = pendingClaims.get(characterName);
-        // If no pending roll, we may still record without series
         let series = null;
         if (pending) {
-            const parsed = parseRollEmbed(pending.embedDescription);
+            const parsed = parseRollEmbed(pending.embedDescription, null);
             if (parsed) series = parsed.series;
         }
 
