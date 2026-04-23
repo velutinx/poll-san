@@ -1,11 +1,11 @@
 // commands/admin/post-roll-ui.js
-const { SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } = require('discord.js');
+const { SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const helpers = require('../../utils/helpers');
 
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('post_roll_ui')
-        .setDescription('[ADMIN] Post the roll button interface'),
+        .setDescription('[ADMIN] Post test button'),
     async execute(interaction) {
         if (!interaction.memberPermissions.has('Administrator')) {
             return interaction.reply({ content: '❌ Admin only.', flags: 64 });
@@ -13,31 +13,17 @@ module.exports = {
 
         const rollChannel = interaction.guild.channels.cache.get(helpers.ids.channels.mudae_roll);
         if (!rollChannel) {
-            return interaction.reply({ content: '❌ Mudae roll channel not found.', flags: 64 });
+            return interaction.reply({ content: '❌ Channel not found.', flags: 64 });
         }
-
-        const embed = new EmbedBuilder()
-            .setColor(0x2f3136)
-            .setDescription(
-                '🎲 **Roll for a character!**\n\n' +
-                '• Click **Roll** below.\n' +
-                '• You have **10 seconds** to claim your roll alone.\n' +
-                '• After that, anyone can claim it for the next **4m 50s**.\n' +
-                '• Unclaimed rolls are deleted after **5 minutes**.\n' +
-                '• You get **5 rolls** and **2 claims** every hour.\n\n' +
-                '✅ = claim | ❌ = pass'
-            );
 
         const row = new ActionRowBuilder().addComponents(
             new ButtonBuilder()
-.setCustomId('roll_now')
-            .setLabel('Roll 🎲')
+                .setCustomId('test_button')
+                .setLabel('Test')
                 .setStyle(ButtonStyle.Primary)
         );
 
-        // Send directly as the bot (not via webhook)
-        await rollChannel.send({ embeds: [embed], components: [row] });
-
-        await interaction.reply({ content: '✅ Roll button posted!', flags: 64 });
+        await rollChannel.send({ components: [row], content: 'Click me' });
+        await interaction.reply({ content: 'Test button posted!', flags: 64 });
     }
 };
