@@ -26,6 +26,7 @@ const { checkAndNotifyCooldowns } = require('./services/cooldownNotifier');
 const { handleTriviaMessage, processEndOfDayAwards } = require('./services/triviaJanitor');
 const handleInteraction = require('./handlers/interactionHandler');
 const verification = require('./events/verification');
+const initMudaeMessageHandler = require('./handlers/mudaeMessageHandler');
 
 // ==================== DISCORD CLIENT SETUP ====================
 const client = new Client({
@@ -122,6 +123,7 @@ client.once(Events.ClientReady, async (c) => {
     // Restore giveaways
     const { restoreGiveaways } = require('./commands/giveaway');
     await restoreGiveaways(client).catch(console.error);
+    initMudaeMessageHandler(client);
 });
 
 // --- 2. INTERACTION HANDLER (delegated) ---
