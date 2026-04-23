@@ -59,6 +59,12 @@ module.exports = async function handleInteraction(interaction) {
             else {
                 await giveawayCommand.handleGiveawayButton(interaction);
             }
+
+            else if (interaction.customId === 'test_button') {
+    await interaction.reply({ content: 'Button works!', flags: 64 });
+}
+
+        
         }
         // Select menus
         else if (interaction.isStringSelectMenu() && interaction.customId === 'shop_select') {
