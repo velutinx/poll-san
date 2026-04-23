@@ -122,15 +122,17 @@ module.exports = {
             QUEUE: '1473730427318435860',
             TRIVIA: '1495387346990928003',
             verify: '1495679452489977897',
-            checkin: '1495862994343694447',   // #check-in channel
-            preview_forum: '1465938599378812980',   // ADDED
-            supporter_forum: '1465937644394512516'  // ADDED
+            checkin: '1495862994343694447',
+            preview_forum: '1465938599378812980',
+            supporter_forum: '1465937644394512516',
+            mudae_roll: '1494520781244334291'
         },
         users: {
             Velutinx: '1380051214766444617'
         },
         bots: {
-            rinbot: '429656936435286016'
+            rinbot: '429656936435286016',
+            mudae: '432610292342587392'
         }
     },
 
