@@ -1,14 +1,19 @@
 // commands/admin/post-roll-ui.js
-
 const { SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } = require('discord.js');
+const helpers = require('../../utils/helpers');
 
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('post_roll_ui')
-        .setDescription('[ADMIN] Post the roll button interface (Mudae Preflix)'),
+        .setDescription('[ADMIN] Post the roll button interface (Mudae style)'),
     async execute(interaction) {
         if (!interaction.memberPermissions.has('Administrator')) {
             return interaction.reply({ content: '❌ Admin only.', flags: 64 });
+        }
+
+        const rollChannel = interaction.guild.channels.cache.get(helpers.ids.channels.mudae_roll);
+        if (!rollChannel) {
+            return interaction.reply({ content: '❌ Mudae roll channel not found.', flags: 64 });
         }
 
         const embed = new EmbedBuilder()
@@ -30,10 +35,9 @@ module.exports = {
                 .setStyle(ButtonStyle.Primary)
         );
 
-        const channel = interaction.channel;
-        let webhook = (await channel.fetchWebhooks()).find(w => w.name === 'Mudae Preflix');
+        let webhook = (await rollChannel.fetchWebhooks()).find(w => w.name === 'Mudae Preflix');
         if (!webhook) {
-            webhook = await channel.createWebhook({
+            webhook = await rollChannel.createWebhook({
                 name: 'Mudae Preflix',
                 avatar: 'https://www.velutinx.com/images/LogoDiscord.png'
             });
