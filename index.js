@@ -27,6 +27,9 @@ const { handleTriviaMessage, processEndOfDayAwards } = require('./services/trivi
 const handleInteraction = require('./handlers/interactionHandler');
 const verification = require('./events/verification');
 
+// ========== MURDAE REACTION HANDLER ==========
+const handleMudaeReaction = require('./handlers/mudaeReaction');   // 👈 NEW
+
 // ==================== DISCORD CLIENT SETUP ====================
 const client = new Client({
     intents: [
@@ -64,6 +67,7 @@ client.once(Events.ClientReady, async (c) => {
         require('./commands/admin/post-hangman-ui').data.toJSON(),
         require('./commands/admin/post-verify-ui').data.toJSON(),
         require('./commands/admin/post-checkin-ui').data.toJSON(),
+        require('./commands/admin/post-roll-ui').data.toJSON(),   // 👈 NEW
     ];
 
     const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
@@ -128,13 +132,19 @@ client.once(Events.ClientReady, async (c) => {
 client.on(Events.InteractionCreate, handleInteraction);
 
 // --- 3. VERIFICATION HANDLER (separate for modal) ---
-//client.on(Events.InteractionCreate, verification.handleInteraction);
+//client.on(Events.InteractionCreate, verification.handleInteraction); // Disabled (math captcha)
 
 // --- 4. EVENT LISTENERS ---
 client.on(Events.GuildMemberAdd, (member) => require('./events/guildMemberAdd')(member));
 client.on(Events.GuildMemberAdd, verification.execute);
+
+// ---- EXISTING REACTION HANDLER (for polls, giveaways, etc.)
 client.on(Events.MessageReactionAdd, (reaction, user) => require('./events/reactions')(reaction, user, 'add'));
 client.on(Events.MessageReactionRemove, (reaction, user) => require('./events/reactions')(reaction, user, 'remove'));
+
+// ---- MURDAE REACTION HANDLER (only processes Mudae roll messages)
+client.on(Events.MessageReactionAdd, (reaction, user) => handleMudaeReaction(reaction, user, 'add')); // 👈 NEW
+
 client.on('guildMemberRemove', require('./events/guildMemberPollRemove'));
 client.on('messageCreate', messageCreateEvent);
 client.on('messageCreate', (message) => {
