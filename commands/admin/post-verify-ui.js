@@ -58,7 +58,6 @@ module.exports = {
         } catch (err) {
             console.error('Failed to add reaction:', err);
         }
-
-        await interaction.reply({ content: '✅ Verification message posted with reaction!', ephemeral: true });
+        await interaction.reply({ content: '✅ Verification message posted!', flags: 64 });
     }
 };
