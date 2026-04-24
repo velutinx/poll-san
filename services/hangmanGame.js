@@ -122,7 +122,13 @@ async function startHangmanGame(interaction) {
     let gameWon = false;
 
     const generateEmbed = () => {
-        const wordDisplay = word.split('').map(l => usedLetters.has(l) ? l.toUpperCase() : '\\_').join(' ');
+        let wordDisplay;
+        if (gameWon) {
+            // Show the full word in uppercase when won
+            wordDisplay = word.toUpperCase().split('').join(' ');
+        } else {
+            wordDisplay = word.split('').map(l => usedLetters.has(l) ? l.toUpperCase() : '\\_').join(' ');
+        }
         const stageIndex = Math.min(wrongGuesses, maxWrongGuesses);
         const stage = HANGMAN_STAGES[stageIndex];
         const usedList = [...usedLetters].sort().join(', ') || 'None';
@@ -170,11 +176,16 @@ async function startHangmanGame(interaction) {
 
     collector.on('collect', async (msg) => {
         const content = msg.content.toLowerCase().trim();
+        // Delete the user's guess message immediately
         msg.delete().catch(() => {});
 
         // ---- Word guess (length > 1) ----
         if (content.length > 1) {
             if (content === word) {
+                // Add all letters of the word so the final display shows the full word
+                for (const letter of word) {
+                    usedLetters.add(letter);
+                }
                 gameWon = true;
                 gameOver = true;
                 collector.stop();
@@ -192,7 +203,6 @@ async function startHangmanGame(interaction) {
                     collector.stop();
                 }
             }
-            // Update embed after word guess
             const newEmbed = generateEmbed();
             await interaction.editReply({ embeds: [newEmbed], content: gameOver ? 'Game ended.' : 'Type a single letter or the whole word in this channel to guess!' });
             return;
@@ -228,6 +238,19 @@ async function startHangmanGame(interaction) {
     });
 
     collector.on('end', async () => {
+        // Clean up any remaining messages from the player in this channel
+        if (gameOver) {
+            setTimeout(async () => {
+                try {
+                    const messages = await interaction.channel.messages.fetch({ limit: 20 });
+                    const userMessages = messages.filter(m => m.author.id === interaction.user.id && !m.pinned);
+                    for (const m of userMessages.values()) {
+                        m.delete().catch(() => {});
+                    }
+                } catch (err) {}
+            }, 2000);
+        }
+
         if (gameWon) {
             const result = await awardTicket(interaction.user.id, interaction.user.username);
             if (result.awarded) {
