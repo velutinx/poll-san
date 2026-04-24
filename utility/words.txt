@@ -3,3 +3,68 @@ house {where you live}
 computer {electronic device}
 square {four equal sides}
 heart {symbol of love}
+banana {yellow curved fruit}
+bridge {connects two sides over water}
+pencil {used for writing, has graphite}
+window {glass panel you can see through}
+desert {very dry place with sand}
+planet {orbits a star}
+guitar {six-string musical instrument}
+oxygen {gas humans need to breathe}
+compass {tool that points north}
+library {place full of books}
+calendar {tracks days and months}
+volcano {mountain that erupts lava}
+lantern {portable light source}
+quinoa {grain-like food, tricky spelling}
+mnemonic {memory aid word, silent letters}
+synecdoche {figure of speech using a part for whole}
+elephant {large animal with trunk}
+mountain {high land peak}
+library {place full of books}
+rainbow {colorful sky arc}
+dinosaur {prehistoric giant reptile}
+umbrella {rain protection tool}
+guitar {string music instrument}
+astronaut {space traveler}
+pyramid {ancient triangular monument}
+kangaroo {jumping pouched animal}
+saxophone {curved brass instrument}
+helicopter {bladed flying machine}
+refrigerator {kitchen food cooler}
+encyclopedia {complete knowledge book}
+fjord {narrow steep-sided sea inlet}
+ocean {vast salt water}
+bicycle {two-wheeled transport}
+pizza {cheesy Italian dish}
+diamond {hardest gemstone}
+glacier {large moving ice}
+skeleton {structure of bones}
+library {building for books}
+rhythm {repeated sound pattern}
+pharaoh {ancient Egyptian king}
+vacuum {space without air}
+receipt {proof of purchase}
+boutique {small fashion shop}
+cemetery {place of burial}
+schedule {timetable of events}
+zephyr {soft gentle breeze}
+syzygy {planetary alignment}
+dog {a loyal pet}
+sun {bright star in the sky}
+book {pages with stories}
+moon {shines at night}
+cloud {white fluff in the sky}
+river {flowing water}
+jungle {dense tropical forest}
+puzzle {a problem to solve}
+whisper {speak very softly}
+thunder {loud sound after lightning}
+library {place full of books}
+island {land surrounded by water}
+mystery {something unknown or secret}
+knight {medieval armored warrior}
+chocolate {sweet brown treat}
+labyrinth {complex maze}
+silhouette {dark outline against light}
+cacophony {harsh mixture of sounds}
