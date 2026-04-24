@@ -3,42 +3,25 @@ const helpers = require('../utils/helpers');
 const supabase = require('../services/supabase');
 
 const activeTimeouts = new Map();
-const pendingClaims = new Map();
+const pendingClaims = new Map(); // characterName -> { embedDescription, messageId }
 const ROLL_LIFETIME_MS = 5 * 60 * 1000;
 const CLAIM_LOOKUP_TIMEOUT_MS = 2 * 60 * 1000;
 
 /**
  * Parse character and series from a Mudae embed description.
- * Returns { character, series } or null.
+ * - First non‑empty line = character name
+ * - All lines between character and the claim phrase = series (joined with spaces)
  */
-function parseRollEmbed(description, embedTitle) {
+function parseRollEmbed(description) {
     if (!description) return null;
-    // Split into non‑empty lines, ignoring lines that only contain the claim phrase
-    let rawLines = description.split('\n').filter(l => l.trim().length > 0);
-    // Remove any line that is exactly "React with any emoji to claim!" (may appear multiple times)
-    const lines = rawLines.filter(l => l !== 'React with any emoji to claim!');
-    
-    // Find the index of the claim phrase (there should be at least one)
-    const claimIndex = rawLines.findIndex(l => l.includes('React with any emoji to claim!'));
-    if (claimIndex === -1) return null;
-    
-    // The series is the line immediately before the claim phrase (if any)
-    // The character is the line before that (if any)
-    let series = null;
-    let character = null;
-    if (claimIndex >= 2) {
-        character = rawLines[claimIndex - 2].trim();
-        series = rawLines[claimIndex - 1].trim();
-    } else if (claimIndex === 1) {
-        character = rawLines[0].trim();
-        // No series line; try to use embed.title (if provided)
-        if (embedTitle) series = embedTitle.trim();
-    } else {
-        // No lines before claim phrase; use embed.title for character, series = null
-        if (embedTitle) character = embedTitle.trim();
-    }
-    
-    return { character, series };
+    const lines = description.split('\n').filter(l => l.trim().length > 0);
+    const claimIdx = lines.findIndex(l => l.includes('React with any emoji to claim!'));
+    if (claimIdx === -1) return null;
+    if (claimIdx === 0) return null; // No character line
+    const character = lines[0].trim();
+    const seriesLines = lines.slice(1, claimIdx);
+    let series = seriesLines.join(' ').trim();
+    return { character, series: series || null };
 }
 
 function initMudaeMessageHandler(client) {
@@ -46,7 +29,7 @@ function initMudaeMessageHandler(client) {
         if (message.author.id !== helpers.ids.bots.mudae) return;
         if (message.channel.id !== helpers.ids.channels.mudae_roll) return;
 
-        // Auto-delete every Mudae message after 5 minutes
+        // Auto‑delete EVERY Mudae message after 5 minutes
         if (activeTimeouts.has(message.id)) clearTimeout(activeTimeouts.get(message.id));
         const timeout = setTimeout(async () => {
             try {
@@ -66,7 +49,7 @@ function initMudaeMessageHandler(client) {
         const description = embed.description || '';
         if (!description.includes('React with any emoji to claim!')) return;
 
-        const parsed = parseRollEmbed(description, embed.title);
+        const parsed = parseRollEmbed(description);
         if (!parsed || !parsed.character) {
             console.log(`[DEBUG] Could not parse roll: ${description.substring(0, 100)}`);
             return;
@@ -85,10 +68,10 @@ function initMudaeMessageHandler(client) {
             }
         }, CLAIM_LOOKUP_TIMEOUT_MS);
 
-        // Add VERIFY reaction
+        // Add reaction
         try {
             await message.react(helpers.releaseEmojis.VERIFY);
-            console.log(`✅ Added VERIFY to ${character} (${series || 'unknown series'})`);
+            console.log(`✅ Added VERIFY to ${character} (${series || 'series unknown'})`);
         } catch (err) {
             console.error(`Failed to react: ${err.message}`);
         }
@@ -108,7 +91,7 @@ function initMudaeMessageHandler(client) {
         const pending = pendingClaims.get(characterName);
         let series = null;
         if (pending) {
-            const parsed = parseRollEmbed(pending.embedDescription, null);
+            const parsed = parseRollEmbed(pending.embedDescription);
             if (parsed) series = parsed.series;
         }
 
