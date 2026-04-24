@@ -6,7 +6,7 @@ const h = require('../utils/helpers');
 const fs = require('fs');
 const path = require('path');
 
-// Load words with optional hints: "word {hint}"
+// Load words with optional hints
 const rawLines = fs.readFileSync(path.join(__dirname, '../utility/words.txt'), { encoding: 'utf-8' })
     .split('\n')
     .map(line => line.trim())
@@ -23,31 +23,25 @@ const words = rawLines.map(line => {
 const COOLDOWN_HOURS = 24;
 const GAME_TYPE = 'hangman';
 
-// Hangman stages as emoji art (up to 12 wrong guesses)
 const HANGMAN_STAGES = [
-    '🟫🟫🟫🟫🟫\n🟫😀🟫\n🟫\n🟫\n🟫',                          // 0 wrong
-    '🟫🟫🟫🟫🟫\n🟫😀🟫\n🟫💪\n🟫\n🟫',                        // 1 wrong
-    '🟫🟫🟫🟫🟫\n🟫😀🟫\n🟫💪💪\n🟫\n🟫',                      // 2 wrong
-    '🟫🟫🟫🟫🟫\n🟫😧🟫\n🟫💪💪\n🟫 🦵\n🟫',                   // 3 wrong
-    '🟫🟫🟫🟫🟫\n🟫😧🟫\n🟫💪💪\n🟫🦵🦵\n🟫',                 // 4 wrong
-    '🟫🟫🟫🟫🟫\n🟫😵🟫\n🟫💪💪\n🟫🦵🦵\n🟫',                 // 5 wrong
-    '🟫🟫🟫🟫🟫\n🟫💀🟫\n🟫💪💪\n🟫🦵🦵\n🟫',                 // 6 wrong
-    '🟫🟫🟫🟫🟫\n🟫💀🟫💧\n🟫💪💪\n🟫🦵🦵\n🟫',               // 7 wrong
-    '🟫🟫🟫🟫🟫\n🟫💀🟫💧💧\n🟫💪💪\n🟫🦵🦵\n🟫',             // 8 wrong
-    '🟫🟫🟫🟫🟫\n🟫💀🟫💧💧💧\n🟫💪💪\n🟫🦵🦵\n🟫',           // 9 wrong
-    '🟫🟫🟫🟫🟫\n🟫💀🟫💧💧💧💧\n🟫💪💪\n🟫🦵🦵\n🟫',         // 10 wrong
-    '🟫🟫🟫🟫🟫\n🟫💀🟫💧💧💧💧💧\n🟫💪💪\n🟫🦵🦵\n🟫',       // 11 wrong
-    '🟫🟫🟫🟫🟫\n🟫💀🟫💧💧💧💧💧💧\n🟫💪💪\n🟫🦵🦵\n🟫'    // 12 wrong
+    '🟫🟫🟫🟫🟫\n🟫😀🟫\n🟫\n🟫\n🟫',
+    '🟫🟫🟫🟫🟫\n🟫😀🟫\n🟫💪\n🟫\n🟫',
+    '🟫🟫🟫🟫🟫\n🟫😀🟫\n🟫💪💪\n🟫\n🟫',
+    '🟫🟫🟫🟫🟫\n🟫😧🟫\n🟫💪💪\n🟫 🦵\n🟫',
+    '🟫🟫🟫🟫🟫\n🟫😧🟫\n🟫💪💪\n🟫🦵🦵\n🟫',
+    '🟫🟫🟫🟫🟫\n🟫😵🟫\n🟫💪💪\n🟫🦵🦵\n🟫',
+    '🟫🟫🟫🟫🟫\n🟫💀🟫\n🟫💪💪\n🟫🦵🦵\n🟫',
+    '🟫🟫🟫🟫🟫\n🟫💀🟫💧\n🟫💪💪\n🟫🦵🦵\n🟫',
+    '🟫🟫🟫🟫🟫\n🟫💀🟫💧💧\n🟫💪💪\n🟫🦵🦵\n🟫',
+    '🟫🟫🟫🟫🟫\n🟫💀🟫💧💧💧\n🟫💪💪\n🟫🦵🦵\n🟫',
+    '🟫🟫🟫🟫🟫\n🟫💀🟫💧💧💧💧\n🟫💪💪\n🟫🦵🦵\n🟫',
+    '🟫🟫🟫🟫🟫\n🟫💀🟫💧💧💧💧💧\n🟫💪💪\n🟫🦵🦵\n🟫',
+    '🟫🟫🟫🟫🟫\n🟫💀🟫💧💧💧💧💧💧\n🟫💪💪\n🟫🦵🦵\n🟫'
 ];
 
-/**
- * Check cooldown and award ticket if eligible.
- * Also records the win in games_cooldowns.
- */
 async function awardTicket(userId, username) {
     const now = new Date();
 
-    // Check if user has a recent win for this game type
     const { data: cooldownData, error: fetchError } = await supabase
         .from('games_cooldowns')
         .select('last_win_at')
@@ -70,7 +64,6 @@ async function awardTicket(userId, username) {
         }
     }
 
-    // Award the ticket (increment in games_wordle)
     const { data: newCount, error: rpcError } = await supabase
         .rpc('increment_wordle_ticket', { user_id: userId, user_name: username });
 
@@ -79,7 +72,6 @@ async function awardTicket(userId, username) {
         return { awarded: false, reason: 'error' };
     }
 
-    // Update/insert cooldown record and reset notification flag
     const { error: upsertError } = await supabase
         .from('games_cooldowns')
         .upsert({
@@ -96,9 +88,6 @@ async function awardTicket(userId, username) {
     return { awarded: true, newCount };
 }
 
-/**
- * Get remaining cooldown time for a user (in minutes)
- */
 async function getCooldownRemaining(userId) {
     const { data } = await supabase
         .from('games_cooldowns')
@@ -124,9 +113,7 @@ async function startHangmanGame(interaction) {
     const word = item.word;
     const hint = item.hint;
 
-    // Determine max wrong guesses based on word length
     let maxWrongGuesses = word.length >= 7 ? word.length : 6;
-    // Cap to avoid exceeding available stages
     maxWrongGuesses = Math.min(maxWrongGuesses, HANGMAN_STAGES.length - 1);
 
     let wrongGuesses = 0;
@@ -170,22 +157,50 @@ async function startHangmanGame(interaction) {
     const embed = generateEmbed();
     await interaction.editReply({
         embeds: [embed],
-        content: 'Type a single letter in this channel to guess!'
+        content: 'Type a single letter or the whole word in this channel to guess!'
     });
 
     const filter = (msg) => {
         return msg.author.id === interaction.user.id &&
                msg.channel.id === interaction.channel.id &&
-               msg.content.length === 1 &&
-               /[a-zA-Z]/.test(msg.content) &&
                !gameOver;
     };
 
     const collector = interaction.channel.createMessageCollector({ filter, time: 180000 }); // 3 min
 
     collector.on('collect', async (msg) => {
-        const letter = msg.content.toLowerCase();
+        const content = msg.content.toLowerCase().trim();
         msg.delete().catch(() => {});
+
+        // ---- Word guess (length > 1) ----
+        if (content.length > 1) {
+            if (content === word) {
+                gameWon = true;
+                gameOver = true;
+                collector.stop();
+            } else {
+                // Incorrect word guess: increment wrong guesses, no letters added
+                wrongGuesses++;
+                const warning = await interaction.followUp({
+                    content: `❌ "${msg.content}" is not the correct word. You lost a guess.`,
+                    flags: MessageFlags.Ephemeral
+                });
+                setTimeout(() => warning.delete().catch(() => {}), 3000);
+
+                if (wrongGuesses >= maxWrongGuesses) {
+                    gameOver = true;
+                    collector.stop();
+                }
+            }
+            // Update embed after word guess
+            const newEmbed = generateEmbed();
+            await interaction.editReply({ embeds: [newEmbed], content: gameOver ? 'Game ended.' : 'Type a single letter or the whole word in this channel to guess!' });
+            return;
+        }
+
+        // ---- Single letter guess ----
+        const letter = content;
+        if (!/[a-zA-Z]/.test(letter)) return;
 
         if (usedLetters.has(letter)) {
             const warning = await interaction.followUp({ content: `⚠️ You already guessed "${letter}".`, flags: MessageFlags.Ephemeral });
@@ -200,8 +215,8 @@ async function startHangmanGame(interaction) {
 
         const wordGuessed = word.split('').every(l => usedLetters.has(l));
         if (wordGuessed) {
-            gameOver = true;
             gameWon = true;
+            gameOver = true;
             collector.stop();
         } else if (wrongGuesses >= maxWrongGuesses) {
             gameOver = true;
@@ -209,7 +224,7 @@ async function startHangmanGame(interaction) {
         }
 
         const newEmbed = generateEmbed();
-        await interaction.editReply({ embeds: [newEmbed], content: gameOver ? 'Game ended.' : 'Type a single letter in this channel to guess!' });
+        await interaction.editReply({ embeds: [newEmbed], content: gameOver ? 'Game ended.' : 'Type a single letter or the whole word in this channel to guess!' });
     });
 
     collector.on('end', async () => {
