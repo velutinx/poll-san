@@ -43,7 +43,7 @@ module.exports = function setupPollRoutes(app, client, supabase, supabaseRetry) 
             };
 
             // Clear final votes before starting a fresh poll
-            await supabaseRetry(() => supabase.from('final_votes').delete().neq('option_id', 0));
+            await supabaseRetry(() => supabase.from('poll_votes_final').delete().neq('option_id', 0));
             
             startPollLogic(mockInteraction);
             res.json({ success: true });
@@ -62,7 +62,7 @@ module.exports = function setupPollRoutes(app, client, supabase, supabaseRetry) 
                 return res.json(cachedPollResultsData);
             }
             const { data } = await supabaseRetry(() =>
-                supabase.from('final_votes')
+                supabase.from('poll_votes_final')
                     .select('character_name, score, selected_at')
                     .order('option_id', { ascending: true })
             );
@@ -83,7 +83,7 @@ module.exports = function setupPollRoutes(app, client, supabase, supabaseRetry) 
             pollService.forceStopPoll();
 
             const { data: poll } = await supabaseRetry(() =>
-                supabase.from('auto_resume')
+                supabase.from('poll_auto_resume')
                     .select('*')
                     .order('id', { ascending: false })
                     .limit(1)
@@ -125,7 +125,7 @@ module.exports = function setupPollRoutes(app, client, supabase, supabaseRetry) 
 
         try {
             const { data: poll } = await supabaseRetry(() =>
-                supabase.from('auto_resume')
+                supabase.from('poll_auto_resume')
                     .select('*')
                     .order('id', { ascending: false })
                     .limit(1)
@@ -135,14 +135,14 @@ module.exports = function setupPollRoutes(app, client, supabase, supabaseRetry) 
 
             // Mark winner in database
             await supabaseRetry(() =>
-                supabase.from('final_votes')
+                supabase.from('poll_votes_final')
                     .update({ selected_at: new Date().toISOString() })
                     .filter('character_name', 'ilike', `%${winner_name}%`)
             );
 
             // Fetch current standings (same as pollService uses)
             const { data: voteData } = await supabaseRetry(() =>
-                supabase.from('final_votes')
+                supabase.from('poll_votes_final')
                     .select('character_name, score, selected_at')
                     .order('option_id', { ascending: true })
             );
