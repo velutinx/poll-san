@@ -21,9 +21,9 @@ async function getPollResults(message, characters) {
 
     try {
         const [{ data: discordVotes }, { data: websiteVotes }, { data: winnerData }] = await Promise.all([
-            supabaseRetry(() => supabase.from('votes_discord').select('option_id, weight').eq('poll_id', CURRENT_POLL_ID)),
-            supabaseRetry(() => supabase.from('website_voting').select('option_id').eq('poll_id', CURRENT_POLL_ID)),
-            supabaseRetry(() => supabase.from('final_votes').select('option_id, selected_at').eq('poll_id', CURRENT_POLL_ID))
+            supabaseRetry(() => supabase.from('poll_voting_discord').select('option_id, weight').eq('poll_id', CURRENT_POLL_ID)),
+            supabaseRetry(() => supabase.from('poll_voting_website').select('option_id').eq('poll_id', CURRENT_POLL_ID)),
+            supabaseRetry(() => supabase.from('poll_votes_final').select('option_id, selected_at').eq('poll_id', CURRENT_POLL_ID))
         ]);
 
         const winnerMap = {};
@@ -60,7 +60,7 @@ async function getPollResults(message, characters) {
             });
         }
 
-        await supabaseRetry(() => supabase.from('final_votes').upsert(rawDataForDB, { onConflict: 'poll_id,option_id' }));
+        await supabaseRetry(() => supabase.from('poll_votes_final').upsert(rawDataForDB, { onConflict: 'poll_id,option_id' }));
 
         const resultString = displayResults.join('');
         cachedPollResults = resultString;
@@ -127,14 +127,14 @@ function runPollInterval(pollMessage, endTime, characters) {
             if (isFinished) {
                 forceStopPoll();
                 await supabaseRetry(() =>
-                    supabase.from('auto_resume').delete().eq('message_id', pollMessage.id)
+                    supabase.from('poll_auto_resume').delete().eq('message_id', pollMessage.id)
                 );
             }
         } catch (e) {
             if (e.code === 10008) {
                 forceStopPoll();
                 await supabaseRetry(() =>
-                    supabase.from('auto_resume').delete().eq('message_id', pollMessage.id)
+                    supabase.from('poll_auto_resume').delete().eq('message_id', pollMessage.id)
                 );
             } else {
                 console.error("Poll interval error:", e);
