@@ -194,7 +194,7 @@ app.post('/api/mark-winner', async (req, res) => {
         let imageMessage = '';
         if (winnerOptionId) {
             const imageUrl = `https://www.velutinx.com/images/poll/${winnerOptionId}.jpg`;
-imageMessage = `\n**Winner's image:**\n![Winner](${imageUrl})`;
+imageMessage = `\n![Winner](${imageUrl})`;
             // You can embed the image directly if you prefer:
             // imageMessage = `\n**Winner's image:**\n![Winner](${imageUrl})`;
         }
