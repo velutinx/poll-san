@@ -38,7 +38,7 @@ module.exports = async (interaction) => {
 
     // Record in Supabase (for auto-resume)
     try {
-        await supabase.from('auto_resume').upsert({
+        await supabase.from('poll_auto_resume').upsert({
             message_id: pollMessage.id,
             channel_id: interaction.channel.id,
             ends_at: new Date(endTime).toISOString(),
