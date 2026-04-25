@@ -101,7 +101,7 @@ client.once(Events.ClientReady, async (c) => {
 
     // Auto-resume active polls
     const { data: activePolls } = await supabase
-        .from('auto_resume')
+        .from('poll_auto_resume')
         .select('*')
         .gt('ends_at', new Date().toISOString());
     if (activePolls && activePolls.length > 0) {
