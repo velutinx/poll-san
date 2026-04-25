@@ -30,7 +30,7 @@ module.exports = async (reaction, user, action = 'add') => {
         if (action === 'remove') {
             // Delete vote from database
             await supabase
-                .from('votes_discord')
+                .from('poll_voting_discord')
                 .delete()
                 .eq('user_id', user.id)
                 .eq('poll_id', 'character_poll_new')
@@ -74,7 +74,7 @@ module.exports = async (reaction, user, action = 'add') => {
 
         // 4. Record/Update Vote in Supabase with character_name
         const { data: charData, error: charError } = await supabase
-            .from('final_votes')
+            .from('poll_votes_final')
             .select('character_name')
             .eq('poll_id', 'character_poll_new')
             .eq('option_id', optionId)
@@ -86,7 +86,7 @@ module.exports = async (reaction, user, action = 'add') => {
 
         const characterName = charData?.character_name || null;
 
-        await supabase.from('votes_discord').upsert({
+        await supabase.from('poll_voting_discord').upsert({
             user_id: user.id,
             poll_id: 'character_poll_new',
             option_id: optionId,
