@@ -117,7 +117,7 @@ module.exports = function setupPollRoutes(app, client, supabase, supabaseRetry) 
     });
 
 // ────────────────────────────────────────────────
-// MARK WINNER – now includes the winner's image
+// MARK WINNER – includes winner's image as a clean embed
 // ────────────────────────────────────────────────
 app.post('/api/mark-winner', async (req, res) => {
     const { winner_name } = req.body;
@@ -134,7 +134,7 @@ app.post('/api/mark-winner', async (req, res) => {
         );
         if (!poll) return res.status(404).json({ error: "No active poll found." });
 
-        // First, get the option_id of the character being marked as winner
+        // Get the option_id of the character being marked as winner
         const { data: winnerRow } = await supabaseRetry(() =>
             supabase.from('poll_votes_final')
                 .select('option_id')
@@ -151,7 +151,7 @@ app.post('/api/mark-winner', async (req, res) => {
                 .filter('character_name', 'ilike', `%${winner_name}%`)
         );
 
-        // Fetch current standings (same as pollService uses)
+        // Fetch current standings
         const { data: voteData } = await supabaseRetry(() =>
             supabase.from('poll_votes_final')
                 .select('character_name, score, selected_at, option_id')
@@ -168,9 +168,8 @@ app.post('/api/mark-winner', async (req, res) => {
             .map(s => s.trim().replace(/:female_sign:/g, '♀️').replace(/:male_sign:/g, '♂️'))
             .filter(s => s.length > 1);
 
-        // Build the scoreboard using the same monospaced format as the main poll
+        // Build scoreboard (same format as before)
         let scoreboard = `:trophy: **${winner_name}** has been marked as a winner! ${e.CONFETTI}\n\n`;
-
         characters.forEach((char, index) => {
             const imgNum = index + 1;
             const emoji = h.emojis[index] || `[${imgNum}]`;
@@ -179,10 +178,8 @@ app.post('/api/mark-winner', async (req, res) => {
                 const cleanRecord = v.character_name.replace(/♀️|♂️/g, '').trim().toLowerCase();
                 return cleanChar === cleanRecord;
             });
-            
             const score = record ? parseFloat(record.score).toFixed(2) : "0.00";
             const isWinner = record && record.selected_at !== null;
-            
             const paddedScore = score.padStart(5, ' ');
             const paddedName = char.padEnd(30, ' ');
             let line = `${emoji} \` ${paddedScore} ${paddedName} \` \n`;
@@ -190,16 +187,18 @@ app.post('/api/mark-winner', async (req, res) => {
             scoreboard += line;
         });
 
-        // Add the winner's image immediately after the scoreboard, if we have the option_id
-        let imageMessage = '';
+        // Send scoreboard first
+        await thread.send(scoreboard);
+
+        // Then send the winner's image as a clean embed (no extra text)
         if (winnerOptionId) {
             const imageUrl = `https://www.velutinx.com/images/poll/${winnerOptionId}.jpg`;
-imageMessage = `(${imageUrl})`;
-            // You can embed the image directly if you prefer:
-            // imageMessage = `\n**Winner's image:**\n![Winner](${imageUrl})`;
+            const embed = new EmbedBuilder()
+                .setImage(imageUrl)
+                .setColor(0x00FF00);
+            await thread.send({ embeds: [embed] });
         }
 
-        await thread.send(scoreboard + imageMessage);
         res.json({ success: true });
     } catch (err) {
         console.error('Mark winner error:', err);
