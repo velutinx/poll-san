@@ -116,75 +116,94 @@ module.exports = function setupPollRoutes(app, client, supabase, supabaseRetry) 
         }
     });
 
-    // ────────────────────────────────────────────────
-    // MARK WINNER – now uses the same monospaced format as the main poll
-    // ────────────────────────────────────────────────
-    app.post('/api/mark-winner', async (req, res) => {
-        const { winner_name } = req.body;
-        const e = h.releaseEmojis;
+// ────────────────────────────────────────────────
+// MARK WINNER – now includes the winner's image
+// ────────────────────────────────────────────────
+app.post('/api/mark-winner', async (req, res) => {
+    const { winner_name } = req.body;
+    const e = h.releaseEmojis;
 
-        try {
-            const { data: poll } = await supabaseRetry(() =>
-                supabase.from('poll_auto_resume')
-                    .select('*')
-                    .order('id', { ascending: false })
-                    .limit(1)
-                    .single()
-            );
-            if (!poll) return res.status(404).json({ error: "No active poll found." });
+    try {
+        // Get the active poll
+        const { data: poll } = await supabaseRetry(() =>
+            supabase.from('poll_auto_resume')
+                .select('*')
+                .order('id', { ascending: false })
+                .limit(1)
+                .single()
+        );
+        if (!poll) return res.status(404).json({ error: "No active poll found." });
 
-            // Mark winner in database
-            await supabaseRetry(() =>
-                supabase.from('poll_votes_final')
-                    .update({ selected_at: new Date().toISOString() })
-                    .filter('character_name', 'ilike', `%${winner_name}%`)
-            );
+        // First, get the option_id of the character being marked as winner
+        const { data: winnerRow } = await supabaseRetry(() =>
+            supabase.from('poll_votes_final')
+                .select('option_id')
+                .ilike('character_name', `%${winner_name}%`)
+                .eq('poll_id', 'character_poll_new')
+                .maybeSingle()
+        );
+        const winnerOptionId = winnerRow?.option_id;
 
-            // Fetch current standings (same as pollService uses)
-            const { data: voteData } = await supabaseRetry(() =>
-                supabase.from('poll_votes_final')
-                    .select('character_name, score, selected_at')
-                    .order('option_id', { ascending: true })
-            );
+        // Mark winner in database
+        await supabaseRetry(() =>
+            supabase.from('poll_votes_final')
+                .update({ selected_at: new Date().toISOString() })
+                .filter('character_name', 'ilike', `%${winner_name}%`)
+        );
 
-            const channel = await client.channels.fetch(poll.channel_id);
-            const pollMessage = await channel.messages.fetch(poll.message_id);
-            const thread = pollMessage.thread;
-            if (!thread) return res.status(404).json({ error: "Thread not found." });
+        // Fetch current standings (same as pollService uses)
+        const { data: voteData } = await supabaseRetry(() =>
+            supabase.from('poll_votes_final')
+                .select('character_name, score, selected_at, option_id')
+                .order('option_id', { ascending: true })
+        );
 
-            const characters = poll.poll_list
-                .split(/(?=:female_sign:|:male_sign:|♀️|♂️|\n)/)
-                .map(s => s.trim().replace(/:female_sign:/g, '♀️').replace(/:male_sign:/g, '♂️'))
-                .filter(s => s.length > 1);
+        const channel = await client.channels.fetch(poll.channel_id);
+        const pollMessage = await channel.messages.fetch(poll.message_id);
+        const thread = pollMessage.thread;
+        if (!thread) return res.status(404).json({ error: "Thread not found." });
 
-            // Build the scoreboard using the same monospaced format as the main poll
-            let scoreboard = `:trophy: **${winner_name}** has been marked as a winner! ${e.CONFETTI}\n\n`;
+        const characters = poll.poll_list
+            .split(/(?=:female_sign:|:male_sign:|♀️|♂️|\n)/)
+            .map(s => s.trim().replace(/:female_sign:/g, '♀️').replace(/:male_sign:/g, '♂️'))
+            .filter(s => s.length > 1);
 
-            characters.forEach((char, index) => {
-                const imgNum = index + 1;
-                const emoji = h.emojis[index] || `[${imgNum}]`;
-                const record = voteData.find(v => {
-                    const cleanChar = char.replace(/♀️|♂️/g, '').trim().toLowerCase();
-                    const cleanRecord = v.character_name.replace(/♀️|♂️/g, '').trim().toLowerCase();
-                    return cleanChar === cleanRecord;
-                });
-                
-                const score = record ? parseFloat(record.score).toFixed(2) : "0.00";
-                const isWinner = record && record.selected_at !== null;
-                
-                // Same formatting as generateMessageContent: emoji + backtick + right‑aligned score (5) + space + left‑aligned name (30) + backtick
-                const paddedScore = score.padStart(5, ' ');
-                const paddedName = char.padEnd(30, ' ');
-                let line = `${emoji} \` ${paddedScore} ${paddedName} \` \n`;
-                if (isWinner) line = `||${line}||`;
-                scoreboard += line;
+        // Build the scoreboard using the same monospaced format as the main poll
+        let scoreboard = `:trophy: **${winner_name}** has been marked as a winner! ${e.CONFETTI}\n\n`;
+
+        characters.forEach((char, index) => {
+            const imgNum = index + 1;
+            const emoji = h.emojis[index] || `[${imgNum}]`;
+            const record = voteData.find(v => {
+                const cleanChar = char.replace(/♀️|♂️/g, '').trim().toLowerCase();
+                const cleanRecord = v.character_name.replace(/♀️|♂️/g, '').trim().toLowerCase();
+                return cleanChar === cleanRecord;
             });
+            
+            const score = record ? parseFloat(record.score).toFixed(2) : "0.00";
+            const isWinner = record && record.selected_at !== null;
+            
+            const paddedScore = score.padStart(5, ' ');
+            const paddedName = char.padEnd(30, ' ');
+            let line = `${emoji} \` ${paddedScore} ${paddedName} \` \n`;
+            if (isWinner) line = `||${line}||`;
+            scoreboard += line;
+        });
 
-            await thread.send(scoreboard);
-            res.json({ success: true });
-        } catch (err) {
-            console.error('Mark winner error:', err);
-            res.status(500).json({ error: err.message });
+        // Add the winner's image immediately after the scoreboard, if we have the option_id
+        let imageMessage = '';
+        if (winnerOptionId) {
+            const imageUrl = `https://www.velutinx.com/images/poll/${winnerOptionId}.jpg`;
+imageMessage = `\n**Winner's image:**\n![Winner](${imageUrl})`;
+            // You can embed the image directly if you prefer:
+            // imageMessage = `\n**Winner's image:**\n![Winner](${imageUrl})`;
         }
-    });
+
+        await thread.send(scoreboard + imageMessage);
+        res.json({ success: true });
+    } catch (err) {
+        console.error('Mark winner error:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
 };
