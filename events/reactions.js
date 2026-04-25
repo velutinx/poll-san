@@ -13,11 +13,11 @@ module.exports = async (reaction, user, action = 'add') => {
     const { message } = reaction;
 
     // 1. Check if this is an active poll
-    const { data: activePoll } = await supabase
-        .from('auto_resume')
-        .select('message_id')
-        .eq('message_id', message.id)
-        .single();
+const { data: activePoll } = await supabase
+    .from('poll_auto_resume')
+    .select('message_id')
+    .eq('message_id', message.id)
+    .single();
 
     if (!activePoll) return;
 
