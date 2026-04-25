@@ -1,5 +1,7 @@
 // this is poll-san/web/routes/poll.js
 
+const { EmbedBuilder } = require('discord.js');
+
 module.exports = function setupPollRoutes(app, client, supabase, supabaseRetry) {
     const h = require('../../utils/helpers');
     const pollService = require('../../services/pollService');
@@ -116,93 +118,93 @@ module.exports = function setupPollRoutes(app, client, supabase, supabaseRetry) 
         }
     });
 
-// ────────────────────────────────────────────────
-// MARK WINNER – includes winner's image as a clean embed
-// ────────────────────────────────────────────────
-app.post('/api/mark-winner', async (req, res) => {
-    const { winner_name } = req.body;
-    const e = h.releaseEmojis;
+    // ────────────────────────────────────────────────
+    // MARK WINNER – includes winner's image as a clean embed
+    // ────────────────────────────────────────────────
+    app.post('/api/mark-winner', async (req, res) => {
+        const { winner_name } = req.body;
+        const e = h.releaseEmojis;
 
-    try {
-        // Get the active poll
-        const { data: poll } = await supabaseRetry(() =>
-            supabase.from('poll_auto_resume')
-                .select('*')
-                .order('id', { ascending: false })
-                .limit(1)
-                .single()
-        );
-        if (!poll) return res.status(404).json({ error: "No active poll found." });
+        try {
+            // Get the active poll
+            const { data: poll } = await supabaseRetry(() =>
+                supabase.from('poll_auto_resume')
+                    .select('*')
+                    .order('id', { ascending: false })
+                    .limit(1)
+                    .single()
+            );
+            if (!poll) return res.status(404).json({ error: "No active poll found." });
 
-        // Get the option_id of the character being marked as winner
-        const { data: winnerRow } = await supabaseRetry(() =>
-            supabase.from('poll_votes_final')
-                .select('option_id')
-                .ilike('character_name', `%${winner_name}%`)
-                .eq('poll_id', 'character_poll_new')
-                .maybeSingle()
-        );
-        const winnerOptionId = winnerRow?.option_id;
+            // Get the option_id of the character being marked as winner
+            const { data: winnerRow } = await supabaseRetry(() =>
+                supabase.from('poll_votes_final')
+                    .select('option_id')
+                    .ilike('character_name', `%${winner_name}%`)
+                    .eq('poll_id', 'character_poll_new')
+                    .maybeSingle()
+            );
+            const winnerOptionId = winnerRow?.option_id;
 
-        // Mark winner in database
-        await supabaseRetry(() =>
-            supabase.from('poll_votes_final')
-                .update({ selected_at: new Date().toISOString() })
-                .filter('character_name', 'ilike', `%${winner_name}%`)
-        );
+            // Mark winner in database
+            await supabaseRetry(() =>
+                supabase.from('poll_votes_final')
+                    .update({ selected_at: new Date().toISOString() })
+                    .filter('character_name', 'ilike', `%${winner_name}%`)
+            );
 
-        // Fetch current standings
-        const { data: voteData } = await supabaseRetry(() =>
-            supabase.from('poll_votes_final')
-                .select('character_name, score, selected_at, option_id')
-                .order('option_id', { ascending: true })
-        );
+            // Fetch current standings
+            const { data: voteData } = await supabaseRetry(() =>
+                supabase.from('poll_votes_final')
+                    .select('character_name, score, selected_at, option_id')
+                    .order('option_id', { ascending: true })
+            );
 
-        const channel = await client.channels.fetch(poll.channel_id);
-        const pollMessage = await channel.messages.fetch(poll.message_id);
-        const thread = pollMessage.thread;
-        if (!thread) return res.status(404).json({ error: "Thread not found." });
+            const channel = await client.channels.fetch(poll.channel_id);
+            const pollMessage = await channel.messages.fetch(poll.message_id);
+            const thread = pollMessage.thread;
+            if (!thread) return res.status(404).json({ error: "Thread not found." });
 
-        const characters = poll.poll_list
-            .split(/(?=:female_sign:|:male_sign:|♀️|♂️|\n)/)
-            .map(s => s.trim().replace(/:female_sign:/g, '♀️').replace(/:male_sign:/g, '♂️'))
-            .filter(s => s.length > 1);
+            const characters = poll.poll_list
+                .split(/(?=:female_sign:|:male_sign:|♀️|♂️|\n)/)
+                .map(s => s.trim().replace(/:female_sign:/g, '♀️').replace(/:male_sign:/g, '♂️'))
+                .filter(s => s.length > 1);
 
-        // Build scoreboard (same format as before)
-        let scoreboard = `:trophy: **${winner_name}** has been marked as a winner! ${e.CONFETTI}\n\n`;
-        characters.forEach((char, index) => {
-            const imgNum = index + 1;
-            const emoji = h.emojis[index] || `[${imgNum}]`;
-            const record = voteData.find(v => {
-                const cleanChar = char.replace(/♀️|♂️/g, '').trim().toLowerCase();
-                const cleanRecord = v.character_name.replace(/♀️|♂️/g, '').trim().toLowerCase();
-                return cleanChar === cleanRecord;
+            // Build scoreboard (same format as before)
+            let scoreboard = `:trophy: **${winner_name}** has been marked as a winner! ${e.CONFETTI}\n\n`;
+            characters.forEach((char, index) => {
+                const imgNum = index + 1;
+                const emoji = h.emojis[index] || `[${imgNum}]`;
+                const record = voteData.find(v => {
+                    const cleanChar = char.replace(/♀️|♂️/g, '').trim().toLowerCase();
+                    const cleanRecord = v.character_name.replace(/♀️|♂️/g, '').trim().toLowerCase();
+                    return cleanChar === cleanRecord;
+                });
+                const score = record ? parseFloat(record.score).toFixed(2) : "0.00";
+                const isWinner = record && record.selected_at !== null;
+                const paddedScore = score.padStart(5, ' ');
+                const paddedName = char.padEnd(30, ' ');
+                let line = `${emoji} \` ${paddedScore} ${paddedName} \` \n`;
+                if (isWinner) line = `||${line}||`;
+                scoreboard += line;
             });
-            const score = record ? parseFloat(record.score).toFixed(2) : "0.00";
-            const isWinner = record && record.selected_at !== null;
-            const paddedScore = score.padStart(5, ' ');
-            const paddedName = char.padEnd(30, ' ');
-            let line = `${emoji} \` ${paddedScore} ${paddedName} \` \n`;
-            if (isWinner) line = `||${line}||`;
-            scoreboard += line;
-        });
 
-        // Send scoreboard first
-        await thread.send(scoreboard);
+            // Send scoreboard first
+            await thread.send(scoreboard);
 
-        // Then send the winner's image as a clean embed (no extra text)
-        if (winnerOptionId) {
-            const imageUrl = `https://www.velutinx.com/images/poll/${winnerOptionId}.jpg`;
-            const embed = new EmbedBuilder()
-                .setImage(imageUrl)
-                .setColor(0x00FF00);
-            await thread.send({ embeds: [embed] });
+            // Then send the winner's image as a clean embed (no extra text)
+            if (winnerOptionId) {
+                const imageUrl = `https://www.velutinx.com/images/poll/${winnerOptionId}.jpg`;
+                const embed = new EmbedBuilder()
+                    .setImage(imageUrl)
+                    .setColor(0x00FF00);
+                await thread.send({ embeds: [embed] });
+            }
+
+            res.json({ success: true });
+        } catch (err) {
+            console.error('Mark winner error:', err);
+            res.status(500).json({ error: err.message });
         }
-
-        res.json({ success: true });
-    } catch (err) {
-        console.error('Mark winner error:', err);
-        res.status(500).json({ error: err.message });
-    }
-});
+    });
 };
