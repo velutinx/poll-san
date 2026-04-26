@@ -1,4 +1,4 @@
-// this is poll-san/events/guildMemberAdd.js
+// events/guildMemberAdd.js
 
 const supabase = require('../services/supabase');
 const { parseMessage } = require('../services/parserService');
@@ -33,7 +33,7 @@ module.exports = async (member) => {
     // --- 1. WELCOME MESSAGE LOGIC (now uses webhook) ---
     try {
         const { data: settings } = await supabase
-            .from('server_settings')
+            .from(h.tables.SERVER_SETTINGS)   // 👈 changed from 'server_settings'
             .select('welcome_channel_id, welcome_message')
             .eq('guild_id', member.guild.id)
             .single();
@@ -41,7 +41,6 @@ module.exports = async (member) => {
         if (settings && settings.welcome_channel_id && settings.welcome_message) {
             const channel = await member.guild.channels.fetch(settings.welcome_channel_id);
             if (channel) {
-                // Parse the template and clean up duplication
                 const parsedContent = parseMessage(settings.welcome_message, member);
                 let cleanedContent = parsedContent;
                 const username = member.user.username;
@@ -51,7 +50,6 @@ module.exports = async (member) => {
 
                 const finalMessage = `<@${member.id}> ${cleanedContent}`;
                 
-                // Get or create webhook named "Welcome Bot" in the channel
                 let webhook = (await channel.fetchWebhooks()).find(w => w.name === 'Welcome Bot');
                 if (!webhook) {
                     webhook = await channel.createWebhook({
@@ -60,14 +58,12 @@ module.exports = async (member) => {
                     });
                 }
 
-                // Send the welcome message via webhook
                 const sent = await webhook.send({
                     content: finalMessage,
                     username: 'Welcome Bot',
                     avatarURL: 'https://www.velutinx.com/images/LogoDiscord.png'
                 });
 
-                // React with the animated wave emoji using the bot (webhook messages can be reacted to)
                 await sent.react(h.releaseEmojis.waveId).catch(err => console.error("Failed to react:", err));
             }
         }
