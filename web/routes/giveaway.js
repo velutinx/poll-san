@@ -1,5 +1,4 @@
-// this is poll-san/web/routes/giveaway.js
-
+// web/routes/giveaway.js
 const h = require('../../utils/helpers');
 const { EmbedBuilder } = require('discord.js');
 
@@ -18,7 +17,7 @@ module.exports = function setupGiveawayRoutes(app, client, supabase, supabaseRet
         try {
             const now = new Date().toISOString();
             const { data: giveaway, error } = await supabaseRetry(() =>
-                supabase.from('giveaways')
+                supabase.from(h.tables.GIVEAWAYS)
                     .select('*')
                     .eq('ended', false)
                     .gt('end_time', now)
@@ -35,34 +34,33 @@ module.exports = function setupGiveawayRoutes(app, client, supabase, supabaseRet
             const nowDate = new Date();
             const msLeft = endTimeDate - nowDate;
             const hoursLeft = msLeft / (1000 * 60 * 60);
-if (!giveaway.reminder_sent && hoursLeft <= 24 && hoursLeft > 0) {
-    try {
-        const channel = await client.channels.fetch(giveaway.channel_id);
-        const roleMention = `<@&${h.ids.roles.giveaway_notify_role}>`;
-        const reminderMsg = await channel.send(`${h.releaseEmojis.ALERT} **Last day in the current giveaway!** ${roleMention}`);
-        // Store the message ID
-        await supabaseRetry(() =>
-            supabase.from('giveaways')
-                .update({ 
-                    reminder_sent: true,
-                    reminder_message_id: reminderMsg.id
-                })
-                .eq('message_id', giveaway.message_id)
-        );
-        console.log(`✅ Reminder sent for giveaway ${giveaway.message_id}`);
-    } catch (reminderErr) {
-        console.error('Failed to send giveaway reminder:', reminderErr);
-    }
-}
+            if (!giveaway.reminder_sent && hoursLeft <= 24 && hoursLeft > 0) {
+                try {
+                    const channel = await client.channels.fetch(giveaway.channel_id);
+                    const roleMention = `<@&${h.ids.roles.giveaway_notify_role}>`;
+                    const reminderMsg = await channel.send(`${h.releaseEmojis.ALERT} **Last day in the current giveaway!** ${roleMention}`);
+                    await supabaseRetry(() =>
+                        supabase.from(h.tables.GIVEAWAYS)
+                            .update({ 
+                                reminder_sent: true,
+                                reminder_message_id: reminderMsg.id
+                            })
+                            .eq('message_id', giveaway.message_id)
+                    );
+                    console.log(`✅ Reminder sent for giveaway ${giveaway.message_id}`);
+                } catch (reminderErr) {
+                    console.error('Failed to send giveaway reminder:', reminderErr);
+                }
+            }
             // ------------------------------------------------------------
 
             const guild = await client.guilds.fetch(process.env.GUILD_ID);
             const entrants = giveaway.entrants || [];
             const entrantsDetails = [];
 
-            // Get active poll data for vote info
+            // Get active poll data for vote info (using poll_auto_resume)
             const { data: activePoll, error: pollError } = await supabaseRetry(() =>
-                supabase.from('auto_resume')
+                supabase.from(h.tables.POLL_AUTO_RESUME)
                     .select('poll_list')
                     .order('id', { ascending: false })
                     .limit(1)
@@ -73,9 +71,9 @@ if (!giveaway.reminder_sent && hoursLeft <= 24 && hoursLeft > 0) {
                 characterList = parseCharacterList(activePoll.poll_list);
             }
 
-            // Get votes for current poll
+            // Get votes for current poll (using poll_voting_discord)
             const { data: votes, error: voteError } = await supabaseRetry(() =>
-                supabase.from('votes_discord')
+                supabase.from(h.tables.POLL_VOTING_DISCORD)
                     .select('user_id, option_id')
                     .eq('poll_id', 'character_poll_new')
             );
@@ -155,7 +153,7 @@ if (!giveaway.reminder_sent && hoursLeft <= 24 && hoursLeft > 0) {
         try {
             const now = new Date().toISOString();
             const { data: giveaway, error } = await supabaseRetry(() =>
-                supabase.from('giveaways')
+                supabase.from(h.tables.GIVEAWAYS)
                     .select('*')
                     .eq('ended', false)
                     .gt('end_time', now)
@@ -167,20 +165,17 @@ if (!giveaway.reminder_sent && hoursLeft <= 24 && hoursLeft > 0) {
                 return res.status(404).json({ error: 'No active giveaway found' });
             }
 
-            // Calculate new end time
             const oldEnd = new Date(giveaway.end_time);
             const newEnd = new Date(oldEnd.getTime() + hours * 60 * 60 * 1000);
             const newEndISO = newEnd.toISOString();
 
-            // Update database
             const { error: updateError } = await supabaseRetry(() =>
-                supabase.from('giveaways')
+                supabase.from(h.tables.GIVEAWAYS)
                     .update({ end_time: newEndISO })
                     .eq('message_id', giveaway.message_id)
             );
             if (updateError) throw updateError;
 
-            // Update Discord message embed
             const channel = await client.channels.fetch(giveaway.channel_id);
             const message = await channel.messages.fetch(giveaway.message_id);
             const oldEmbed = message.embeds[0];
@@ -206,7 +201,7 @@ if (!giveaway.reminder_sent && hoursLeft <= 24 && hoursLeft > 0) {
         try {
             const now = new Date().toISOString();
             const { data: giveaway, error } = await supabaseRetry(() =>
-                supabase.from('giveaways')
+                supabase.from(h.tables.GIVEAWAYS)
                     .select('*')
                     .eq('ended', false)
                     .gt('end_time', now)
@@ -225,14 +220,14 @@ if (!giveaway.reminder_sent && hoursLeft <= 24 && hoursLeft > 0) {
 
             entrants = entrants.filter(id => id !== userId);
             const { error: updateError } = await supabaseRetry(() =>
-                supabase.from('giveaways')
+                supabase.from(h.tables.GIVEAWAYS)
                     .update({ entrants })
                     .eq('message_id', giveaway.message_id)
             );
             if (updateError) throw updateError;
 
             await supabaseRetry(() =>
-                supabase.from('votes_discord')
+                supabase.from(h.tables.POLL_VOTING_DISCORD)
                     .delete()
                     .eq('user_id', userId)
                     .eq('poll_id', 'character_poll_new')
