@@ -2,6 +2,7 @@
 const express = require('express');
 const router = express.Router();
 const helpers = require('../../utils/helpers');
+const h = require('../../utils/helpers');
 
 router.post('/api/reminder', async (req, res) => {
     const { user_id } = req.body;
@@ -27,7 +28,7 @@ router.post('/api/reminder', async (req, res) => {
         // Update reminder_sent to true so we don't send again
         const supabase = require('../../services/supabase');
         await supabase
-            .from('games_user_data')
+            .from(h.tables.GAMES_USER_DATA)
             .update({ reminder_sent: true })
             .eq('user_id', user_id);
         
