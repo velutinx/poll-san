@@ -2,33 +2,50 @@
 const helpers = require('../utils/helpers');
 const supabase = require('../services/supabase');
 
-const activeTimeouts = new Map();
 const pendingClaims = new Map(); // characterName -> { series, messageId, timestamp }
-const ROLL_LIFETIME_MS = 60 * 1000; // 60 seconds (changed from 5 min)
 const CLAIM_LOOKUP_TIMEOUT_MS = 2 * 60 * 1000;
+
+let idleTimeout = null;
+const IDLE_TIME_MS = 2 * 60 * 1000; // 2 minutes
+
+/**
+ * Resets the idle timer. Called on every message in the channel.
+ * If the timer expires, the entire channel is purged.
+ */
+function resetIdleTimer(channel) {
+    if (idleTimeout) clearTimeout(idleTimeout);
+    idleTimeout = setTimeout(async () => {
+        try {
+            // Fetch up to 100 newest messages
+            const messages = await channel.messages.fetch({ limit: 100 });
+            if (messages.size === 0) return;
+            await channel.bulkDelete(messages);
+            console.log(`🧹 Purged ${messages.size} messages from ${channel.name} due to inactivity.`);
+        } catch (err) {
+            console.error('Failed to purge idle channel:', err);
+        } finally {
+            idleTimeout = null;
+        }
+    }, IDLE_TIME_MS);
+}
 
 /**
  * Parse character and series from a Mudae embed.
- * - Character name is usually in embed.author.name
- * - All lines in the description before the claim phrase = series
  */
 function parseRollEmbed(embed) {
     if (!embed || !embed.description) return null;
     const lines = embed.description.split('\n').filter(l => l.trim().length > 0);
     const claimIdx = lines.findIndex(l => l.includes('React with any emoji to claim!'));
-    
     if (claimIdx === -1) return null;
 
     let character = '';
     let seriesLines = [];
 
-    // Standard Mudae Format: Character is in the embed author name
     if (embed.author && embed.author.name) {
         character = embed.author.name;
         seriesLines = lines.slice(0, claimIdx);
     } else {
-        // Fallback in case Mudae changes formatting
-        if (claimIdx === 0) return null; 
+        if (claimIdx === 0) return null;
         character = lines[0].trim();
         seriesLines = lines.slice(1, claimIdx);
     }
@@ -38,26 +55,18 @@ function parseRollEmbed(embed) {
 }
 
 function initMudaeMessageHandler(client) {
-    // Delete EVERY message in the Mudae roll channel after ROLL_LIFETIME_MS
+    // ---- GENERAL MESSAGE HANDLER (activity + rolls) ----
     client.on('messageCreate', async (message) => {
-        if (message.author.id !== helpers.ids.bots.mudae) return;
+        // Only care about the Mudae roll channel
         if (message.channel.id !== helpers.ids.channels.mudae_roll) return;
 
-        // Auto‑delete EVERY Mudae message (including non‑roll messages)
-        if (activeTimeouts.has(message.id)) clearTimeout(activeTimeouts.get(message.id));
-        const timeout = setTimeout(async () => {
-            try {
-                await message.delete();
-                console.log(`🗑️ Deleted Mudae message ${message.id}`);
-            } catch (err) {
-                console.error(`Failed to delete Mudae message ${message.id}:`, err.message);
-            } finally {
-                activeTimeouts.delete(message.id);
-            }
-        }, ROLL_LIFETIME_MS);
-        activeTimeouts.set(message.id, timeout);
+        // Reset the idle timer on any message
+        resetIdleTimer(message.channel);
 
-        // Only process roll messages (embeds with claim phrase) for reaction and claim tracking
+        // If the message is not from Mudae bot, we're done (no further processing)
+        if (message.author.id !== helpers.ids.bots.mudae) return;
+
+        // Process Mudae roll messages (embeds with claim phrase)
         if (!message.embeds.length) return;
         const embed = message.embeds[0];
         const description = embed.description || '';
@@ -72,11 +81,10 @@ function initMudaeMessageHandler(client) {
 
         // Store for claim matching
         pendingClaims.set(character, {
-            series: series,
+            series,
             messageId: message.id,
             timestamp: Date.now()
         });
-        
         setTimeout(() => {
             if (pendingClaims.has(character) && pendingClaims.get(character).messageId === message.id) {
                 pendingClaims.delete(character);
@@ -92,10 +100,10 @@ function initMudaeMessageHandler(client) {
         }
     });
 
-    // Claim detection (unchanged)
+    // ---- CLAIM DETECTION (separate listener) ----
     client.on('messageCreate', async (message) => {
-        if (message.author.id !== helpers.ids.bots.mudae) return;
         if (message.channel.id !== helpers.ids.channels.mudae_roll) return;
+        if (message.author.id !== helpers.ids.bots.mudae) return;
         if (!message.content || !message.content.includes('are now married!')) return;
 
         const match = message.content.match(/💖\s*(.+?)\s+and\s+(.+?)\s+are now married! 💖/);
@@ -103,7 +111,6 @@ function initMudaeMessageHandler(client) {
 
         const claimerUsername = match[1].replace(/\*\*/g, '').trim();
         const characterName = match[2].replace(/\*\*/g, '').trim();
-        
         const pending = pendingClaims.get(characterName);
         const series = pending ? pending.series : null;
 
@@ -132,9 +139,9 @@ function initMudaeMessageHandler(client) {
         if (pending) pendingClaims.delete(characterName);
     });
 
+    // Cleanup on shutdown
     process.on('beforeExit', () => {
-        for (const timeout of activeTimeouts.values()) clearTimeout(timeout);
-        activeTimeouts.clear();
+        if (idleTimeout) clearTimeout(idleTimeout);
         pendingClaims.clear();
     });
 }
