@@ -112,9 +112,9 @@ async function handleCheckinClaim(interaction) {
     cooldownMap.set(userId, Date.now());
     await interaction.deferReply({ flags: 64 });
     
-    // Get user data
+    // Get user data – using centralized table name
     let { data: userData, error } = await supabase
-        .from('games_user_data')
+        .from(helpers.tables.GAMES_USER_DATA)   // 👈 changed from 'games_user_data'
         .select('*')
         .eq('user_id', userId)
         .maybeSingle();
@@ -155,7 +155,7 @@ async function handleCheckinClaim(interaction) {
     
     if (userData) {
         const { error: updateError } = await supabase
-            .from('games_user_data')
+            .from(helpers.tables.GAMES_USER_DATA)   // 👈 changed
             .update({
                 tickets: newBalance,
                 last_checkin: nowIso,
@@ -175,7 +175,7 @@ async function handleCheckinClaim(interaction) {
         console.log(`[Checkin] Updated user ${userId} tickets: ${currentTickets} → ${newBalance}`);
     } else {
         const { error: insertError } = await supabase
-            .from('games_user_data')
+            .from(helpers.tables.GAMES_USER_DATA)   // 👈 changed
             .insert({
                 user_id: userId,
                 tickets: newBalance,
