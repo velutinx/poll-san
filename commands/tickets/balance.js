@@ -1,7 +1,7 @@
 // This is poll-san/commands/tickets/balance.js
-
 const { SlashCommandBuilder, MessageFlags } = require('discord.js');
 const supabase = require('../../services/supabase');
+const h = require('../../utils/helpers');  // 👈 import helpers
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -12,7 +12,7 @@ module.exports = {
         await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
         const { data, error } = await supabase
-            .from('games_wordle')
+            .from(h.tables.GAMES_WORDLE)   // 👈 changed from 'games_wordle'
             .select('ticket_count, last_win_at')
             .eq('discord_id', interaction.user.id)
             .maybeSingle();
