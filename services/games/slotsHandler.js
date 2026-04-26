@@ -1,4 +1,4 @@
-// services/slotsHandler.js
+// services/Games/slotsHandler.js
 const helpers = require('../../utils/helpers');
 const supabase = require('../supabase');
 
