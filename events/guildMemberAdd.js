@@ -30,7 +30,7 @@ module.exports = async (member) => {
         console.error('Error assigning Unverified role:', err);
     }
 
-    // --- 1. WELCOME MESSAGE LOGIC ---
+    // --- 1. WELCOME MESSAGE LOGIC (now uses webhook) ---
     try {
         const { data: settings } = await supabase
             .from('server_settings')
@@ -51,10 +51,23 @@ module.exports = async (member) => {
 
                 const finalMessage = `<@${member.id}> ${cleanedContent}`;
                 
-                // Send the message and store the sent message object
-                const sent = await channel.send(finalMessage);
-                
-                // React with the animated wave
+                // Get or create webhook named "Welcome Bot" in the channel
+                let webhook = (await channel.fetchWebhooks()).find(w => w.name === 'Welcome Bot');
+                if (!webhook) {
+                    webhook = await channel.createWebhook({
+                        name: 'Welcome Bot',
+                        avatar: 'https://www.velutinx.com/images/LogoDiscord.png'
+                    });
+                }
+
+                // Send the welcome message via webhook
+                const sent = await webhook.send({
+                    content: finalMessage,
+                    username: 'Welcome Bot',
+                    avatarURL: 'https://www.velutinx.com/images/LogoDiscord.png'
+                });
+
+                // React with the animated wave emoji using the bot (webhook messages can be reacted to)
                 await sent.react(h.releaseEmojis.waveId).catch(err => console.error("Failed to react:", err));
             }
         }
