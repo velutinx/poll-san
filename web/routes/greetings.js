@@ -3,12 +3,13 @@
 const express = require('express');
 const router = express.Router();
 const supabase = require('../../services/supabase');
+const h = require('../../utils/helpers');
 
 // GET settings for the guild
 router.get('/api/get-settings', async (req, res) => {
     try {
         const { data, error } = await supabase
-            .from('server_settings')
+            .from(h.tables.SERVER_SETTINGS)
             .select('welcome_channel_id, welcome_message')
             .eq('guild_id', process.env.GUILD_ID)
             .maybeSingle();
@@ -26,7 +27,7 @@ router.post('/api/save-settings', async (req, res) => {
     const { welcome_channel_id, welcome_message } = req.body;
     try {
         const { error } = await supabase
-            .from('server_settings')
+            .from(h.tables.SERVER_SETTINGS)
             .upsert({
                 guild_id: process.env.GUILD_ID,
                 welcome_channel_id,
