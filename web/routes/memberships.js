@@ -1,13 +1,15 @@
 // this is poll-san/web/routes/memberships.js
 
-const h = require('../../utils/helpers'); // Import helpers
+const h = require('../../utils/helpers');
+
 
 module.exports = function setupMembershipsRoute(app, client, supabase, supabaseRetry) {
   // GET endpoint – now updates discord_tag in DB
   app.get('/api/memberships', async (req, res) => {
     try {
       const { data: subs, error } = await supabaseRetry(() =>
-        supabase.from('memberships').select('*')
+        .from(h.tables.MEMBERSHIPS)
+
       );
       if (error) throw error;
 
@@ -30,7 +32,7 @@ module.exports = function setupMembershipsRoute(app, client, supabase, supabaseR
 
           if (sub.discord_tag !== discordTag) {
             await supabaseRetry(() =>
-              supabase.from('memberships')
+                .from(h.tables.MEMBERSHIPS)
                 .update({ discord_tag: discordTag })
                 .eq('discord_id', sub.discord_id)
             );
@@ -73,7 +75,7 @@ module.exports = function setupMembershipsRoute(app, client, supabase, supabaseR
       expirationDate.setDate(now.getDate() + 30);
 
       const { error } = await supabaseRetry(() =>
-        supabase.from('memberships')
+          .from(h.tables.MEMBERSHIPS)
           .upsert({
             discord_id: discordId,
             tier: parseInt(tier),
