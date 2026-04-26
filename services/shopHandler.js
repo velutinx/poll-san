@@ -1,10 +1,10 @@
-// This is poll-san/services/shopHandler.js
+// services/shopHandler.js
 
 const { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, MessageFlags } = require('discord.js');
 const h = require('../utils/helpers');
 const supabase = require('./supabase');
 
-// Shop items definition (same as in shop command)
+// Shop items definition
 const SHOP_ITEMS = [
     {
         id: 'custom_request',
@@ -13,12 +13,8 @@ const SHOP_ITEMS = [
         cost: 15,
         emoji: '🎨'
     }
-    // Add more items here in the future
 ];
 
-/**
- * Handle item selection from the dropdown
- */
 async function handleShopSelect(interaction) {
     const selectedId = interaction.values[0];
     const item = SHOP_ITEMS.find(i => i.id === selectedId);
@@ -26,9 +22,8 @@ async function handleShopSelect(interaction) {
         return interaction.reply({ content: '❌ Item not found.', flags: { ephemeral: true } });
     }
 
-    // Check user's ticket balance
     const { data: userData, error } = await supabase
-        .from('games_wordle')
+        .from(h.tables.GAMES_WORDLE)   // 👈 changed
         .select('ticket_count')
         .eq('discord_id', interaction.user.id)
         .maybeSingle();
@@ -39,8 +34,6 @@ async function handleShopSelect(interaction) {
     }
 
     const balance = userData?.ticket_count || 0;
-
-    // Ensure description exists
     const itemDescription = item.description || 'No description available.';
 
     const embed = new EmbedBuilder()
@@ -69,12 +62,10 @@ async function handleShopSelect(interaction) {
 }
 
 async function handleShopPurchase(interaction) {
-    // For now, only one item exists, but we can prepare for future expansion
-    const item = SHOP_ITEMS[0]; // Custom Request
+    const item = SHOP_ITEMS[0];
 
-    // Get user's current balance
     const { data: userData, error: fetchError } = await supabase
-        .from('games_wordle')
+        .from(h.tables.GAMES_WORDLE)   // 👈 changed
         .select('ticket_count')
         .eq('discord_id', interaction.user.id)
         .maybeSingle();
@@ -90,7 +81,6 @@ async function handleShopPurchase(interaction) {
         return interaction.reply({ content: '❌ You do not have enough tickets.', flags: { ephemeral: true } });
     }
 
-    // Deduct tickets using RPC (atomic)
     const { data: newBalance, error: deductError } = await supabase
         .rpc('deduct_tickets', { user_id: interaction.user.id, amount: item.cost });
 
@@ -99,9 +89,8 @@ async function handleShopPurchase(interaction) {
         return interaction.reply({ content: '❌ Purchase failed. Please try again.', flags: { ephemeral: true } });
     }
 
-    // Log purchase
     const { error: logError } = await supabase
-        .from('games_purchases')
+        .from(h.tables.GAMES_PURCHASES)   // 👈 changed
         .insert({
             discord_id: interaction.user.id,
             discord_username: interaction.user.username,
@@ -112,10 +101,8 @@ async function handleShopPurchase(interaction) {
 
     if (logError) {
         console.error('Logging error:', logError);
-        // Continue anyway, but notify admin
     }
 
-    // Notify admin (you) via DM
     try {
         const adminUser = await interaction.client.users.fetch(h.ids.users.Velutinx);
         await adminUser.send(`🛒 **New Purchase!**\nUser: ${interaction.user.tag} (${interaction.user.id})\nItem: ${item.name}\nTickets: ${item.cost}\nRemaining balance: ${newBalance}`);
@@ -123,7 +110,6 @@ async function handleShopPurchase(interaction) {
         console.error('Could not DM admin:', err);
     }
 
-    // Confirm to user
     const embed = new EmbedBuilder()
         .setTitle('✅ Purchase Successful!')
         .setDescription(`You bought **${item.name}** for ${item.cost} tickets.`)
