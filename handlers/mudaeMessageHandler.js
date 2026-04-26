@@ -64,7 +64,6 @@ function initMudaeMessageHandler(client) {
         const description = embed.description || '';
         if (!description.includes('React with any emoji to claim!')) return;
 
-        // We now pass the entire embed into the parser instead of just the description
         const parsed = parseRollEmbed(embed);
         if (!parsed || !parsed.character) {
             console.log(`[DEBUG] Could not parse roll: ${description.substring(0, 100)}`);
@@ -72,7 +71,7 @@ function initMudaeMessageHandler(client) {
         }
         const { character, series } = parsed;
 
-        // Store for claim matching - storing the series directly to save re-parsing later
+        // Store for claim matching
         pendingClaims.set(character, {
             series: series,
             messageId: message.id,
@@ -107,19 +106,18 @@ function initMudaeMessageHandler(client) {
         const claimerUsername = match[1].replace(/\*\*/g, '').trim();
         const characterName = match[2].replace(/\*\*/g, '').trim();
         
-        // Lookup the pending claim using the cleaned character name
         const pending = pendingClaims.get(characterName);
         const series = pending ? pending.series : null;
 
         let userId = null;
         try {
-            // Lookup user ID now works because claimerUsername isn't wrapped in asterisks
             const member = message.guild.members.cache.find(m => m.user.username === claimerUsername);
             if (member) userId = member.id;
         } catch (err) {}
 
         try {
-            const { error } = await supabase.from('games_mudae_claims').insert({
+            // 👇 Using centralized table name
+            const { error } = await supabase.from(helpers.tables.GAMES_MUDAE_CLAIMS).insert({
                 user_id: userId,
                 username: claimerUsername,
                 character_name: characterName,
