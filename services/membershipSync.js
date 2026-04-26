@@ -1,4 +1,4 @@
-// this is poll-san/services/membershipSync.js
+// services/membershipSync.js
 
 const supabase = require('./supabase');
 const db = require('../utils/db');
@@ -33,13 +33,13 @@ function formatDate(date) {
 
 async function getLanguageForOrder(orderId) {
   if (!orderId) return 'en';
-  // FIX: Changed .single() to .maybeSingle() to prevent "multiple rows" crash
+  // Updated to use helper table name
   const { data, error } = await supabaseRetry(() =>
-supabase
-  .from('successs')
-  .select('language')
-  .eq('paypal_token', orderId)
-  .single() // <--- AND THIS
+    supabase
+      .from(h.tables.SUCCESSSS)
+      .select('language')
+      .eq('paypal_token', orderId)
+      .single()
   );
   if (error || !data) {
     if (error) console.warn(`[MembershipSync] Language fetch error for ${orderId}:`, error.message);
@@ -51,27 +51,25 @@ supabase
 async function hasMessageBeenSent(discordId, orderId) {
   const { data, error } = await supabaseRetry(() =>
     supabase
-      .from('member_message_log')
+      .from(h.tables.MEMBER_MESSAGE_LOG)
       .select('id')
       .eq('discord_id', discordId)
       .eq('order_id', orderId)
-      .limit(1) // Tell it to just grab the first match it finds
+      .limit(1)
   );
   
   if (error) {
     console.error('[MembershipSync] Failed to check message sent status:', error.message);
-    // Fail-safe: assume sent to prevent spam loops
     return true; 
   }
   
-  // If data array has at least one item, the message was sent
   return data && data.length > 0;
 }
 
 async function recordMessageSent(discordId, orderId, language, membership, discordName) {
   const { error } = await supabaseRetry(() =>
     supabase
-      .from('member_message_log')
+      .from(h.tables.MEMBER_MESSAGE_LOG)
       .insert({
         discord_id: discordId,
         order_id: orderId,
@@ -106,7 +104,6 @@ async function sendMembershipMessage(client, discordId, membership) {
   const tierNames = { 1: 'Bronze', 2: 'Copper', 3: 'Silver', 4: 'Gold', 5: 'Platinum' };
   const tierName = tierNames[tier] || `Tier ${tier}`;
 
-  // Check if message sent - Fail safe added to prevent spam loops
   const alreadySent = await hasMessageBeenSent(discordId, orderId);
   if (alreadySent) return;
 
@@ -151,14 +148,13 @@ async function sendMembershipMessage(client, discordId, membership) {
   }
 }
 
-// ========== Helper functions for sync state ==========
 async function getLastActiveSet() {
   const { data, error } = await supabaseRetry(() =>
     supabase
-      .from('sync_state')
+      .from(h.tables.SYNC_STATE)
       .select('value')
       .eq('key', 'active_members')
-      .single() // <--- CHECK THIS
+      .single()
   );
   if (error) {
     console.error('[MembershipSync] Failed to fetch sync state:', error.message);
@@ -170,7 +166,7 @@ async function getLastActiveSet() {
 async function storeCurrentActiveSet(ids) {
   const { error } = await supabaseRetry(() =>
     supabase
-      .from('sync_state')
+      .from(h.tables.SYNC_STATE)
       .upsert({
         key: 'active_members',
         value: { ids: Array.from(ids), updated_at: new Date().toISOString() }
@@ -181,7 +177,6 @@ async function storeCurrentActiveSet(ids) {
   }
 }
 
-// ========== Main sync function ==========
 async function syncMembershipRoles(client) {
   let changesMade = false;
 
@@ -190,7 +185,7 @@ async function syncMembershipRoles(client) {
 
     const { data: activeMemberships, error: activeError } = await supabaseRetry(() =>
       supabase
-        .from('memberships')
+        .from(h.tables.MEMBERSHIPS)
         .select('*')
         .gt('expires_at', now)
     );
@@ -222,11 +217,9 @@ async function syncMembershipRoles(client) {
       }
     }
 
-    // Sequence the DMs to avoid hammering Supabase and triggering 502s
     for (const [discordId, membership] of userBestMembership.entries()) {
       await sendMembershipMessage(client, discordId, membership);
-      // Small pause between members to respect rate limits
-      await new Promise(res => setTimeout(res, 500)); 
+      await new Promise(res => setTimeout(res, 500));
     }
 
     const guild = await client.guilds.fetch(process.env.GUILD_ID);
