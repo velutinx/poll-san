@@ -18,7 +18,7 @@ module.exports = {
                 '• 🍊🍊🍊 = **5x** your bet\n' +
                 '• 💎💎💎 = **10x** your bet\n' +
                 '• 7️⃣7️⃣7️⃣ = **50x** your bet (jackpot!)\n' +
-                '• Any pair = **0.4x** your bet\n\n' +
+                '• Any pair = **0.8x** your bet\n\n' +
                 '**Good luck!**'
             )
             .setColor('#FFD700');
