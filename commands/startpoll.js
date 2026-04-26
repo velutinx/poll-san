@@ -1,6 +1,6 @@
-// this is poll-san/commands/startpoll.js
-
-const { chunkArray, emojis, reactIds, ids, releaseEmojis } = require('../utils/helpers');
+// commands/startpoll.js
+const h = require('../utils/helpers');
+const { chunkArray, emojis, reactIds, ids, releaseEmojis } = h; // destructure for convenience
 const { generateMessageContent, runPollInterval } = require('../services/pollService');
 const supabase = require('../services/supabase');
 
@@ -36,9 +36,9 @@ module.exports = async (interaction) => {
         content: await generateMessageContent(endTime, null, characters)
     });
 
-    // Record in Supabase (for auto-resume)
+    // Record in Supabase (for auto‑resume) – using centralized table name
     try {
-        await supabase.from('poll_auto_resume').upsert({
+        await supabase.from(h.tables.POLL_AUTO_RESUME).upsert({
             message_id: pollMessage.id,
             channel_id: interaction.channel.id,
             ends_at: new Date(endTime).toISOString(),
@@ -49,8 +49,7 @@ module.exports = async (interaction) => {
         console.error("❌ Supabase Error:", dbError.message);
     }
 
-    // --- UPDATED: Add reactions in parallel ---
-    // This fires off all reaction requests at once rather than one-by-one
+    // Add reactions in parallel
     await Promise.all(reactIds.map(id => 
         pollMessage.react(id).catch(e => console.error(`Reaction Error (${id}):`, e.message))
     ));
@@ -64,7 +63,6 @@ module.exports = async (interaction) => {
     // Split characters into chunks of 4
     const characterChunks = chunkArray(characters, 4);
 
-    // --- NEW: Generate a single cache-buster timestamp for this entire poll run ---
     const cacheVersion = Date.now();
 
     for (let i = 0; i < characterChunks.length; i++) {
