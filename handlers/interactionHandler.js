@@ -3,7 +3,7 @@
 const supabase = require('../services/supabase');
 const helpers = require('../utils/helpers');
 const giveawayCommand = require('../commands/giveaway');
-const { handleShopSelect, handleShopPurchase } = require('../services/shopHandler');
+const { handleShopSelect, handleShopPurchase } = require('../services/Games/shopHandler');
 const { handleSlotsBet } = require('../services/Games/slotsHandler');
 const { startHangmanGame } = require('../services/Games/hangmanGame');
 const { handleCoinTossBet } = require('../services/Games/coinTossHandler');
