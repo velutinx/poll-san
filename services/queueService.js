@@ -1,4 +1,4 @@
-// this is poll-san/services/queueService.js
+// services/queueService.js
 
 const supabase = require('./supabase');
 const helpers = require('../utils/helpers');
@@ -9,7 +9,7 @@ const PROGRESS_EMOJI = helpers.releaseEmojis?.PROGRESS || '<a:progress:149167011
 
 async function getQueueData() {
     const { data, error } = await supabase
-        .from('main_queue')
+        .from(helpers.tables.MAIN_QUEUE)   // 👈 changed
         .select('*')
         .eq('id', 'main_queue')
         .single();
@@ -53,7 +53,7 @@ async function updateQueueMessage(client, queueArr, existingMessageId) {
             newMessageId = sent.id;
         }
 
-        const { error } = await supabase.from('main_queue').upsert({
+        const { error } = await supabase.from(helpers.tables.MAIN_QUEUE).upsert({   // 👈 changed
             id: 'main_queue',
             queue: JSON.stringify(queueArr),
             message_id: newMessageId,
