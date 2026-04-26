@@ -17,7 +17,6 @@ module.exports = async function handleInteraction(interaction) {
                 case 'giveaway': await giveawayCommand.execute(interaction); break;
                 case 'tickets': await require('../commands/tickets/balance').execute(interaction); break;
                 case 'shop': await require('../commands/tickets/shop').execute(interaction); break;
-                case 'slots': await require('../commands/games/slots').execute(interaction); break;
                 case 'post_slots_ui': await require('../commands/admin/post-slots-ui').execute(interaction); break;
                 case 'post_hangman_ui': await require('../commands/admin/post-hangman-ui').execute(interaction); break;
                 case 'post_verify_ui': await require('../commands/admin/post-verify-ui').execute(interaction); break;
