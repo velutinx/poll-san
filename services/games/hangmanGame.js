@@ -1,4 +1,4 @@
-// services/hangmanGame.js
+// services/Games/hangmanGame.js
 
 const { EmbedBuilder, MessageFlags } = require('discord.js');
 const helpers = require('../../utils/helpers');
