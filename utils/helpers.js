@@ -194,5 +194,30 @@ module.exports = {
         base: "https://www.velutinx.com",
         pollImages: "https://www.velutinx.com/images/poll/"
     },
+
+        // ==================== SUPABASE TABLES ====================
+    tables: {
+        GAMES_COOLDOWNS: 'games_cooldowns',
+        GAMES_MUDAE_CLAIMS: 'games_mudae_claims',
+        GAMES_PURCHASES: 'games_purchases',
+        GAMES_TRIVIA_DAILY: 'games_trivia_daily',
+        GAMES_TRIVIA_SESSIONS: 'games_trivia_sessions',
+        GAMES_USER_DATA: 'games_user_data',
+        GAMES_WORDLE: 'games_wordle',
+        GIVEAWAYS: 'giveaways',
+        MAIN_QUEUE: 'main_queue',
+        MEMBER_MESSAGE_LOG: 'member_message_log',
+        MEMBERSHIPS: 'memberships',
+        POLL_AUTO_RESUME: 'poll_auto_resume',
+        POLL_VOTES_FINAL: 'poll_votes_final',
+        POLL_VOTING_DISCORD: 'poll_voting_discord',
+        POLL_VOTING_WEBSITE: 'poll_voting_website',
+        PRICE_KEYS: 'price_keys',
+        PRICE_TIERS: 'price_tiers',
+        SERVER_SETTINGS: 'server_settings',
+        SUCCESSSS: 'successss',   // keep as is, original name
+        SYNC_STATE: 'sync_state',
+        USER_XP: 'user_xp'
+    },
     CHECKIN_REWARD_TICKETS: 50,
 };
