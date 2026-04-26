@@ -1,5 +1,4 @@
 // index.js
-
 const path = require('path');
 require('dotenv').config({ path: path.resolve(__dirname, '.env'), quiet: true });
 
@@ -27,6 +26,7 @@ const { handleTriviaMessage, processEndOfDayAwards } = require('./services/trivi
 const handleInteraction = require('./handlers/interactionHandler');
 const verification = require('./events/verification');
 const initMudaeMessageHandler = require('./handlers/mudaeMessageHandler');
+const h = require('./utils/helpers');   // 👈 import helpers
 
 // ==================== DISCORD CLIENT SETUP ====================
 const client = new Client({
@@ -44,7 +44,6 @@ const client = new Client({
 client.once(Events.ClientReady, async (c) => {
     console.log(`🚀 ${c.user.tag} online and ready!`);
 
-    // Start the dashboard
     try {
         const dashboardModule = await import('./web/server.js');
         const startDashboard = dashboardModule.default || dashboardModule;
@@ -77,7 +76,6 @@ client.once(Events.ClientReady, async (c) => {
         console.error('❌ Failed to sync commands:', err);
     }
 
-    // Role cleanup
     const guild = client.guilds.cache.get(process.env.GUILD_ID);
     if (guild) cleanRoles(guild);
     setInterval(() => {
@@ -85,7 +83,6 @@ client.once(Events.ClientReady, async (c) => {
         if (activeGuild) cleanRoles(activeGuild);
     }, 3600000);
 
-    // Membership sync
     try { await syncMembershipRoles(client); } catch (err) { console.error('[MembershipSync] Initial sync failed:', err); }
     setInterval(() => {
         syncMembershipRoles(client).catch(err => console.error('[MembershipSync] Sync error:', err));
@@ -99,9 +96,9 @@ client.once(Events.ClientReady, async (c) => {
         processEndOfDayAwards(client).catch(err => console.error('Trivia end-of-day awards error:', err));
     }, 3600000);
 
-    // Auto-resume active polls
+    // Auto-resume active polls – using centralized table name
     const { data: activePolls } = await supabase
-        .from('poll_auto_resume')
+        .from(h.tables.POLL_AUTO_RESUME)   // 👈 changed from 'poll_auto_resume'
         .select('*')
         .gt('ends_at', new Date().toISOString());
     if (activePolls && activePolls.length > 0) {
@@ -120,19 +117,14 @@ client.once(Events.ClientReady, async (c) => {
         }
     }
 
-    // Restore giveaways
     const { restoreGiveaways } = require('./commands/giveaway');
     await restoreGiveaways(client).catch(console.error);
     initMudaeMessageHandler(client);
 });
 
-// --- 2. INTERACTION HANDLER (delegated) ---
 client.on(Events.InteractionCreate, handleInteraction);
+// client.on(Events.InteractionCreate, verification.handleInteraction);
 
-// --- 3. VERIFICATION HANDLER (separate for modal) ---
-//client.on(Events.InteractionCreate, verification.handleInteraction);
-
-// --- 4. EVENT LISTENERS ---
 client.on(Events.GuildMemberAdd, (member) => require('./events/guildMemberAdd')(member));
 client.on(Events.GuildMemberAdd, verification.execute);
 client.on(Events.MessageReactionAdd, (reaction, user) => require('./events/reactions')(reaction, user, 'add'));
@@ -142,8 +134,6 @@ client.on('messageCreate', messageCreateEvent);
 client.on('messageCreate', (message) => {
     handleTriviaMessage(message).catch(err => console.error('Trivia handler error:', err));
 });
-
-// --- 5. XP SYSTEM ---
 client.on(Events.MessageCreate, async (message) => {
     await XPLib.updateXP(message);
 });
