@@ -30,6 +30,7 @@ async function handleCoinTossBet(interaction, betAmount) {
 
     await interaction.deferUpdate();
 
+    // Fetch user tickets
     const { data: userData, error } = await supabase
         .from(helpers.tables.GAMES_USER_DATA)
         .select('tickets')
@@ -49,6 +50,7 @@ async function handleCoinTossBet(interaction, betAmount) {
         });
     }
 
+    // Deduct bet
     let newBalance = currentTickets - betAmount;
     const { error: updateError } = await supabase
         .from(helpers.tables.GAMES_USER_DATA)
@@ -59,18 +61,20 @@ async function handleCoinTossBet(interaction, betAmount) {
         return interaction.followUp({ content: '❌ Database error. Please try again later.', ephemeral: true });
     }
 
+    // Toss
     const { isHeads, outcome } = tossCoin();
     let winAmount = 0;
     let winMessage = '';
 
     if (isHeads) {
-        winAmount = betAmount;
+        // Win: profit = bet amount (even money)
+        winAmount = betAmount * 2;   // because we already deducted bet, adding 2×bet gives net +bet
         newBalance += winAmount;
         await supabase
             .from(helpers.tables.GAMES_USER_DATA)
             .update({ tickets: newBalance })
             .eq('user_id', userId);
-        winMessage = `**You won ${winAmount} tickets!** 🎉`;
+        winMessage = `**You won ${betAmount} tickets!** 🎉`;   // show profit
     } else {
         winMessage = '**You lost.** Better luck next time!';
     }
