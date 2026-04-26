@@ -1,7 +1,8 @@
-// poll-san/events/reactions.js
+// events/reactions.js
 
 const supabase = require('../services/supabase');
-const { reactIds, weights } = require('../utils/helpers');
+const helpers = require('../utils/helpers'); // 👈 full helpers for tables
+const { reactIds, weights } = helpers;      // destructure for convenience
 
 module.exports = async (reaction, user, action = 'add') => {
     if (user.bot) return;
@@ -12,12 +13,12 @@ module.exports = async (reaction, user, action = 'add') => {
 
     const { message } = reaction;
 
-    // 1. Check if this is an active poll
-const { data: activePoll } = await supabase
-    .from('poll_auto_resume')
-    .select('message_id')
-    .eq('message_id', message.id)
-    .single();
+    // 1. Check if this is an active poll – using centralized table name
+    const { data: activePoll } = await supabase
+        .from(helpers.tables.POLL_AUTO_RESUME)
+        .select('message_id')
+        .eq('message_id', message.id)
+        .single();
 
     if (!activePoll) return;
 
@@ -28,9 +29,9 @@ const { data: activePoll } = await supabase
 
     try {
         if (action === 'remove') {
-            // Delete vote from database
+            // Delete vote from database – using centralized table name
             await supabase
-                .from('poll_voting_discord')
+                .from(helpers.tables.POLL_VOTING_DISCORD)
                 .delete()
                 .eq('user_id', user.id)
                 .eq('poll_id', 'character_poll_new')
@@ -59,9 +60,9 @@ const { data: activePoll } = await supabase
                 weight += 0.5;
             }
 
-            // Add Level Bonus using helpers.weights.xpFactor
+            // Add Level Bonus using helpers.weights.xpFactor – using centralized table name
             const { data: xpData } = await supabase
-                .from('user_xp')
+                .from(helpers.tables.USER_XP)
                 .select('level')
                 .eq('user_id', user.id)
                 .eq('guild_id', message.guild.id)
@@ -72,9 +73,9 @@ const { data: activePoll } = await supabase
             }
         }
 
-        // 4. Record/Update Vote in Supabase with character_name
+        // 4. Record/Update Vote in Supabase with character_name – using centralized table names
         const { data: charData, error: charError } = await supabase
-            .from('poll_votes_final')
+            .from(helpers.tables.POLL_VOTES_FINAL)
             .select('character_name')
             .eq('poll_id', 'character_poll_new')
             .eq('option_id', optionId)
@@ -86,7 +87,7 @@ const { data: activePoll } = await supabase
 
         const characterName = charData?.character_name || null;
 
-        await supabase.from('poll_voting_discord').upsert({
+        await supabase.from(helpers.tables.POLL_VOTING_DISCORD).upsert({
             user_id: user.id,
             poll_id: 'character_poll_new',
             option_id: optionId,
