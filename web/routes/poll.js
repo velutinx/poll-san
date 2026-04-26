@@ -45,8 +45,8 @@ module.exports = function setupPollRoutes(app, client, supabase, supabaseRetry) 
             };
 
             // Clear final votes before starting a fresh poll
-            await supabaseRetry(() => supabase.from('poll_votes_final').delete().neq('option_id', 0));
-            
+            await supabaseRetry(() => .from(h.tables.POLL_VOTES_FINAL).delete().neq('option_id', 0));
+                        
             startPollLogic(mockInteraction);
             res.json({ success: true });
         } catch (err) {
@@ -64,7 +64,7 @@ module.exports = function setupPollRoutes(app, client, supabase, supabaseRetry) 
                 return res.json(cachedPollResultsData);
             }
             const { data } = await supabaseRetry(() =>
-                supabase.from('poll_votes_final')
+                .from(h.tables.POLL_VOTES_FINAL)
                     .select('character_name, score, selected_at')
                     .order('option_id', { ascending: true })
             );
@@ -85,7 +85,7 @@ module.exports = function setupPollRoutes(app, client, supabase, supabaseRetry) 
             pollService.forceStopPoll();
 
             const { data: poll } = await supabaseRetry(() =>
-                supabase.from('poll_auto_resume')
+                .from(h.tables.POLL_AUTO_RESUME)
                     .select('*')
                     .order('id', { ascending: false })
                     .limit(1)
@@ -128,7 +128,7 @@ module.exports = function setupPollRoutes(app, client, supabase, supabaseRetry) 
         try {
             // Get the active poll
             const { data: poll } = await supabaseRetry(() =>
-                supabase.from('poll_auto_resume')
+                .from(h.tables.POLL_AUTO_RESUME)
                     .select('*')
                     .order('id', { ascending: false })
                     .limit(1)
@@ -138,7 +138,7 @@ module.exports = function setupPollRoutes(app, client, supabase, supabaseRetry) 
 
             // Get the option_id of the character being marked as winner
             const { data: winnerRow } = await supabaseRetry(() =>
-                supabase.from('poll_votes_final')
+                .from(h.tables.POLL_VOTES_FINAL)
                     .select('option_id')
                     .ilike('character_name', `%${winner_name}%`)
                     .eq('poll_id', 'character_poll_new')
@@ -148,14 +148,14 @@ module.exports = function setupPollRoutes(app, client, supabase, supabaseRetry) 
 
             // Mark winner in database
             await supabaseRetry(() =>
-                supabase.from('poll_votes_final')
+                .from(h.tables.POLL_VOTES_FINAL)
                     .update({ selected_at: new Date().toISOString() })
                     .filter('character_name', 'ilike', `%${winner_name}%`)
             );
 
             // Fetch current standings
             const { data: voteData } = await supabaseRetry(() =>
-                supabase.from('poll_votes_final')
+                .from(h.tables.POLL_VOTES_FINAL)
                     .select('character_name, score, selected_at, option_id')
                     .order('option_id', { ascending: true })
             );
