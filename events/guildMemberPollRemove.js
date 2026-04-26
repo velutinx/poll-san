@@ -1,13 +1,13 @@
-// this is poll-san/events/guildMemberPollRemove.js
-
+// events/guildMemberPollRemove.js
 const supabase = require('../services/supabase');
 const { supabaseRetry } = require('../utils/db');
+const h = require('../utils/helpers');   // 👈 added
 
 module.exports = async (member) => {
     try {
         const now = new Date().toISOString();
         const { data: giveaway, error } = await supabaseRetry(() =>
-            supabase.from('giveaways')
+            supabase.from(h.tables.GIVEAWAYS)   // 👈 changed
                 .select('*')
                 .eq('ended', false)
                 .gt('end_time', now)
@@ -19,7 +19,7 @@ module.exports = async (member) => {
         if (entrants.includes(member.id)) {
             entrants = entrants.filter(id => id !== member.id);
             await supabaseRetry(() =>
-                supabase.from('giveaways')
+                supabase.from(h.tables.GIVEAWAYS)   // 👈 changed
                     .update({ entrants })
                     .eq('message_id', giveaway.message_id)
             );
