@@ -68,7 +68,7 @@ module.exports = function setupMonitoringRoutes(app, client, supabase, supabaseR
 
             // Fetch poll list and votes (same as before)
             const { data: activePoll, error: pollError } = await supabaseRetry(() =>
-                supabase.from('auto_resume')
+                supabase.from('poll_auto_resume')
                     .select('poll_list')
                     .order('id', { ascending: false })
                     .limit(1)
@@ -82,7 +82,7 @@ module.exports = function setupMonitoringRoutes(app, client, supabase, supabaseR
             }
 
             const { data: votes, error: voteError } = await supabaseRetry(() =>
-                supabase.from('votes_discord')
+                supabase.from('poll_voting_discord')
                     .select('user_id, option_id')
                     .eq('poll_id', 'character_poll_new')
             );
@@ -164,7 +164,7 @@ module.exports = function setupMonitoringRoutes(app, client, supabase, supabaseR
         let deletedVotes = 0;
         try {
             const { error: deleteError, count } = await supabaseRetry(() =>
-                supabase.from('votes_discord')
+                supabase.from('poll_voting_discord')
                     .delete({ count: 'exact' })
                     .eq('user_id', userId)
                     .eq('poll_id', 'character_poll_new')
