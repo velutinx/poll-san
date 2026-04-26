@@ -1,228 +1,117 @@
-// commands/games/hangman.js
-const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ComponentType, MessageFlags } = require('discord.js');
-const { createCanvas } = require('@napi-rs/canvas');
+// commands/games/slots.js
+const { SlashCommandBuilder, EmbedBuilder, MessageFlags } = require('discord.js');
 const supabase = require('../../services/supabase');
-const h = require('../../utils/helpers');
-const fs = require('fs');
-const path = require('path');
+const h = require('../../utils/helpers');   // for centralized tables
 
-// Load words
-const words = fs.readFileSync(path.join(__dirname, '../../utility/words.txt'), { encoding: 'utf-8' }).split('\n').filter(w => w.length > 3);
-
-// Game configuration
-const MAX_WRONG_GUESSES = 6;
-const COOLDOWN_HOURS = 24;
-const TICKET_REWARD = 1;
-
-// Helper function to draw the hangman (adapted from the tutorial repo)
-async function createHangmanImage(wrongGuesses) {
-    const canvas = createCanvas(300, 350);
-    const ctx = canvas.getContext('2d');
-    ctx.lineWidth = 5;
-
-    const createLine = (fromX, fromY, toX, toY, color = "#000000") => {
-        ctx.beginPath();
-        ctx.strokeStyle = color;
-        ctx.moveTo(fromX, fromY);
-        ctx.lineTo(toX, toY);
-        ctx.stroke();
-        ctx.closePath();
-    };
-
-    // Base
-    createLine(ctx, 50, 330, 150, 330);
-    // Mid
-    createLine(ctx, 100, 330, 100, 50);
-    // Head
-    createLine(ctx, 100, 50, 200, 50);
-    // Man Connector
-    createLine(ctx, 200, 50, 200, 80);
-    
-    // Head
-    ctx.strokeStyle = wrongGuesses < 1 ? "#a3a3a3" : "#000000";
-    ctx.beginPath();
-    ctx.arc(200, 100, 20, 0, 2 * Math.PI);
-    ctx.stroke();
-    ctx.closePath();
-
-    // Main Body
-    createLine(ctx, 200, 120, 200, 200, wrongGuesses < 2 ? "#a3a3a3" : "#000000");
-    // Hands
-    createLine(ctx, 200, 150, 170, 130, wrongGuesses < 3 ? "#a3a3a3" : "#000000");
-    createLine(ctx, 200, 150, 230, 130, wrongGuesses < 4 ? "#a3a3a3" : "#000000");
-    // Legs
-    createLine(ctx, 200, 200, 180, 230, wrongGuesses < 5 ? "#a3a3a3" : "#000000");
-    createLine(ctx, 200, 200, 220, 230, wrongGuesses < 6 ? "#a3a3a3" : "#000000");
-
-    return canvas.toBuffer();
-}
-
-// Helper function to award a ticket (same logic as Wordle)
-async function awardTicket(userId, username) {
-    try {
-        const { data: userData, error: fetchError } = await supabase
-            .from(h.tables.GAMES_WORDLE)   // 👈 changed from 'games_wordle'
-            .select('last_win_at')
-            .eq('discord_id', userId)
-            .maybeSingle();
-
-        if (fetchError) throw fetchError;
-
-        const now = new Date();
-        let canAward = true;
-
-        if (userData?.last_win_at) {
-            const lastWin = new Date(userData.last_win_at);
-            const hoursSince = (now - lastWin) / (1000 * 60 * 60);
-            if (hoursSince < COOLDOWN_HOURS) {
-                canAward = false;
-            }
-        }
-
-        if (!canAward) {
-            return { awarded: false, reason: 'cooldown' };
-        }
-
-        const { data: newCount, error: rpcError } = await supabase
-            .rpc('increment_wordle_ticket', { user_id: userId, user_name: username });
-
-        if (rpcError) throw rpcError;
-
-        return { awarded: true, newCount };
-    } catch (error) {
-        console.error('Ticket award error:', error);
-        return { awarded: false, reason: 'error' };
-    }
-}
+const SYMBOLS = ['🍒', '🍇', '🍊', '🍋', '7️⃣', '💎'];
+const PAYOUTS = {
+    threeDiamond: 10,
+    threeOther: 2,
+    twoOfKind: 0.5
+};
 
 module.exports = {
     data: new SlashCommandBuilder()
-        .setName('hangman')
-        .setDescription('Play a game of Hangman!'),
+        .setName('slots')
+        .setDescription('Spin the slot machine with your tickets!')
+        .addIntegerOption(option =>
+            option.setName('bet')
+                .setDescription('Number of tickets to bet')
+                .setRequired(true)
+                .setMinValue(1)
+                .setMaxValue(100)),
 
     async execute(interaction) {
-        await interaction.deferReply();
+        const bet = interaction.options.getInteger('bet');
+        const userId = interaction.user.id;
 
-        const word = words[Math.floor(Math.random() * words.length)].toLowerCase();
-        let wrongGuesses = 0;
-        const usedLetters = [];
-        let gameOver = false;
-        let gameWon = false;
+        await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
-        // Function to generate the game embed
-        const generateEmbed = async () => {
-            const wordDisplay = word.split('').map(l => usedLetters.includes(l) ? l.toUpperCase() : '\\_').join(' ');
-            const hangmanImage = await createHangmanImage(wrongGuesses);
+        // 1. Check balance using centralized table name
+        const { data: userData, error: fetchError } = await supabase
+            .from(h.tables.GAMES_WORDLE)   // 👈 uses helper constant
+            .select('ticket_count')
+            .eq('discord_id', userId)
+            .maybeSingle();
 
-            let color = 0x0099FF;
-            let footerText = `Guesses left: ${MAX_WRONG_GUESSES - wrongGuesses}`;
+        if (fetchError) {
+            console.error('Slot balance fetch error:', fetchError);
+            return interaction.editReply({ content: '❌ Error checking your ticket balance.' });
+        }
 
-            if (gameWon) {
-                color = 0x00FF00;
-                footerText = '🎉 You won!';
-            } else if (wrongGuesses >= MAX_WRONG_GUESSES) {
-                color = 0xFF0000;
-                footerText = `💀 Game Over! The word was "${word}".`;
+        const balance = userData?.ticket_count || 0;
+        if (balance < bet) {
+            return interaction.editReply({ content: `❌ You only have ${balance} ticket(s). You can't bet ${bet}.` });
+        }
+
+        const { error: deductError } = await supabase
+            .rpc('deduct_tickets', { user_id: userId, amount: bet });
+
+        if (deductError) {
+            console.error('Slot deduct error:', deductError);
+            return interaction.editReply({ content: '❌ Failed to place bet. Please try again.' });
+        }
+
+        // 2. Spin
+        const slot1 = SYMBOLS[Math.floor(Math.random() * SYMBOLS.length)];
+        const slot2 = SYMBOLS[Math.floor(Math.random() * SYMBOLS.length)];
+        const slot3 = SYMBOLS[Math.floor(Math.random() * SYMBOLS.length)];
+
+        // 3. Win calculation
+        let winAmount = 0;
+        let winDescription = '';
+
+        if (slot1 === slot2 && slot2 === slot3) {
+            if (slot1 === '💎') {
+                winAmount = bet * PAYOUTS.threeDiamond;
+                winDescription = `💎 JACKPOT! Three diamonds!`;
+            } else {
+                winAmount = bet * PAYOUTS.threeOther;
+                winDescription = `🎉 Three ${slot1}!`;
             }
+        } else if (slot1 === slot2 || slot2 === slot3 || slot1 === slot3) {
+            winAmount = Math.floor(bet * PAYOUTS.twoOfKind);
+            winDescription = `✨ Pair of ${slot1 === slot2 ? slot1 : slot2 === slot3 ? slot2 : slot1}!`;
+        }
 
-            return new EmbedBuilder()
-                .setTitle('🎮 Hangman')
-                .setDescription(`\`\`\`${wordDisplay}\`\`\``)
-                .setColor(color)
-                .setFooter({ text: footerText })
-                .setImage('attachment://hangman.png');
-        };
-
-        // Create letter buttons
-        const createButtonRows = () => {
-            const alphabet = 'abcdefghijklmnopqrstuvwxyz'.split('');
-            const rows = [];
-            for (let i = 0; i < alphabet.length; i += 6) {
-                const row = new ActionRowBuilder();
-                alphabet.slice(i, i + 6).forEach(letter => {
-                    row.addComponents(
-                        new ButtonBuilder()
-                            .setCustomId(`hangman_${letter}`)
-                            .setLabel(letter.toUpperCase())
-                            .setStyle(ButtonStyle.Primary)
-                            .setDisabled(usedLetters.includes(letter) || gameOver)
-                    );
-                });
-                rows.push(row);
+        // 4. Update balance
+        if (winAmount > 0) {
+            const { error: addError } = await supabase
+                .rpc('add_tickets', { user_id: userId, amount: winAmount });
+            if (addError) {
+                console.error('Slot add winnings error:', addError);
+                return interaction.editReply({ content: '❌ Error awarding winnings. Please contact an admin.' });
             }
-            return rows;
-        };
+        }
 
-        // Initial reply
-        const hangmanImage = await createHangmanImage(0);
-        const embed = await generateEmbed();
-        const rows = createButtonRows();
+        // 5. Get new balance
+        const { data: newData } = await supabase
+            .from(h.tables.GAMES_WORDLE)
+            .select('ticket_count')
+            .eq('discord_id', userId)
+            .maybeSingle();
+        const newBalance = newData?.ticket_count || 0;
 
-        await interaction.editReply({
-            embeds: [embed],
-            files: [{ attachment: hangmanImage, name: 'hangman.png' }],
-            components: rows,
-        });
+        // 6. Build embed
+        const embed = new EmbedBuilder()
+            .setTitle('🎰 Slot Machine')
+            .setDescription(`**${slot1}  |  ${slot2}  |  ${slot3}**`)
+            .setColor(winAmount > 0 ? '#00FFCC' : '#FF5555')
+            .addFields(
+                { name: 'Bet', value: `${bet} ticket(s)`, inline: true },
+                { name: winAmount > 0 ? 'Won' : 'Lost', value: winAmount > 0 ? `+${winAmount} ticket(s)` : `-${bet} ticket(s)`, inline: true },
+                { name: 'New Balance', value: `${newBalance} ticket(s)`, inline: true }
+            )
+            .setFooter({ text: winAmount > 0 ? winDescription : 'Better luck next time!' });
 
-        // Create a button collector
-        const message = await interaction.fetchReply();
-        const collector = message.createMessageComponentCollector({
-            componentType: ComponentType.Button,
-            time: 120000, // 2 minutes
-        });
+        await interaction.editReply({ embeds: [embed] });
 
-        collector.on('collect', async (buttonInteraction) => {
-            if (buttonInteraction.user.id !== interaction.user.id) {
-                return buttonInteraction.reply({ content: '❌ This game is not for you!', flags: MessageFlags.Ephemeral });
-            }
-
-            const guessedLetter = buttonInteraction.customId.replace('hangman_', '');
-
-            if (!usedLetters.includes(guessedLetter)) {
-                usedLetters.push(guessedLetter);
-                if (!word.includes(guessedLetter)) {
-                    wrongGuesses++;
-                }
-            }
-
-            const wordGuessed = word.split('').every(l => usedLetters.includes(l));
-            if (wordGuessed) {
-                gameOver = true;
-                gameWon = true;
-                collector.stop();
-            } else if (wrongGuesses >= MAX_WRONG_GUESSES) {
-                gameOver = true;
-                collector.stop();
-            }
-
-            const newEmbed = await generateEmbed();
-            const newImage = await createHangmanImage(wrongGuesses);
-            const newRows = createButtonRows();
-
-            await buttonInteraction.update({
-                embeds: [newEmbed],
-                files: [{ attachment: newImage, name: 'hangman.png' }],
-                components: newRows,
-            });
-        });
-
-        collector.on('end', async (collected, reason) => {
-            if (reason === 'time' && !gameOver) {
-                await interaction.editReply({ content: '⏰ Game timed out.', components: [], embeds: [], files: [] }).catch(() => {});
-                return;
-            }
-
-            if (gameWon) {
-                const result = await awardTicket(interaction.user.id, interaction.user.username);
-                if (result.awarded) {
-                    const dmMessage = `${h.releaseEmojis.CONFETTI} You solved the hangman! You've earned **1 ticket**! You now have **${result.newCount}** ticket(s).`;
-                    try {
-                        await interaction.user.send(dmMessage);
-                    } catch (dmError) {
-                        await interaction.followUp({ content: dmMessage, flags: MessageFlags.Ephemeral });
-                    }
-                }
-            }
-        });
+        // Optional: brief public log (deleted after 3s)
+        try {
+            const publicMsg = await interaction.channel.send({ embeds: [embed] });
+            setTimeout(() => publicMsg.delete().catch(() => {}), 3000);
+        } catch (err) {
+            console.error('Failed to send public slots log:', err);
+        }
     }
 };
