@@ -61,7 +61,7 @@ async function createHangmanImage(wrongGuesses) {
 async function awardTicket(userId, username) {
     try {
         const { data: userData, error: fetchError } = await supabase
-            .from('games_wordle')
+            .from(h.tables.GAMES_WORDLE)   // 👈 changed from 'games_wordle'
             .select('last_win_at')
             .eq('discord_id', userId)
             .maybeSingle();
@@ -172,14 +172,12 @@ module.exports = {
         });
 
         collector.on('collect', async (buttonInteraction) => {
-            // Ensure the clicker is the player
             if (buttonInteraction.user.id !== interaction.user.id) {
                 return buttonInteraction.reply({ content: '❌ This game is not for you!', flags: MessageFlags.Ephemeral });
             }
 
             const guessedLetter = buttonInteraction.customId.replace('hangman_', '');
 
-            // Process the guess
             if (!usedLetters.includes(guessedLetter)) {
                 usedLetters.push(guessedLetter);
                 if (!word.includes(guessedLetter)) {
@@ -187,7 +185,6 @@ module.exports = {
                 }
             }
 
-            // Check win/loss conditions
             const wordGuessed = word.split('').every(l => usedLetters.includes(l));
             if (wordGuessed) {
                 gameOver = true;
@@ -198,7 +195,6 @@ module.exports = {
                 collector.stop();
             }
 
-            // Update the message
             const newEmbed = await generateEmbed();
             const newImage = await createHangmanImage(wrongGuesses);
             const newRows = createButtonRows();
@@ -216,7 +212,6 @@ module.exports = {
                 return;
             }
 
-            // Award ticket if the player won
             if (gameWon) {
                 const result = await awardTicket(interaction.user.id, interaction.user.username);
                 if (result.awarded) {
