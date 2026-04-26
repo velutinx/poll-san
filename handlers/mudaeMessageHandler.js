@@ -3,7 +3,7 @@ const helpers = require('../utils/helpers');
 const supabase = require('../services/supabase');
 
 const pendingClaims = new Map(); // characterName -> { series, messageId, timestamp }
-const CLAIM_LOOKUP_TIMEOUT_MS = 2 * 60 * 1000;
+const CLAIM_LOOKUP_TIMEOUT_MS = 1 * 60 * 1000;
 
 let idleTimeout = null;
 const IDLE_TIME_MS = 2 * 60 * 1000; // 2 minutes
