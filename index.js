@@ -63,6 +63,7 @@ client.once(Events.ClientReady, async (c) => {
         require('./commands/admin/post-hangman-ui').data.toJSON(),
         require('./commands/admin/post-verify-ui').data.toJSON(),
         require('./commands/admin/post-checkin-ui').data.toJSON(),
+        require('./commands/admin/post-cointoss-ui').data.toJSON(),
     ];
 
     const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
