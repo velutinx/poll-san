@@ -18,7 +18,6 @@ module.exports = {
                 `Click a bet button below to toss a coin!\n` +
                 `If it lands **🪙 Heads**, you win the bet amount!\n` +
                 `If it lands **🪙 Tails**, you lose the bet.\n\n` +
-                `House edge: 55% (you have a **45%** chance to win).`
             );
 
         const row = new ActionRowBuilder()
