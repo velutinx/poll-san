@@ -3,10 +3,10 @@
 const supabase = require('../services/supabase');
 const helpers = require('../utils/helpers');
 const giveawayCommand = require('../commands/giveaway');
+const { handleSlotsBet } = require('../services/slotsHandler');
+const { startHangmanGame } = require('../services/hangmanGame');
+const { handleCoinTossBet } = require('../services/coinTossHandler');
 const { handleShopSelect, handleShopPurchase } = require('../services/shopHandler');
-const { handleSlotsBet } = require('../services/Games/slotsHandler');
-const { startHangmanGame } = require('../services/Games/hangmanGame');
-const { handleCoinTossBet } = require('../services/Games/coinTossHandler');
 
 module.exports = async function handleInteraction(interaction) {
     try {
