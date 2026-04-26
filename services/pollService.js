@@ -1,4 +1,4 @@
-// this is poll-san/services/pollService.js
+// services/pollService.js
 
 const supabase = require('./supabase');
 const { supabaseRetry } = require('../utils/db');
@@ -9,11 +9,10 @@ const UPDATE_INTERVAL = h.POLL_UPDATE_INTERVAL_MS || 10000;
 
 let cachedPollResults = null;
 let cachedPollTimestamp = 0;
-const CACHE_TTL = UPDATE_INTERVAL; // same as update interval
+const CACHE_TTL = UPDATE_INTERVAL;
 
 let activePollTimer = null;
 
-// ==================== CORE FUNCTIONS ====================
 async function getPollResults(message, characters) {
     if (cachedPollResults && (Date.now() - cachedPollTimestamp) < CACHE_TTL) {
         return cachedPollResults;
@@ -21,9 +20,9 @@ async function getPollResults(message, characters) {
 
     try {
         const [{ data: discordVotes }, { data: websiteVotes }, { data: winnerData }] = await Promise.all([
-            supabaseRetry(() => supabase.from('poll_voting_discord').select('option_id, weight').eq('poll_id', CURRENT_POLL_ID)),
-            supabaseRetry(() => supabase.from('poll_voting_website').select('option_id').eq('poll_id', CURRENT_POLL_ID)),
-            supabaseRetry(() => supabase.from('poll_votes_final').select('option_id, selected_at').eq('poll_id', CURRENT_POLL_ID))
+            supabaseRetry(() => supabase.from(h.tables.POLL_VOTING_DISCORD).select('option_id, weight').eq('poll_id', CURRENT_POLL_ID)),
+            supabaseRetry(() => supabase.from(h.tables.POLL_VOTING_WEBSITE).select('option_id').eq('poll_id', CURRENT_POLL_ID)),
+            supabaseRetry(() => supabase.from(h.tables.POLL_VOTES_FINAL).select('option_id, selected_at').eq('poll_id', CURRENT_POLL_ID))
         ]);
 
         const winnerMap = {};
@@ -60,7 +59,7 @@ async function getPollResults(message, characters) {
             });
         }
 
-        await supabaseRetry(() => supabase.from('poll_votes_final').upsert(rawDataForDB, { onConflict: 'poll_id,option_id' }));
+        await supabaseRetry(() => supabase.from(h.tables.POLL_VOTES_FINAL).upsert(rawDataForDB, { onConflict: 'poll_id,option_id' }));
 
         const resultString = displayResults.join('');
         cachedPollResults = resultString;
@@ -127,14 +126,14 @@ function runPollInterval(pollMessage, endTime, characters) {
             if (isFinished) {
                 forceStopPoll();
                 await supabaseRetry(() =>
-                    supabase.from('poll_auto_resume').delete().eq('message_id', pollMessage.id)
+                    supabase.from(h.tables.POLL_AUTO_RESUME).delete().eq('message_id', pollMessage.id)
                 );
             }
         } catch (e) {
             if (e.code === 10008) {
                 forceStopPoll();
                 await supabaseRetry(() =>
-                    supabase.from('poll_auto_resume').delete().eq('message_id', pollMessage.id)
+                    supabase.from(h.tables.POLL_AUTO_RESUME).delete().eq('message_id', pollMessage.id)
                 );
             } else {
                 console.error("Poll interval error:", e);
