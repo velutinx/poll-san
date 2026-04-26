@@ -23,7 +23,7 @@ const TRIPLE_PAYOUTS = {
 };
 
 // Pair payout (multiplier) – win back 40% of bet
-const PAIR_PAYOUT = 0.4;
+const PAIR_PAYOUT = 0.8;
 
 function spin() {
     return [
