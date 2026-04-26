@@ -1,4 +1,4 @@
-// services/shopHandler.js
+// services/Games/shopHandler.js
 
 const { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, MessageFlags } = require('discord.js');
 const h = require('../../utils/helpers');
