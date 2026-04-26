@@ -59,7 +59,6 @@ client.once(Events.ClientReady, async (c) => {
         giveawayCommand.data.toJSON(),
         require('./commands/tickets/balance').data.toJSON(),
         require('./commands/tickets/shop').data.toJSON(),
-        require('./commands/games/slots').data.toJSON(),
         require('./commands/admin/post-slots-ui').data.toJSON(),
         require('./commands/admin/post-hangman-ui').data.toJSON(),
         require('./commands/admin/post-verify-ui').data.toJSON(),
