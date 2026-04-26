@@ -17,7 +17,7 @@ module.exports = {
                 `# 🪙 Coin Toss\n\n` +
                 `Click a bet button below to toss a coin!\n` +
                 `If it lands **🪙 Heads**, you win the bet amount!\n` +
-                `If it lands **🪙 Tails**, you lose the bet.` +
+                `If it lands **🪙 Tails**, you lose the bet.\n` +
             );
 
         const row = new ActionRowBuilder()
