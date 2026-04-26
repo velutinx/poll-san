@@ -1,4 +1,4 @@
-// This is poll-san/services/hangmanGame.js
+// services/hangmanGame.js
 
 const { EmbedBuilder, MessageFlags } = require('discord.js');
 const supabase = require('./supabase');
@@ -43,7 +43,7 @@ async function awardTicket(userId, username) {
     const now = new Date();
 
     const { data: cooldownData, error: fetchError } = await supabase
-        .from('games_cooldowns')
+        .from(h.tables.GAMES_COOLDOWNS)   // 👈 changed
         .select('last_win_at')
         .eq('discord_id', userId)
         .eq('game_type', GAME_TYPE)
@@ -73,7 +73,7 @@ async function awardTicket(userId, username) {
     }
 
     const { error: upsertError } = await supabase
-        .from('games_cooldowns')
+        .from(h.tables.GAMES_COOLDOWNS)   // 👈 changed
         .upsert({
             discord_id: userId,
             discord_username: username,
@@ -90,7 +90,7 @@ async function awardTicket(userId, username) {
 
 async function getCooldownRemaining(userId) {
     const { data } = await supabase
-        .from('games_cooldowns')
+        .from(h.tables.GAMES_COOLDOWNS)   // 👈 changed
         .select('last_win_at')
         .eq('discord_id', userId)
         .eq('game_type', GAME_TYPE)
