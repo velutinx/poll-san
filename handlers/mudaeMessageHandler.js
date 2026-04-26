@@ -2,32 +2,20 @@
 const helpers = require('../utils/helpers');
 const supabase = require('../services/supabase');
 
+const activeTimeouts = new Map();
 const pendingClaims = new Map(); // characterName -> { series, messageId, timestamp }
-const CLAIM_LOOKUP_TIMEOUT_MS = 1 * 60 * 1000;
+const ROLL_LIFETIME_MS = 60 * 1000; // 60 seconds
+const CLAIM_LOOKUP_TIMEOUT_MS = 2 * 60 * 1000;
 
-let idleTimeout = null;
-const IDLE_TIME_MS = 2 * 60 * 1000; // 2 minutes
-
-/**
- * Resets the idle timer. Called on every message in the channel.
- * If the timer expires, the entire channel is purged.
- */
-function resetIdleTimer(channel) {
-    if (idleTimeout) clearTimeout(idleTimeout);
-    idleTimeout = setTimeout(async () => {
-        try {
-            // Fetch up to 100 newest messages
-            const messages = await channel.messages.fetch({ limit: 100 });
-            if (messages.size === 0) return;
-            await channel.bulkDelete(messages);
-            console.log(`🧹 Purged ${messages.size} messages from ${channel.name} due to inactivity.`);
-        } catch (err) {
-            console.error('Failed to purge idle channel:', err);
-        } finally {
-            idleTimeout = null;
-        }
-    }, IDLE_TIME_MS);
-}
+// ========== WHITELIST ==========
+// Messages with these IDs will NEVER be deleted.
+// Add real message IDs here (from Mudae bot or users) – placeholders for now.
+const WHITELISTED_MESSAGE_IDS = new Set([
+    '1380051214766444617',
+    '432610292342587392',
+    '1498065147044823290',
+    '1498065165961400467'
+]);
 
 /**
  * Parse character and series from a Mudae embed.
@@ -55,18 +43,35 @@ function parseRollEmbed(embed) {
 }
 
 function initMudaeMessageHandler(client) {
-    // ---- GENERAL MESSAGE HANDLER (activity + rolls) ----
+    // ---- General message handler (delete all messages after 60s, except whitelisted) ----
     client.on('messageCreate', async (message) => {
-        // Only care about the Mudae roll channel
+        // Only act inside the Mudae roll channel
         if (message.channel.id !== helpers.ids.channels.mudae_roll) return;
 
-        // Reset the idle timer on any message
-        resetIdleTimer(message.channel);
+        // If message is whitelisted, do NOT schedule deletion
+        if (WHITELISTED_MESSAGE_IDS.has(message.id)) return;
 
-        // If the message is not from Mudae bot, we're done (no further processing)
+        // Schedule deletion after 60 seconds (clear any existing timeout for this message)
+        if (activeTimeouts.has(message.id)) clearTimeout(activeTimeouts.get(message.id));
+        const timeout = setTimeout(async () => {
+            try {
+                await message.delete();
+                console.log(`🗑️ Deleted message ${message.id} from ${message.author.tag}`);
+            } catch (err) {
+                if (err.code !== 10008) console.error(`Failed to delete message ${message.id}:`, err.message);
+            } finally {
+                activeTimeouts.delete(message.id);
+            }
+        }, ROLL_LIFETIME_MS);
+        activeTimeouts.set(message.id, timeout);
+    });
+
+    // ---- Roll detection & reaction (only Mudae messages) ----
+    client.on('messageCreate', async (message) => {
         if (message.author.id !== helpers.ids.bots.mudae) return;
+        if (message.channel.id !== helpers.ids.channels.mudae_roll) return;
 
-        // Process Mudae roll messages (embeds with claim phrase)
+        // Process roll messages (embeds with claim phrase)
         if (!message.embeds.length) return;
         const embed = message.embeds[0];
         const description = embed.description || '';
@@ -100,10 +105,10 @@ function initMudaeMessageHandler(client) {
         }
     });
 
-    // ---- CLAIM DETECTION (separate listener) ----
+    // ---- Claim detection (records claims) ----
     client.on('messageCreate', async (message) => {
-        if (message.channel.id !== helpers.ids.channels.mudae_roll) return;
         if (message.author.id !== helpers.ids.bots.mudae) return;
+        if (message.channel.id !== helpers.ids.channels.mudae_roll) return;
         if (!message.content || !message.content.includes('are now married!')) return;
 
         const match = message.content.match(/💖\s*(.+?)\s+and\s+(.+?)\s+are now married! 💖/);
@@ -141,7 +146,8 @@ function initMudaeMessageHandler(client) {
 
     // Cleanup on shutdown
     process.on('beforeExit', () => {
-        if (idleTimeout) clearTimeout(idleTimeout);
+        for (const timeout of activeTimeouts.values()) clearTimeout(timeout);
+        activeTimeouts.clear();
         pendingClaims.clear();
     });
 }
