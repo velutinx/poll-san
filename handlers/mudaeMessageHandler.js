@@ -1,11 +1,10 @@
 // handlers/mudaeMessageHandler.js
-
 const helpers = require('../utils/helpers');
 const supabase = require('../services/supabase');
 
 const activeTimeouts = new Map();
 const pendingClaims = new Map(); // characterName -> { series, messageId, timestamp }
-const ROLL_LIFETIME_MS = 5 * 60 * 1000;
+const ROLL_LIFETIME_MS = 60 * 1000; // 60 seconds (changed from 5 min)
 const CLAIM_LOOKUP_TIMEOUT_MS = 2 * 60 * 1000;
 
 /**
@@ -39,12 +38,12 @@ function parseRollEmbed(embed) {
 }
 
 function initMudaeMessageHandler(client) {
-    // Roll detection
+    // Delete EVERY message in the Mudae roll channel after ROLL_LIFETIME_MS
     client.on('messageCreate', async (message) => {
         if (message.author.id !== helpers.ids.bots.mudae) return;
         if (message.channel.id !== helpers.ids.channels.mudae_roll) return;
 
-        // Auto‑delete EVERY Mudae message after 5 minutes
+        // Auto‑delete EVERY Mudae message (including non‑roll messages)
         if (activeTimeouts.has(message.id)) clearTimeout(activeTimeouts.get(message.id));
         const timeout = setTimeout(async () => {
             try {
@@ -58,7 +57,7 @@ function initMudaeMessageHandler(client) {
         }, ROLL_LIFETIME_MS);
         activeTimeouts.set(message.id, timeout);
 
-        // Only process roll messages (embeds with claim phrase)
+        // Only process roll messages (embeds with claim phrase) for reaction and claim tracking
         if (!message.embeds.length) return;
         const embed = message.embeds[0];
         const description = embed.description || '';
@@ -84,7 +83,7 @@ function initMudaeMessageHandler(client) {
             }
         }, CLAIM_LOOKUP_TIMEOUT_MS);
 
-        // Add reaction
+        // Add VERIFY reaction
         try {
             await message.react(helpers.releaseEmojis.VERIFY);
             console.log(`✅ Added VERIFY to ${character} (${series || 'series unknown'})`);
@@ -93,7 +92,7 @@ function initMudaeMessageHandler(client) {
         }
     });
 
-    // Claim detection
+    // Claim detection (unchanged)
     client.on('messageCreate', async (message) => {
         if (message.author.id !== helpers.ids.bots.mudae) return;
         if (message.channel.id !== helpers.ids.channels.mudae_roll) return;
@@ -102,7 +101,6 @@ function initMudaeMessageHandler(client) {
         const match = message.content.match(/💖\s*(.+?)\s+and\s+(.+?)\s+are now married! 💖/);
         if (!match) return;
 
-        // Strip the markdown "**" from the names so lookups & DB match properly
         const claimerUsername = match[1].replace(/\*\*/g, '').trim();
         const characterName = match[2].replace(/\*\*/g, '').trim();
         
@@ -116,7 +114,6 @@ function initMudaeMessageHandler(client) {
         } catch (err) {}
 
         try {
-            // 👇 Using centralized table name
             const { error } = await supabase.from(helpers.tables.GAMES_MUDAE_CLAIMS).insert({
                 user_id: userId,
                 username: claimerUsername,
