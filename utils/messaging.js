@@ -1,4 +1,4 @@
-// this is poll-san/utils/messaging.js
+// utils/messaging.js
 
 const supabase = require('../services/supabase');
 const { supabaseRetry } = require('./db');
@@ -12,7 +12,7 @@ async function sendMembershipMessage(client, discordId, membership) {
   // Check if already messaged for this membership period
   const { data: existing, error: logError } = await supabaseRetry(() =>
     supabase
-      .from('member_message_log')
+      .from(h.tables.MEMBER_MESSAGE_LOG)
       .select('id')
       .eq('discord_id', discordId)
       .eq('expires_at', membership.expires_at)
@@ -25,14 +25,12 @@ async function sendMembershipMessage(client, discordId, membership) {
     return false; // Already messaged
   }
 
-  // Send DM to member
   const member = await client.users.fetch(discordId).catch(() => null);
   if (!member) {
     console.warn(`Cannot send message: member ${discordId} not found`);
     return false;
   }
 
-  // Pull the string names from helpers.js
   const tierName = h.weights.tierNames[membership.tier] || `Tier ${membership.tier}`;
   const currentMonth = new Date().toLocaleDateString('en-US', { month: 'long' });
 
@@ -47,7 +45,6 @@ async function sendMembershipMessage(client, discordId, membership) {
     console.error(`Failed to send DM to ${member.tag}:`, err.message);
   });
 
-  // Admin message
   const admin = await client.users.fetch(ADMIN_ID).catch(() => null);
   if (admin) {
     const expiryFormatted = new Date(membership.expires_at).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
@@ -57,10 +54,9 @@ async function sendMembershipMessage(client, discordId, membership) {
     console.warn('Admin user not found');
   }
 
-  // Log the message
   const { error: insertError } = await supabaseRetry(() =>
     supabase
-      .from('member_message_log')
+      .from(h.tables.MEMBER_MESSAGE_LOG)   // 👈 changed
       .insert({
         discord_id: discordId,
         discord_name: member.tag,           
