@@ -3,9 +3,10 @@
 const supabase = require('../services/supabase');
 const helpers = require('../utils/helpers');
 const giveawayCommand = require('../commands/giveaway');
-const { handleShopSelect, handleShopPurchase } = require('../services/shopHandler');
-const { handleSlotsBet } = require('../services/slotsHandler');
-const { startHangmanGame } = require('../services/hangmanGame');
+const { handleShopSelect, handleShopPurchase } = require('../services/Games/shopHandler');
+const { handleSlotsBet } = require('../services/Games/slotsHandler');
+const { startHangmanGame } = require('../services/Games/hangmanGame');
+const { handleCoinTossBet } = require('../services/Games/coinTossHandler');
 
 module.exports = async function handleInteraction(interaction) {
     try {
@@ -21,6 +22,7 @@ module.exports = async function handleInteraction(interaction) {
                 case 'post_hangman_ui': await require('../commands/admin/post-hangman-ui').execute(interaction); break;
                 case 'post_verify_ui': await require('../commands/admin/post-verify-ui').execute(interaction); break;
                 case 'post_checkin_ui': await require('../commands/admin/post-checkin-ui').execute(interaction); break;
+                case 'post_cointoss_ui': await require('../commands/admin/post-cointoss-ui').execute(interaction); break;
                 default: break;
             }
         }
@@ -50,7 +52,16 @@ module.exports = async function handleInteraction(interaction) {
             } 
             else if (interaction.customId === 'checkin_claim') {
                 await handleCheckinClaim(interaction);
-            } 
+            }
+            else if (interaction.customId === 'cointoss_bet_1') {
+                await handleCoinTossBet(interaction, 1);
+            }
+            else if (interaction.customId === 'cointoss_bet_5') {
+                await handleCoinTossBet(interaction, 5);
+            }
+            else if (interaction.customId === 'cointoss_bet_25') {
+                await handleCoinTossBet(interaction, 25);
+            }
             else {
                 await giveawayCommand.handleGiveawayButton(interaction);
             }
@@ -67,7 +78,7 @@ module.exports = async function handleInteraction(interaction) {
     }
 };
 
-// ----- Helper functions -----
+// ----- Helper functions (unchanged) -----
 async function handleVerifyStart(interaction) {
     const member = interaction.member;
     const supporterRoleId = helpers.ids.roles.supporter;
@@ -112,9 +123,9 @@ async function handleCheckinClaim(interaction) {
     cooldownMap.set(userId, Date.now());
     await interaction.deferReply({ flags: 64 });
     
-    // Get user data – using centralized table name
+    // Get user data
     let { data: userData, error } = await supabase
-        .from(helpers.tables.GAMES_USER_DATA)   // 👈 changed from 'games_user_data'
+        .from(helpers.tables.GAMES_USER_DATA)
         .select('*')
         .eq('user_id', userId)
         .maybeSingle();
@@ -145,7 +156,6 @@ async function handleCheckinClaim(interaction) {
         });
     }
     
-    // Add tickets & reset cooldowns
     const ticketAmount = helpers.CHECKIN_REWARD_TICKETS;
     const currentTickets = userData?.tickets || 0;
     const newBalance = currentTickets + ticketAmount;
@@ -155,7 +165,7 @@ async function handleCheckinClaim(interaction) {
     
     if (userData) {
         const { error: updateError } = await supabase
-            .from(helpers.tables.GAMES_USER_DATA)   // 👈 changed
+            .from(helpers.tables.GAMES_USER_DATA)
             .update({
                 tickets: newBalance,
                 last_checkin: nowIso,
@@ -175,7 +185,7 @@ async function handleCheckinClaim(interaction) {
         console.log(`[Checkin] Updated user ${userId} tickets: ${currentTickets} → ${newBalance}`);
     } else {
         const { error: insertError } = await supabase
-            .from(helpers.tables.GAMES_USER_DATA)   // 👈 changed
+            .from(helpers.tables.GAMES_USER_DATA)
             .insert({
                 user_id: userId,
                 tickets: newBalance,
@@ -195,7 +205,6 @@ async function handleCheckinClaim(interaction) {
         console.log(`[Checkin] Inserted user ${userId} with tickets ${newBalance}`);
     }
     
-    // Success message
     await interaction.editReply({
         content: `${helpers.releaseEmojis.VERIFY} **Daily Check-In Successful!**\n\n` +
                  `You received **${ticketAmount} tickets**! New balance: **${newBalance}** 🎫\n` +
