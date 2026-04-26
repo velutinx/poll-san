@@ -6,14 +6,11 @@ module.exports = function setupPollRoutes(app, client, supabase, supabaseRetry) 
     const h = require('../../utils/helpers');
     const pollService = require('../../services/pollService');
     
-    // Cache for poll results (shared between endpoints)
     let cachedPollResultsData = null;
     let cachedPollResultsTime = 0;
-    const POLL_CACHE_TTL = 60000; // 1 minute
+    const POLL_CACHE_TTL = 60000;
 
-    // ────────────────────────────────────────────────
     // START POLL
-    // ────────────────────────────────────────────────
     app.post('/api/trigger-poll', async (req, res) => {
         const { channel_id, days, character_list } = req.body;
         try {
@@ -44,9 +41,8 @@ module.exports = function setupPollRoutes(app, client, supabase, supabaseRetry) 
                 isCommand: () => true
             };
 
-            // Clear final votes before starting a fresh poll
-            await supabaseRetry(() => .from(h.tables.POLL_VOTES_FINAL).delete().neq('option_id', 0));
-                        
+            // Clear final votes
+            await supabaseRetry(() => supabase.from(h.tables.POLL_VOTES_FINAL).delete().neq('option_id', 0));
             startPollLogic(mockInteraction);
             res.json({ success: true });
         } catch (err) {
@@ -55,16 +51,14 @@ module.exports = function setupPollRoutes(app, client, supabase, supabaseRetry) 
         }
     });
 
-    // ────────────────────────────────────────────────
     // POLL RESULTS DATA
-    // ────────────────────────────────────────────────
     app.get('/api/poll-results-data', async (req, res) => {
         try {
             if (cachedPollResultsData && (Date.now() - cachedPollResultsTime) < POLL_CACHE_TTL) {
                 return res.json(cachedPollResultsData);
             }
             const { data } = await supabaseRetry(() =>
-                .from(h.tables.POLL_VOTES_FINAL)
+                supabase.from(h.tables.POLL_VOTES_FINAL)
                     .select('character_name, score, selected_at')
                     .order('option_id', { ascending: true })
             );
@@ -77,15 +71,13 @@ module.exports = function setupPollRoutes(app, client, supabase, supabaseRetry) 
         }
     });
 
-    // ────────────────────────────────────────────────
     // STOP POLL
-    // ────────────────────────────────────────────────
     app.post('/api/stop-poll', async (req, res) => {
         try {
             pollService.forceStopPoll();
 
             const { data: poll } = await supabaseRetry(() =>
-                .from(h.tables.POLL_AUTO_RESUME)
+                supabase.from(h.tables.POLL_AUTO_RESUME)
                     .select('*')
                     .order('id', { ascending: false })
                     .limit(1)
@@ -118,17 +110,14 @@ module.exports = function setupPollRoutes(app, client, supabase, supabaseRetry) 
         }
     });
 
-    // ────────────────────────────────────────────────
-    // MARK WINNER – includes winner's image as a clean embed
-    // ────────────────────────────────────────────────
+    // MARK WINNER
     app.post('/api/mark-winner', async (req, res) => {
         const { winner_name } = req.body;
         const e = h.releaseEmojis;
 
         try {
-            // Get the active poll
             const { data: poll } = await supabaseRetry(() =>
-                .from(h.tables.POLL_AUTO_RESUME)
+                supabase.from(h.tables.POLL_AUTO_RESUME)
                     .select('*')
                     .order('id', { ascending: false })
                     .limit(1)
@@ -136,9 +125,8 @@ module.exports = function setupPollRoutes(app, client, supabase, supabaseRetry) 
             );
             if (!poll) return res.status(404).json({ error: "No active poll found." });
 
-            // Get the option_id of the character being marked as winner
             const { data: winnerRow } = await supabaseRetry(() =>
-                .from(h.tables.POLL_VOTES_FINAL)
+                supabase.from(h.tables.POLL_VOTES_FINAL)
                     .select('option_id')
                     .ilike('character_name', `%${winner_name}%`)
                     .eq('poll_id', 'character_poll_new')
@@ -146,16 +134,14 @@ module.exports = function setupPollRoutes(app, client, supabase, supabaseRetry) 
             );
             const winnerOptionId = winnerRow?.option_id;
 
-            // Mark winner in database
             await supabaseRetry(() =>
-                .from(h.tables.POLL_VOTES_FINAL)
+                supabase.from(h.tables.POLL_VOTES_FINAL)
                     .update({ selected_at: new Date().toISOString() })
                     .filter('character_name', 'ilike', `%${winner_name}%`)
             );
 
-            // Fetch current standings
             const { data: voteData } = await supabaseRetry(() =>
-                .from(h.tables.POLL_VOTES_FINAL)
+                supabase.from(h.tables.POLL_VOTES_FINAL)
                     .select('character_name, score, selected_at, option_id')
                     .order('option_id', { ascending: true })
             );
@@ -170,7 +156,6 @@ module.exports = function setupPollRoutes(app, client, supabase, supabaseRetry) 
                 .map(s => s.trim().replace(/:female_sign:/g, '♀️').replace(/:male_sign:/g, '♂️'))
                 .filter(s => s.length > 1);
 
-            // Build scoreboard (same format as before)
             let scoreboard = `:trophy: **${winner_name}** has been marked as a winner! ${e.CONFETTI}\n\n`;
             characters.forEach((char, index) => {
                 const imgNum = index + 1;
@@ -189,18 +174,12 @@ module.exports = function setupPollRoutes(app, client, supabase, supabaseRetry) 
                 scoreboard += line;
             });
 
-            // Send scoreboard first
             await thread.send(scoreboard);
-
-            // Then send the winner's image as a clean embed (no extra text)
             if (winnerOptionId) {
                 const imageUrl = `https://www.velutinx.com/images/poll/${winnerOptionId}.jpg`;
-                const embed = new EmbedBuilder()
-                    .setImage(imageUrl)
-                    .setColor(0x00FF00);
+                const embed = new EmbedBuilder().setImage(imageUrl).setColor(0x00FF00);
                 await thread.send({ embeds: [embed] });
             }
-
             res.json({ success: true });
         } catch (err) {
             console.error('Mark winner error:', err);
