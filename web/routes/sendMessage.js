@@ -1,6 +1,7 @@
-// this is poll-san/web/routes/sendMessage.js
+// web/routes/sendMessage.js
 
 const { sendMembershipMessage } = require('../../utils/messaging');
+const h = require('../../utils/helpers');
 
 module.exports = function setupSendMessageRoute(app, client, supabase, supabaseRetry) {
   app.post('/api/send-message', async (req, res) => {
@@ -9,7 +10,7 @@ module.exports = function setupSendMessageRoute(app, client, supabase, supabaseR
       const now = new Date().toISOString();
       const { data: membership, error } = await supabaseRetry(() =>
         supabase
-          .from('memberships')
+          .from(h.tables.MEMBERSHIPS)
           .select('*')
           .eq('discord_id', discordId)
           .gt('expires_at', now)
