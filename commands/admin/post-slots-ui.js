@@ -8,6 +8,12 @@ module.exports = {
         .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
 
     async execute(interaction) {
+        if (!interaction.memberPermissions.has('Administrator')) {
+            return interaction.reply({ content: '❌ Admin only.', flags: 64 });
+        }
+
+        const channel = interaction.channel;
+
         const embed = new EmbedBuilder()
             .setTitle('🎰 Ticket Slot Machine')
             .setDescription(
@@ -18,7 +24,7 @@ module.exports = {
                 '• 🍊🍊🍊 = **5x** your bet\n' +
                 '• 💎💎💎 = **10x** your bet\n' +
                 '• 7️⃣7️⃣7️⃣ = **50x** your bet (jackpot!)\n' +
-                '• Any pair = **0.8x** your bet\n\n' +
+                '• Any pair (two identical symbols) = **0.8x** your bet (you get 80% back)\n\n' +
                 '**Good luck!**'
             )
             .setColor('#FFD700');
@@ -40,7 +46,6 @@ module.exports = {
             );
 
         // Use webhook to send as "Slots"
-        const channel = interaction.channel;
         let webhook = (await channel.fetchWebhooks()).find(w => w.name === 'Slots');
         if (!webhook) {
             webhook = await channel.createWebhook({
@@ -56,6 +61,6 @@ module.exports = {
             avatarURL: 'https://www.velutinx.com/images/LogoDiscord.png'
         });
 
-        await interaction.reply({ content: '✅ Slots UI has been posted!', flags: MessageFlags.Ephemeral });
+        await interaction.reply({ content: '✅ Slots UI has been posted!', flags: 64 });
     }
 };
