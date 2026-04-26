@@ -1,9 +1,9 @@
-// this is poll-san/commands/giveaway.js
-
+// commands/giveaway.js
 const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, PermissionsBitField, AttachmentBuilder, MessageFlags } = require('discord.js');
 const path = require('path');
 const fs = require('fs').promises;
 const { colors, releaseEmojis } = require('../utils/helpers');
+const h = require('../utils/helpers'); // 👈 added for centralized table names
 
 // In-memory cache for quick access
 const activeGiveaways = new Map();
@@ -121,7 +121,7 @@ module.exports = {
 
         const supabaseClient = await getSupabase();
         const { error } = await supabaseClient
-            .from('giveaways')
+            .from(h.tables.GIVEAWAYS)   // 👈 changed
             .insert({
                 message_id: giveawayMessage.id,
                 channel_id: channel.id,
@@ -176,7 +176,7 @@ async function handleGiveawayButton(interaction) {
     if (!giveaway) {
         const supabaseClient = await getSupabase();
         const { data, error } = await supabaseClient
-            .from('giveaways')
+            .from(h.tables.GIVEAWAYS)   // 👈 changed
             .select('*')
             .eq('message_id', interaction.message.id)
             .eq('ended', false)
@@ -231,7 +231,7 @@ async function handleGiveawayButton(interaction) {
 
     const supabaseClient = await getSupabase();
     const { error } = await supabaseClient
-        .from('giveaways')
+        .from(h.tables.GIVEAWAYS)   // 👈 changed
         .update({ entrants: Array.from(giveaway.entrants) })
         .eq('message_id', interaction.message.id);
 
@@ -260,7 +260,7 @@ async function endGiveaway(messageId, client) {
     try {
         const supabaseClient = await getSupabase();
         const { data: dbGiveaway, error: fetchError } = await supabaseClient
-            .from('giveaways')
+            .from(h.tables.GIVEAWAYS)   // 👈 changed
             .select('*')
             .eq('message_id', messageId)
             .single();
@@ -318,7 +318,7 @@ async function endGiveaway(messageId, client) {
         }
 
         await message.edit({ embeds: [newEmbed], components: [] });
-        await supabaseClient.from('giveaways').delete().eq('message_id', messageId);
+        await supabaseClient.from(h.tables.GIVEAWAYS).delete().eq('message_id', messageId);
     } catch (err) {
         console.error('Error ending giveaway:', err);
     }
@@ -329,7 +329,7 @@ async function restoreGiveaways(client) {
     const now = new Date().toISOString();
 
     const { data, error } = await supabaseClient
-        .from('giveaways')
+        .from(h.tables.GIVEAWAYS)   // 👈 changed
         .select('*')
         .eq('ended', false)
         .gt('end_time', now);
@@ -419,7 +419,7 @@ async function endGiveawayFromDB(g, client) {
         }
 
         await message.edit({ embeds: [newEmbed], components: [] });
-        await supabaseClient.from('giveaways').delete().eq('message_id', g.message_id);
+        await supabaseClient.from(h.tables.GIVEAWAYS).delete().eq('message_id', g.message_id);
     } catch (err) {
         console.error(`Error ending giveaway from DB ${g.message_id}:`, err);
     }
