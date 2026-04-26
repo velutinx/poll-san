@@ -1,5 +1,6 @@
 // services/slotsHandler.js
 const supabase = require('./supabase');
+const helpers = require('../utils/helpers');   // 👈 added for centralized tables
 
 const activeGames = new Map();
 
@@ -34,12 +35,10 @@ function spin() {
 
 function calculateWin(reels, bet) {
     const [a, b, c] = reels;
-    // Check for triple first
     if (a === b && b === c) {
         const multiplier = TRIPLE_PAYOUTS[a];
         if (multiplier) return Math.floor(bet * multiplier);
     }
-    // Check for any pair (two identical, not triple)
     if (a === b || b === c || a === c) {
         return Math.floor(bet * PAIR_PAYOUT);
     }
@@ -64,9 +63,9 @@ async function handleSlotsBet(interaction, betAmount) {
 
     await interaction.deferUpdate();
 
-    // Fetch tickets
+    // Fetch tickets using centralized table name
     const { data: userData, error } = await supabase
-        .from('games_user_data')
+        .from(helpers.tables.GAMES_USER_DATA)   // 👈 changed
         .select('tickets')
         .eq('user_id', userId)
         .maybeSingle();
@@ -85,7 +84,7 @@ async function handleSlotsBet(interaction, betAmount) {
     // Deduct bet
     let newBalance = currentTickets - betAmount;
     const { error: updateError } = await supabase
-        .from('games_user_data')
+        .from(helpers.tables.GAMES_USER_DATA)   // 👈 changed
         .update({ tickets: newBalance })
         .eq('user_id', userId);
     if (updateError) {
@@ -102,7 +101,7 @@ async function handleSlotsBet(interaction, betAmount) {
     if (winAmount > 0) {
         finalBalance = newBalance + winAmount;
         await supabase
-            .from('games_user_data')
+            .from(helpers.tables.GAMES_USER_DATA)   // 👈 changed
             .update({ tickets: finalBalance })
             .eq('user_id', userId);
         if (winAmount >= betAmount) {
@@ -114,7 +113,6 @@ async function handleSlotsBet(interaction, betAmount) {
         winMessage = '**You lost.** Better luck next time!';
     }
 
-    // Build embed
     const resultLine = `${reels.join(' | ')}`;
     const embed = {
         color: 0xFFD700,
