@@ -1,14 +1,16 @@
-// this is poll-san/web/routes/memberships.js
-
 const h = require('../../utils/helpers');
 
 module.exports = function setupMembershipsRoute(app, client, supabase, supabaseRetry) {
     app.get('/api/memberships', async (req, res) => {
         try {
+            // 🔧 FIX: added .select('*') to actually fetch data
             const { data: subs, error } = await supabaseRetry(() =>
-                supabase.from(h.tables.MEMBERSHIPS)
+                supabase.from(h.tables.MEMBERSHIPS).select('*')
             );
             if (error) throw error;
+            if (!subs) {
+                return res.json([]); // No active memberships
+            }
 
             const guild = await client.guilds.fetch(process.env.GUILD_ID);
 
@@ -36,6 +38,7 @@ module.exports = function setupMembershipsRoute(app, client, supabase, supabaseR
                         console.log(`✅ Updated discord_tag for ${sub.discord_id} to ${discordTag}`);
                     }
                 } catch (err) {
+                    // Member left the server – keep original data
                     discordTag = sub.discord_tag || "Unknown";
                     userId = sub.discord_id;
                 }
@@ -56,6 +59,7 @@ module.exports = function setupMembershipsRoute(app, client, supabase, supabaseR
             res.status(500).json({ error: 'Internal Server Error' });
         }
     });
+
 
     app.post('/api/capture-membership-order', async (req, res) => {
         console.log('🔥🔥🔥 CAPTURE ENDPOINT HIT! 🔥🔥🔥');
