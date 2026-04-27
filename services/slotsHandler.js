@@ -2,7 +2,7 @@
 const helpers = require('../utils/helpers');
 const supabase = require('./supabase');
 
-const activeGames = new Map(); // key: `${userId}-${channelId}` -> { messageId, timeout }
+const activeGames = new Map(); // key: `${userId}-${channelId}` -> { messageId }
 
 const SYMBOLS = [
     '🍒', '🍒', '🍒', '🍒', '🍒', '🍒', '🍒', '🍒', '🍒', '🍒',
@@ -20,7 +20,6 @@ const TRIPLE_PAYOUTS = {
     '7️⃣': 50
 };
 const PAIR_PAYOUT = 0.8;
-const INACTIVITY_MS = 60 * 1000;
 
 function spin() {
     return [
@@ -47,10 +46,10 @@ async function handleSlotsBet(interaction, betAmount) {
     const channel = interaction.channel;
     const gameKey = `${userId}-${channel.id}`;
 
-    // 1. Acknowledge button click
+    // Acknowledge button click
     await interaction.deferUpdate();
 
-    // 2. Fetch and update tickets
+    // Fetch tickets
     const { data: userData, error } = await supabase
         .from(helpers.tables.GAMES_USER_DATA)
         .select('tickets')
@@ -71,6 +70,7 @@ async function handleSlotsBet(interaction, betAmount) {
         return;
     }
 
+    // Deduct bet
     let newBalance = currentTickets - betAmount;
     const { error: updateError } = await supabase
         .from(helpers.tables.GAMES_USER_DATA)
@@ -82,7 +82,7 @@ async function handleSlotsBet(interaction, betAmount) {
         return;
     }
 
-    // 3. Spin and calculate win
+    // Spin
     const reels = spin();
     const winAmount = calculateWin(reels, betAmount);
     let finalBalance = newBalance;
@@ -100,49 +100,32 @@ async function handleSlotsBet(interaction, betAmount) {
         winMessage = '**You lost.** Better luck next time!';
     }
 
-    // 4. Build embed
+    // Build embed
     const resultLine = `${reels.join(' | ')}`;
     const embed = {
         color: winAmount > 0 ? 0x00FF00 : 0xFF0000,
         title: `🎰 ${interaction.user.displayName}'s Slots`,
         description: `${resultLine}\n\n${winMessage}\n\n**Balance:** ${finalBalance} tickets 🎫\n**Bet:** ${betAmount} tickets`,
-        footer: { text: 'Auto‑delete after 60s of inactivity' }
+        footer: { text: 'Spin again using the buttons below.' }
     };
 
-    // 5. Send or edit existing ephemeral message
-    let game = activeGames.get(gameKey);
-    if (game && game.messageId) {
-        // Edit existing message
+    // Check if we already have a message for this user in this channel
+    const existing = activeGames.get(gameKey);
+    if (existing && existing.messageId) {
+        // Edit the existing ephemeral message
         try {
-            const msg = await channel.messages.fetch(game.messageId);
+            const msg = await channel.messages.fetch(existing.messageId);
             await msg.edit({ embeds: [embed] });
-            // Clear old timeout
-            if (game.timeout) clearTimeout(game.timeout);
         } catch (err) {
-            // Message missing – create new one
+            // Message gone, create new one
             const sent = await interaction.followUp({ embeds: [embed], ephemeral: true });
-            game = { messageId: sent.id, timeout: null };
+            activeGames.set(gameKey, { messageId: sent.id });
         }
     } else {
         // First spin – create new ephemeral message
         const sent = await interaction.followUp({ embeds: [embed], ephemeral: true });
-        game = { messageId: sent.id, timeout: null };
+        activeGames.set(gameKey, { messageId: sent.id });
     }
-
-    // 6. Set new timeout for auto‑delete
-    const timeout = setTimeout(async () => {
-        const currentGame = activeGames.get(gameKey);
-        if (currentGame && currentGame.messageId) {
-            try {
-                const msg = await channel.messages.fetch(currentGame.messageId);
-                await msg.delete();
-            } catch (err) { /* ignore */ }
-            activeGames.delete(gameKey);
-        }
-    }, INACTIVITY_MS);
-
-    game.timeout = timeout;
-    activeGames.set(gameKey, game);
 }
 
 module.exports = { handleSlotsBet };
