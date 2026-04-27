@@ -48,8 +48,6 @@ function calculateWin(reels, bet) {
 
 async function handleSlotsBet(interaction, betAmount) {
     const userId = interaction.user.id;
-    const channel = interaction.channel;
-    const gameKey = `${userId}-${channel.id}`;
 
     await interaction.deferUpdate();
 
@@ -84,7 +82,6 @@ async function handleSlotsBet(interaction, betAmount) {
         .eq('user_id', userId);
 
     if (updateError) {
-        console.error('Slots deduct error:', updateError);
         await interaction.followUp({
             content: '❌ Database error. Please try again later.',
             ephemeral: true
@@ -92,7 +89,6 @@ async function handleSlotsBet(interaction, betAmount) {
         return;
     }
 
-    // Spin
     const reels = spin();
     const winAmount = calculateWin(reels, betAmount);
 
@@ -120,12 +116,17 @@ async function handleSlotsBet(interaction, betAmount) {
         color: winAmount > 0 ? 0x00FF00 : 0xFF0000,
         title: `🎰 ${interaction.user.displayName}'s Slots`,
         description:
-            `${resultLine}\n\n` +
-            `${winMessage}\n\n` +
+            `${resultLine}\n\n${winMessage}\n\n` +
             `**Balance:** ${finalBalance} tickets 🎫\n` +
             `**Bet:** ${betAmount} tickets`,
         footer: { text: 'Spin again using the buttons below.' }
     };
+
+    // THIS edits the same ephemeral message every time
+    await interaction.editReply({
+        embeds: [embed]
+    });
+}
 
     let game = activeGames.get(gameKey);
 
