@@ -219,5 +219,17 @@ module.exports = {
         SYNC_STATE: 'sync_state',
         USER_XP: 'user_xp'
     },
+
+    whitelistedMessages: {
+    '1494520781244334291': [   // mudae_roll channel ID
+        '1498065129626013757',
+        '1498065147044823290',
+        '1498164237099466886',
+        '1498065165961400467'
+    ],
+    '1494747527801470986': [   // hangman channel ID
+        '1497301619639980263'
+    ]
+}
     CHECKIN_REWARD_TICKETS: 50,
 };
