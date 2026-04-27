@@ -31,39 +31,17 @@ module.exports = async function handleInteraction(interaction) {
         }
         // Buttons
         else if (interaction.isButton()) {
-            if (interaction.customId === 'shop_buy_confirm') {
-                await handleShopPurchase(interaction);
-            } 
-            else if (interaction.customId === 'slots_bet_1') {
-                await handleSlotsBet(interaction, 1);
-            } 
-            else if (interaction.customId === 'slots_bet_5') {
-                await handleSlotsBet(interaction, 5);
-            } 
-            else if (interaction.customId === 'slots_bet_25') {
-                await handleSlotsBet(interaction, 25);
-            } 
-            else if (interaction.customId === 'hangman_start_button') {
-                await startHangmanGame(interaction);
-            } 
-            else if (interaction.customId === 'verify_start') {
-                await handleVerifyStart(interaction);
-            } 
-            else if (interaction.customId === 'checkin_claim') {
-                await handleCheckinClaim(interaction);
-            }
-            else if (interaction.customId === 'cointoss_bet_1') {
-                await handleCoinTossBet(interaction, 1);
-            }
-            else if (interaction.customId === 'cointoss_bet_5') {
-                await handleCoinTossBet(interaction, 5);
-            }
-            else if (interaction.customId === 'cointoss_bet_25') {
-                await handleCoinTossBet(interaction, 25);
-            }
-            else {
-                await giveawayCommand.handleGiveawayButton(interaction);
-            }
+            if (interaction.customId === 'shop_buy_confirm') { await handleShopPurchase(interaction); } 
+            else if (interaction.customId === 'slots_bet_1') { await handleSlotsBet(interaction, 1); } 
+            else if (interaction.customId === 'slots_bet_5') { await handleSlotsBet(interaction, 5); } 
+            else if (interaction.customId === 'slots_bet_25') { await handleSlotsBet(interaction, 25); } 
+            else if (interaction.customId === 'hangman_start_button') { await startHangmanGame(interaction); } 
+            else if (interaction.customId === 'verify_start') { await handleVerifyStart(interaction); } 
+            else if (interaction.customId === 'checkin_claim') { await handleCheckinClaim(interaction); }
+            else if (interaction.customId === 'cointoss_bet_1') { await handleCoinTossBet(interaction, 1); }
+            else if (interaction.customId === 'cointoss_bet_5') { await handleCoinTossBet(interaction, 5); }
+            else if (interaction.customId === 'cointoss_bet_25') { await handleCoinTossBet(interaction, 25); }
+            else { await giveawayCommand.handleGiveawayButton(interaction); }
         }
         // Select menus
         else if (interaction.isStringSelectMenu() && interaction.customId === 'shop_select') {
@@ -77,7 +55,7 @@ module.exports = async function handleInteraction(interaction) {
     }
 };
 
-// ----- Helper functions (unchanged) -----
+// ----- Helper functions -----
 async function handleVerifyStart(interaction) {
     const member = interaction.member;
     const supporterRoleId = helpers.ids.roles.supporter;
@@ -204,10 +182,24 @@ async function handleCheckinClaim(interaction) {
         console.log(`[Checkin] Inserted user ${userId} with tickets ${newBalance}`);
     }
     
+    // --- RESET HANGMAN COOLDOWN ---
+    const { error: cooldownResetError } = await supabase
+        .from(helpers.tables.GAMES_COOLDOWNS)
+        .upsert({
+            discord_id: userId,
+            discord_username: discordUsername,
+            game_type: 'hangman',
+            last_win_at: null,
+            notified_reset: true,
+            updated_at: nowIso
+        }, { onConflict: 'discord_id,game_type' });
+    if (cooldownResetError) console.error('Cooldown reset error:', cooldownResetError);
+    
     await interaction.editReply({
         content: `${helpers.releaseEmojis.VERIFY} **Daily Check-In Successful!**\n\n` +
                  `You received **${ticketAmount} tickets**! New balance: **${newBalance}** 🎫\n` +
-                 `Your Wordle, Hangman, and Trivia cooldowns have been reset.`
+                 `Your Wordle, Hangman, and Trivia cooldowns have been reset.\n` +
+                 `Your Hangman ticket cooldown has also been reset – you can earn another ticket immediately!`
     });
     
     setTimeout(() => cooldownMap.delete(userId), 5000);
