@@ -5,6 +5,7 @@ const helpers = require('../utils/helpers');
 const supabase = require('./supabase');
 const fs = require('fs');
 const path = require('path');
+const h = helpers;
 
 // Load words with optional hints
 const rawLines = fs.readFileSync(path.join(__dirname, '../utility/words.txt'), { encoding: 'utf-8' })
