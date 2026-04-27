@@ -1,19 +1,18 @@
 // services/slotsHandler.js
+
 const helpers = require('../utils/helpers');
 const supabase = require('./supabase');
 
-const activeGames = new Map();
+const activeGames = new Map(); // key: `${userId}-${channelId}` -> { messageId, timeout }
 
-// Symbol frequencies (total 27)
 const SYMBOLS = [
-    '🍒', '🍒', '🍒', '🍒', '🍒', '🍒', '🍒', '🍒', '🍒', '🍒', // 10 cherries
-    '🍋', '🍋', '🍋', '🍋', '🍋', '🍋', '🍋',                     // 7 lemons
-    '🍊', '🍊', '🍊', '🍊', '🍊',                                 // 5 oranges
-    '💎', '💎', '💎',                                             // 3 diamonds
-    '7️⃣', '7️⃣'                                                  // 2 sevens
+    '🍒', '🍒', '🍒', '🍒', '🍒', '🍒', '🍒', '🍒', '🍒', '🍒',
+    '🍋', '🍋', '🍋', '🍋', '🍋', '🍋', '🍋',
+    '🍊', '🍊', '🍊', '🍊', '🍊',
+    '💎', '💎', '💎',
+    '7️⃣', '7️⃣'
 ];
 
-// Triple payouts (multiplier)
 const TRIPLE_PAYOUTS = {
     '🍒': 2,
     '🍋': 3,
@@ -21,9 +20,8 @@ const TRIPLE_PAYOUTS = {
     '💎': 10,
     '7️⃣': 50
 };
-
-// Pair payout (multiplier) – win back 40% of bet
 const PAIR_PAYOUT = 0.8;
+const INACTIVITY_MS = 60 * 1000; // 60 seconds
 
 function spin() {
     return [
@@ -45,27 +43,17 @@ function calculateWin(reels, bet) {
     return 0;
 }
 
-async function getSlotsWebhook(channel) {
-    let webhook = (await channel.fetchWebhooks()).find(w => w.name === 'Slots');
-    if (!webhook) {
-        webhook = await channel.createWebhook({
-            name: 'Slots',
-            avatar: 'https://www.velutinx.com/images/LogoDiscord.png'
-        });
-    }
-    return webhook;
-}
-
 async function handleSlotsBet(interaction, betAmount) {
     const userId = interaction.user.id;
     const channel = interaction.channel;
     const gameKey = `${userId}-${channel.id}`;
 
+    // 1. Acknowledge the button click (no reply yet)
     await interaction.deferUpdate();
 
-    // Fetch tickets using centralized table name
+    // 2. Fetch user tickets
     const { data: userData, error } = await supabase
-        .from(helpers.tables.GAMES_USER_DATA)   // 👈 changed
+        .from(helpers.tables.GAMES_USER_DATA)
         .select('tickets')
         .eq('user_id', userId)
         .maybeSingle();
@@ -77,14 +65,17 @@ async function handleSlotsBet(interaction, betAmount) {
 
     const currentTickets = userData?.tickets || 0;
     if (currentTickets < betAmount) {
-        await interaction.followUp({ content: `❌ You need ${betAmount} tickets, but you have only ${currentTickets}.`, ephemeral: true });
+        await interaction.followUp({
+            content: `❌ You need ${betAmount} tickets, but you have only ${currentTickets}.`,
+            ephemeral: true
+        });
         return;
     }
 
-    // Deduct bet
+    // 3. Deduct bet
     let newBalance = currentTickets - betAmount;
     const { error: updateError } = await supabase
-        .from(helpers.tables.GAMES_USER_DATA)   // 👈 changed
+        .from(helpers.tables.GAMES_USER_DATA)
         .update({ tickets: newBalance })
         .eq('user_id', userId);
     if (updateError) {
@@ -93,7 +84,7 @@ async function handleSlotsBet(interaction, betAmount) {
         return;
     }
 
-    // Spin
+    // 4. Spin
     const reels = spin();
     const winAmount = calculateWin(reels, betAmount);
     let finalBalance = newBalance;
@@ -101,51 +92,59 @@ async function handleSlotsBet(interaction, betAmount) {
     if (winAmount > 0) {
         finalBalance = newBalance + winAmount;
         await supabase
-            .from(helpers.tables.GAMES_USER_DATA)   // 👈 changed
+            .from(helpers.tables.GAMES_USER_DATA)
             .update({ tickets: finalBalance })
             .eq('user_id', userId);
-        if (winAmount >= betAmount) {
-            winMessage = `**You won ${winAmount} tickets!** 🎉`;
-        } else {
-            winMessage = `**You got a small win of ${winAmount} tickets!** 🎲`;
-        }
+        winMessage = winAmount >= betAmount
+            ? `**You won ${winAmount} tickets!** 🎉`
+            : `**You got a small win of ${winAmount} tickets!** 🎲`;
     } else {
         winMessage = '**You lost.** Better luck next time!';
     }
 
+    // 5. Build embed
     const resultLine = `${reels.join(' | ')}`;
     const embed = {
-        color: 0xFFD700,
+        color: winAmount > 0 ? 0x00FF00 : 0xFF0000,
         title: `🎰 ${interaction.user.displayName}'s Slots`,
         description: `${resultLine}\n\n${winMessage}\n\n**Balance:** ${finalBalance} tickets 🎫\n**Bet:** ${betAmount} tickets`,
         footer: { text: 'Auto‑delete after 60s of inactivity' }
     };
 
-    const webhook = await getSlotsWebhook(channel);
+    // 6. Send or edit ephemeral message
     const existing = activeGames.get(gameKey);
-
     if (existing && existing.messageId) {
-        await webhook.editMessage(existing.messageId, { embeds: [embed] });
-        clearTimeout(existing.timeout);
+        // Edit the existing ephemeral message
+        const originalMsg = await interaction.channel.messages.fetch(existing.messageId).catch(() => null);
+        if (originalMsg) {
+            await originalMsg.edit({ embeds: [embed] });
+            clearTimeout(existing.timeout);
+        } else {
+            // Message gone (e.g., deleted) – create a new one
+            const sent = await interaction.followUp({ embeds: [embed], ephemeral: true });
+            activeGames.set(gameKey, { messageId: sent.id, timeout: null });
+            existing = { messageId: sent.id, timeout: null };
+        }
     } else {
-        const sentMsg = await webhook.send({ embeds: [embed], username: 'Slots', avatarURL: 'https://www.velutinx.com/images/LogoDiscord.png' });
-        activeGames.set(gameKey, { messageId: sentMsg.id, webhook, timeout: null });
+        // First spin – send a new ephemeral message
+        const sent = await interaction.followUp({ embeds: [embed], ephemeral: true });
+        activeGames.set(gameKey, { messageId: sent.id, timeout: null });
     }
 
-    const timeout = setTimeout(async () => {
+    // 7. Set inactivity auto‑delete
+    const newTimeout = setTimeout(async () => {
         const game = activeGames.get(gameKey);
-        if (game && game.messageId && game.webhook) {
+        if (game && game.messageId) {
             try {
-                await game.webhook.deleteMessage(game.messageId);
-            } catch (err) {
-                console.error('Failed to delete slot message:', err.message);
-            }
+                const msg = await interaction.channel.messages.fetch(game.messageId);
+                await msg.delete();
+            } catch (err) { /* already deleted */ }
             activeGames.delete(gameKey);
         }
-    }, 60 * 1000);
+    }, INACTIVITY_MS);
 
     const updatedGame = activeGames.get(gameKey);
-    updatedGame.timeout = timeout;
+    updatedGame.timeout = newTimeout;
     activeGames.set(gameKey, updatedGame);
 }
 
