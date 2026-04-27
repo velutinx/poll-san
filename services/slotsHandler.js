@@ -2,7 +2,7 @@
 const helpers = require('../utils/helpers');
 const supabase = require('./supabase');
 
-const activeGames = new Map(); // key: `${userId}-${channelId}` -> { messageId }
+const activeGames = new Map(); // key: `${userId}-${channelId}` -> { message }
 
 const SYMBOLS = [
     '🍒', '🍒', '🍒', '🍒', '🍒', '🍒', '🍒', '🍒', '🍒', '🍒',
@@ -46,7 +46,6 @@ async function handleSlotsBet(interaction, betAmount) {
     const channel = interaction.channel;
     const gameKey = `${userId}-${channel.id}`;
 
-    // Acknowledge button click
     await interaction.deferUpdate();
 
     // Fetch tickets
@@ -100,7 +99,6 @@ async function handleSlotsBet(interaction, betAmount) {
         winMessage = '**You lost.** Better luck next time!';
     }
 
-    // Build embed
     const resultLine = `${reels.join(' | ')}`;
     const embed = {
         color: winAmount > 0 ? 0x00FF00 : 0xFF0000,
@@ -109,22 +107,14 @@ async function handleSlotsBet(interaction, betAmount) {
         footer: { text: 'Spin again using the buttons below.' }
     };
 
-    // Check if we already have a message for this user in this channel
     const existing = activeGames.get(gameKey);
-    if (existing && existing.messageId) {
+    if (existing && existing.message) {
         // Edit the existing ephemeral message
-        try {
-            const msg = await channel.messages.fetch(existing.messageId);
-            await msg.edit({ embeds: [embed] });
-        } catch (err) {
-            // Message gone, create new one
-            const sent = await interaction.followUp({ embeds: [embed], ephemeral: true });
-            activeGames.set(gameKey, { messageId: sent.id });
-        }
+        await existing.message.edit({ embeds: [embed] });
     } else {
-        // First spin – create new ephemeral message
-        const sent = await interaction.followUp({ embeds: [embed], ephemeral: true });
-        activeGames.set(gameKey, { messageId: sent.id });
+        // First spin – send new ephemeral message
+        const sentMsg = await interaction.followUp({ embeds: [embed], ephemeral: true });
+        activeGames.set(gameKey, { message: sentMsg });
     }
 }
 
