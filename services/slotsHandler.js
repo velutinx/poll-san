@@ -81,7 +81,7 @@ async function handleSlotsBet(interaction, betAmount) {
         return;
     }
 
-    // Spin
+    // Spin and win calculation
     const reels = spin();
     const winAmount = calculateWin(reels, betAmount);
     let finalBalance = newBalance;
@@ -107,12 +107,13 @@ async function handleSlotsBet(interaction, betAmount) {
         footer: { text: 'Spin again using the buttons below.' }
     };
 
-    const existing = activeGames.get(gameKey);
-    if (existing && existing.message) {
-        // Edit the existing ephemeral message
-        await existing.message.edit({ embeds: [embed] });
+    // Get or create ephemeral message
+    let game = activeGames.get(gameKey);
+    if (game && game.message) {
+        // Edit existing message
+        await game.message.edit({ embeds: [embed] });
     } else {
-        // First spin – send new ephemeral message
+        // Send new ephemeral message
         const sentMsg = await interaction.followUp({ embeds: [embed], ephemeral: true });
         activeGames.set(gameKey, { message: sentMsg });
     }
