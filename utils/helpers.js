@@ -195,7 +195,7 @@ module.exports = {
         pollImages: "https://www.velutinx.com/images/poll/"
     },
 
-        // ==================== SUPABASE TABLES ====================
+    // ==================== SUPABASE TABLES ====================
     tables: {
         GAMES_COOLDOWNS: 'games_cooldowns',
         GAMES_MUDAE_CLAIMS: 'games_mudae_claims',
@@ -215,21 +215,25 @@ module.exports = {
         PRICE_KEYS: 'price_keys',
         PRICE_TIERS: 'price_tiers',
         SERVER_SETTINGS: 'server_settings',
-        SUCCESSSS: 'successss',   // keep as is, original name
+        SUCCESSSS: 'successss',
         SYNC_STATE: 'sync_state',
         USER_XP: 'user_xp'
     },
 
+    // ==================== WHITELISTED MESSAGE IDs (per channel) ====================
     whitelistedMessages: {
-    '1494520781244334291': [   // mudae_roll channel ID
-        '1498065129626013757',
-        '1498065147044823290',
-        '1498164237099466886',
-        '1498065165961400467'
-    ],
-    '1494747527801470986': [   // hangman channel ID
-        '1497301619639980263'
-    ]
-}
+        // Mudae roll channel (cleanup handled by mudaeMessageHandler.js)
+        '1494520781244334291': [   // helpers.ids.channels.mudae_roll
+            '1498065129626013757',
+            '1498065147044823290',
+            '1498164237099466886',
+            '1498065165961400467'
+        ],
+        // Hangman game channel
+        '1494747527801470986': [   // helpers.games.hangman.channelId
+            '1497301619639980263'
+        ]
+    },
+
     CHECKIN_REWARD_TICKETS: 50,
 };
