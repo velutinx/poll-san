@@ -30,7 +30,7 @@ function resetInactivityTimer(channel) {
             const toDelete = messages.filter(m => !WHITELISTED_MESSAGE_IDS.has(m.id));
             if (toDelete.size === 0) return;
             await channel.bulkDelete(toDelete);
-            console.log(`🧹 Purged ${toDelete.size} messages from ${channel.name} due to inactivity.`);
+        //    console.log(`🧹 Purged ${toDelete.size} messages from ${channel.name} due to inactivity.`);
             // Also clear per‑message timeouts for deleted messages
             for (const msgId of toDelete.keys()) {
                 if (activeTimeouts.has(msgId)) {
@@ -145,7 +145,7 @@ function initMudaeMessageHandler(client) {
         // Add VERIFY reaction
         try {
             await message.react(helpers.releaseEmojis.VERIFY);
-            console.log(`✅ Added VERIFY to ${character} (${series || 'series unknown'})`);
+    //        console.log(`✅ Added VERIFY to ${character} (${series || 'series unknown'})`);
         } catch (err) {
             console.error(`Failed to react: ${err.message}`);
         }
