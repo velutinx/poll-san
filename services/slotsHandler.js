@@ -1,5 +1,4 @@
 // services/slotsHandler.js
-
 const helpers = require('../utils/helpers');
 const supabase = require('./supabase');
 
@@ -21,7 +20,7 @@ const TRIPLE_PAYOUTS = {
     '7️⃣': 50
 };
 const PAIR_PAYOUT = 0.8;
-const INACTIVITY_MS = 60 * 1000; // 60 seconds
+const INACTIVITY_MS = 60 * 1000;
 
 function spin() {
     return [
@@ -48,10 +47,10 @@ async function handleSlotsBet(interaction, betAmount) {
     const channel = interaction.channel;
     const gameKey = `${userId}-${channel.id}`;
 
-    // 1. Acknowledge the button click (no reply yet)
+    // 1. Acknowledge button click
     await interaction.deferUpdate();
 
-    // 2. Fetch user tickets
+    // 2. Fetch and update tickets
     const { data: userData, error } = await supabase
         .from(helpers.tables.GAMES_USER_DATA)
         .select('tickets')
@@ -72,7 +71,6 @@ async function handleSlotsBet(interaction, betAmount) {
         return;
     }
 
-    // 3. Deduct bet
     let newBalance = currentTickets - betAmount;
     const { error: updateError } = await supabase
         .from(helpers.tables.GAMES_USER_DATA)
@@ -84,7 +82,7 @@ async function handleSlotsBet(interaction, betAmount) {
         return;
     }
 
-    // 4. Spin
+    // 3. Spin and calculate win
     const reels = spin();
     const winAmount = calculateWin(reels, betAmount);
     let finalBalance = newBalance;
@@ -102,7 +100,7 @@ async function handleSlotsBet(interaction, betAmount) {
         winMessage = '**You lost.** Better luck next time!';
     }
 
-    // 5. Build embed
+    // 4. Build embed
     const resultLine = `${reels.join(' | ')}`;
     const embed = {
         color: winAmount > 0 ? 0x00FF00 : 0xFF0000,
@@ -111,41 +109,40 @@ async function handleSlotsBet(interaction, betAmount) {
         footer: { text: 'Auto‑delete after 60s of inactivity' }
     };
 
-    // 6. Send or edit ephemeral message
-    const existing = activeGames.get(gameKey);
-    if (existing && existing.messageId) {
-        // Edit the existing ephemeral message
-        const originalMsg = await interaction.channel.messages.fetch(existing.messageId).catch(() => null);
-        if (originalMsg) {
-            await originalMsg.edit({ embeds: [embed] });
-            clearTimeout(existing.timeout);
-        } else {
-            // Message gone (e.g., deleted) – create a new one
+    // 5. Send or edit existing ephemeral message
+    let game = activeGames.get(gameKey);
+    if (game && game.messageId) {
+        // Edit existing message
+        try {
+            const msg = await channel.messages.fetch(game.messageId);
+            await msg.edit({ embeds: [embed] });
+            // Clear old timeout
+            if (game.timeout) clearTimeout(game.timeout);
+        } catch (err) {
+            // Message missing – create new one
             const sent = await interaction.followUp({ embeds: [embed], ephemeral: true });
-            activeGames.set(gameKey, { messageId: sent.id, timeout: null });
-            existing = { messageId: sent.id, timeout: null };
+            game = { messageId: sent.id, timeout: null };
         }
     } else {
-        // First spin – send a new ephemeral message
+        // First spin – create new ephemeral message
         const sent = await interaction.followUp({ embeds: [embed], ephemeral: true });
-        activeGames.set(gameKey, { messageId: sent.id, timeout: null });
+        game = { messageId: sent.id, timeout: null };
     }
 
-    // 7. Set inactivity auto‑delete
-    const newTimeout = setTimeout(async () => {
-        const game = activeGames.get(gameKey);
-        if (game && game.messageId) {
+    // 6. Set new timeout for auto‑delete
+    const timeout = setTimeout(async () => {
+        const currentGame = activeGames.get(gameKey);
+        if (currentGame && currentGame.messageId) {
             try {
-                const msg = await interaction.channel.messages.fetch(game.messageId);
+                const msg = await channel.messages.fetch(currentGame.messageId);
                 await msg.delete();
-            } catch (err) { /* already deleted */ }
+            } catch (err) { /* ignore */ }
             activeGames.delete(gameKey);
         }
     }, INACTIVITY_MS);
 
-    const updatedGame = activeGames.get(gameKey);
-    updatedGame.timeout = newTimeout;
-    activeGames.set(gameKey, updatedGame);
+    game.timeout = timeout;
+    activeGames.set(gameKey, game);
 }
 
 module.exports = { handleSlotsBet };
