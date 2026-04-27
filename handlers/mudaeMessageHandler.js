@@ -4,16 +4,16 @@ const supabase = require('../services/supabase');
 
 const activeTimeouts = new Map();
 const pendingClaims = new Map(); // characterName -> { series, messageId, timestamp }
-const ROLL_LIFETIME_MS = 60 * 1000; // 60 seconds
-const CLAIM_LOOKUP_TIMEOUT_MS = 2 * 60 * 1000;
+const ROLL_LIFETIME_MS = 5 * 60 * 1000; // 60 seconds
+const CLAIM_LOOKUP_TIMEOUT_MS = 5 * 60 * 1000;
 
 // ========== WHITELIST ==========
 // Messages with these IDs will NEVER be deleted.
 // Add real message IDs here (from Mudae bot or users) – placeholders for now.
 const WHITELISTED_MESSAGE_IDS = new Set([
-    '1380051214766444617',
-    '432610292342587392',
+    '1498065129626013757',
     '1498065147044823290',
+    '1498065148693184532',
     '1498065165961400467'
 ]);
 
@@ -56,7 +56,7 @@ function initMudaeMessageHandler(client) {
         const timeout = setTimeout(async () => {
             try {
                 await message.delete();
-                console.log(`🗑️ Deleted message ${message.id} from ${message.author.tag}`);
+      //          console.log(`🗑️ Deleted message ${message.id} from ${message.author.tag}`);
             } catch (err) {
                 if (err.code !== 10008) console.error(`Failed to delete message ${message.id}:`, err.message);
             } finally {
