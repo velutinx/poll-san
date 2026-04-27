@@ -11,12 +11,7 @@ const CLAIM_LOOKUP_TIMEOUT_MS = 1 * 60 * 1000;
 const pendingClaims = new Map(); // characterName -> { series, messageId, timestamp }
 
 // Whitelist: messages that will never be deleted
-const WHITELISTED_MESSAGE_IDS = new Set([
-    '1498065129626013757',
-    '1498065147044823290',
-    '1498193854417993833',
-    '1498193867034591252'
-]);
+const WHITELISTED_MESSAGE_IDS = new Set(helpers.whitelistedMessages[helpers.ids.channels.mudae_roll] || []);
 
 /**
  * Reset the channel inactivity timer.
