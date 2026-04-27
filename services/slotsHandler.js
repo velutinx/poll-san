@@ -1,9 +1,8 @@
 // services/slotsHandler.js
-
 const helpers = require('../utils/helpers');
 const supabase = require('./supabase');
 
-const activeGames = new Map(); // key: `${userId}-${channelId}` -> { message }
+const activeGames = new Map(); // key: `${userId}-${channelId}` -> { messageId }
 
 const SYMBOLS = [
     '🍒', '🍒', '🍒', '🍒', '🍒', '🍒', '🍒', '🍒', '🍒', '🍒',
@@ -20,7 +19,6 @@ const TRIPLE_PAYOUTS = {
     '💎': 10,
     '7️⃣': 50
 };
-
 const PAIR_PAYOUT = 0.8;
 
 function spin() {
@@ -33,21 +31,20 @@ function spin() {
 
 function calculateWin(reels, bet) {
     const [a, b, c] = reels;
-
     if (a === b && b === c) {
         const multiplier = TRIPLE_PAYOUTS[a];
         if (multiplier) return Math.floor(bet * multiplier);
     }
-
     if (a === b || b === c || a === c) {
         return Math.floor(bet * PAIR_PAYOUT);
     }
-
     return 0;
 }
 
 async function handleSlotsBet(interaction, betAmount) {
     const userId = interaction.user.id;
+    const channel = interaction.channel;
+    const gameKey = `${userId}-${channel.id}`;
 
     await interaction.deferUpdate();
 
@@ -64,7 +61,6 @@ async function handleSlotsBet(interaction, betAmount) {
     }
 
     const currentTickets = userData?.tickets || 0;
-
     if (currentTickets < betAmount) {
         await interaction.followUp({
             content: `❌ You need ${betAmount} tickets, but you have only ${currentTickets}.`,
@@ -75,34 +71,27 @@ async function handleSlotsBet(interaction, betAmount) {
 
     // Deduct bet
     let newBalance = currentTickets - betAmount;
-
     const { error: updateError } = await supabase
         .from(helpers.tables.GAMES_USER_DATA)
         .update({ tickets: newBalance })
         .eq('user_id', userId);
-
     if (updateError) {
-        await interaction.followUp({
-            content: '❌ Database error. Please try again later.',
-            ephemeral: true
-        });
+        console.error('Slots deduct error:', updateError);
+        await interaction.followUp({ content: '❌ Database error. Please try again later.', ephemeral: true });
         return;
     }
 
+    // Spin and win
     const reels = spin();
     const winAmount = calculateWin(reels, betAmount);
-
     let finalBalance = newBalance;
     let winMessage = '';
-
     if (winAmount > 0) {
         finalBalance = newBalance + winAmount;
-
         await supabase
             .from(helpers.tables.GAMES_USER_DATA)
             .update({ tickets: finalBalance })
             .eq('user_id', userId);
-
         winMessage = winAmount >= betAmount
             ? `**You won ${winAmount} tickets!** 🎉`
             : `**You got a small win of ${winAmount} tickets!** 🎲`;
@@ -111,45 +100,42 @@ async function handleSlotsBet(interaction, betAmount) {
     }
 
     const resultLine = `${reels.join(' | ')}`;
-
     const embed = {
         color: winAmount > 0 ? 0x00FF00 : 0xFF0000,
         title: `🎰 ${interaction.user.displayName}'s Slots`,
-        description:
-            `${resultLine}\n\n${winMessage}\n\n` +
-            `**Balance:** ${finalBalance} tickets 🎫\n` +
-            `**Bet:** ${betAmount} tickets`,
+        description: `${resultLine}\n\n${winMessage}\n\n**Balance:** ${finalBalance} tickets 🎫\n**Bet:** ${betAmount} tickets`,
         footer: { text: 'Spin again using the buttons below.' }
     };
 
-    // THIS edits the same ephemeral message every time
-    await interaction.editReply({
-        embeds: [embed]
-    });
-}
+    let messageUpdated = false;
+    const game = activeGames.get(gameKey);
 
-    let game = activeGames.get(gameKey);
-
-    // EDIT existing ephemeral message
-    if (game?.message) {
+    if (game?.messageId) {
         try {
-            await game.message.edit({
-                embeds: [embed]
+            // Fetch a fresh message reference every time (more reliable than cached object)
+            const msg = await interaction.channel.messages.fetch(game.messageId).catch((e) => {
+                if (e?.code === 10008) { // Unknown Message
+                    return null;
+                }
+                throw e; // rethrow other errors
             });
-            return;
+
+            if (msg) {
+                await msg.edit({ embeds: [embed] });
+                messageUpdated = true;
+            } else {
+                activeGames.delete(gameKey);
+            }
         } catch (err) {
+            console.error('Error editing slot message:', err);
             activeGames.delete(gameKey);
         }
     }
 
-    // CREATE ephemeral message ONCE
-    const msg = await interaction.followUp({
-        embeds: [embed],
-        ephemeral: true,
-        fetchReply: true
-    });
-
-    activeGames.set(gameKey, { message: msg });
+    if (!messageUpdated) {
+        const sentMsg = await interaction.followUp({ embeds: [embed], ephemeral: true });
+        activeGames.set(gameKey, { messageId: sentMsg.id });
+    }
 }
 
 module.exports = { handleSlotsBet };
