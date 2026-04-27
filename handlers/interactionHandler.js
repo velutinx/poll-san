@@ -8,6 +8,9 @@ const { startHangmanGame } = require('../services/hangmanGame');
 const { handleCoinTossBet } = require('../services/coinTossHandler');
 const { handleShopSelect, handleShopPurchase } = require('../services/shopHandler');
 
+// Store checkin sessions to update the same ephemeral message
+const checkinSessions = new Map(); // key: userId -> { interaction, messageId, timestamp }
+
 module.exports = async function handleInteraction(interaction) {
     try {
         // Chat input commands
@@ -108,19 +111,37 @@ async function handleVerifyStart(interaction) {
 
 async function handleCheckinClaim(interaction) {
     const userId = interaction.user.id;
+    const gameKey = userId;
     
-    // Rate limit (5 seconds)
+    // Rate limit (2 seconds)
     const cooldownMap = global.checkinCooldown || new Map();
     if (!global.checkinCooldown) global.checkinCooldown = cooldownMap;
     const lastClick = cooldownMap.get(userId);
-    if (lastClick && Date.now() - lastClick < 5000) {
+    if (lastClick && Date.now() - lastClick < 2000) {
         return interaction.reply({
-            content: '⏳ You’re clicking too fast! Please wait a few seconds.',
+            content: '⏳ You’re clicking too fast! Please wait a moment.',
             flags: 64
         });
     }
     cooldownMap.set(userId, Date.now());
-    await interaction.deferReply({ flags: 64 });
+
+    // 1. Decide to deferUpdate (edit existing) or deferReply (create new)
+    let existingSession = checkinSessions.get(gameKey);
+    let messageUpdated = false;
+
+    if (existingSession && (Date.now() - existingSession.timestamp < 14 * 60 * 1000)) {
+        try {
+            await interaction.deferUpdate();
+            messageUpdated = true;
+        } catch (err) {
+            // Ignore if webhook/interaction expired, handled below
+            checkinSessions.delete(gameKey);
+        }
+    }
+
+    if (!messageUpdated) {
+        await interaction.deferReply({ flags: 64 });
+    }
     
     // Get user data
     let { data: userData, error } = await supabase
@@ -148,80 +169,87 @@ async function handleCheckinClaim(interaction) {
         }
     }
     
+    let finalContent = '';
+
     if (!canClaim) {
-        cooldownMap.delete(userId);
-        return interaction.editReply({
-            content: `⏳ You already claimed your daily reward! Come back in **${timeLeft}**.`
-        });
-    }
-    
-    const ticketAmount = helpers.CHECKIN_REWARD_TICKETS;
-    const currentTickets = userData?.tickets || 0;
-    const newBalance = currentTickets + ticketAmount;
-    const nowIso = now.toISOString();
-    const discordUsername = interaction.user.tag;
-    const displayName = interaction.member?.displayName || interaction.user.globalName || interaction.user.username;
-    
-    if (userData) {
-        const { error: updateError } = await supabase
-            .from(helpers.tables.GAMES_USER_DATA)
-            .update({
-                tickets: newBalance,
-                last_checkin: nowIso,
-                wordle_last_played: null,
-                hangman_last_played: null,
-                trivia_last_played: null,
-                updated_at: nowIso,
-                discord_username: discordUsername,
-                display_name: displayName,
-                reminder_sent: false
-            })
-            .eq('user_id', userId);
-        if (updateError) {
-            console.error('Update error:', updateError);
-            return interaction.editReply({ content: '❌ Database error. Please try again later.' });
-        }
-        console.log(`[Checkin] Updated user ${userId} tickets: ${currentTickets} → ${newBalance}`);
+        finalContent = `⏳ You already claimed your daily reward! Come back in **${timeLeft}**.`;
     } else {
-        const { error: insertError } = await supabase
-            .from(helpers.tables.GAMES_USER_DATA)
-            .insert({
-                user_id: userId,
-                tickets: newBalance,
-                last_checkin: nowIso,
-                wordle_last_played: null,
-                hangman_last_played: null,
-                trivia_last_played: null,
-                updated_at: nowIso,
-                discord_username: discordUsername,
-                display_name: displayName,
-                reminder_sent: false
-            });
-        if (insertError) {
-            console.error('Insert error:', insertError);
-            return interaction.editReply({ content: '❌ Database error. Please try again later.' });
+        const ticketAmount = helpers.CHECKIN_REWARD_TICKETS;
+        const currentTickets = userData?.tickets || 0;
+        const newBalance = currentTickets + ticketAmount;
+        const nowIso = now.toISOString();
+        const discordUsername = interaction.user.tag;
+        const displayName = interaction.member?.displayName || interaction.user.globalName || interaction.user.username;
+        
+        const updatePayload = {
+            tickets: newBalance,
+            last_checkin: nowIso,
+            wordle_last_played: null,
+            hangman_last_played: null,
+            trivia_last_played: null,
+            updated_at: nowIso,
+            discord_username: discordUsername,
+            display_name: displayName,
+            reminder_sent: false
+        };
+
+        if (userData) {
+            const { error: updateError } = await supabase
+                .from(helpers.tables.GAMES_USER_DATA)
+                .update(updatePayload)
+                .eq('user_id', userId);
+            if (updateError) {
+                console.error('Update error:', updateError);
+                finalContent = '❌ Database error. Please try again later.';
+            } else {
+                console.log(`[Checkin] Updated user ${userId} tickets: ${currentTickets} → ${newBalance}`);
+            }
+        } else {
+            const { error: insertError } = await supabase
+                .from(helpers.tables.GAMES_USER_DATA)
+                .insert({ user_id: userId, ...updatePayload });
+            if (insertError) {
+                console.error('Insert error:', insertError);
+                finalContent = '❌ Database error. Please try again later.';
+            } else {
+                console.log(`[Checkin] Inserted user ${userId} with tickets ${newBalance}`);
+            }
         }
-        console.log(`[Checkin] Inserted user ${userId} with tickets ${newBalance}`);
+        
+        // --- RESET HANGMAN COOLDOWN ---
+        if (!finalContent.includes('Database error')) {
+            const { error: deleteError } = await supabase
+                .from(helpers.tables.GAMES_COOLDOWNS)
+                .delete()
+                .eq('discord_id', userId)
+                .eq('game_type', 'hangman');
+            if (deleteError) {
+                console.error('Cooldown delete error:', deleteError);
+            } else {
+                console.log(`[Checkin] Deleted hangman cooldown for ${userId}`);
+            }
+
+            finalContent = `${helpers.releaseEmojis?.VERIFY || '✅'} **Daily Check-In Successful!**\n\n` +
+                           `You received **${ticketAmount} tickets**! New balance: **${newBalance}** 🎫\n` +
+                           `Your Wordle, Hangman, and Trivia cooldowns have been reset.\n` +
+                           `Your Hangman ticket cooldown has also been reset – you can earn another ticket immediately!`;
+        }
     }
     
-    // --- RESET HANGMAN COOLDOWN by deleting the row (avoids NOT NULL constraint) ---
-    const { error: deleteError } = await supabase
-        .from(helpers.tables.GAMES_COOLDOWNS)
-        .delete()
-        .eq('discord_id', userId)
-        .eq('game_type', 'hangman');
-    if (deleteError) {
-        console.error('Cooldown delete error:', deleteError);
+    // 2. Final Execution: Edit vs FollowUp/EditReply
+    if (messageUpdated) {
+        try {
+            await existingSession.interaction.webhook.editMessage(existingSession.messageId, { content: finalContent });
+        } catch (err) {
+            // Fallback
+            const msg = await interaction.followUp({ content: finalContent, flags: 64, fetchReply: true });
+            checkinSessions.set(gameKey, { interaction, messageId: msg.id, timestamp: Date.now() });
+        }
     } else {
-        console.log(`[Checkin] Deleted hangman cooldown for ${userId}`);
+        // Because we used deferReply earlier, we use editReply here
+        const msg = await interaction.editReply({ content: finalContent });
+        checkinSessions.set(gameKey, { interaction, messageId: msg.id, timestamp: Date.now() });
     }
     
-    await interaction.editReply({
-        content: `${helpers.releaseEmojis.VERIFY} **Daily Check-In Successful!**\n\n` +
-                 `You received **${ticketAmount} tickets**! New balance: **${newBalance}** 🎫\n` +
-                 `Your Wordle, Hangman, and Trivia cooldowns have been reset.\n` +
-                 `Your Hangman ticket cooldown has also been reset – you can earn another ticket immediately!`
-    });
-    
-    setTimeout(() => cooldownMap.delete(userId), 5000);
+    setTimeout(() => cooldownMap.delete(userId), 2000);
 }
