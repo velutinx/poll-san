@@ -81,7 +81,7 @@ async function handleSlotsBet(interaction, betAmount) {
         return;
     }
 
-    // Spin and win calculation
+    // Spin and win
     const reels = spin();
     const winAmount = calculateWin(reels, betAmount);
     let finalBalance = newBalance;
@@ -107,13 +107,25 @@ async function handleSlotsBet(interaction, betAmount) {
         footer: { text: 'Spin again using the buttons below.' }
     };
 
-    // Get or create ephemeral message
     let game = activeGames.get(gameKey);
+    let messageUpdated = false;
+
     if (game && game.message) {
-        // Edit existing message
-        await game.message.edit({ embeds: [embed] });
-    } else {
-        // Send new ephemeral message
+        try {
+            await game.message.edit({ embeds: [embed] });
+            messageUpdated = true;
+        } catch (err) {
+            // If the message doesn't exist (e.g., dismissed or bot restart), recreate it
+            if (err.code === 10008 || err.status === 404) {
+                console.log(`Slot message ${game.message.id} not found, creating new one`);
+                activeGames.delete(gameKey);
+            } else {
+                console.error('Error editing slot message:', err);
+            }
+        }
+    }
+
+    if (!messageUpdated) {
         const sentMsg = await interaction.followUp({ embeds: [embed], ephemeral: true });
         activeGames.set(gameKey, { message: sentMsg });
     }
