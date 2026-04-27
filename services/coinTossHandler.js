@@ -3,19 +3,8 @@ const { EmbedBuilder } = require('discord.js');
 const helpers = require('../utils/helpers');
 const supabase = require('./supabase');
 
-const activeGames = new Map(); // key: `${userId}-${channelId}`
-const COOLDOWN_MS = 60 * 1000; // 60 seconds inactivity auto-delete
-
-async function getCoinTossWebhook(channel) {
-    let webhook = (await channel.fetchWebhooks()).find(w => w.name === 'Coin Toss');
-    if (!webhook) {
-        webhook = await channel.createWebhook({
-            name: 'Coin Toss',
-            avatar: 'https://www.velutinx.com/images/LogoDiscord.png'
-        });
-    }
-    return webhook;
-}
+// key: `${userId}-${channelId}` -> { interaction, messageId, timestamp }
+const activeGames = new Map(); 
 
 function tossCoin() {
     const random = Math.random();
@@ -28,6 +17,7 @@ async function handleCoinTossBet(interaction, betAmount) {
     const channel = interaction.channel;
     const gameKey = `${userId}-${channel.id}`;
 
+    // 1. Acknowledge the static button click
     await interaction.deferUpdate();
 
     // Fetch user tickets
@@ -56,6 +46,7 @@ async function handleCoinTossBet(interaction, betAmount) {
         .from(helpers.tables.GAMES_USER_DATA)
         .update({ tickets: newBalance })
         .eq('user_id', userId);
+
     if (updateError) {
         console.error('Coin toss deduct error:', updateError);
         return interaction.followUp({ content: '❌ Database error. Please try again later.', ephemeral: true });
@@ -67,14 +58,13 @@ async function handleCoinTossBet(interaction, betAmount) {
     let winMessage = '';
 
     if (isHeads) {
-        // Win: profit = bet amount (even money)
-        winAmount = betAmount * 2;   // because we already deducted bet, adding 2×bet gives net +bet
+        winAmount = betAmount * 2;
         newBalance += winAmount;
         await supabase
             .from(helpers.tables.GAMES_USER_DATA)
             .update({ tickets: newBalance })
             .eq('user_id', userId);
-        winMessage = `**You won ${betAmount} tickets!** 🎉`;   // show profit
+        winMessage = `**You won ${betAmount} tickets!** 🎉`;
     } else {
         winMessage = '**You lost.** Better luck next time!';
     }
@@ -93,38 +83,36 @@ async function handleCoinTossBet(interaction, betAmount) {
             `**Bet:** ${betAmount} tickets`
         )
         .setImage(imageUrl)
-        .setFooter({ text: 'Auto‑delete after 60s of inactivity' });
+        .setFooter({ text: 'This message will update on your next toss.' });
 
-    const webhook = await getCoinTossWebhook(channel);
-    const existing = activeGames.get(gameKey);
+    let game = activeGames.get(gameKey);
+    let messageUpdated = false;
 
-    if (existing && existing.messageId) {
-        await webhook.editMessage(existing.messageId, { embeds: [embed] });
-        clearTimeout(existing.timeout);
-    } else {
-        const sentMsg = await webhook.send({
-            embeds: [embed],
-            username: 'Coin Toss',
-            avatarURL: 'https://www.velutinx.com/images/LogoDiscord.png'
-        });
-        activeGames.set(gameKey, { messageId: sentMsg.id, webhook, timeout: null });
-    }
-
-    const timeout = setTimeout(async () => {
-        const game = activeGames.get(gameKey);
-        if (game && game.messageId && game.webhook) {
-            try {
-                await game.webhook.deleteMessage(game.messageId);
-            } catch (err) {
-                console.error('Failed to delete coin toss message:', err.message);
-            }
+    // 2. Try to edit the existing ephemeral message if it's less than 14 mins old
+    if (game && (Date.now() - game.timestamp < 14 * 60 * 1000)) {
+        try {
+            await game.interaction.webhook.editMessage(game.messageId, { embeds: [embed] });
+            messageUpdated = true;
+        } catch (err) {
+            console.log('Could not edit old ephemeral toss, sending new one.');
             activeGames.delete(gameKey);
         }
-    }, COOLDOWN_MS);
+    }
 
-    const updatedGame = activeGames.get(gameKey);
-    updatedGame.timeout = timeout;
-    activeGames.set(gameKey, updatedGame);
+    // 3. If no existing message or edit failed, send a new ephemeral one
+    if (!messageUpdated) {
+        const sentMsg = await interaction.followUp({ 
+            embeds: [embed], 
+            ephemeral: true, 
+            fetchReply: true 
+        });
+
+        activeGames.set(gameKey, {
+            interaction: interaction,
+            messageId: sentMsg.id,
+            timestamp: Date.now()
+        });
+    }
 }
 
 module.exports = { handleCoinTossBet };
