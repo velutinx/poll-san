@@ -202,7 +202,7 @@ async function handleCheckinClaim(interaction) {
                 console.error('Update error:', updateError);
                 finalContent = '❌ Database error. Please try again later.';
             } else {
-                console.log(`[Checkin] Updated user ${userId} tickets: ${currentTickets} → ${newBalance}`);
+           //     console.log(`[Checkin] Updated user ${userId} tickets: ${currentTickets} → ${newBalance}`);
             }
         } else {
             const { error: insertError } = await supabase
@@ -212,7 +212,7 @@ async function handleCheckinClaim(interaction) {
                 console.error('Insert error:', insertError);
                 finalContent = '❌ Database error. Please try again later.';
             } else {
-                console.log(`[Checkin] Inserted user ${userId} with tickets ${newBalance}`);
+       ///         console.log(`[Checkin] Inserted user ${userId} with tickets ${newBalance}`);
             }
         }
         
