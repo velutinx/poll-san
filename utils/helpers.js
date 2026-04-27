@@ -223,17 +223,17 @@ module.exports = {
     // ==================== WHITELISTED MESSAGE IDs (per channel) ====================
     whitelistedMessages: {
         // Mudae roll channel (cleanup handled by mudaeMessageHandler.js)
-        '1494520781244334291': [   // helpers.ids.channels.mudae_roll
+        '1494520781244334291': [
             '1498065129626013757',
             '1498065147044823290',
             '1498164237099466886',
             '1498065165961400467'
         ],
         // Hangman game channel
-        '1494747527801470986': [   // helpers.games.hangman.channelId
+        '1494747527801470986': [
             '1497301619639980263'
         ]
     },
 
-    CHECKIN_REWARD_TICKETS: 50,
+    CHECKIN_REWARD_TICKETS: 50
 };
