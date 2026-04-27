@@ -14,8 +14,8 @@ const pendingClaims = new Map(); // characterName -> { series, messageId, timest
 const WHITELISTED_MESSAGE_IDS = new Set([
     '1498065129626013757',
     '1498065147044823290',
-    '1498164237099466886',
-    '1498065165961400467'
+    '1498193854417993833',
+    '1498193867034591252'
 ]);
 
 /**
