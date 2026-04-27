@@ -100,8 +100,9 @@ client.once(Events.ClientReady, async (c) => {
     }, 3600000);
 
 // Hangman channel – use centralised whitelist
-const hangmanChannelId = helpers.games.hangman.channelId;  // 1494747527801470986
-const hangmanWhitelist = helpers.whitelistedMessages[hangmanChannelId] || [];
+const hangmanChannelId = h.games.hangman.channelId;
+const hangmanWhitelist = h.whitelistedMessages[hangmanChannelId] || [];
+    
 initChannelCleaner(client, hangmanChannelId, hangmanWhitelist);
     
     // Auto-resume active polls – using centralized table name
