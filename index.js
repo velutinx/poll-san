@@ -26,7 +26,10 @@ const { handleTriviaMessage, processEndOfDayAwards } = require('./services/trivi
 const handleInteraction = require('./handlers/interactionHandler');
 const verification = require('./events/verification');
 const initMudaeMessageHandler = require('./handlers/mudaeMessageHandler');
-const h = require('./utils/helpers');   // 👈 import helpers
+const h = require('./utils/helpers');
+const initChannelCleaner = require('./handlers/channelCleaner');
+
+
 
 // ==================== DISCORD CLIENT SETUP ====================
 const client = new Client({
@@ -96,9 +99,14 @@ client.once(Events.ClientReady, async (c) => {
         processEndOfDayAwards(client).catch(err => console.error('Trivia end-of-day awards error:', err));
     }, 3600000);
 
+// Hangman channel – use centralised whitelist
+const hangmanChannelId = helpers.games.hangman.channelId;  // 1494747527801470986
+const hangmanWhitelist = helpers.whitelistedMessages[hangmanChannelId] || [];
+initChannelCleaner(client, hangmanChannelId, hangmanWhitelist);
+    
     // Auto-resume active polls – using centralized table name
     const { data: activePolls } = await supabase
-        .from(h.tables.POLL_AUTO_RESUME)   // 👈 changed from 'poll_auto_resume'
+        .from(h.tables.POLL_AUTO_RESUME)
         .select('*')
         .gt('ends_at', new Date().toISOString());
     if (activePolls && activePolls.length > 0) {
