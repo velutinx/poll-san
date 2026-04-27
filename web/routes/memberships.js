@@ -4,13 +4,17 @@ module.exports = function setupMembershipsRoute(app, client, supabase, supabaseR
     app.get('/api/memberships', async (req, res) => {
         try {
             // 🔧 FIX: added .select('*') to actually fetch data
-            const { data: subs, error } = await supabaseRetry(() =>
-                supabase.from(h.tables.MEMBERSHIPS).select('*')
-            );
-            if (error) throw error;
-            if (!subs) {
-                return res.json([]); // No active memberships
-            }
+const { data: subs, error } = await supabaseRetry(() =>
+    supabase.from(h.tables.MEMBERSHIPS).select('*')
+);
+if (error) {
+    console.error('Membership fetch error:', error);
+    return res.status(500).json({ error: 'Database error' });
+}
+if (!subs || !Array.isArray(subs)) {
+    console.warn('No valid membership data, returning empty array');
+    return res.json([]);
+}
 
             const guild = await client.guilds.fetch(process.env.GUILD_ID);
 
