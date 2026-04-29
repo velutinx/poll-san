@@ -44,11 +44,15 @@ module.exports = async (reaction, user, action = 'add') => {
 // 3. Handle add (with weight calculation from helpers)
 const member = await message.guild.members.fetch(user.id).catch(() => null);
 let weight = 1.0;
+let baseWeight = 1.0;
 
 if (member) {
-    // If the user has the Member role, set weight to 0.9 and skip all other bonuses
-    if (member.roles.cache.has(helpers.ids.roles.member)) {
-        weight = 0.9;
+    // Check if user has the Member role
+    const hasMemberRole = member.roles.cache.has(helpers.ids.roles.member);
+    
+    if (hasMemberRole) {
+        // Base weight for Member role is 0.9
+        baseWeight = 0.9;
     } else {
         // Find highest Tier Weight from helpers.weights.tiers
         let highestTier = 1.0;
@@ -57,23 +61,24 @@ if (member) {
                 if (multiplier > highestTier) highestTier = multiplier;
             }
         }
-        weight = highestTier;
+        baseWeight = highestTier;
+    }
+    weight = baseWeight;
 
-        // Add Booster Bonus (+0.5)
-        if (member.roles.cache.has(weights.booster)) {
-            weight += 0.5;
-        }
+    // Add Booster Bonus (+0.5)
+    if (member.roles.cache.has(weights.booster)) {
+        weight += 0.5;
+    }
 
-        // Add Level Bonus
-        const { data: xpData } = await supabase
-            .from(helpers.tables.USER_XP)
-            .select('level')
-            .eq('user_id', user.id)
-            .eq('guild_id', message.guild.id)
-            .single();
-        if (xpData?.level) {
-            weight += (xpData.level * weights.xpFactor);
-        }
+    // Add Level Bonus (0.02 per level)
+    const { data: xpData } = await supabase
+        .from(helpers.tables.USER_XP)
+        .select('level')
+        .eq('user_id', user.id)
+        .eq('guild_id', message.guild.id)
+        .single();
+    if (xpData?.level) {
+        weight += (xpData.level * weights.xpFactor);
     }
 }
 
