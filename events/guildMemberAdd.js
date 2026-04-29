@@ -12,6 +12,12 @@ module.exports = async (member) => {
         
         // Skip bots
         if (member.user.bot) return;
+
+        // Check for Creator role exemption
+if (member.roles.cache.has(h.ids.roles.creator)) {
+    console.log(`⏭️ Skipped all role management for ${member.user.tag} (Creator, exempt)`);
+    return;
+}
         
         // Check if member already has Supporter role (from external sync like Patreon)
         const hasSupporter = member.roles.cache.has(supporterRoleId);
