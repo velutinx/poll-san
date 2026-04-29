@@ -41,37 +41,41 @@ module.exports = async (reaction, user, action = 'add') => {
             return;
         }
 
-        // 3. Handle add (with weight calculation from helpers)
-        const member = await message.guild.members.fetch(user.id).catch(() => null);
-        let weight = 1.0;
+// 3. Handle add (with weight calculation from helpers)
+const member = await message.guild.members.fetch(user.id).catch(() => null);
+let weight = 1.0;
 
-        if (member) {
-            // Find highest Tier Weight from helpers.weights.tiers
-            let highestTier = 1.0;
-            for (const [roleId, multiplier] of Object.entries(weights.tiers)) {
-                if (member.roles.cache.has(roleId)) {
-                    if (multiplier > highestTier) highestTier = multiplier;
-                }
-            }
-            weight = highestTier;
-
-            // Add Booster Bonus (+0.5) using helpers.weights.booster
-            if (member.roles.cache.has(weights.booster)) {
-                weight += 0.5;
-            }
-
-            // Add Level Bonus using helpers.weights.xpFactor – using centralized table name
-            const { data: xpData } = await supabase
-                .from(helpers.tables.USER_XP)
-                .select('level')
-                .eq('user_id', user.id)
-                .eq('guild_id', message.guild.id)
-                .single();
-
-            if (xpData?.level) {
-                weight += (xpData.level * weights.xpFactor);
-            }
+if (member) {
+    // Find highest Tier Weight from helpers.weights.tiers
+    let highestTier = 1.0;
+    for (const [roleId, multiplier] of Object.entries(weights.tiers)) {
+        if (member.roles.cache.has(roleId)) {
+            if (multiplier > highestTier) highestTier = multiplier;
         }
+    }
+    weight = highestTier;
+
+    // Add Booster Bonus (+0.5)
+    if (member.roles.cache.has(weights.booster)) {
+        weight += 0.5;
+    }
+
+    // Add Level Bonus
+    const { data: xpData } = await supabase
+        .from(helpers.tables.USER_XP)
+        .select('level')
+        .eq('user_id', user.id)
+        .eq('guild_id', message.guild.id)
+        .single();
+    if (xpData?.level) {
+        weight += (xpData.level * weights.xpFactor);
+    }
+}
+
+// If still at default 1.0 and the user has the Member role, set to 0.9
+if (weight === 1.0 && member && member.roles.cache.has(helpers.ids.roles.member)) {
+    weight = 0.9;
+}
 
         // 4. Record/Update Vote in Supabase with character_name – using centralized table names
         const { data: charData, error: charError } = await supabase
