@@ -138,7 +138,7 @@ ids: {
 
     weights: {
         tiers: {
-            '1495684657730158724': 0.9,   // Free verified "member" role
+            '1495684657730158724': 0.8,   // Free verified "member" role
             '1465444240845963326': 1.1,   // Bronze
             '1465670134743044139': 1.3,   // Copper
             '1465904476417163457': 2.0,   // Silver
