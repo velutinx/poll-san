@@ -99,18 +99,18 @@ module.exports = {
         ]
     },
 
-    ids: {
-        roles: {
-            female_supporter: '1465968041404928177',
-            male_supporter: '1465967964804350160',
-            server_booster: '1469284491456548976',
-            supporter: '1466155709547675795',
-            giveaway_notify_role: '1472273843665113139',
-            restricted: ['1468666174102442227', '1467233133362544642', '1487554855068368916'],
-            // ========== VERIFICATION ROLES (ADDED) ==========
-            unverified: '1495679222264627321',   // role assigned on join
-            member: '1495684657730158724'        // free verified member role
-        },
+ids: {
+    roles: {
+        female_supporter: '1465968041404928177',
+        male_supporter: '1465967964804350160',
+        server_booster: '1469284491456548976',
+        supporter: '1466155709547675795',
+        giveaway_notify_role: '1472273843665113139',
+        restricted: ['1468666174102442227', '1467233133362544642', '1487554855068368916'],
+        unverified: '1495679222264627321',
+        member: '1495684657730158724',
+        creator: '1466144237643890728'
+    },
         tags: {
             preview_female: '1465939310720192637',
             preview_male: ['1465939329120469095', '1467020233272328195'],
