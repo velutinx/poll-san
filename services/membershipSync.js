@@ -7,6 +7,7 @@ const supabaseRetry = db.supabaseRetry;
 
 const TIER_ROLES = h.weights.tierMapping; 
 const SUPPORTER_ROLE = h.ids.roles.supporter; 
+const CREATOR_ROLE = h.ids.roles.creator; // 👈 added
 
 const MESSAGES = {
   en: {
@@ -33,7 +34,6 @@ function formatDate(date) {
 
 async function getLanguageForOrder(orderId) {
   if (!orderId) return 'en';
-  // Updated to use helper table name
   const { data, error } = await supabaseRetry(() =>
     supabase
       .from(h.tables.SUCCESSSS)
@@ -57,12 +57,10 @@ async function hasMessageBeenSent(discordId, orderId) {
       .eq('order_id', orderId)
       .limit(1)
   );
-  
   if (error) {
     console.error('[MembershipSync] Failed to check message sent status:', error.message);
     return true; 
   }
-  
   return data && data.length > 0;
 }
 
@@ -218,6 +216,17 @@ async function syncMembershipRoles(client) {
     }
 
     for (const [discordId, membership] of userBestMembership.entries()) {
+      // Skip sending messages to Creator role
+      try {
+        const guild = await client.guilds.fetch(process.env.GUILD_ID);
+        const member = await guild.members.fetch(discordId).catch(() => null);
+        if (member && member.roles.cache.has(CREATOR_ROLE)) {
+          console.log(`[MembershipSync] Skipping DM and role sync for Creator ${member.user.tag} (${discordId})`);
+          continue;
+        }
+      } catch (err) {
+        console.warn(`[MembershipSync] Could not check Creator role for ${discordId}, proceeding anyway`);
+      }
       await sendMembershipMessage(client, discordId, membership);
       await new Promise(res => setTimeout(res, 500));
     }
@@ -226,6 +235,11 @@ async function syncMembershipRoles(client) {
     for (const [discordId, membership] of userBestMembership.entries()) {
       const member = await guild.members.fetch(discordId).catch(() => null);
       if (!member) continue;
+      // Skip Creator role completely
+      if (member.roles.cache.has(CREATOR_ROLE)) {
+        console.log(`[MembershipSync] Skipping role sync for Creator ${member.user.tag}`);
+        continue;
+      }
 
       const currentRoleIds = member.roles.cache.map(r => r.id);
       const targetRoleId = TIER_ROLES[membership.tier];
@@ -255,6 +269,8 @@ async function syncMembershipRoles(client) {
       try {
         const member = await guild.members.fetch(discordId).catch(() => null);
         if (!member) continue;
+        // Skip Creator role
+        if (member.roles.cache.has(CREATOR_ROLE)) continue;
 
         const currentRoleIds = member.roles.cache.map(r => r.id);
         const tierRoleIds = Object.values(TIER_ROLES);
