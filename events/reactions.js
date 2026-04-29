@@ -37,7 +37,7 @@ module.exports = async (reaction, user, action = 'add') => {
                 .eq('poll_id', 'character_poll_new')
                 .eq('option_id', optionId);
             
-            console.log(`🗑️ Vote Removed: ${user.username} for Option ${optionId}`);
+ //           console.log(`🗑️ Vote Removed: ${user.username} for Option ${optionId}`);
             return;
         }
 
