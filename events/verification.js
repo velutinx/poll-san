@@ -10,6 +10,15 @@ const pendingCaptchas = new Map();
 module.exports = {
     name: Events.GuildMemberAdd,
     async execute(member) {
+        // Skip bots
+        if (member.user.bot) return;
+
+        // ----- SKIP FOR CREATOR ROLE -----
+        if (member.roles.cache.has(helpers.ids.roles.creator)) {
+            console.log(`[Verify] ${member.user.tag} has Creator role – skipping Unverified role and verification.`);
+            return;
+        }
+
         // If user already has Supporter (e.g., from external sync), skip Unverified role
         const supporterRoleId = helpers.ids.roles.supporter;
         if (member.roles.cache.has(supporterRoleId)) {
@@ -32,8 +41,6 @@ module.exports = {
 };
 
 // ======================== INTERACTION HANDLER ========================
-// You need to also register this separately in your main file.
-// See note at the bottom of this file.
 module.exports.handleInteraction = async (interaction) => {
     if (!interaction.isButton() && !interaction.isModalSubmit()) return;
 
@@ -87,6 +94,14 @@ module.exports.handleInteraction = async (interaction) => {
         const supporterRoleId = helpers.ids.roles.supporter;
         const memberRoleId = helpers.ids.roles.member;
         const unverifiedRoleId = helpers.ids.roles.unverified;
+
+        // ----- SKIP FOR CREATOR ROLE -----
+        if (member.roles.cache.has(helpers.ids.roles.creator)) {
+            return interaction.reply({
+                content: '✅ You have the Creator role – no verification needed.',
+                ephemeral: true
+            });
+        }
 
         const hasSupporter = member.roles.cache.has(supporterRoleId);
         const unverifiedRole = interaction.guild.roles.cache.get(unverifiedRoleId);
