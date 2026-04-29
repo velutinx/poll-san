@@ -142,10 +142,23 @@ function runPollInterval(pollMessage, endTime, characters) {
     }, UPDATE_INTERVAL);
 }
 
+/**
+ * Immediately recalculate poll results and update the Discord message.
+ * @param {Object} pollMessage - The Discord message object of the poll.
+ * @param {string[]} characters - Array of character names (already parsed).
+ * @param {number} endTime - Timestamp when the poll ends (for the time remaining display).
+ */
+async function refreshPollMessage(pollMessage, characters, endTime) {
+    const results = await getPollResults(pollMessage, characters);
+    const content = await generateMessageContent(endTime, results, characters, false);
+    await pollMessage.edit({ content });
+}
+
 module.exports = {
     getPollResults,
     generateMessageContent,
     runPollInterval,
     getFinalPollMessageContent,
-    forceStopPoll
+    forceStopPoll,
+    refreshPollMessage   // 👈 new
 };
