@@ -1,4 +1,5 @@
 // web/server.js
+
 const express = require('express');
 const path = require('path');
 const { ChannelType } = require('discord.js');
@@ -8,21 +9,18 @@ const supabase = require('../services/supabase');
 const { supabaseRetry } = require('../utils/db');
 const queueService = require('../services/queueService');
 const greetingsRouter = require('./routes/greetings');
-const helpers = require('../utils/helpers');
-const { getMegaStorage } = require('../services/megaSession');
+const helpers = require('../utils/helpers');        // <-- ADDED for centralised IDs
 
-// MEGA support (same as in releases.js)
-const { Storage: MegaStorage } = require('megajs');
-
+// ✅ MOVE THE ROUTER REQUIREMENT HERE (before it's used)
 const verifyRouter = require('./routes/verifyCallback');
 
 module.exports = (client) => {
     const app = express();
     const PORT = process.env.PORT || 8080;
 
-    // CORS (add the Cloudflare Worker origin)
+    // CORS
     app.use(cors({
-        origin: ['https://velutinx.com', 'https://d.velutinx.com', 'http://localhost:8080', 'https://i2-uploader.velutinx.workers.dev'],
+        origin: ['https://velutinx.com', 'https://d.velutinx.com', 'http://localhost:8080'],
         methods: ['GET', 'POST', 'OPTIONS'],
         allowedHeaders: ['Content-Type', 'Authorization']
     }));
@@ -49,87 +47,28 @@ module.exports = (client) => {
     app.use(express.static(path.join(__dirname, 'public')));
     app.use(express.json());
 
-    // ====================== PERSISTENT MEGA SESSION ======================
-    let megaStorage = null;
-
-    async function getMegaStorage() {
-        if (megaStorage) return megaStorage;
-
-        // If a saved session exists, restore it (no IP login needed!)
-        if (process.env.MEGA_SESSION) {
-            try {
-                megaStorage = MegaStorage.fromJSON(JSON.parse(process.env.MEGA_SESSION));
-                await megaStorage.ready;
-                console.log('✅ MEGA session restored from saved token');
-                return megaStorage;
-            } catch (err) {
-                console.error('❌ Restored session invalid, will try fresh login...');
-            }
-        }
-
-        // Fallback: normal login (only works on trusted IPs)
-        megaStorage = new MegaStorage({
-            email: process.env.MEGA_EMAIL,
-            password: process.env.MEGA_PASSWORD
-        });
-        await megaStorage.ready;
-        console.log('✅ MEGA fresh login successful');
-        return megaStorage;
-    }
-
-    // Recursive file search
-    function findFile(node, name) {
-        if (!node.children) return null;
-        for (const child of node.children) {
-            if (child.directory) {
-                const found = findFile(child, name);
-                if (found) return found;
-            } else if (child.name === name) {
-                return child;
-            }
-        }
-        return null;
-    }
-
-    // ====================== MEGA LINK PROXY ENDPOINT ======================
-    app.get('/api/mega-link', async (req, res) => {
-        const filename = req.query.filename;
-        if (!filename) return res.status(400).json({ error: 'Missing filename' });
-
-        try {
-            const storage = await getMegaStorage();
-            const file = findFile(storage.root, filename);
-            if (!file) return res.status(404).json({ error: 'File not found' });
-
-            const link = await file.link();
-            res.json({ url: link });
-        } catch (err) {
-            console.error('MEGA link error:', err);
-            res.status(500).json({ error: err.message });
-        }
-    });
-
     // ====================== CONFIG ENDPOINT (frontend IDs) ======================
-    app.get('/api/config', (req, res) => {
-        res.json({
-            forumIds: {
-                preview: helpers.ids.channels.preview_forum,
-                supporter: helpers.ids.channels.supporter_forum
-            },
-            tagIds: {
-                preview_female: helpers.ids.tags.preview_female,
-                preview_male: helpers.ids.tags.preview_male,
-                supporter_female: helpers.ids.tags.supporter_female,
-                supporter_male: helpers.ids.tags.supporter_male
-            }
-        });
+app.get('/api/config', (req, res) => {
+    res.json({
+        forumIds: {
+            preview: helpers.ids.channels.preview_forum,
+            supporter: helpers.ids.channels.supporter_forum
+        },
+        tagIds: {
+            preview_female: helpers.ids.tags.preview_female,
+            preview_male: helpers.ids.tags.preview_male,   // array
+            supporter_female: helpers.ids.tags.supporter_female,
+            supporter_male: helpers.ids.tags.supporter_male    // array
+        }
     });
+});
 
     // Verification webhook route
     app.use(verifyRouter);
     app.set('client', client);
 
     const upload = multer({ storage: multer.memoryStorage() });
+    // These are kept for backward compatibility but will be overridden by helpers when passed to releases routes
     const FORUM_ID = helpers.ids.channels.preview_forum || '1465938599378812980';
     const SUPPORTER_FORUM_ID = helpers.ids.channels.supporter_forum || '1465937644394512516';
 
@@ -211,9 +150,9 @@ module.exports = (client) => {
 
     // Mount additional routers
     app.use(reminderRouter);
-    app.use(greetingsRouter);
+    app.use(greetingsRouter);   // provides /api/get-settings and /api/save-settings
 
-    // Setup all feature routes
+    // Setup all feature routes (pass the IDs from helpers)
     setupGiveawayRoutes(app, client, supabase, supabaseRetry, getGuildMembers);
     setupQueueRoutes(app, client, queueService);
     setupPollRoutes(app, client, supabase, supabaseRetry);
