@@ -6,6 +6,7 @@ const os = require('os');
 const AdmZip = require('adm-zip');
 const { Storage } = require('megajs');
 const h = require('../../utils/helpers'); // Importing your helpers
+const { getMegaStorage } = require('../../services/megaSession');
 
 module.exports = function setupReleasesRoutes(app, client, upload, FORUM_ID, SUPPORTER_FORUM_ID) {
   
@@ -325,36 +326,7 @@ ${h.releaseEmojis.LINK} [megaLink](${download || 'https://mega.nz'})`;
 // MEGA UPLOAD (with persistent session and month folder)
 // ────────────────────────────────────────────────
 
-// Persistent MEGA session (initialised once)
-let megaStorage = null;
-let megaInitialising = false;
-let megaInitPromise = null;
 
-async function getMegaStorage() {
-  if (megaStorage) return megaStorage;
-  if (megaInitialising && megaInitPromise) return megaInitPromise;
-  
-  megaInitialising = true;
-  megaInitPromise = (async () => {
-    const megaEmail = process.env.MEGA_EMAIL;
-    const megaPassword = process.env.MEGA_PASSWORD;
-    if (!megaEmail || !megaPassword) {
-      throw new Error('MEGA credentials missing');
-    }
-    const { Storage } = require('megajs');
-    const storage = await new Storage({ email: megaEmail, password: megaPassword }).ready;
-//  console.log('✅ Persistent MEGA session established');
-    return storage;
-  })();
-  
-  try {
-    megaStorage = await megaInitPromise;
-    return megaStorage;
-  } finally {
-    megaInitialising = false;
-    megaInitPromise = null;
-  }
-}
 
 // Helper: get or create folder recursively
 async function getOrCreateFolder(node, pathParts) {
