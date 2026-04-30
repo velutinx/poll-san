@@ -24,7 +24,7 @@ async function getMegaStorage() {
     password: process.env.MEGA_PASSWORD
   });
   await megaStorage.ready;
-  console.log('✅ MEGA fresh login successful');
+//  console.log('✅ MEGA fresh login successful');
   return megaStorage;
 }
 
