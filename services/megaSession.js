@@ -6,7 +6,7 @@ let megaStorage = null;
 async function getMegaStorage() {
   if (megaStorage) return megaStorage;
 
-  // If a saved session exists (e.g., from env), restore it
+  // If a saved session exists, restore it
   if (process.env.MEGA_SESSION) {
     try {
       megaStorage = Storage.fromJSON(JSON.parse(process.env.MEGA_SESSION));
@@ -18,7 +18,7 @@ async function getMegaStorage() {
     }
   }
 
-  // Otherwise, do a fresh login (requires trusted IP)
+  // Fresh login
   megaStorage = new Storage({
     email: process.env.MEGA_EMAIL,
     password: process.env.MEGA_PASSWORD
@@ -27,7 +27,12 @@ async function getMegaStorage() {
   console.log('✅ MEGA fresh login successful');
 
   // --- TEMPORARY: Export the session for permanent storage ---
-  console.log('MEGA_SESSION =', JSON.stringify(megaStorage.export()));
+  const sessionData = {
+    key: megaStorage.key,
+    sid: megaStorage.sid,
+    password: megaStorage.password
+  };
+  console.log('MEGA_SESSION =', JSON.stringify(sessionData));
   // --- END TEMPORARY ---
 
   return megaStorage;
