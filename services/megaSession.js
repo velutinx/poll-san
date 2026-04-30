@@ -6,7 +6,7 @@ let megaStorage = null;
 async function getMegaStorage() {
   if (megaStorage) return megaStorage;
 
-  // If a saved session exists (e.g., from env), restore it
+  // If a saved session exists, restore it (no IP login needed!)
   if (process.env.MEGA_SESSION) {
     try {
       megaStorage = Storage.fromJSON(JSON.parse(process.env.MEGA_SESSION));
@@ -14,11 +14,11 @@ async function getMegaStorage() {
       console.log('✅ MEGA session restored from saved token');
       return megaStorage;
     } catch (err) {
-      console.error('❌ Restored session invalid, will try fresh login...');
+      console.error('❌ Restored session invalid, trying fresh login...');
     }
   }
 
-  // Otherwise, do a fresh login (requires trusted IP)
+  // Fallback: normal login (requires trusted IP)
   megaStorage = new Storage({
     email: process.env.MEGA_EMAIL,
     password: process.env.MEGA_PASSWORD
