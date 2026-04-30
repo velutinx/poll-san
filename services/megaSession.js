@@ -18,23 +18,13 @@ async function getMegaStorage() {
     }
   }
 
-  // Fresh login
+  // Fresh login (fallback)
   megaStorage = new Storage({
     email: process.env.MEGA_EMAIL,
     password: process.env.MEGA_PASSWORD
   });
   await megaStorage.ready;
   console.log('✅ MEGA fresh login successful');
-
-  // --- TEMPORARY: Export the session for permanent storage ---
-  const sessionData = {
-    key: megaStorage.key,
-    sid: megaStorage.sid,
-    password: megaStorage.password
-  };
-  console.log('MEGA_SESSION =', JSON.stringify(sessionData));
-  // --- END TEMPORARY ---
-
   return megaStorage;
 }
 
