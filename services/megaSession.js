@@ -9,7 +9,17 @@ async function getMegaStorage() {
   // If a saved session exists, restore it
   if (process.env.MEGA_SESSION) {
     try {
-      megaStorage = Storage.fromJSON(JSON.parse(process.env.MEGA_SESSION));
+      const saved = JSON.parse(process.env.MEGA_SESSION);
+
+      // Convert the base64 key back to a Buffer
+      if (typeof saved.key === 'string') {
+        saved.key = Buffer.from(saved.key, 'base64');
+      } else if (saved.key && saved.key.type === 'Buffer') {
+        // fallback for old format
+        saved.key = Buffer.from(saved.key.data);
+      }
+
+      megaStorage = Storage.fromJSON(saved);
       await megaStorage.ready;
       console.log('✅ MEGA session restored from saved token');
       return megaStorage;
@@ -24,7 +34,17 @@ async function getMegaStorage() {
     password: process.env.MEGA_PASSWORD
   });
   await megaStorage.ready;
-//  console.log('✅ MEGA fresh login successful');
+  console.log('✅ MEGA fresh login successful');
+
+  // --- TEMPORARY: Export the session for permanent storage ---
+  const sessionData = {
+    key: megaStorage.key.toString('base64'),  // store as base64 string
+    sid: megaStorage.sid,
+    password: megaStorage.password
+  };
+  console.log('MEGA_SESSION =', JSON.stringify(sessionData));
+  // --- END TEMPORARY ---
+
   return megaStorage;
 }
 
