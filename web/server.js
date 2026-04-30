@@ -9,6 +9,7 @@ const { supabaseRetry } = require('../utils/db');
 const queueService = require('../services/queueService');
 const greetingsRouter = require('./routes/greetings');
 const helpers = require('../utils/helpers');
+const { getMegaStorage } = require('../services/megaSession');
 
 // MEGA support (same as in releases.js)
 const { Storage: MegaStorage } = require('megajs');
