@@ -25,6 +25,11 @@ async function getMegaStorage() {
   });
   await megaStorage.ready;
   console.log('✅ MEGA fresh login successful');
+
+  // --- TEMPORARY: Export the session for permanent storage ---
+  console.log('MEGA_SESSION =', JSON.stringify(megaStorage.export()));
+  // --- END TEMPORARY ---
+
   return megaStorage;
 }
 
