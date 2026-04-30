@@ -6,7 +6,7 @@ const os = require('os');
 const AdmZip = require('adm-zip');
 const { Storage } = require('megajs');
 const h = require('../../utils/helpers');
-const { getMegaStorage } = require('../services/megaSession');
+const { getMegaStorage } = require('../../services/megaSession');
 
 module.exports = function setupReleasesRoutes(app, client, upload, FORUM_ID, SUPPORTER_FORUM_ID) {
   
