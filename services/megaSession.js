@@ -24,15 +24,7 @@ async function getMegaStorage() {
     password: process.env.MEGA_PASSWORD
   });
   await megaStorage.ready;
-  console.log('✅ MEGA fresh login successful');
-
-  // Export only the three fields megajs needs
-  const sessionData = {
-    key: megaStorage.key.toString('base64'),
-    sid: megaStorage.sid,
-    password: megaStorage.password
-  };
-  console.log('MEGA_SESSION =', JSON.stringify(sessionData));
+//  console.log('✅ MEGA fresh login successful');
   return megaStorage;
 }
 
