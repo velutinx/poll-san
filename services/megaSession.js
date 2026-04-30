@@ -12,10 +12,10 @@ async function getMegaStorage() {
       saved.key = Buffer.from(saved.key, 'base64');
       megaStorage = Storage.fromJSON(saved);
       await megaStorage.ready;
-      console.log('✅ MEGA session restored from saved token');
+ //     console.log('✅ MEGA session restored from saved token');
       return megaStorage;
     } catch (err) {
-      console.error('❌ Restore failed, using fresh login:', err.message);
+//      console.error('❌ Restore failed, using fresh login:', err.message);
     }
   }
 
