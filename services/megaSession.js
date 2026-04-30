@@ -10,7 +10,7 @@ async function getMegaStorage() {
     try {
       const saved = JSON.parse(process.env.MEGA_SESSION);
 
-      // Restore key and signKey from base64 strings
+      // Convert base64 strings back to Buffers
       if (typeof saved.key === 'string') {
         saved.key = Buffer.from(saved.key, 'base64');
       }
@@ -23,7 +23,9 @@ async function getMegaStorage() {
       console.log('✅ MEGA session restored from saved token');
       return megaStorage;
     } catch (err) {
-      console.error('❌ Restored session invalid, trying fresh login...');
+      // Show the actual megajs error
+      console.error('❌ Session restore failed:', err.message);
+      console.error('Full error:', err);
     }
   }
 
@@ -35,7 +37,7 @@ async function getMegaStorage() {
   await megaStorage.ready;
   console.log('✅ MEGA fresh login successful');
 
-  // --- TEMPORARY: Export full session ---
+  // Export the session exactly as megajs expects
   const sessionData = {
     key: megaStorage.key.toString('base64'),
     sid: megaStorage.sid,
@@ -43,7 +45,6 @@ async function getMegaStorage() {
     signKey: megaStorage.signKey ? megaStorage.signKey.toString('base64') : undefined
   };
   console.log('MEGA_SESSION =', JSON.stringify(sessionData));
-  // --- END TEMPORARY ---
 
   return megaStorage;
 }
