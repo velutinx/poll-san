@@ -13,7 +13,6 @@ const helpers = require('../utils/helpers');
 // MEGA support (same as in releases.js)
 const { Storage: MegaStorage } = require('megajs');
 
-// ✅ MOVE THE ROUTER REQUIREMENT HERE (before it's used)
 const verifyRouter = require('./routes/verifyCallback');
 
 module.exports = (client) => {
@@ -51,22 +50,30 @@ module.exports = (client) => {
 
     // ====================== PERSISTENT MEGA SESSION ======================
     let megaStorage = null;
-    let megaReady = false;
 
     async function getMegaStorage() {
-        if (megaStorage && megaReady) return megaStorage;
-        try {
-            megaStorage = new MegaStorage({
-                email: process.env.MEGA_EMAIL,
-                password: process.env.MEGA_PASSWORD
-            });
-            await megaStorage.ready;
-            megaReady = true;
-            return megaStorage;
-        } catch (err) {
-            console.error('MEGA login failed:', err.message);
-            throw err;
+        if (megaStorage) return megaStorage;
+
+        // If a saved session exists, restore it (no IP login needed!)
+        if (process.env.MEGA_SESSION) {
+            try {
+                megaStorage = MegaStorage.fromJSON(JSON.parse(process.env.MEGA_SESSION));
+                await megaStorage.ready;
+                console.log('✅ MEGA session restored from saved token');
+                return megaStorage;
+            } catch (err) {
+                console.error('❌ Restored session invalid, will try fresh login...');
+            }
         }
+
+        // Fallback: normal login (only works on trusted IPs)
+        megaStorage = new MegaStorage({
+            email: process.env.MEGA_EMAIL,
+            password: process.env.MEGA_PASSWORD
+        });
+        await megaStorage.ready;
+        console.log('✅ MEGA fresh login successful');
+        return megaStorage;
     }
 
     // Recursive file search
