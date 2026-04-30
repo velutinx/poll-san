@@ -6,17 +6,16 @@ let megaStorage = null;
 async function getMegaStorage() {
   if (megaStorage) return megaStorage;
 
-  // If a saved session exists, restore it
   if (process.env.MEGA_SESSION) {
     try {
       const saved = JSON.parse(process.env.MEGA_SESSION);
 
-      // Convert the base64 key back to a Buffer
+      // Restore key and signKey from base64 strings
       if (typeof saved.key === 'string') {
         saved.key = Buffer.from(saved.key, 'base64');
-      } else if (saved.key && saved.key.type === 'Buffer') {
-        // fallback for old format
-        saved.key = Buffer.from(saved.key.data);
+      }
+      if (typeof saved.signKey === 'string') {
+        saved.signKey = Buffer.from(saved.signKey, 'base64');
       }
 
       megaStorage = Storage.fromJSON(saved);
@@ -28,7 +27,7 @@ async function getMegaStorage() {
     }
   }
 
-  // Fresh login (fallback)
+  // Fresh login
   megaStorage = new Storage({
     email: process.env.MEGA_EMAIL,
     password: process.env.MEGA_PASSWORD
@@ -36,11 +35,12 @@ async function getMegaStorage() {
   await megaStorage.ready;
   console.log('✅ MEGA fresh login successful');
 
-  // --- TEMPORARY: Export the session for permanent storage ---
+  // --- TEMPORARY: Export full session ---
   const sessionData = {
-    key: megaStorage.key.toString('base64'),  // store as base64 string
+    key: megaStorage.key.toString('base64'),
     sid: megaStorage.sid,
-    password: megaStorage.password
+    password: megaStorage.password,
+    signKey: megaStorage.signKey ? megaStorage.signKey.toString('base64') : undefined
   };
   console.log('MEGA_SESSION =', JSON.stringify(sessionData));
   // --- END TEMPORARY ---
