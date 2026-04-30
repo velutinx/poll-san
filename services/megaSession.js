@@ -9,19 +9,13 @@ async function getMegaStorage() {
   if (process.env.MEGA_SESSION) {
     try {
       const saved = JSON.parse(process.env.MEGA_SESSION);
-
-      // Convert base64 strings back to Buffers
       saved.key = Buffer.from(saved.key, 'base64');
-      if (saved.signKey) {
-        saved.signKey = Buffer.from(saved.signKey, 'base64');
-      }
-
       megaStorage = Storage.fromJSON(saved);
       await megaStorage.ready;
       console.log('✅ MEGA session restored from saved token');
       return megaStorage;
     } catch (err) {
-      console.error('❌ Session restore failed, using fresh login:', err.message);
+      console.error('❌ Restore failed, using fresh login:', err.message);
     }
   }
 
@@ -32,13 +26,11 @@ async function getMegaStorage() {
   await megaStorage.ready;
   console.log('✅ MEGA fresh login successful');
 
-  // Export the full session – now includes password and email
+  // Export only the three fields megajs needs
   const sessionData = {
-    email: process.env.MEGA_EMAIL,
-    password: process.env.MEGA_PASSWORD,
     key: megaStorage.key.toString('base64'),
     sid: megaStorage.sid,
-    signKey: megaStorage.signKey ? megaStorage.signKey.toString('base64') : undefined
+    password: megaStorage.password
   };
   console.log('MEGA_SESSION =', JSON.stringify(sessionData));
   return megaStorage;
