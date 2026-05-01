@@ -158,55 +158,56 @@ module.exports = function setupGiveawayRoutes(app, client, supabase, supabaseRet
         }
     });
 
-    // ────────────────────────────────────────────────
-    // POST – Adjust giveaway end time by hours (+/-)
-    // ────────────────────────────────────────────────
-    app.post('/api/giveaway/adjust-time', async (req, res) => {
-        const { hours } = req.body;
-        if (typeof hours !== 'number' || isNaN(hours)) {
-            return res.status(400).json({ error: 'Invalid hours value' });
+// ────────────────────────────────────────────────
+// POST – Adjust giveaway end time by hours (+/-)
+// ────────────────────────────────────────────────
+app.post('/api/giveaway/adjust-time', async (req, res) => {
+    const { hours } = req.body;
+    if (typeof hours !== 'number' || isNaN(hours)) {
+        return res.status(400).json({ error: 'Invalid hours value' });
+    }
+
+    try {
+        const now = new Date().toISOString();
+        const { data: giveaway, error } = await supabaseRetry(() =>
+            supabase.from(h.tables.GIVEAWAYS)
+                .select('*')
+                .eq('ended', false)
+                .gt('end_time', now)
+                .order('end_time', { ascending: true })
+                .limit(1)
+                .single()
+        );
+        if (error || !giveaway) {
+            return res.status(404).json({ error: 'No active giveaway found' });
         }
 
-        try {
-            const now = new Date().toISOString();
-            const { data: giveaway, error } = await supabaseRetry(() =>
-                supabase.from(h.tables.GIVEAWAYS)
-                    .select('*')
-                    .eq('ended', false)
-                    .gt('end_time', now)
-                    .order('end_time', { ascending: true })
-                    .limit(1)
-                    .single()
-            );
-            if (error || !giveaway) {
-                return res.status(404).json({ error: 'No active giveaway found' });
-            }
+        const oldEnd = new Date(giveaway.end_time);
+        const newEnd = new Date(oldEnd.getTime() + hours * 60 * 60 * 1000);
+        const newEndISO = newEnd.toISOString();
 
-            const oldEnd = new Date(giveaway.end_time);
-            const newEnd = new Date(oldEnd.getTime() + hours * 60 * 60 * 1000);
-            const newEndISO = newEnd.toISOString();
+        const { error: updateError } = await supabaseRetry(() =>
+            supabase.from(h.tables.GIVEAWAYS)
+                .update({ end_time: newEndISO })
+                .eq('message_id', giveaway.message_id)
+        );
+        if (updateError) throw updateError;
 
-            const { error: updateError } = await supabaseRetry(() =>
-                supabase.from(h.tables.GIVEAWAYS)
-                    .update({ end_time: newEndISO })
-                    .eq('message_id', giveaway.message_id)
-            );
-            if (updateError) throw updateError;
+        const channel = await client.channels.fetch(giveaway.channel_id);
+        const webhook = await getGiveawayWebhook(channel);
+        const message = await channel.messages.fetch(giveaway.message_id);
+        const oldEmbed = message.embeds[0];
+        const newEmbed = new EmbedBuilder(oldEmbed.data)
+            .spliceFields(0, 1, { name: 'Ends', value: `<t:${Math.floor(newEnd.getTime() / 1000)}:R>`, inline: true });
 
-            const channel = await client.channels.fetch(giveaway.channel_id);
-            const message = await channel.messages.fetch(giveaway.message_id);
-            const oldEmbed = message.embeds[0];
-            const newEmbed = new EmbedBuilder(oldEmbed.data)
-                .spliceFields(0, 1, { name: 'Ends', value: `<t:${Math.floor(newEnd.getTime() / 1000)}:R>`, inline: true });
+        await webhook.editMessage(message.id, { embeds: [newEmbed] });
 
-            await message.edit({ embeds: [newEmbed] });
-
-            res.json({ success: true, newEndTime: newEndISO });
-        } catch (err) {
-            console.error('Giveaway time adjust error:', err);
-            res.status(500).json({ error: err.message });
-        }
-    });
+        res.json({ success: true, newEndTime: newEndISO });
+    } catch (err) {
+        console.error('Giveaway time adjust error:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
 
     // ────────────────────────────────────────────────
     // POST – Remove a user from the active giveaway
