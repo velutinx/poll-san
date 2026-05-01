@@ -96,21 +96,39 @@ module.exports = {
             '<a:arrowupred:1492637588220280912>',
             '<a:arrowupwhite:1492637589331640320>',
             '<a:arrowupyellow:1492637590409445539>'
-        ]
+        ],
+        PRESENT_BLUE: '<a:presentblue:1499806107844087879>',
+        PRESENT_GREEN: '<a:presentgreen:1499806108682817687>',
+        PRESENT_PINK: '<a:presentpink:1499806109949497485>',
+        PRESENT_PURPLE: '<a:presentpurple:1499806111153393766>',
+        PRESENT_RED: '<a:presentred:1499806112462143498>',
+        PRESENT_VALENTINE: '<a:presentvalentine:1499806113691074560>',
     },
 
-ids: {
-    roles: {
-        female_supporter: '1465968041404928177',
-        male_supporter: '1465967964804350160',
-        server_booster: '1469284491456548976',
-        supporter: '1466155709547675795',
-        giveaway_notify_role: '1472273843665113139',
-        restricted: ['1468666174102442227', '1467233133362544642', '1487554855068368916'],
-        unverified: '1495679222264627321',
-        member: '1495684657730158724',
-        creator: '1466144237643890728'
+    // Helper to pick a random present (excluding valentine)
+    getRandomPresent: function() {
+        const presents = [
+            this.releaseEmojis.PRESENT_BLUE,
+            this.releaseEmojis.PRESENT_GREEN,
+            this.releaseEmojis.PRESENT_PINK,
+            this.releaseEmojis.PRESENT_PURPLE,
+            this.releaseEmojis.PRESENT_RED
+        ];
+        return presents[Math.floor(Math.random() * presents.length)];
     },
+
+    ids: {
+        roles: {
+            female_supporter: '1465968041404928177',
+            male_supporter: '1465967964804350160',
+            server_booster: '1469284491456548976',
+            supporter: '1466155709547675795',
+            giveaway_notify_role: '1472273843665113139',
+            restricted: ['1468666174102442227', '1467233133362544642', '1487554855068368916'],
+            unverified: '1495679222264627321',
+            member: '1495684657730158724',
+            creator: '1466144237643890728'
+        },
         tags: {
             preview_female: '1465939310720192637',
             preview_male: ['1465939329120469095', '1467020233272328195'],
