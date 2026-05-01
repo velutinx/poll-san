@@ -117,6 +117,22 @@ module.exports = {
         return presents[Math.floor(Math.random() * presents.length)];
     },
 
+    getTwoRandomPresents: function() {
+    const presents = [
+        this.releaseEmojis.PRESENT_BLUE,
+        this.releaseEmojis.PRESENT_GREEN,
+        this.releaseEmojis.PRESENT_PINK,
+        this.releaseEmojis.PRESENT_PURPLE,
+        this.releaseEmojis.PRESENT_RED
+    ];
+    const firstIndex = Math.floor(Math.random() * presents.length);
+    let secondIndex = Math.floor(Math.random() * presents.length);
+    while (secondIndex === firstIndex) {
+        secondIndex = Math.floor(Math.random() * presents.length);
+    }
+    return { left: presents[firstIndex], right: presents[secondIndex] };
+},
+
     ids: {
         roles: {
             female_supporter: '1465968041404928177',
