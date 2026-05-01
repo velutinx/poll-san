@@ -8,6 +8,18 @@ function parseCharacterList(pollList) {
     return lines.map(line => line.trim().replace(/:female_sign:|:male_sign:/g, m => m === ':female_sign:' ? '♀️' : '♂️'));
 }
 
+// Helper to get or create the "Giveaway" webhook
+async function getGiveawayWebhook(channel) {
+    let webhook = (await channel.fetchWebhooks()).find(w => w.name === 'Giveaway');
+    if (!webhook) {
+        webhook = await channel.createWebhook({
+            name: 'Giveaway',
+            avatar: 'https://www.velutinx.com/images/LogoDiscord.png'
+        });
+    }
+    return webhook;
+}
+
 module.exports = function setupGiveawayRoutes(app, client, supabase, supabaseRetry, getGuildMembers) {
     
     // ────────────────────────────────────────────────
@@ -38,7 +50,12 @@ module.exports = function setupGiveawayRoutes(app, client, supabase, supabaseRet
                 try {
                     const channel = await client.channels.fetch(giveaway.channel_id);
                     const roleMention = `<@&${h.ids.roles.giveaway_notify_role}>`;
-                    const reminderMsg = await channel.send(`${h.releaseEmojis.ALERT} **Last day in the current giveaway!** ${roleMention}`);
+                    const webhook = await getGiveawayWebhook(channel);
+                    const reminderMsg = await webhook.send({
+                        content: `${h.releaseEmojis.ALERT} **Last day in the current giveaway!** ${roleMention}`,
+                        username: 'Giveaway',
+                        avatarURL: 'https://www.velutinx.com/images/LogoDiscord.png'
+                    });
                     await supabaseRetry(() =>
                         supabase.from(h.tables.GIVEAWAYS)
                             .update({ 
