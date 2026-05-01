@@ -3,16 +3,14 @@ const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, Butt
 const path = require('path');
 const fs = require('fs').promises;
 const { colors, releaseEmojis } = require('../utils/helpers');
-const h = require('../utils/helpers'); // 👈 added for centralized table names
+const h = require('../utils/helpers'); // centralized helpers
 
-// In-memory cache for quick access
+// In-memory cache
 const activeGiveaways = new Map();
 
-// Get image configuration from environment
 const GIVEAWAY_IMAGE_URL = process.env.GIVEAWAY_IMAGE_URL;
 const USE_HOSTED_IMAGE = !!GIVEAWAY_IMAGE_URL;
 
-// Dynamic imports for supabase and path (to avoid top-level await)
 let supabase;
 let supabasePromise;
 
@@ -25,6 +23,18 @@ async function getSupabase() {
         });
     }
     return supabasePromise;
+}
+
+// Helper to get or create the "Giveaway" webhook
+async function getGiveawayWebhook(channel) {
+    let webhook = (await channel.fetchWebhooks()).find(w => w.name === 'Giveaway');
+    if (!webhook) {
+        webhook = await channel.createWebhook({
+            name: 'Giveaway',
+            avatar: 'https://www.velutinx.com/images/LogoDiscord.png'
+        });
+    }
+    return webhook;
 }
 
 module.exports = {
@@ -71,10 +81,8 @@ module.exports = {
 
         const endTime = new Date(Date.now() + durationMs);
 
-        // Prepare image
         let imageUrl = null;
         let imageAttachment = null;
-
         if (USE_HOSTED_IMAGE) {
             imageUrl = GIVEAWAY_IMAGE_URL;
         } else {
@@ -84,9 +92,7 @@ module.exports = {
                 imageAttachment = new AttachmentBuilder(imagePath);
                 imageUrl = 'attachment://giveaway.jpg';
                 console.warn('Using local file – image will appear as attachment AND in embed if set. Set GIVEAWAY_IMAGE_URL to avoid duplication.');
-            } catch {
-                // No local image, ignore
-            }
+            } catch {}
         }
 
         const giveawayId = Date.now();
@@ -116,12 +122,19 @@ module.exports = {
         const messageOptions = { embeds: [embed], components: [row] };
         if (imageAttachment) messageOptions.files = [imageAttachment];
 
-        const giveawayMessage = await channel.send(messageOptions);
+        // Use webhook to send the message
+        const webhook = await getGiveawayWebhook(channel);
+        const giveawayMessage = await webhook.send({
+            ...messageOptions,
+            username: 'Giveaway',
+            avatarURL: 'https://www.velutinx.com/images/LogoDiscord.png'
+        });
+
         console.log(`Starting giveaway ID: ${giveawayId} - ${prize} for ${durationStr}`);
 
         const supabaseClient = await getSupabase();
         const { error } = await supabaseClient
-            .from(h.tables.GIVEAWAYS)   // 👈 changed
+            .from(h.tables.GIVEAWAYS)
             .insert({
                 message_id: giveawayMessage.id,
                 channel_id: channel.id,
@@ -135,7 +148,11 @@ module.exports = {
 
         if (error) {
             console.error('Failed to save giveaway to database:', error);
-            await channel.send('⚠️ Giveaway created but failed to save to database. It may not persist after restart.');
+            await webhook.send({
+                content: '⚠️ Giveaway created but failed to save to database. It may not persist after restart.',
+                username: 'Giveaway',
+                avatarURL: 'https://www.velutinx.com/images/LogoDiscord.png'
+            });
         }
 
         const timeoutId = setTimeout(() => endGiveaway(giveawayMessage.id, interaction.client), durationMs);
@@ -176,7 +193,7 @@ async function handleGiveawayButton(interaction) {
     if (!giveaway) {
         const supabaseClient = await getSupabase();
         const { data, error } = await supabaseClient
-            .from(h.tables.GIVEAWAYS)   // 👈 changed
+            .from(h.tables.GIVEAWAYS)
             .select('*')
             .eq('message_id', interaction.message.id)
             .eq('ended', false)
@@ -231,7 +248,7 @@ async function handleGiveawayButton(interaction) {
 
     const supabaseClient = await getSupabase();
     const { error } = await supabaseClient
-        .from(h.tables.GIVEAWAYS)   // 👈 changed
+        .from(h.tables.GIVEAWAYS)
         .update({ entrants: Array.from(giveaway.entrants) })
         .eq('message_id', interaction.message.id);
 
@@ -260,7 +277,7 @@ async function endGiveaway(messageId, client) {
     try {
         const supabaseClient = await getSupabase();
         const { data: dbGiveaway, error: fetchError } = await supabaseClient
-            .from(h.tables.GIVEAWAYS)   // 👈 changed
+            .from(h.tables.GIVEAWAYS)
             .select('*')
             .eq('message_id', messageId)
             .single();
@@ -271,15 +288,14 @@ async function endGiveaway(messageId, client) {
         }
 
         const channel = await client.channels.fetch(dbGiveaway.channel_id);
+        const webhook = await getGiveawayWebhook(channel);
 
-        // Delete the reminder message if it exists
+        // Delete reminder message if exists
         if (dbGiveaway.reminder_message_id) {
             try {
                 const reminderMsg = await channel.messages.fetch(dbGiveaway.reminder_message_id).catch(() => null);
                 if (reminderMsg) await reminderMsg.delete();
-            } catch (err) {
-                console.warn('Could not delete reminder message:', err.message);
-            }
+            } catch (err) {}
         }
 
         const message = await channel.messages.fetch(messageId);
@@ -287,7 +303,11 @@ async function endGiveaway(messageId, client) {
         const totalEntries = entrantsArray.length;
 
         if (totalEntries === 0) {
-            await channel.send('No one entered the giveaway. 😢');
+            await webhook.send({
+                content: 'No one entered the giveaway. 😢',
+                username: 'Giveaway',
+                avatarURL: 'https://www.velutinx.com/images/LogoDiscord.png'
+            });
         } else {
             const winners = [];
             const shuffled = [...entrantsArray];
@@ -296,7 +316,12 @@ async function endGiveaway(messageId, client) {
                 winners.push(shuffled.splice(randomIndex, 1)[0]);
             }
             const winnerMentions = winners.map(id => `<@${id}>`).join(', ');
-            await channel.send(`${releaseEmojis.CONFETTI} Congratulations to ${winnerMentions} for winning **${dbGiveaway.prize}**!`);
+            const randomPresent = h.getRandomPresent();
+            await webhook.send({
+                content: `${releaseEmojis.CONFETTI} Congratulations to ${winnerMentions} for winning ${randomPresent} **${dbGiveaway.prize}** ${randomPresent}!`,
+                username: 'Giveaway',
+                avatarURL: 'https://www.velutinx.com/images/LogoDiscord.png'
+            });
         }
 
         const embed = message.embeds[0];
@@ -311,11 +336,8 @@ async function endGiveaway(messageId, client) {
                 { name: 'Total Entries', value: `${totalEntries}`, inline: true }
             );
 
-        if (USE_HOSTED_IMAGE) {
-            newEmbed.setImage(GIVEAWAY_IMAGE_URL);
-        } else {
-            newEmbed.setImage(null);
-        }
+        if (USE_HOSTED_IMAGE) newEmbed.setImage(GIVEAWAY_IMAGE_URL);
+        else newEmbed.setImage(null);
 
         await message.edit({ embeds: [newEmbed], components: [] });
         await supabaseClient.from(h.tables.GIVEAWAYS).delete().eq('message_id', messageId);
@@ -329,7 +351,7 @@ async function restoreGiveaways(client) {
     const now = new Date().toISOString();
 
     const { data, error } = await supabaseClient
-        .from(h.tables.GIVEAWAYS)   // 👈 changed
+        .from(h.tables.GIVEAWAYS)
         .select('*')
         .eq('ended', false)
         .gt('end_time', now);
@@ -372,23 +394,25 @@ async function endGiveawayFromDB(g, client) {
     try {
         const supabaseClient = await getSupabase();
         const channel = await client.channels.fetch(g.channel_id);
+        const webhook = await getGiveawayWebhook(channel);
         const message = await channel.messages.fetch(g.message_id);
 
-        // Delete reminder message if stored
         if (g.reminder_message_id) {
             try {
                 const reminderMsg = await channel.messages.fetch(g.reminder_message_id).catch(() => null);
                 if (reminderMsg) await reminderMsg.delete();
-            } catch (err) {
-                console.warn('Could not delete reminder message from DB restore:', err.message);
-            }
+            } catch (err) {}
         }
 
         const entrantsArray = g.entrants || [];
         const totalEntries = entrantsArray.length;
 
         if (totalEntries === 0) {
-            await channel.send('No one entered the giveaway. 😢');
+            await webhook.send({
+                content: 'No one entered the giveaway. 😢',
+                username: 'Giveaway',
+                avatarURL: 'https://www.velutinx.com/images/LogoDiscord.png'
+            });
         } else {
             const winners = [];
             const shuffled = [...entrantsArray];
@@ -397,7 +421,12 @@ async function endGiveawayFromDB(g, client) {
                 winners.push(shuffled.splice(randomIndex, 1)[0]);
             }
             const winnerMentions = winners.map(id => `<@${id}>`).join(', ');
-            await channel.send(`🎉 Congratulations to ${winnerMentions} for winning **${g.prize}**!`);
+            const randomPresent = h.getRandomPresent();
+            await webhook.send({
+                content: `${releaseEmojis.CONFETTI} Congratulations to ${winnerMentions} for winning ${randomPresent} **${g.prize}** ${randomPresent}!`,
+                username: 'Giveaway',
+                avatarURL: 'https://www.velutinx.com/images/LogoDiscord.png'
+            });
         }
 
         const embed = message.embeds[0];
@@ -412,11 +441,8 @@ async function endGiveawayFromDB(g, client) {
                 { name: 'Total Entries', value: `${totalEntries}`, inline: true }
             );
 
-        if (USE_HOSTED_IMAGE) {
-            newEmbed.setImage(GIVEAWAY_IMAGE_URL);
-        } else {
-            newEmbed.setImage(null);
-        }
+        if (USE_HOSTED_IMAGE) newEmbed.setImage(GIVEAWAY_IMAGE_URL);
+        else newEmbed.setImage(null);
 
         await message.edit({ embeds: [newEmbed], components: [] });
         await supabaseClient.from(h.tables.GIVEAWAYS).delete().eq('message_id', g.message_id);
