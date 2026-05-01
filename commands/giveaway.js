@@ -422,9 +422,9 @@ async function endGiveawayFromDB(g, client) {
                 winners.push(shuffled.splice(randomIndex, 1)[0]);
             }
             const winnerMentions = winners.map(id => `<@${id}>`).join(', ');
-            const randomPresent = h.getRandomPresent();
+            const { left, right } = h.getTwoRandomPresents();
             await webhook.send({
-                content: `${releaseEmojis.CONFETTI} Congratulations to ${winnerMentions} for winning ${randomPresent} **${g.prize}** ${randomPresent}!`,
+                content: `${releaseEmojis.CONFETTI} Congratulations to ${winnerMentions} for winning ${left} **${dbGiveaway.prize}** ${right}!`,
                 username: 'Giveaway',
                 avatarURL: 'https://www.velutinx.com/images/LogoDiscord.png'
             });
