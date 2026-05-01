@@ -3,7 +3,7 @@ const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, Butt
 const path = require('path');
 const fs = require('fs').promises;
 const { colors, releaseEmojis } = require('../utils/helpers');
-const h = require('../utils/helpers'); // centralized helpers
+const h = require('../utils/helpers');
 
 // In-memory cache
 const activeGiveaways = new Map();
@@ -289,6 +289,7 @@ async function endGiveaway(messageId, client) {
 
         const channel = await client.channels.fetch(dbGiveaway.channel_id);
         const webhook = await getGiveawayWebhook(channel);
+        const message = await channel.messages.fetch(messageId);
 
         // Delete reminder message if exists
         if (dbGiveaway.reminder_message_id) {
@@ -298,7 +299,6 @@ async function endGiveaway(messageId, client) {
             } catch (err) {}
         }
 
-        const message = await channel.messages.fetch(messageId);
         const entrantsArray = dbGiveaway.entrants || [];
         const totalEntries = entrantsArray.length;
 
@@ -324,8 +324,9 @@ async function endGiveaway(messageId, client) {
             });
         }
 
-        const embed = message.embeds[0];
-        const newEmbed = EmbedBuilder.from(embed)
+        // Update the original embed using the webhook (not the bot)
+        const oldEmbed = message.embeds[0];
+        const newEmbed = EmbedBuilder.from(oldEmbed)
             .setTitle(`${dbGiveaway.prize} Giveaway Ended`)
             .setDescription(null)
             .setColor(colors.ended)
@@ -339,7 +340,7 @@ async function endGiveaway(messageId, client) {
         if (USE_HOSTED_IMAGE) newEmbed.setImage(GIVEAWAY_IMAGE_URL);
         else newEmbed.setImage(null);
 
-        await message.edit({ embeds: [newEmbed], components: [] });
+        await webhook.editMessage(message.id, { embeds: [newEmbed], components: [] });
         await supabaseClient.from(h.tables.GIVEAWAYS).delete().eq('message_id', messageId);
     } catch (err) {
         console.error('Error ending giveaway:', err);
@@ -429,8 +430,8 @@ async function endGiveawayFromDB(g, client) {
             });
         }
 
-        const embed = message.embeds[0];
-        const newEmbed = EmbedBuilder.from(embed)
+        const oldEmbed = message.embeds[0];
+        const newEmbed = EmbedBuilder.from(oldEmbed)
             .setTitle(`${g.prize} Giveaway Ended`)
             .setDescription(null)
             .setColor(colors.ended)
@@ -444,7 +445,7 @@ async function endGiveawayFromDB(g, client) {
         if (USE_HOSTED_IMAGE) newEmbed.setImage(GIVEAWAY_IMAGE_URL);
         else newEmbed.setImage(null);
 
-        await message.edit({ embeds: [newEmbed], components: [] });
+        await webhook.editMessage(message.id, { embeds: [newEmbed], components: [] });
         await supabaseClient.from(h.tables.GIVEAWAYS).delete().eq('message_id', g.message_id);
     } catch (err) {
         console.error(`Error ending giveaway from DB ${g.message_id}:`, err);
