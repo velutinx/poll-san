@@ -1,20 +1,32 @@
-// this is poll-san/web/routes/releases.js
-
+// web/routes/releases.js
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const AdmZip = require('adm-zip');
 const { Storage } = require('megajs');
-const h = require('../../utils/helpers'); // Importing your helpers
+const h = require('../../utils/helpers');
 const { getMegaStorage } = require('../../services/megaSession');
 
 module.exports = function setupReleasesRoutes(app, client, upload, FORUM_ID, SUPPORTER_FORUM_ID) {
   
-  // Helpers to get random arrows from the utils arrays
+  const LOGO_URL = h.urls.LOGO_URL;
+
+  // Helper: get or create a webhook for a channel with a specific name and the custom avatar
+  async function getWebhook(channel, name) {
+    let webhook = (await channel.fetchWebhooks()).find(w => w.name === name);
+    if (!webhook) {
+      webhook = await channel.createWebhook({
+        name,
+        avatar: LOGO_URL,
+      });
+    }
+    return webhook;
+  }
+
+  // Helpers to get random arrows
   const getRandomArrow = () => h.releaseEmojis.ARROWS[Math.floor(Math.random() * h.releaseEmojis.ARROWS.length)];
   const getRandomDownArrow = () => h.releaseEmojis.DOWN_ARROWS[Math.floor(Math.random() * h.releaseEmojis.DOWN_ARROWS.length)];
 
-  // Headers using utils emojis - Supporter now uses default :underage:
   const PREVIEW_RELEASE_HEADER = `${h.releaseEmojis.NEW1}${h.releaseEmojis.NEW2} RELEASE`;
   const SUPPORTER_RELEASE_HEADER = `🔞 ${h.releaseEmojis.NEW1}${h.releaseEmojis.NEW2} SUPPORTER RELEASE`;
 
@@ -38,7 +50,6 @@ module.exports = function setupReleasesRoutes(app, client, upload, FORUM_ID, SUP
       if (genderEmoji.includes('female_sign') || genderEmoji === '♀️') {
         appliedTags.push(h.ids.tags.preview_female);
       } else if (genderEmoji.includes('male_sign') || genderEmoji === '♂️') {
-        // Spreads the array from utils [id1, id2]
         appliedTags.push(...h.ids.tags.preview_male);
       }
 
@@ -48,7 +59,7 @@ module.exports = function setupReleasesRoutes(app, client, upload, FORUM_ID, SUP
       const isSoon = setSize.toUpperCase() === 'XX';
       const suffixStr = suffix ? ` — ${suffix}` : '';
       const threadTitle = `[${series.toUpperCase()}] ${charName} — Pack #${pack}${suffixStr}`;
-      
+
       const messageBody = `${PREVIEW_RELEASE_HEADER}${isSoon ? ' -- SOON' : ''}
 ━━━━━━━━━━━━━━
 Character: ${charName}
@@ -62,10 +73,15 @@ ${getRandomArrow()} See <#${SUPPORTER_FORUM_ID}>`;
 
       const attachments = files.map(f => ({ attachment: f.buffer, name: f.originalname }));
 
-      await forumChannel.threads.create({
-        name: threadTitle,
-        appliedTags: appliedTags,
-        message: { content: messageBody, files: attachments }
+      // Use webhook to create the thread with the custom identity
+      const webhook = await getWebhook(forumChannel, 'Preview');
+      await webhook.send({
+        content: messageBody,
+        files: attachments,
+        threadName: threadTitle,
+        appliedTags,
+        username: 'Preview',          // force name
+        avatarURL: LOGO_URL,
       });
 
       res.json({ success: true });
@@ -108,7 +124,7 @@ ${getRandomArrow()} See <#${SUPPORTER_FORUM_ID}>`;
   });
 
   // ────────────────────────────────────────────────
-  // 10. EDIT FORUM POST
+  // 10. EDIT FORUM POST (unchanged – edits the starter message)
   // ────────────────────────────────────────────────
   app.post('/api/edit-post', async (req, res) => {
     const { threadId, pack, setSize, input, series, suffix } = req.body;
@@ -154,7 +170,7 @@ ${getRandomArrow()} See <#${SUPPORTER_FORUM_ID}>`;
   });
 
   // ────────────────────────────────────────────────
-  // 11. GET POST CONTENT
+  // 11. GET POST CONTENT (unchanged)
   // ────────────────────────────────────────────────
   app.get('/api/get-post-content', async (req, res) => {
     const { id } = req.query;
@@ -214,7 +230,6 @@ ${getRandomArrow()} See <#${SUPPORTER_FORUM_ID}>`;
       const suffixStr = suffix ? ` — ${suffix}` : '';
       const threadTitle = `[${series.toUpperCase()}] ${charName} — Pack #${pack}${suffixStr}`;
       
-      // Updated message body with Animated Eighteen and Random Down Arrow
       const messageBody = `${SUPPORTER_RELEASE_HEADER}
 ${roleMention || ''}
 ━━━━━━━━━━━━━━
@@ -226,7 +241,9 @@ ${getRandomDownArrow()} Download:
 ${h.releaseEmojis.LINK} [megaLink](${download || 'https://mega.nz'})`;
       
       let supporterResult = {};
+
       if (supporterThreadId) {
+        // Update existing thread – keep using message.edit()
         const thread = await client.channels.fetch(supporterThreadId);
         if (!thread) return res.status(404).json({ error: "Thread not found" });
 
@@ -248,19 +265,21 @@ ${h.releaseEmojis.LINK} [megaLink](${download || 'https://mega.nz'})`;
         }
         supporterResult = { updated: true };
       } else {
-        const newThread = await forumChannel.threads.create({
-          name: threadTitle,
+        // Create new thread via webhook "Release"
+        const webhook = await getWebhook(forumChannel, 'Release');
+        await webhook.send({
+          content: messageBody,
+          files: files.map(f => ({ attachment: f.buffer, name: f.originalname })),
+          threadName: threadTitle,
           appliedTags: appliedTags.length > 0 ? appliedTags : undefined,
-          message: { content: messageBody, files: files.map(f => ({ attachment: f.buffer, name: f.originalname })) }
+          username: 'Release',
+          avatarURL: LOGO_URL,
+          flags: ["SuppressEmbeds"],
         });
-        const starter = await newThread.fetchStarterMessage();
-        if (starter) {
-          await starter.edit({ flags: ["SuppressEmbeds"] });
-        }
         supporterResult = { created: true };
       }
 
-      // --- Update Preview Thread ---
+      // --- Update Preview Thread (unchanged) ---
       let previewResult = {};
       if (editPreview === 'true') {
         let targetPreviewId = previewThreadId;
@@ -322,112 +341,100 @@ ${h.releaseEmojis.LINK} [megaLink](${download || 'https://mega.nz'})`;
     }
   });
 
-// ────────────────────────────────────────────────
-// MEGA UPLOAD (with persistent session and month folder)
-// ────────────────────────────────────────────────
-
-
-
-// Helper: get or create folder recursively
-async function getOrCreateFolder(node, pathParts) {
-  let current = node;
-  for (const part of pathParts) {
-    let child = current.children.find(c => c.name === part && c.directory);
-    if (!child) child = await current.mkdir(part);
-    current = child;
-  }
-  return current;
-}
-
-app.post('/api/upload-to-mega', upload.single('file'), async (req, res) => {
-  if (!req.file) {
-    return res.status(400).json({ error: 'No file uploaded' });
-  }
-  if (!req.file.originalname.toLowerCase().endsWith('.zip')) {
-    return res.status(400).json({ error: 'Only ZIP files are allowed' });
-  }
-  if (req.file.size > 100 * 1024 * 1024) {
-    return res.status(400).json({ error: 'File exceeds 100MB limit' });
+  // ────────────────────────────────────────────────
+  // MEGA UPLOAD (unchanged)
+  // ────────────────────────────────────────────────
+  async function getOrCreateFolder(node, pathParts) {
+    let current = node;
+    for (const part of pathParts) {
+      let child = current.children.find(c => c.name === part && c.directory);
+      if (!child) child = await current.mkdir(part);
+      current = child;
+    }
+    return current;
   }
 
-  const desiredFileName = req.body.desiredName || req.file.originalname;
-  const month = req.body.month;
-  if (!month) return res.status(400).json({ error: 'Month folder not provided' });
-
-  const yearShort = month.slice(-2);
-  const year = `20${yearShort}`;
-  const folderPath = ['Packs', year, month];
-
-  const tempDir = os.tmpdir();
-  const tempFilePath = path.join(tempDir, `mega-upload-${Date.now()}-${desiredFileName}`);
-
-  try {
-    // Write buffer to temp file
-    fs.writeFileSync(tempFilePath, req.file.buffer);
-
-    // Get persistent session (logs in only once)
-    const storage = await getMegaStorage();
-    const targetFolder = await getOrCreateFolder(storage.root, folderPath);
-    const readStream = fs.createReadStream(tempFilePath);
-
-    // Upload to Mega
-    const uploadResult = await new Promise((resolve, reject) => {
-      const upload = targetFolder.upload({ name: desiredFileName, size: req.file.size }, readStream);
-      upload.on('error', reject);
-      upload.on('complete', resolve);
-    });
-
-    const megaLink = await uploadResult.link();
-    console.log(`✅ Uploaded to Mega: ${megaLink}`);
-
-    // Optional local download
-    let localPath = null;
-    if (req.body.downloadAfterUpload === 'true') {
-      const downloadDir = req.body.localDownloadPath || './downloads/';
-      if (!fs.existsSync(downloadDir)) fs.mkdirSync(downloadDir, { recursive: true });
-
-      const { File } = require('megajs');
-      const megaFile = File.fromURL(megaLink);
-      const localFile = path.join(downloadDir, desiredFileName);
-
-      await new Promise((resolve, reject) => {
-        const writeStream = fs.createWriteStream(localFile);
-        megaFile.download((err, data) => {
-          if (err) return reject(err);
-          writeStream.write(data);
-          writeStream.end();
-          writeStream.on('finish', resolve);
-          writeStream.on('error', reject);
-        });
-      });
-      localPath = localFile;
+  app.post('/api/upload-to-mega', upload.single('file'), async (req, res) => {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file uploaded' });
+    }
+    if (!req.file.originalname.toLowerCase().endsWith('.zip')) {
+      return res.status(400).json({ error: 'Only ZIP files are allowed' });
+    }
+    if (req.file.size > 100 * 1024 * 1024) {
+      return res.status(400).json({ error: 'File exceeds 100MB limit' });
     }
 
-    // Cleanup temp file
-    fs.unlinkSync(tempFilePath);
+    const desiredFileName = req.body.desiredName || req.file.originalname;
+    const month = req.body.month;
+    if (!month) return res.status(400).json({ error: 'Month folder not provided' });
 
-    res.json({
-      success: true,
-      link: megaLink,
-      localPath: localPath,
-      fileName: desiredFileName
-    });
+    const yearShort = month.slice(-2);
+    const year = `20${yearShort}`;
+    const folderPath = ['Packs', year, month];
 
-  } catch (error) {
-    console.error('MEGA operation error:', error);
-    if (fs.existsSync(tempFilePath)) fs.unlinkSync(tempFilePath);
-    res.status(500).json({ error: error.message || 'Upload failed' });
-  }
-});
+    const tempDir = os.tmpdir();
+    const tempFilePath = path.join(tempDir, `mega-upload-${Date.now()}-${desiredFileName}`);
+
+    try {
+      fs.writeFileSync(tempFilePath, req.file.buffer);
+      const storage = await getMegaStorage();
+      const targetFolder = await getOrCreateFolder(storage.root, folderPath);
+      const readStream = fs.createReadStream(tempFilePath);
+
+      const uploadResult = await new Promise((resolve, reject) => {
+        const upload = targetFolder.upload({ name: desiredFileName, size: req.file.size }, readStream);
+        upload.on('error', reject);
+        upload.on('complete', resolve);
+      });
+
+      const megaLink = await uploadResult.link();
+      console.log(`✅ Uploaded to Mega: ${megaLink}`);
+
+      let localPath = null;
+      if (req.body.downloadAfterUpload === 'true') {
+        const downloadDir = req.body.localDownloadPath || './downloads/';
+        if (!fs.existsSync(downloadDir)) fs.mkdirSync(downloadDir, { recursive: true });
+
+        const { File } = require('megajs');
+        const megaFile = File.fromURL(megaLink);
+        const localFile = path.join(downloadDir, desiredFileName);
+
+        await new Promise((resolve, reject) => {
+          const writeStream = fs.createWriteStream(localFile);
+          megaFile.download((err, data) => {
+            if (err) return reject(err);
+            writeStream.write(data);
+            writeStream.end();
+            writeStream.on('finish', resolve);
+            writeStream.on('error', reject);
+          });
+        });
+        localPath = localFile;
+      }
+
+      fs.unlinkSync(tempFilePath);
+
+      res.json({
+        success: true,
+        link: megaLink,
+        localPath: localPath,
+        fileName: desiredFileName
+      });
+    } catch (error) {
+      console.error('MEGA operation error:', error);
+      if (fs.existsSync(tempFilePath)) fs.unlinkSync(tempFilePath);
+      res.status(500).json({ error: error.message || 'Upload failed' });
+    }
+  });
 
   // ────────────────────────────────────────────────
-  // 14. TEST ZIP (extract first 10 images, sorted by embedded number)
+  // 14. TEST ZIP (unchanged)
   // ────────────────────────────────────────────────
   app.post('/api/test-zip', upload.single('zipfile'), async (req, res) => {
     if (!req.file) {
       return res.status(400).json({ error: 'No file uploaded' });
     }
-
     if (req.file.size > 100 * 1024 * 1024) {
       return res.status(400).json({ error: 'File exceeds 100MB limit' });
     }
@@ -435,7 +442,6 @@ app.post('/api/upload-to-mega', upload.single('file'), async (req, res) => {
     try {
       const zip = new AdmZip(req.file.buffer);
       const entries = zip.getEntries();
-
       const imageEntries = entries.filter(entry => 
         /\.(jpg|jpeg|png|gif|webp)$/i.test(entry.entryName) && !entry.isDirectory
       );
@@ -462,32 +468,25 @@ app.post('/api/upload-to-mega', upload.single('file'), async (req, res) => {
     }
   });
 
-// ────────────────────────────────────────────────
-// 15. DOWNLOAD FILE (for browser download after upload)
-// ────────────────────────────────────────────────
-app.get('/api/download-file', (req, res) => {
-  const filename = req.query.filename;
-  if (!filename) {
-    return res.status(400).send('Missing filename');
-  }
+  // ────────────────────────────────────────────────
+  // 15. DOWNLOAD FILE
+  // ────────────────────────────────────────────────
+  app.get('/api/download-file', (req, res) => {
+    const filename = req.query.filename;
+    if (!filename) {
+      return res.status(400).send('Missing filename');
+    }
+    const downloadsDir = path.join(process.cwd(), 'downloads');
+    const filePath = path.join(downloadsDir, filename);
+    if (filePath.indexOf(downloadsDir) !== 0) {
+      return res.status(403).send('Forbidden');
+    }
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).send('File not found');
+    }
+    res.download(filePath, filename);
+  });
 
-  // Construct absolute path to the downloads folder (relative to project root)
-  const downloadsDir = path.join(process.cwd(), 'downloads');
-  const filePath = path.join(downloadsDir, filename);
-
-  // Security: prevent directory traversal
-  if (filePath.indexOf(downloadsDir) !== 0) {
-    return res.status(403).send('Forbidden');
-  }
-
-  if (!fs.existsSync(filePath)) {
-    return res.status(404).send('File not found');
-  }
-
-  res.download(filePath, filename);
-});
-
-  // Temporary GET for testing – remove after debugging
   app.get('/api/test-zip', (req, res) => {
     res.json({ message: 'GET works' });
   });
