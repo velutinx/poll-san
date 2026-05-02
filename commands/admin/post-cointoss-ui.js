@@ -36,12 +36,11 @@ module.exports = {
                     .setStyle(ButtonStyle.Primary)
             );
 
-        // Use webhook to send as "Coin Toss"
         let webhook = (await interaction.channel.fetchWebhooks()).find(w => w.name === 'Coin Toss');
         if (!webhook) {
             webhook = await interaction.channel.createWebhook({
                 name: 'Coin Toss',
-                avatar: 'https://www.velutinx.com/images/LogoDiscord.png'
+                avatar: helpers.urls.LOGO_URL
             });
         }
 
@@ -49,7 +48,7 @@ module.exports = {
             embeds: [embed],
             components: [row],
             username: 'Coin Toss',
-            avatarURL: 'https://www.velutinx.com/images/LogoDiscord.png'
+            avatarURL: helpers.urls.LOGO_URL
         });
 
         await interaction.reply({ content: '✅ Coin Toss game posted!', flags: 64 });
