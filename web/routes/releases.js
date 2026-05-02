@@ -26,26 +26,37 @@ module.exports = function setupReleasesRoutes(app, client, upload, FORUM_ID, SUP
 
   // Helper to safely edit a thread's starter message, falling back to delete+resend
 async function editThreadMessage(thread, newContent) {
-    const starter = await thread.fetchStarterMessage().catch(() => null);
-    if (!starter) return { success: false, error: 'No starter message' };
+    try {
+      const starter = await thread.fetchStarterMessage().catch(() => null);
+      if (!starter) return { success: false, error: 'No starter message' };
 
-    if (starter.webhookId) {
-        try {
-            const webhooks = await thread.parent.fetchWebhooks();
-            const webhook = webhooks.find(w => w.id === starter.webhookId);
-            
-            if (webhook) {
-                await webhook.editMessage(starter.id, { 
-                    content: newContent, 
-                    flags: ["SuppressEmbeds"],
-                    threadId: thread.id
-                });
-                return { success: true };
-            }
-        } catch (err) {
-            console.error("Webhook edit failed:", err);
+      // 1. Try Webhook Edit
+      if (starter.webhookId) {
+        const webhooks = await thread.parent.fetchWebhooks();
+        const webhook = webhooks.find(w => w.id === starter.webhookId);
+        
+        if (webhook) {
+          await webhook.editMessage(starter.id, { 
+            content: newContent, 
+            flags: ["SuppressEmbeds"],
+            threadId: thread.id // CRITICAL: Fixes the 'wrong user' / forum error
+          });
+          return { success: true };
         }
+      }
+
+      // 2. Fallback to Bot Edit (if sent by bot)
+      await starter.edit({ 
+        content: newContent, 
+        flags: ["SuppressEmbeds"] 
+      });
+      return { success: true };
+
+    } catch (err) {
+      console.error("Edit thread message failed:", err);
+      return { success: false, error: err.message };
     }
+  }
 
     try {
         await starter.edit({ content: newContent, flags: ["SuppressEmbeds"] });
