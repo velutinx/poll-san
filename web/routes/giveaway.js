@@ -14,7 +14,7 @@ async function getGiveawayWebhook(channel) {
     if (!webhook) {
         webhook = await channel.createWebhook({
             name: 'Giveaway',
-            avatar: 'https://www.velutinx.com/images/LogoDiscord.png'
+            avatarURL: h.urls.LOGO_URL
         });
     }
     return webhook;
@@ -54,7 +54,7 @@ module.exports = function setupGiveawayRoutes(app, client, supabase, supabaseRet
                     const reminderMsg = await webhook.send({
                         content: `${h.releaseEmojis.ALERT} **Last day in the current giveaway!** ${roleMention}`,
                         username: 'Giveaway',
-                        avatarURL: 'https://www.velutinx.com/images/LogoDiscord.png'
+                        avatarURL: h.urls.LOGO_URL
                     });
                     await supabaseRetry(() =>
                         supabase.from(h.tables.GIVEAWAYS)
