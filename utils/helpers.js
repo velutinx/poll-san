@@ -227,7 +227,8 @@ module.exports = {
 
     urls: {
         base: "https://www.velutinx.com",
-        pollImages: "https://www.velutinx.com/images/poll/"
+        pollImages: "https://www.velutinx.com/images/poll/",
+        LOGO_URL: 'https://www.velutinx.com/images/LogoDiscord.png'
     },
 
     // ==================== SUPABASE TABLES ====================
