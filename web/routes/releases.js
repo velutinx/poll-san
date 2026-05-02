@@ -25,7 +25,8 @@ module.exports = function setupReleasesRoutes(app, client, upload, FORUM_ID, SUP
   }
 
   // Helper to safely edit a thread's starter message, falling back to delete+resend
-async function editThreadMessage(thread, newContent) {
+// Helper to safely edit a thread's starter message
+  async function editThreadMessage(thread, newContent) {
     try {
       const starter = await thread.fetchStarterMessage().catch(() => null);
       if (!starter) return { success: false, error: 'No starter message' };
@@ -39,13 +40,13 @@ async function editThreadMessage(thread, newContent) {
           await webhook.editMessage(starter.id, { 
             content: newContent, 
             flags: ["SuppressEmbeds"],
-            threadId: thread.id // This is the fix for the Forum error
+            threadId: thread.id 
           });
           return { success: true };
         }
       }
 
-      // 2. Fallback to Bot Edit (if the bot sent it directly)
+      // 2. Fallback to Bot Edit
       await starter.edit({ 
         content: newContent, 
         flags: ["SuppressEmbeds"] 
@@ -53,29 +54,22 @@ async function editThreadMessage(thread, newContent) {
       return { success: true };
 
     } catch (err) {
-      console.error("Edit thread message failed:", err);
-      return { success: false, error: err.message };
+      console.error("Edit thread message failed, attempting final fallback send:", err);
+      
+      // 3. Final Fallback: If editing fails, send a new message so the info is at least updated
+      try {
+        await thread.send({ 
+          content: `⚠️ **Update:**\n${newContent}`, 
+          flags: ["SuppressEmbeds"] 
+        });
+        return { success: true, replaced: true };
+      } catch (finalErr) {
+        return { success: false, error: finalErr.message };
+      }
     }
   }
 
-    // 3. Fallback: original webhook/bot unavailable → send a new message with the same identity
-    const webhook = starter.webhookId
-        ? (await thread.parent.fetchWebhooks()).find(w => w.id === starter.webhookId)
-        : null;
-
-    if (webhook) {
-        await webhook.send({
-            content: newContent,
-            username: webhook.name,
-            avatarURL: LOGO_URL,
-            flags: ["SuppressEmbeds"]
-        });
-    } else {
-        // If the original webhook doesn't even exist anymore, send via the bot
-        await thread.send({ content: newContent, flags: ["SuppressEmbeds"] });
-    }
-    return { success: true, replaced: true };
-}
+  const getRandomArrow = () => h.releaseEmojis.ARROWS[Math.floor(Math.random() * h.releaseEmojis.ARROWS.length)];
 
   const getRandomArrow = () => h.releaseEmojis.ARROWS[Math.floor(Math.random() * h.releaseEmojis.ARROWS.length)];
   const getRandomDownArrow = () => h.releaseEmojis.DOWN_ARROWS[Math.floor(Math.random() * h.releaseEmojis.DOWN_ARROWS.length)];
