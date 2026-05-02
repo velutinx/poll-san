@@ -24,6 +24,37 @@ module.exports = function setupReleasesRoutes(app, client, upload, FORUM_ID, SUP
     return webhook;
   }
 
+  // Helper to safely edit a thread's starter message, falling back to delete+resend
+  async function editThreadMessage(thread, newContent) {
+    const starter = await thread.fetchStarterMessage().catch(() => null);
+    if (!starter) return { success: false, error: 'No starter message' };
+
+    if (starter.webhookId) {
+      const webhooks = await thread.parent.fetchWebhooks();
+      const webhook = webhooks.find(w => w.id === starter.webhookId);
+      if (webhook) {
+        try {
+          await webhook.editMessage(starter.id, { content: newContent, flags: ["SuppressEmbeds"] });
+          return { success: true };
+        } catch (err) {
+          if (err.code !== 10008) throw err;
+        }
+      }
+    } else {
+      try {
+        await starter.edit({ content: newContent, flags: ["SuppressEmbeds"] });
+        return { success: true };
+      } catch (err) {
+        if (err.code !== 50005) throw err;
+      }
+    }
+
+    // Fallback: delete old starter and send a fresh message
+    await starter.delete().catch(() => {});
+    const sent = await thread.send({ content: newContent, flags: ["SuppressEmbeds"] });
+    return { success: true, replaced: true };
+  }
+
   const getRandomArrow = () => h.releaseEmojis.ARROWS[Math.floor(Math.random() * h.releaseEmojis.ARROWS.length)];
   const getRandomDownArrow = () => h.releaseEmojis.DOWN_ARROWS[Math.floor(Math.random() * h.releaseEmojis.DOWN_ARROWS.length)];
 
@@ -123,7 +154,7 @@ ${getRandomArrow()} See <#${SUPPORTER_FORUM_ID}>`;
   });
 
   // ────────────────────────────────────────────────
-  // 10. EDIT FORUM POST (unchanged)
+  // 10. EDIT FORUM POST (now uses editThreadMessage)
   // ────────────────────────────────────────────────
   app.post('/api/edit-post', async (req, res) => {
     const { threadId, pack, setSize, input, series, suffix } = req.body;
@@ -155,10 +186,10 @@ ${getRandomArrow()} See <#${SUPPORTER_FORUM_ID}>`;
         } else {
           newBody = newBody.replace(`${PREVIEW_RELEASE_HEADER} -- SOON`, `${h.releaseEmojis.VERIFY} RELEASE`);
           newBody = newBody.replace(PREVIEW_RELEASE_HEADER, `${h.releaseEmojis.VERIFY} RELEASE`);
-          newBody = newBody.replace(/ -- SOON/g, ''); 
+          newBody = newBody.replace(/ -- SOON/g, '');
         }
 
-        await firstMsg.edit(newBody);
+        await editThreadMessage(thread, newBody);
       }
 
       res.json({ success: true });
@@ -242,6 +273,7 @@ ${h.releaseEmojis.LINK} [megaLink](${download || 'https://mega.nz'})`;
       let supporterResult = {};
 
       if (supporterThreadId) {
+        // Updating an existing thread
         const thread = await client.channels.fetch(supporterThreadId);
         if (!thread) return res.status(404).json({ error: "Thread not found" });
 
@@ -250,10 +282,7 @@ ${h.releaseEmojis.LINK} [megaLink](${download || 'https://mega.nz'})`;
 
         const starter = await thread.fetchStarterMessage();
         if (starter) {
-          await starter.edit({
-            content: messageBody,
-            flags: ["SuppressEmbeds"]
-          });
+          await editThreadMessage(thread, messageBody);
         }
 
         if (files.length > 0) {
@@ -263,6 +292,7 @@ ${h.releaseEmojis.LINK} [megaLink](${download || 'https://mega.nz'})`;
         }
         supporterResult = { updated: true };
       } else {
+        // Create new thread
         const webhook = await getWebhook(forumChannel, 'Release');
         await webhook.send({
           content: messageBody,
@@ -320,24 +350,11 @@ ${h.releaseEmojis.LINK} [megaLink](${download || 'https://mega.nz'})`;
                 }
                 newContent = newContent.replace(/ -- SOON/g, '');
 
-                try {
-                  await starter.edit({ content: newContent, flags: ["SuppressEmbeds"] });
+                const editResult = await editThreadMessage(previewThread, newContent);
+                if (editResult.success) {
                   previewResult = { previewUpdated: true };
-                } catch (botEditError) {
-                  if (botEditError.code === 50005) {
-                    try {
-                      const previewWebhook = await getWebhook(previewThread.parent, 'Preview');
-                      await previewWebhook.editMessage(starter.id, {
-                        content: newContent,
-                        flags: ["SuppressEmbeds"]
-                      });
-                      previewResult = { previewUpdated: true };
-                    } catch (webhookError) {
-                      console.error('Fallback webhook edit also failed:', webhookError);
-                    }
-                  } else {
-                    console.error('Error editing preview message:', botEditError);
-                  }
+                } else {
+                  console.error('Could not update preview message:', editResult.error);
                 }
               }
             }
@@ -472,7 +489,7 @@ ${h.releaseEmojis.LINK} [megaLink](${download || 'https://mega.nz'})`;
       const totalImages = imageEntries.length;
       const previewImages = imageEntries.slice(0, 10).map(entry => ({
         name: entry.entryName.split('/').pop(),
-        data: `data:image/jpeg;base64,${entry.getData().toString('base64')}`
+        data: `data:image;jpeg;base64,${entry.getData().toString('base64')}`
       }));
 
       res.json({ success: true, images: previewImages, total: totalImages });
