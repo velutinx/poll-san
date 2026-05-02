@@ -31,7 +31,7 @@ async function getGiveawayWebhook(channel) {
     if (!webhook) {
         webhook = await channel.createWebhook({
             name: 'Giveaway',
-            avatar: 'https://www.velutinx.com/images/LogoDiscord.png'
+            avatar: h.urls.LOGO_URL
         });
     }
     return webhook;
@@ -127,7 +127,7 @@ module.exports = {
         const giveawayMessage = await webhook.send({
             ...messageOptions,
             username: 'Giveaway',
-            avatarURL: 'https://www.velutinx.com/images/LogoDiscord.png'
+            avatar: h.urls.LOGO_URL
         });
 
         console.log(`Starting giveaway ID: ${giveawayId} - ${prize} for ${durationStr}`);
@@ -151,7 +151,7 @@ module.exports = {
             await webhook.send({
                 content: '⚠️ Giveaway created but failed to save to database. It may not persist after restart.',
                 username: 'Giveaway',
-                avatarURL: 'https://www.velutinx.com/images/LogoDiscord.png'
+                avatar: h.urls.LOGO_URL
             });
         }
 
@@ -306,7 +306,7 @@ async function endGiveaway(messageId, client) {
             await webhook.send({
                 content: 'No one entered the giveaway. 😢',
                 username: 'Giveaway',
-                avatarURL: 'https://www.velutinx.com/images/LogoDiscord.png'
+                avatar: h.urls.LOGO_URL
             });
         } else {
             const winners = [];
@@ -320,7 +320,7 @@ const { left, right } = h.getTwoRandomPresents();
 await webhook.send({
     content: `${releaseEmojis.CONFETTI} Congratulations to ${winnerMentions} for winning ${left} **${dbGiveaway.prize}** ${right}!`,
     username: 'Giveaway',
-    avatarURL: 'https://www.velutinx.com/images/LogoDiscord.png'
+    avatarURL: h.urls.LOGO_URL
 });
         }
 
@@ -412,7 +412,7 @@ async function endGiveawayFromDB(g, client) {
             await webhook.send({
                 content: 'No one entered the giveaway. 😢',
                 username: 'Giveaway',
-                avatarURL: 'https://www.velutinx.com/images/LogoDiscord.png'
+                avatar: h.urls.LOGO_URL
             });
         } else {
             const winners = [];
@@ -426,7 +426,7 @@ async function endGiveawayFromDB(g, client) {
             await webhook.send({
                 content: `${releaseEmojis.CONFETTI} Congratulations to ${winnerMentions} for winning ${left} **${dbGiveaway.prize}** ${right}!`,
                 username: 'Giveaway',
-                avatarURL: 'https://www.velutinx.com/images/LogoDiscord.png'
+                avatar: h.urls.LOGO_URL
             });
         }
 
