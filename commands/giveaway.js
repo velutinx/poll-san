@@ -316,12 +316,12 @@ async function endGiveaway(messageId, client) {
                 winners.push(shuffled.splice(randomIndex, 1)[0]);
             }
             const winnerMentions = winners.map(id => `<@${id}>`).join(', ');
-            const randomPresent = h.getRandomPresent();
-            await webhook.send({
-                content: `${releaseEmojis.CONFETTI} Congratulations to ${winnerMentions} for winning ${randomPresent} **${dbGiveaway.prize}** ${randomPresent}!`,
-                username: 'Giveaway',
-                avatarURL: 'https://www.velutinx.com/images/LogoDiscord.png'
-            });
+const { left, right } = h.getTwoRandomPresents();
+await webhook.send({
+    content: `${releaseEmojis.CONFETTI} Congratulations to ${winnerMentions} for winning ${left} **${dbGiveaway.prize}** ${right}!`,
+    username: 'Giveaway',
+    avatarURL: 'https://www.velutinx.com/images/LogoDiscord.png'
+});
         }
 
         // Update the original embed using the webhook (not the bot)
