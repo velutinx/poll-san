@@ -30,7 +30,7 @@ async function editThreadMessage(thread, newContent) {
       const starter = await thread.fetchStarterMessage().catch(() => null);
       if (!starter) return { success: false, error: 'No starter message' };
 
-      // 1. Try Webhook Edit
+      // 1. Try Webhook Edit (most common for forum posts)
       if (starter.webhookId) {
         const webhooks = await thread.parent.fetchWebhooks();
         const webhook = webhooks.find(w => w.id === starter.webhookId);
@@ -39,13 +39,13 @@ async function editThreadMessage(thread, newContent) {
           await webhook.editMessage(starter.id, { 
             content: newContent, 
             flags: ["SuppressEmbeds"],
-            threadId: thread.id // CRITICAL: Fixes the 'wrong user' / forum error
+            threadId: thread.id // This is the fix for the Forum error
           });
           return { success: true };
         }
       }
 
-      // 2. Fallback to Bot Edit (if sent by bot)
+      // 2. Fallback to Bot Edit (if the bot sent it directly)
       await starter.edit({ 
         content: newContent, 
         flags: ["SuppressEmbeds"] 
@@ -57,15 +57,6 @@ async function editThreadMessage(thread, newContent) {
       return { success: false, error: err.message };
     }
   }
-
-    try {
-        await starter.edit({ content: newContent, flags: ["SuppressEmbeds"] });
-        return { success: true };
-    } catch (err) {
-        console.error("Bot edit failed:", err);
-        return { success: false, error: err.message };
-    }
-}
 
     // 3. Fallback: original webhook/bot unavailable → send a new message with the same identity
     const webhook = starter.webhookId
