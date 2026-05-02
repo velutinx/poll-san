@@ -12,16 +12,25 @@ module.exports = function setupReleasesRoutes(app, client, upload, FORUM_ID, SUP
   const LOGO_URL = h.urls.LOGO_URL;
 
   // Helper: get or create a webhook for a channel with a specific name and the custom avatar
-  async function getWebhook(channel, name) {
+async function getWebhook(channel, name) {
     let webhook = (await channel.fetchWebhooks()).find(w => w.name === name);
-    if (!webhook) {
-      webhook = await channel.createWebhook({
+    if (webhook) {
+        // Ensure name and avatar are exactly what we want
+        if (webhook.name !== name || webhook.avatar !== LOGO_URL) {
+            await webhook.edit({
+                name,
+                avatar: LOGO_URL,
+            });
+        }
+        return webhook;
+    }
+    // Create new one
+    webhook = await channel.createWebhook({
         name,
         avatar: LOGO_URL,
-      });
-    }
+    });
     return webhook;
-  }
+}
 
   // Helpers to get random arrows
   const getRandomArrow = () => h.releaseEmojis.ARROWS[Math.floor(Math.random() * h.releaseEmojis.ARROWS.length)];
@@ -311,22 +320,28 @@ ${h.releaseEmojis.LINK} [megaLink](${download || 'https://mega.nz'})`;
                 await previewThread.setName(newTitle);
               }
 
-              const starter = await previewThread.fetchStarterMessage();
-              if (starter) {
-                let newContent = starter.content;
-                newContent = newContent.replace(/(Set size:\s*)(\d+|XX)(\s*images)/i, `$1${setSize}$3`);
-                
-                if (newContent.includes(`${PREVIEW_RELEASE_HEADER} -- SOON`)) {
-                   newContent = newContent.replace(`${PREVIEW_RELEASE_HEADER} -- SOON`, `${h.releaseEmojis.VERIFY} RELEASE`);
-                } else if (newContent.includes(PREVIEW_RELEASE_HEADER)) {
-                   newContent = newContent.replace(PREVIEW_RELEASE_HEADER, `${h.releaseEmojis.VERIFY} RELEASE`);
-                }
+const starter = await previewThread.fetchStarterMessage();
+if (starter) {
+    let newContent = starter.content;
+    newContent = newContent.replace(/(Set size:\s*)(\d+|XX)(\s*images)/i, `$1${setSize}$3`);
 
-                newContent = newContent.replace(/ -- SOON/g, '');
-                await starter.edit(newContent);
-              }
-              previewResult = { previewUpdated: true };
-            }
+    if (newContent.includes(`${PREVIEW_RELEASE_HEADER} -- SOON`)) {
+        newContent = newContent.replace(`${PREVIEW_RELEASE_HEADER} -- SOON`, `${h.releaseEmojis.VERIFY} RELEASE`);
+    } else if (newContent.includes(PREVIEW_RELEASE_HEADER)) {
+        newContent = newContent.replace(PREVIEW_RELEASE_HEADER, `${h.releaseEmojis.VERIFY} RELEASE`);
+    }
+
+    newContent = newContent.replace(/ -- SOON/g, '');
+
+    // Use the webhook to edit its own message
+    const previewWebhook = await getWebhook(previewThread.parent, 'Preview');
+    await previewWebhook.editMessage(starter.id, {
+        content: newContent,
+        flags: ["SuppressEmbeds"]  // keep flags if needed
+    });
+    previewResult = { previewUpdated: true };
+}
+
           } catch (previewErr) {
             console.error('Error updating preview thread:', previewErr);
           }
