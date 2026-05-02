@@ -1,6 +1,7 @@
-// This is poll-san/commands/admin/post-hangman-ui.js
+// commands/admin/post-hangman-ui.js
 
 const { SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, PermissionFlagsBits, EmbedBuilder, MessageFlags } = require('discord.js');
+const helpers = require('../../utils/helpers');
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -29,12 +30,11 @@ module.exports = {
                     .setEmoji('🎯')
             );
 
-        // Use webhook to send as "Play Hangman"
         let webhook = (await channel.fetchWebhooks()).find(w => w.name === 'Play Hangman');
         if (!webhook) {
             webhook = await channel.createWebhook({
                 name: 'Play Hangman',
-                avatar: 'https://www.velutinx.com/images/LogoDiscord.png'
+                avatar: helpers.urls.LOGO_URL
             });
         }
 
@@ -42,7 +42,7 @@ module.exports = {
             embeds: [embed],
             components: [row],
             username: 'Play Hangman',
-            avatarURL: 'https://www.velutinx.com/images/LogoDiscord.png'
+            avatarURL: helpers.urls.LOGO_URL
         });
 
         await interaction.reply({ content: '✅ Hangman UI posted!', flags: 64 });
