@@ -39,20 +39,18 @@ module.exports = {
         if (!webhook) {
             webhook = await verifyChannel.createWebhook({
                 name: 'Verification Bot',
-                avatar: helpers.urls.LOGO_URL   // <-- centralized constant
+                avatar: helpers.urls.LOGO_URL
             });
         }
 
-        // Send the message and capture the sent message object
         const sentMessage = await webhook.send({
             embeds: [embed],
             components: [row],
             username: 'Verification Bot',
-            avatarURL: helpers.urls.LOGO_URL   // <-- centralized constant
+            avatarURL: helpers.urls.LOGO_URL
         });
 
-        // Add the VERIFY emoji reaction to the message we just posted
-        const verifyEmoji = helpers.releaseEmojis.VERIFY; // '<a:Verify:1491669023245729924>'
+        const verifyEmoji = helpers.releaseEmojis.VERIFY;
         try {
             await sentMessage.react(verifyEmoji);
         } catch (err) {
