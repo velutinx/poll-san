@@ -308,40 +308,40 @@ ${h.releaseEmojis.LINK} [megaLink](${download || 'https://mega.nz'})`;
                 await previewThread.setName(newTitle);
               }
 
-              const starter = await previewThread.fetchStarterMessage();
-              if (starter) {
-                let newContent = starter.content;
-                newContent = newContent.replace(/(Set size:\s*)(\d+|XX)(\s*images)/i, `$1${setSize}$3`);
+const starter = await previewThread.fetchStarterMessage();
+if (starter) {
+    let newContent = starter.content;
+    newContent = newContent.replace(/(Set size:\s*)(\d+|XX)(\s*images)/i, `$1${setSize}$3`);
 
-                if (newContent.includes(`${PREVIEW_RELEASE_HEADER} -- SOON`)) {
-                  newContent = newContent.replace(`${PREVIEW_RELEASE_HEADER} -- SOON`, `${h.releaseEmojis.VERIFY} RELEASE`);
-                } else if (newContent.includes(PREVIEW_RELEASE_HEADER)) {
-                  newContent = newContent.replace(PREVIEW_RELEASE_HEADER, `${h.releaseEmojis.VERIFY} RELEASE`);
-                }
-                newContent = newContent.replace(/ -- SOON/g, '');
+    if (newContent.includes(`${PREVIEW_RELEASE_HEADER} -- SOON`)) {
+        newContent = newContent.replace(`${PREVIEW_RELEASE_HEADER} -- SOON`, `${h.releaseEmojis.VERIFY} RELEASE`);
+    } else if (newContent.includes(PREVIEW_RELEASE_HEADER)) {
+        newContent = newContent.replace(PREVIEW_RELEASE_HEADER, `${h.releaseEmojis.VERIFY} RELEASE`);
+    }
+    newContent = newContent.replace(/ -- SOON/g, '');
 
-                try {
-                  const previewWebhook = await getWebhook(previewThread.parent, 'Preview');
-                  if (starter.webhookId === previewWebhook.id) {
-                    await previewWebhook.editMessage(starter.id, {
-                      content: newContent,
-                      flags: ["SuppressEmbeds"]
-                    });
-                  } else {
-                    // Fallback: message was sent by the bot (old thread)
-                    await starter.edit({ content: newContent, flags: ["SuppressEmbeds"] });
-                  }
-                  previewResult = { previewUpdated: true };
-                } catch (e) {
-                  console.error('Error editing preview message:', e);
-                }
-              }   // closes if (starter)
-            }   // closes if (previewThread)
-          } catch (previewErr) {
-            console.error('Error updating preview thread:', previewErr);
-          }
-        }   // closes if (targetPreviewId)
-      }   // closes if (editPreview === 'true')
+    // Try bot edit first (works for old messages)
+    try {
+        await starter.edit({ content: newContent, flags: ["SuppressEmbeds"] });
+        previewResult = { previewUpdated: true };
+    } catch (botEditError) {
+        if (botEditError.code === 50005) {
+            // Fallback to webhook if the bot cannot edit (webhook message)
+            try {
+                const previewWebhook = await getWebhook(previewThread.parent, 'Preview');
+                await previewWebhook.editMessage(starter.id, {
+                    content: newContent,
+                    flags: ["SuppressEmbeds"]
+                });
+                previewResult = { previewUpdated: true };
+            } catch (webhookError) {
+                console.error('Fallback webhook edit also failed:', webhookError);
+            }
+        } else {
+            console.error('Error editing preview message:', botEditError);
+        }
+    }
+}
 
       res.json({ success: true, ...supporterResult, ...previewResult });
 
