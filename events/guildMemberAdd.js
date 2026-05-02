@@ -5,21 +5,16 @@ const { parseMessage } = require('../services/parserService');
 const h = require('../utils/helpers');
 
 module.exports = async (member) => {
-    // --- 0. ASSIGN UNVERIFIED ROLE (skip if supporter or bot) ---
     try {
         const supporterRoleId = h.ids.roles.supporter;
         const unverifiedRoleId = h.ids.roles.unverified;
         
-        // Skip bots
         if (member.user.bot) return;
-
-        // Check for Creator role exemption
-if (member.roles.cache.has(h.ids.roles.creator)) {
-    console.log(`⏭️ Skipped all role management for ${member.user.tag} (Creator, exempt)`);
-    return;
-}
+        if (member.roles.cache.has(h.ids.roles.creator)) {
+            console.log(`⏭️ Skipped all role management for ${member.user.tag} (Creator, exempt)`);
+            return;
+        }
         
-        // Check if member already has Supporter role (from external sync like Patreon)
         const hasSupporter = member.roles.cache.has(supporterRoleId);
         if (!hasSupporter) {
             const unverifiedRole = member.guild.roles.cache.get(unverifiedRoleId);
@@ -36,10 +31,9 @@ if (member.roles.cache.has(h.ids.roles.creator)) {
         console.error('Error assigning Unverified role:', err);
     }
 
-    // --- 1. WELCOME MESSAGE LOGIC (now uses webhook) ---
-    try {
+        try {
         const { data: settings } = await supabase
-            .from(h.tables.SERVER_SETTINGS)   // 👈 changed from 'server_settings'
+            .from(h.tables.SERVER_SETTINGS)
             .select('welcome_channel_id, welcome_message')
             .eq('guild_id', member.guild.id)
             .single();
@@ -60,14 +54,14 @@ if (member.roles.cache.has(h.ids.roles.creator)) {
                 if (!webhook) {
                     webhook = await channel.createWebhook({
                         name: 'Welcome Bot',
-                        avatar: 'https://www.velutinx.com/images/LogoDiscord.png'
+                        avatar: h.urls.LOGO_URL
                     });
                 }
 
                 const sent = await webhook.send({
                     content: finalMessage,
                     username: 'Welcome Bot',
-                    avatarURL: 'https://www.velutinx.com/images/LogoDiscord.png'
+                    avatarURL: h.urls.LOGO_URL
                 });
 
                 await sent.react(h.releaseEmojis.waveId).catch(err => console.error("Failed to react:", err));
@@ -77,7 +71,6 @@ if (member.roles.cache.has(h.ids.roles.creator)) {
         console.error('Welcome Message Error:', err);
     }
 
-    // --- 2. INSTANT ROLE CLEANER (10s Delay) ---
     setTimeout(async () => {
         try {
             const freshMember = await member.guild.members.fetch(member.id).catch(() => null);
