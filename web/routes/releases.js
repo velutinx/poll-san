@@ -11,28 +11,19 @@ module.exports = function setupReleasesRoutes(app, client, upload, FORUM_ID, SUP
   
   const LOGO_URL = h.urls.LOGO_URL;
 
-  // Helper: get or create a webhook for a channel with a specific name and the custom avatar
-async function getWebhook(channel, name) {
+  // Helper: get or create a webhook with correct name & avatar
+  async function getWebhook(channel, name) {
     let webhook = (await channel.fetchWebhooks()).find(w => w.name === name);
     if (webhook) {
-        // Ensure name and avatar are exactly what we want
-        if (webhook.name !== name || webhook.avatar !== LOGO_URL) {
-            await webhook.edit({
-                name,
-                avatar: LOGO_URL,
-            });
-        }
-        return webhook;
+      if (webhook.name !== name || webhook.avatar !== LOGO_URL) {
+        await webhook.edit({ name, avatar: LOGO_URL });
+      }
+      return webhook;
     }
-    // Create new one
-    webhook = await channel.createWebhook({
-        name,
-        avatar: LOGO_URL,
-    });
+    webhook = await channel.createWebhook({ name, avatar: LOGO_URL });
     return webhook;
-}
+  }
 
-  // Helpers to get random arrows
   const getRandomArrow = () => h.releaseEmojis.ARROWS[Math.floor(Math.random() * h.releaseEmojis.ARROWS.length)];
   const getRandomDownArrow = () => h.releaseEmojis.DOWN_ARROWS[Math.floor(Math.random() * h.releaseEmojis.DOWN_ARROWS.length)];
 
@@ -82,14 +73,13 @@ ${getRandomArrow()} See <#${SUPPORTER_FORUM_ID}>`;
 
       const attachments = files.map(f => ({ attachment: f.buffer, name: f.originalname }));
 
-      // Use webhook to create the thread with the custom identity
       const webhook = await getWebhook(forumChannel, 'Preview');
       await webhook.send({
         content: messageBody,
         files: attachments,
         threadName: threadTitle,
         appliedTags,
-        username: 'Preview',          // force name
+        username: 'Preview',
         avatarURL: LOGO_URL,
       });
 
@@ -133,7 +123,7 @@ ${getRandomArrow()} See <#${SUPPORTER_FORUM_ID}>`;
   });
 
   // ────────────────────────────────────────────────
-  // 10. EDIT FORUM POST (unchanged – edits the starter message)
+  // 10. EDIT FORUM POST (unchanged)
   // ────────────────────────────────────────────────
   app.post('/api/edit-post', async (req, res) => {
     const { threadId, pack, setSize, input, series, suffix } = req.body;
@@ -252,7 +242,6 @@ ${h.releaseEmojis.LINK} [megaLink](${download || 'https://mega.nz'})`;
       let supporterResult = {};
 
       if (supporterThreadId) {
-        // Update existing thread – keep using message.edit()
         const thread = await client.channels.fetch(supporterThreadId);
         if (!thread) return res.status(404).json({ error: "Thread not found" });
 
@@ -274,7 +263,6 @@ ${h.releaseEmojis.LINK} [megaLink](${download || 'https://mega.nz'})`;
         }
         supporterResult = { updated: true };
       } else {
-        // Create new thread via webhook "Release"
         const webhook = await getWebhook(forumChannel, 'Release');
         await webhook.send({
           content: messageBody,
@@ -288,7 +276,7 @@ ${h.releaseEmojis.LINK} [megaLink](${download || 'https://mega.nz'})`;
         supporterResult = { created: true };
       }
 
-      // --- Update Preview Thread (unchanged) ---
+      // --- Update Preview Thread ---
       let previewResult = {};
       if (editPreview === 'true') {
         let targetPreviewId = previewThreadId;
@@ -320,28 +308,27 @@ ${h.releaseEmojis.LINK} [megaLink](${download || 'https://mega.nz'})`;
                 await previewThread.setName(newTitle);
               }
 
-const starter = await previewThread.fetchStarterMessage();
-if (starter) {
-    let newContent = starter.content;
-    newContent = newContent.replace(/(Set size:\s*)(\d+|XX)(\s*images)/i, `$1${setSize}$3`);
+              const starter = await previewThread.fetchStarterMessage();
+              if (starter) {
+                let newContent = starter.content;
+                newContent = newContent.replace(/(Set size:\s*)(\d+|XX)(\s*images)/i, `$1${setSize}$3`);
 
-    if (newContent.includes(`${PREVIEW_RELEASE_HEADER} -- SOON`)) {
-        newContent = newContent.replace(`${PREVIEW_RELEASE_HEADER} -- SOON`, `${h.releaseEmojis.VERIFY} RELEASE`);
-    } else if (newContent.includes(PREVIEW_RELEASE_HEADER)) {
-        newContent = newContent.replace(PREVIEW_RELEASE_HEADER, `${h.releaseEmojis.VERIFY} RELEASE`);
-    }
+                if (newContent.includes(`${PREVIEW_RELEASE_HEADER} -- SOON`)) {
+                  newContent = newContent.replace(`${PREVIEW_RELEASE_HEADER} -- SOON`, `${h.releaseEmojis.VERIFY} RELEASE`);
+                } else if (newContent.includes(PREVIEW_RELEASE_HEADER)) {
+                  newContent = newContent.replace(PREVIEW_RELEASE_HEADER, `${h.releaseEmojis.VERIFY} RELEASE`);
+                }
+                newContent = newContent.replace(/ -- SOON/g, '');
 
-    newContent = newContent.replace(/ -- SOON/g, '');
-
-    // Use the webhook to edit its own message
-    const previewWebhook = await getWebhook(previewThread.parent, 'Preview');
-    await previewWebhook.editMessage(starter.id, {
-        content: newContent,
-        flags: ["SuppressEmbeds"]  // keep flags if needed
-    });
-    previewResult = { previewUpdated: true };
-}
-
+                // Use the webhook to edit its own message
+                const previewWebhook = await getWebhook(previewThread.parent, 'Preview');
+                await previewWebhook.editMessage(starter.id, {
+                  content: newContent,
+                  flags: ["SuppressEmbeds"]
+                });
+                previewResult = { previewUpdated: true };
+              }
+            }
           } catch (previewErr) {
             console.error('Error updating preview thread:', previewErr);
           }
