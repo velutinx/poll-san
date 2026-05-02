@@ -1,5 +1,6 @@
 // commands/admin/post-slots-ui.js
 const { SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, PermissionFlagsBits, EmbedBuilder, MessageFlags } = require('discord.js');
+const helpers = require('../../utils/helpers');
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -50,7 +51,7 @@ module.exports = {
         if (!webhook) {
             webhook = await channel.createWebhook({
                 name: 'Slots',
-                avatar: 'https://www.velutinx.com/images/LogoDiscord.png'
+                avatar: helpers.urls.LOGO_URL
             });
         }
 
@@ -58,7 +59,7 @@ module.exports = {
             embeds: [embed],
             components: [row],
             username: 'Slots',
-            avatarURL: 'https://www.velutinx.com/images/LogoDiscord.png'
+            avatarURL: helpers.urls.LOGO_URL
         });
 
         await interaction.reply({ content: '✅ Slots UI has been posted!', flags: 64 });
