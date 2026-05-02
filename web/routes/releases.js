@@ -29,27 +29,32 @@ async function editThreadMessage(thread, newContent) {
     const starter = await thread.fetchStarterMessage().catch(() => null);
     if (!starter) return { success: false, error: 'No starter message' };
 
-    // 1. Try to use the webhook that originally sent it (if still exists)
     if (starter.webhookId) {
-        const webhooks = await thread.parent.fetchWebhooks();
-        const webhook = webhooks.find(w => w.id === starter.webhookId);
-        if (webhook) {
-            try {
-                await webhook.editMessage(starter.id, { content: newContent, flags: ["SuppressEmbeds"] });
-                return { success: true };
-            } catch (err) {
-                if (err.code !== 10008) throw err; // unknown message → webhook gone
-            }
-        }
-    } else {
-        // 2. Bot message – normal edit
         try {
-            await starter.edit({ content: newContent, flags: ["SuppressEmbeds"] });
-            return { success: true };
+            const webhooks = await thread.parent.fetchWebhooks();
+            const webhook = webhooks.find(w => w.id === starter.webhookId);
+            
+            if (webhook) {
+                await webhook.editMessage(starter.id, { 
+                    content: newContent, 
+                    flags: ["SuppressEmbeds"],
+                    threadId: thread.id
+                });
+                return { success: true };
+            }
         } catch (err) {
-            if (err.code !== 50005) throw err;
+            console.error("Webhook edit failed:", err);
         }
     }
+
+    try {
+        await starter.edit({ content: newContent, flags: ["SuppressEmbeds"] });
+        return { success: true };
+    } catch (err) {
+        console.error("Bot edit failed:", err);
+        return { success: false, error: err.message };
+    }
+}
 
     // 3. Fallback: original webhook/bot unavailable → send a new message with the same identity
     const webhook = starter.webhookId
