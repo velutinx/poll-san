@@ -33,12 +33,11 @@ module.exports = {
                 .setEmoji('🎁')
         );
 
-        // Use webhook to send as "Check in Bot"
         let webhook = (await checkinChannel.fetchWebhooks()).find(w => w.name === 'Check in Bot');
         if (!webhook) {
             webhook = await checkinChannel.createWebhook({
                 name: 'Check in Bot',
-                avatar: 'https://www.velutinx.com/images/LogoDiscord.png'
+                avatar: helpers.urls.LOGO_URL
             });
         }
 
@@ -46,7 +45,7 @@ module.exports = {
             embeds: [embed],
             components: [row],
             username: 'Check in Bot',
-            avatarURL: 'https://www.velutinx.com/images/LogoDiscord.png'
+            avatarURL: helpers.urls.LOGO_URL
         });
 
         await interaction.reply({ content: '✅ Daily check-in message posted!', ephemeral: true });
