@@ -339,7 +339,7 @@ if (starter) {
         console.error('Error editing preview message:', e);
     }
 }
-      }
+      
 
       res.json({ success: true, ...supporterResult, ...previewResult });
 
