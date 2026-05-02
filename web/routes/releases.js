@@ -308,31 +308,37 @@ ${h.releaseEmojis.LINK} [megaLink](${download || 'https://mega.nz'})`;
                 await previewThread.setName(newTitle);
               }
 
-              const starter = await previewThread.fetchStarterMessage();
-              if (starter) {
-                let newContent = starter.content;
-                newContent = newContent.replace(/(Set size:\s*)(\d+|XX)(\s*images)/i, `$1${setSize}$3`);
+// Inside the supporter release route, replace the preview update block with this:
 
-                if (newContent.includes(`${PREVIEW_RELEASE_HEADER} -- SOON`)) {
-                  newContent = newContent.replace(`${PREVIEW_RELEASE_HEADER} -- SOON`, `${h.releaseEmojis.VERIFY} RELEASE`);
-                } else if (newContent.includes(PREVIEW_RELEASE_HEADER)) {
-                  newContent = newContent.replace(PREVIEW_RELEASE_HEADER, `${h.releaseEmojis.VERIFY} RELEASE`);
-                }
-                newContent = newContent.replace(/ -- SOON/g, '');
+const starter = await previewThread.fetchStarterMessage();
+if (starter) {
+    let newContent = starter.content;
+    newContent = newContent.replace(/(Set size:\s*)(\d+|XX)(\s*images)/i, `$1${setSize}$3`);
 
-                // Use the webhook to edit its own message
-                const previewWebhook = await getWebhook(previewThread.parent, 'Preview');
-                await previewWebhook.editMessage(starter.id, {
-                  content: newContent,
-                  flags: ["SuppressEmbeds"]
-                });
-                previewResult = { previewUpdated: true };
-              }
-            }
-          } catch (previewErr) {
-            console.error('Error updating preview thread:', previewErr);
-          }
+    if (newContent.includes(`${PREVIEW_RELEASE_HEADER} -- SOON`)) {
+        newContent = newContent.replace(`${PREVIEW_RELEASE_HEADER} -- SOON`, `${h.releaseEmojis.VERIFY} RELEASE`);
+    } else if (newContent.includes(PREVIEW_RELEASE_HEADER)) {
+        newContent = newContent.replace(PREVIEW_RELEASE_HEADER, `${h.releaseEmojis.VERIFY} RELEASE`);
+    }
+    newContent = newContent.replace(/ -- SOON/g, '');
+
+    try {
+        const previewWebhook = await getWebhook(previewThread.parent, 'Preview');
+        // Check if the message was actually sent by this webhook
+        if (starter.webhookId === previewWebhook.id) {
+            await previewWebhook.editMessage(starter.id, {
+                content: newContent,
+                flags: ["SuppressEmbeds"]
+            });
+        } else {
+            // Fallback: message was sent by the bot (old thread)
+            await starter.edit({ content: newContent, flags: ["SuppressEmbeds"] });
         }
+        previewResult = { previewUpdated: true };
+    } catch (e) {
+        console.error('Error editing preview message:', e);
+    }
+}
       }
 
       res.json({ success: true, ...supporterResult, ...previewResult });
