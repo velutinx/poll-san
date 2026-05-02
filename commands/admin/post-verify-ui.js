@@ -39,7 +39,7 @@ module.exports = {
         if (!webhook) {
             webhook = await verifyChannel.createWebhook({
                 name: 'Verification Bot',
-                avatar: 'https://www.velutinx.com/images/LogoDiscord.png'
+                avatar: helpers.urls.LOGO_URL   // <-- centralized constant
             });
         }
 
@@ -48,7 +48,7 @@ module.exports = {
             embeds: [embed],
             components: [row],
             username: 'Verification Bot',
-            avatarURL: 'https://www.velutinx.com/images/LogoDiscord.png'
+            avatarURL: helpers.urls.LOGO_URL   // <-- centralized constant
         });
 
         // Add the VERIFY emoji reaction to the message we just posted
