@@ -36,7 +36,7 @@ async function getLanguageForOrder(orderId) {
   if (!orderId) return 'en';
   const { data, error } = await supabaseRetry(() =>
     supabase
-      .from(h.tables.SUCCESSSS)
+      .from(h.tables.SUCCESSS)
       .select('language')
       .eq('paypal_token', orderId)
       .single()
