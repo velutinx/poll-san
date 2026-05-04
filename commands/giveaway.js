@@ -37,6 +37,21 @@ async function getGiveawayWebhook(channel) {
     return webhook;
 }
 
+// ──────────────────────────────────────────────
+// Safe timeout helper for durations > 24.8 days
+// ──────────────────────────────────────────────
+const MAX_TIMEOUT = 2147483647; // 2^31 - 1 ms (max for 32-bit signed int)
+
+function safeTimeout(callback, delayMs) {
+    if (delayMs <= MAX_TIMEOUT) {
+        return setTimeout(callback, delayMs);
+    }
+    // Recursively schedule in chunks of MAX_TIMEOUT
+    return setTimeout(() => {
+        safeTimeout(callback, delayMs - MAX_TIMEOUT);
+    }, MAX_TIMEOUT);
+}
+
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('giveaway')
@@ -130,6 +145,20 @@ module.exports = {
             avatar: h.urls.LOGO_URL
         });
 
+        // Ghost ping for giveaway role
+        try {
+            const pingMessage = await webhook.send({
+                content: `🎉 New giveaway! <@&1472273843665113139>`,
+                username: 'Giveaway',
+                avatar: h.urls.LOGO_URL
+            });
+            setTimeout(() => {
+                pingMessage.delete().catch(() => {});
+            }, 2000);
+        } catch (err) {
+            console.error('Failed to send ghost ping:', err);
+        }
+
         console.log(`Starting giveaway ID: ${giveawayId} - ${prize} for ${durationStr}`);
 
         const supabaseClient = await getSupabase();
@@ -155,7 +184,8 @@ module.exports = {
             });
         }
 
-        const timeoutId = setTimeout(() => endGiveaway(giveawayMessage.id, interaction.client), durationMs);
+        // Use safeTimeout to avoid 32-bit overflow
+        const timeoutId = safeTimeout(() => endGiveaway(giveawayMessage.id, interaction.client), durationMs);
         activeGiveaways.set(giveawayMessage.id, {
             messageId: giveawayMessage.id,
             channelId: channel.id,
@@ -193,7 +223,6 @@ async function handleGiveawayButton(interaction) {
     const messageId = interaction.message.id;
     const sessionKey = `${userId}-${messageId}`;
 
-    // 1. Session check to update instead of sending new ephemeral message
     let existingSession = giveawaySessions.get(sessionKey);
     let messageUpdated = false;
 
@@ -212,7 +241,6 @@ async function handleGiveawayButton(interaction) {
 
     let responseContent = '';
 
-    // 2. Fetch giveaway logic
     let giveaway = activeGiveaways.get(messageId);
     
     if (!giveaway) {
@@ -231,7 +259,7 @@ async function handleGiveawayButton(interaction) {
             const timeLeft = endTime - Date.now();
             let timeoutId = null;
             if (timeLeft > 0) {
-                timeoutId = setTimeout(() => endGiveaway(messageId, interaction.client), timeLeft);
+                timeoutId = safeTimeout(() => endGiveaway(messageId, interaction.client), timeLeft);
             } else {
                 await endGiveaway(messageId, interaction.client);
                 responseContent = 'This giveaway has already ended.';
@@ -255,7 +283,6 @@ async function handleGiveawayButton(interaction) {
         }
     }
 
-    // 3. Process entry logic
     if (!responseContent) {
         if (giveaway.ended) {
             responseContent = 'This giveaway has already ended.';
@@ -280,7 +307,6 @@ async function handleGiveawayButton(interaction) {
         }
     }
 
-    // 4. Final output
     if (messageUpdated) {
         try {
             await existingSession.interaction.webhook.editMessage(existingSession.messageId, { content: responseContent });
@@ -318,7 +344,6 @@ async function endGiveaway(messageId, client) {
         const webhook = await getGiveawayWebhook(channel);
         const message = await channel.messages.fetch(messageId);
 
-        // Delete reminder message if exists
         if (dbGiveaway.reminder_message_id) {
             try {
                 const reminderMsg = await channel.messages.fetch(dbGiveaway.reminder_message_id).catch(() => null);
@@ -351,7 +376,6 @@ async function endGiveaway(messageId, client) {
             });
         }
 
-        // Update the original embed using the webhook (not the bot)
         const oldEmbed = message.embeds[0];
         const newEmbed = EmbedBuilder.from(oldEmbed)
             .setTitle(`${dbGiveaway.prize} Giveaway Ended`)
@@ -399,7 +423,7 @@ async function restoreGiveaways(client) {
             console.log(`Giveaway ${g.message_id} - ${g.prize} already ended, processing now.`);
             await endGiveawayFromDB(g, client);
         } else {
-            const timeoutId = setTimeout(() => endGiveaway(g.message_id, client), timeLeft);
+            const timeoutId = safeTimeout(() => endGiveaway(g.message_id, client), timeLeft);
             activeGiveaways.set(g.message_id, {
                 messageId: g.message_id,
                 channelId: g.channel_id,
