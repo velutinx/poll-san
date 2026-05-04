@@ -251,7 +251,7 @@ module.exports = {
         PRICE_KEYS: 'price_keys',
         PRICE_TIERS: 'price_tiers',
         SERVER_SETTINGS: 'server_settings',
-        SUCCESSSS: 'successss',
+        SUCCESSS: 'successs',
         SYNC_STATE: 'sync_state',
         USER_XP: 'user_xp'
     },
