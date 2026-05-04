@@ -40,13 +40,12 @@ async function getGiveawayWebhook(channel) {
 // ──────────────────────────────────────────────
 // Safe timeout helper for durations > 24.8 days
 // ──────────────────────────────────────────────
-const MAX_TIMEOUT = 2147483647; // 2^31 - 1 ms (max for 32-bit signed int)
+const MAX_TIMEOUT = 2147483647;
 
 function safeTimeout(callback, delayMs) {
     if (delayMs <= MAX_TIMEOUT) {
         return setTimeout(callback, delayMs);
     }
-    // Recursively schedule in chunks of MAX_TIMEOUT
     return setTimeout(() => {
         safeTimeout(callback, delayMs - MAX_TIMEOUT);
     }, MAX_TIMEOUT);
@@ -112,8 +111,12 @@ module.exports = {
 
         const giveawayId = Date.now();
 
+        // Build active title with two different gift boxes
+        const { left: leftBox, right: rightBox } = h.getTwoRandomPresents();
+        const activeTitle = `${leftBox} ${prize} Giveaway ${rightBox}`;
+
         const embed = new EmbedBuilder()
-            .setTitle(prize)
+            .setTitle(activeTitle)
             .setDescription(`${releaseEmojis?.CHAT || '💬'} Click the button below to join the giveaway! ${releaseEmojis?.CHAT || '💬'}`)
             .addFields(
                 { name: 'Ends', value: `<t:${Math.floor(endTime.getTime() / 1000)}:R>`, inline: true },
@@ -137,7 +140,6 @@ module.exports = {
         const messageOptions = { embeds: [embed], components: [row] };
         if (imageAttachment) messageOptions.files = [imageAttachment];
 
-        // Use webhook to send the message
         const webhook = await getGiveawayWebhook(channel);
         const giveawayMessage = await webhook.send({
             ...messageOptions,
@@ -145,10 +147,10 @@ module.exports = {
             avatar: h.urls.LOGO_URL
         });
 
-        // Ghost ping for giveaway role
+        // Ghost ping with confetti
         try {
             const pingMessage = await webhook.send({
-                content: `🎉 New giveaway! <@&1472273843665113139>`,
+                content: `${releaseEmojis.CONFETTI} New giveaway! <@&1472273843665113139>`,
                 username: 'Giveaway',
                 avatar: h.urls.LOGO_URL
             });
@@ -184,7 +186,6 @@ module.exports = {
             });
         }
 
-        // Use safeTimeout to avoid 32-bit overflow
         const timeoutId = safeTimeout(() => endGiveaway(giveawayMessage.id, interaction.client), durationMs);
         activeGiveaways.set(giveawayMessage.id, {
             messageId: giveawayMessage.id,
@@ -370,15 +371,16 @@ async function endGiveaway(messageId, client) {
             const winnerMentions = winners.map(id => `<@${id}>`).join(', ');
             const { left, right } = h.getTwoRandomPresents();
             await webhook.send({
-                content: `${releaseEmojis?.CONFETTI || '🎉'} Congratulations to ${winnerMentions} for winning ${left} **${dbGiveaway.prize}** ${right}!`,
+                content: `${releaseEmojis.CONFETTI} Congratulations to ${winnerMentions} for winning ${left} **${dbGiveaway.prize}** ${right}!`,
                 username: 'Giveaway',
-                avatarURL: h.urls.LOGO_URL
+                avatar: h.urls.LOGO_URL
             });
         }
 
         const oldEmbed = message.embeds[0];
+        const endedTitle = `${dbGiveaway.prize} Giveaway Ended ${releaseEmojis.CONFETTI}`;
         const newEmbed = EmbedBuilder.from(oldEmbed)
-            .setTitle(`${dbGiveaway.prize} Giveaway Ended`)
+            .setTitle(endedTitle)
             .setDescription(null)
             .setColor(colors.ended)
             .setFooter({ text: 'Ended' })
@@ -475,15 +477,16 @@ async function endGiveawayFromDB(g, client) {
             const winnerMentions = winners.map(id => `<@${id}>`).join(', ');
             const { left, right } = h.getTwoRandomPresents();
             await webhook.send({
-                content: `${releaseEmojis?.CONFETTI || '🎉'} Congratulations to ${winnerMentions} for winning ${left} **${g.prize}** ${right}!`,
+                content: `${releaseEmojis.CONFETTI} Congratulations to ${winnerMentions} for winning ${left} **${g.prize}** ${right}!`,
                 username: 'Giveaway',
                 avatar: h.urls.LOGO_URL
             });
         }
 
         const oldEmbed = message.embeds[0];
+        const endedTitle = `${g.prize} Giveaway Ended ${releaseEmojis.CONFETTI}`;
         const newEmbed = EmbedBuilder.from(oldEmbed)
-            .setTitle(`${g.prize} Giveaway Ended`)
+            .setTitle(endedTitle)
             .setDescription(null)
             .setColor(colors.ended)
             .setFooter({ text: 'Ended' })
