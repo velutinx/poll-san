@@ -51,6 +51,10 @@ module.exports = {
         NEW1: '<a:NEW1:1491321234015911977>',
         NEW2: '<a:NEW2:1491321257780580414>',
         VERIFY: '<a:Verify:1491669023245729924>',
+        VERIFY_BLUE: '<a:Verifyblue:1501010309790437467>',
+        VERIFY_PINK: '<a:Verifypink:1501010311279542312>',
+        VERIFY_RED: '<a:Verifyred:1501010312583712778>',
+        VERIFY_YELLOW: '<a:Verifyyellow:1501010314077012150>',
         EIGHTEEN: '<a:18:1491670036799029288>',
         LINK: '<a:Link:1491670128562274475>',
         ALERT: '<a:alert:1493698480034676736>',
@@ -61,6 +65,21 @@ module.exports = {
         PROGRESS: '<a:progress:1491670111923212308>',
         WAVE: '<a:wave:1492326023080185987>',
         waveId: '1492326023080185987',
+
+        // Array of all verify emojis (existing + new colourful ones)
+        VERIFY_EMOJIS: [
+            '<a:Verify:1491669023245729924>',
+            '<a:Verifyblue:1501010309790437467>',
+            '<a:Verifypink:1501010311279542312>',
+            '<a:Verifyred:1501010312583712778>',
+            '<a:Verifyyellow:1501010314077012150>'
+        ],
+
+        // Function to pick a random verify emoji
+        getRandomVerify: function() {
+            return this.VERIFY_EMOJIS[Math.floor(Math.random() * this.VERIFY_EMOJIS.length)];
+        },
+
         ARROWS: [
             '<a:arrowyellow:1491672823729623212>',
             '<a:arrowwhite:1491672813398917150>',
@@ -118,20 +137,20 @@ module.exports = {
     },
 
     getTwoRandomPresents: function() {
-    const presents = [
-        this.releaseEmojis.PRESENT_BLUE,
-        this.releaseEmojis.PRESENT_GREEN,
-        this.releaseEmojis.PRESENT_PINK,
-        this.releaseEmojis.PRESENT_PURPLE,
-        this.releaseEmojis.PRESENT_RED
-    ];
-    const firstIndex = Math.floor(Math.random() * presents.length);
-    let secondIndex = Math.floor(Math.random() * presents.length);
-    while (secondIndex === firstIndex) {
-        secondIndex = Math.floor(Math.random() * presents.length);
-    }
-    return { left: presents[firstIndex], right: presents[secondIndex] };
-},
+        const presents = [
+            this.releaseEmojis.PRESENT_BLUE,
+            this.releaseEmojis.PRESENT_GREEN,
+            this.releaseEmojis.PRESENT_PINK,
+            this.releaseEmojis.PRESENT_PURPLE,
+            this.releaseEmojis.PRESENT_RED
+        ];
+        const firstIndex = Math.floor(Math.random() * presents.length);
+        let secondIndex = Math.floor(Math.random() * presents.length);
+        while (secondIndex === firstIndex) {
+            secondIndex = Math.floor(Math.random() * presents.length);
+        }
+        return { left: presents[firstIndex], right: presents[secondIndex] };
+    },
 
     ids: {
         roles: {
