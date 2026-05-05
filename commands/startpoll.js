@@ -44,18 +44,20 @@ module.exports = async (interaction) => {
     const channel = interaction.channel;
     const webhook = await getPollWebhook(channel);
 
-    // 2. Send the main poll message via webhook (also creates the thread)
+    // 2. Send the main poll message via webhook (without threadName)
     const pollMessage = await webhook.send({
         content: await generateMessageContent(endTime, null, characters),
-        threadName: `Character Discussion - ${new Date().toLocaleDateString()}`,
         username: 'Poll',
         avatarURL: h.urls.LOGO_URL,
     });
 
-    // The thread is automatically created when using threadName
-    const thread = pollMessage.thread;
+    // 3. Create a thread from that message using the bot
+    const thread = await pollMessage.startThread({
+        name: `Character Discussion - ${new Date().toLocaleDateString()}`,
+        autoArchiveDuration: 1440
+    });
 
-    // 3. Record in Supabase (for auto‑resume) – using centralized table name
+    // 4. Record in Supabase (for auto‑resume)
     try {
         await supabase.from(h.tables.POLL_AUTO_RESUME).upsert({
             message_id: pollMessage.id,
@@ -68,12 +70,12 @@ module.exports = async (interaction) => {
         console.error("❌ Supabase Error:", dbError.message);
     }
 
-    // 4. Add reactions to the poll message (bot must react, webhooks can't)
+    // 5. Add reactions (bot must react)
     await Promise.all(reactIds.map(id =>
         pollMessage.react(id).catch(e => console.error(`Reaction Error (${id}):`, e.message))
     ));
 
-    // 5. Send thread messages (images and prompt) via the same webhook
+    // 6. Send thread messages (images and prompt) via the same webhook
     const characterChunks = chunkArray(characters, 4);
     const cacheVersion = Date.now();
 
@@ -116,6 +118,6 @@ module.exports = async (interaction) => {
         await interaction.editReply({ content: '✅ Poll Live!' }).catch(() => {});
     }
 
-    // 6. Start the update interval (pass the webhook info through the message context)
+    // 7. Start the update interval (edits via webhook)
     runPollInterval(pollMessage, endTime, characters);
 };
