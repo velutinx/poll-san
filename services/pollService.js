@@ -111,6 +111,7 @@ async function getFinalPollMessageContent(pollList) {
     return `🛑 **Poll has ended.**\n\n${resultsString}\n\nDiscord weighted vote + ${e.LINK} **[Website poll results](https://velutinx.com/poll)**\n\n${randomDownArrow} Click the thread below for images & discussion!`;
 }
 
+// ----- runPollInterval -----
 function runPollInterval(pollMessage, endTime, characters) {
     forceStopPoll();
 
@@ -121,7 +122,17 @@ function runPollInterval(pollMessage, endTime, characters) {
         try {
             const results = await getPollResults(pollMessage, characters);
             const content = await generateMessageContent(endTime, results, characters, isFinished);
-            await pollMessage.edit({ content });
+
+            // Edit via the Poll webhook instead of the bot
+            const channel = pollMessage.channel;
+            const webhooks = await channel.fetchWebhooks();
+            const pollWebhook = webhooks.find(w => w.name === 'Poll');
+            if (pollWebhook) {
+                await pollWebhook.editMessage(pollMessage.id, { content });
+            } else {
+                // Fallback – likely won't work if message is owned by a webhook
+                await pollMessage.edit({ content }).catch(() => {});
+            }
 
             if (isFinished) {
                 forceStopPoll();
@@ -142,16 +153,19 @@ function runPollInterval(pollMessage, endTime, characters) {
     }, UPDATE_INTERVAL);
 }
 
-/**
- * Immediately recalculate poll results and update the Discord message.
- * @param {Object} pollMessage - The Discord message object of the poll.
- * @param {string[]} characters - Array of character names (already parsed).
- * @param {number} endTime - Timestamp when the poll ends (for the time remaining display).
- */
+// ----- refreshPollMessage (used externally, e.g. from website routes) -----
 async function refreshPollMessage(pollMessage, characters, endTime) {
     const results = await getPollResults(pollMessage, characters);
     const content = await generateMessageContent(endTime, results, characters, false);
-    await pollMessage.edit({ content });
+
+    const channel = pollMessage.channel;
+    const webhooks = await channel.fetchWebhooks();
+    const pollWebhook = webhooks.find(w => w.name === 'Poll');
+    if (pollWebhook) {
+        await pollWebhook.editMessage(pollMessage.id, { content });
+    } else {
+        await pollMessage.edit({ content }).catch(() => {});
+    }
 }
 
 module.exports = {
@@ -160,5 +174,5 @@ module.exports = {
     runPollInterval,
     getFinalPollMessageContent,
     forceStopPoll,
-    refreshPollMessage   // 👈 new
+    refreshPollMessage
 };
