@@ -1,4 +1,4 @@
-// this is poll-san/web/routes/poll.js
+// web/routes/poll.js
 
 const { EmbedBuilder } = require('discord.js');
 
@@ -93,7 +93,15 @@ module.exports = function setupPollRoutes(app, client, supabase, supabaseRetry) 
                     .filter(s => s.length > 1);
                 const results = await pollService.getPollResults(pollMessage, characters);
                 const content = await pollService.generateMessageContent(0, results, characters, true);
-                await pollMessage.edit({ content });
+                
+                // Edit the poll message via the Poll webhook
+                const webhooks = await channel.fetchWebhooks();
+                const pollWebhook = webhooks.find(w => w.name === 'Poll');
+                if (pollWebhook) {
+                    await pollWebhook.editMessage(pollMessage.id, { content });
+                } else {
+                    await pollMessage.edit({ content }).catch(() => {});
+                }
             }
 
             const { error: rpcError } = await supabaseRetry(() =>
@@ -174,11 +182,34 @@ module.exports = function setupPollRoutes(app, client, supabase, supabaseRetry) 
                 scoreboard += line;
             });
 
-            await thread.send(scoreboard);
+            // Send scoreboard via the Poll webhook
+            const webhooks = await channel.fetchWebhooks();
+            const pollWebhook = webhooks.find(w => w.name === 'Poll');
+            if (pollWebhook) {
+                await pollWebhook.send({
+                    content: scoreboard,
+                    threadId: thread.id,
+                    username: 'Poll',
+                    avatarURL: h.urls.LOGO_URL
+                });
+            } else {
+                await thread.send(scoreboard);
+            }
+
+            // Send winner image embed (also via webhook for consistency)
             if (winnerOptionId) {
                 const imageUrl = `https://www.velutinx.com/images/poll/${winnerOptionId}.jpg`;
                 const embed = new EmbedBuilder().setImage(imageUrl).setColor(0x00FF00);
-                await thread.send({ embeds: [embed] });
+                if (pollWebhook) {
+                    await pollWebhook.send({
+                        embeds: [embed],
+                        threadId: thread.id,
+                        username: 'Poll',
+                        avatarURL: h.urls.LOGO_URL
+                    });
+                } else {
+                    await thread.send({ embeds: [embed] });
+                }
             }
             res.json({ success: true });
         } catch (err) {
