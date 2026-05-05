@@ -198,8 +198,8 @@ ${getRandomArrow()} See <#${SUPPORTER_FORUM_ID}>`;
             newBody = newBody.replace(PREVIEW_RELEASE_HEADER, `${PREVIEW_RELEASE_HEADER} -- SOON`);
           }
         } else {
-          newBody = newBody.replace(`${PREVIEW_RELEASE_HEADER} -- SOON`, `${h.releaseEmojis.VERIFY} RELEASE`);
-          newBody = newBody.replace(PREVIEW_RELEASE_HEADER, `${h.releaseEmojis.VERIFY} RELEASE`);
+          newBody = newBody.replace(`${PREVIEW_RELEASE_HEADER} -- SOON`, `${h.releaseEmojis.getRandomVerify()} RELEASE`);
+          newBody = newBody.replace(PREVIEW_RELEASE_HEADER, `${h.releaseEmojis.getRandomVerify()} RELEASE`);
           newBody = newBody.replace(/ -- SOON/g, '');
         }
 
@@ -357,10 +357,11 @@ ${h.releaseEmojis.LINK} [megaLink](${download || 'https://mega.nz'})`;
                 let newContent = starter.content;
                 newContent = newContent.replace(/(Set size:\s*)(\d+|XX)(\s*images)/i, `$1${setSize}$3`);
 
+                const verifyEmoji = h.releaseEmojis.getRandomVerify();
                 if (newContent.includes(`${PREVIEW_RELEASE_HEADER} -- SOON`)) {
-                  newContent = newContent.replace(`${PREVIEW_RELEASE_HEADER} -- SOON`, `${h.releaseEmojis.VERIFY} RELEASE`);
+                newContent = newContent.replace(`${PREVIEW_RELEASE_HEADER} -- SOON`, `${verifyEmoji} RELEASE`);
                 } else if (newContent.includes(PREVIEW_RELEASE_HEADER)) {
-                  newContent = newContent.replace(PREVIEW_RELEASE_HEADER, `${h.releaseEmojis.VERIFY} RELEASE`);
+                newContent = newContent.replace(PREVIEW_RELEASE_HEADER, `${verifyEmoji} RELEASE`);
                 }
                 newContent = newContent.replace(/ -- SOON/g, '');
 
