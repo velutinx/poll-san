@@ -164,7 +164,7 @@ module.exports = function setupPollRoutes(app, client, supabase, supabaseRetry) 
                 .map(s => s.trim().replace(/:female_sign:/g, '♀️').replace(/:male_sign:/g, '♂️'))
                 .filter(s => s.length > 1);
 
-            let scoreboard = `:trophy: **${winner_name}** has been marked as a winner! ${e.CONFETTI}\n\n`;
+            let scoreboard = `${h.releaseEmojis.getRandomVerify()} **${winner_name}** has been marked as a winner! ${e.CONFETTI}\n\n`;
             characters.forEach((char, index) => {
                 const imgNum = index + 1;
                 const emoji = h.emojis[index] || `[${imgNum}]`;
