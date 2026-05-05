@@ -1,8 +1,21 @@
 // commands/startpoll.js
 const h = require('../utils/helpers');
-const { chunkArray, emojis, reactIds, ids, releaseEmojis } = h; // destructure for convenience
+const { chunkArray, emojis, reactIds, ids, releaseEmojis } = h;
 const { generateMessageContent, runPollInterval } = require('../services/pollService');
 const supabase = require('../services/supabase');
+
+// Helper: get or create the "Poll" webhook in a channel
+async function getPollWebhook(channel) {
+  const name = 'Poll';
+  const avatar = h.urls.LOGO_URL;
+  let webhook = (await channel.fetchWebhooks()).find(w => w.name === name);
+  if (webhook) {
+    if (webhook.avatar !== avatar) await webhook.edit({ name, avatar });
+    return webhook;
+  }
+  webhook = await channel.createWebhook({ name, avatar });
+  return webhook;
+}
 
 module.exports = async (interaction) => {
     // Allow dashboard to bypass Discord checks
@@ -10,12 +23,10 @@ module.exports = async (interaction) => {
         if (!interaction.isChatInputCommand() && !interaction.isDashboard) return;
     }
 
-    // Defer reply (safe for both)
     if (interaction.deferReply) {
         await interaction.deferReply({ flags: 64 }).catch(() => {});
     }
 
-    // Extract data
     const days = interaction.options.getInteger('days') || 7;
     const listRaw = interaction.options.getString('list');
 
@@ -25,22 +36,30 @@ module.exports = async (interaction) => {
         return;
     }
 
-    // Split by line (preserve exact order)
     const lines = listRaw.split(/\r?\n/).filter(line => line.trim().length > 0);
     const characters = lines.map(line => line.trim());
-
     const endTime = Date.now() + (days * 24 * 60 * 60 * 1000);
 
-    // Send poll message
-    const pollMessage = await interaction.channel.send({
-        content: await generateMessageContent(endTime, null, characters)
+    // 1. Get or create the "Poll" webhook for this channel
+    const channel = interaction.channel;
+    const webhook = await getPollWebhook(channel);
+
+    // 2. Send the main poll message via webhook (also creates the thread)
+    const pollMessage = await webhook.send({
+        content: await generateMessageContent(endTime, null, characters),
+        threadName: `Character Discussion - ${new Date().toLocaleDateString()}`,
+        username: 'Poll',
+        avatarURL: h.urls.LOGO_URL,
     });
 
-    // Record in Supabase (for auto‑resume) – using centralized table name
+    // The thread is automatically created when using threadName
+    const thread = pollMessage.thread;
+
+    // 3. Record in Supabase (for auto‑resume) – using centralized table name
     try {
         await supabase.from(h.tables.POLL_AUTO_RESUME).upsert({
             message_id: pollMessage.id,
-            channel_id: interaction.channel.id,
+            channel_id: channel.id,
             ends_at: new Date(endTime).toISOString(),
             poll_list: listRaw
         });
@@ -49,32 +68,23 @@ module.exports = async (interaction) => {
         console.error("❌ Supabase Error:", dbError.message);
     }
 
-    // Add reactions in parallel
-    await Promise.all(reactIds.map(id => 
+    // 4. Add reactions to the poll message (bot must react, webhooks can't)
+    await Promise.all(reactIds.map(id =>
         pollMessage.react(id).catch(e => console.error(`Reaction Error (${id}):`, e.message))
     ));
 
-    // Create discussion thread
-    const thread = await pollMessage.startThread({
-        name: `Character Discussion - ${new Date().toLocaleDateString()}`,
-        autoArchiveDuration: 1440
-    });
-
-    // Split characters into chunks of 4
+    // 5. Send thread messages (images and prompt) via the same webhook
     const characterChunks = chunkArray(characters, 4);
-
     const cacheVersion = Date.now();
 
     for (let i = 0; i < characterChunks.length; i++) {
         let content = "";
         const embeds = [];
-        
-        const sharedUrl = "https://www.velutinx.com/poll"; 
+        const sharedUrl = "https://www.velutinx.com/poll";
 
         characterChunks[i].forEach((name, idx) => {
             const globalIdx = (i * 4) + idx + 1;
             content += `${emojis[globalIdx - 1]} ${name}\n`;
-            
             embeds.push({
                 url: sharedUrl,
                 image: {
@@ -83,22 +93,29 @@ module.exports = async (interaction) => {
             });
         });
 
-        await thread.send({ 
-            content: content, 
-            embeds: embeds 
+        await webhook.send({
+            content: content,
+            embeds: embeds,
+            threadId: thread.id,
+            username: 'Poll',
+            avatarURL: h.urls.LOGO_URL,
         }).catch(e => console.error("Thread Image Error:", e.message));
     }
 
     const upArrows = releaseEmojis.UP_ARROWS;
     const randomUpArrow = upArrows[Math.floor(Math.random() * upArrows.length)];
 
-    await thread.send({
-        content: `${randomUpArrow} Character images for the poll above! <@&${ids.tags.poll_mention}>`
+    await webhook.send({
+        content: `${randomUpArrow} Character images for the poll above! <@&${ids.tags.poll_mention}>`,
+        threadId: thread.id,
+        username: 'Poll',
+        avatarURL: h.urls.LOGO_URL,
     });
 
     if (interaction.editReply) {
         await interaction.editReply({ content: '✅ Poll Live!' }).catch(() => {});
     }
 
+    // 6. Start the update interval (pass the webhook info through the message context)
     runPollInterval(pollMessage, endTime, characters);
 };
