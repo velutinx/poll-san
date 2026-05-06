@@ -2,21 +2,17 @@
 const helpers = require('../utils/helpers');
 const supabase = require('../services/supabase');
 
-const activeTimeouts = new Map();          // per‑message deletion timeouts
-let channelInactivityTimeout = null;       // global inactivity timer for the channel
-const ROLL_LIFETIME_MS = 2 * 60 * 1000;    // 2 minutes per message (change as needed)
-const INACTIVITY_PURGE_MS = 5 * 60 * 1000; // 5 minutes of no messages → full purge
+const activeTimeouts = new Map();
+let channelInactivityTimeout = null;
+const ROLL_LIFETIME_MS = 2 * 60 * 1000;
+const INACTIVITY_PURGE_MS = 5 * 60 * 1000;
 const CLAIM_LOOKUP_TIMEOUT_MS = 1 * 60 * 1000;
 
-const pendingClaims = new Map(); // characterName -> { series, messageId, timestamp }
+const pendingClaims = new Map();
 
 // Whitelist: messages that will never be deleted
 const WHITELISTED_MESSAGE_IDS = new Set(helpers.whitelistedMessages[helpers.ids.channels.mudae_roll] || []);
 
-/**
- * Reset the channel inactivity timer.
- * When the timer expires, purge all non‑whitelisted messages.
- */
 function resetInactivityTimer(channel) {
     if (channelInactivityTimeout) clearTimeout(channelInactivityTimeout);
     channelInactivityTimeout = setTimeout(async () => {
@@ -26,7 +22,6 @@ function resetInactivityTimer(channel) {
             if (toDelete.size === 0) return;
             await channel.bulkDelete(toDelete);
         //    console.log(`🧹 Purged ${toDelete.size} messages from ${channel.name} due to inactivity.`);
-            // Also clear per‑message timeouts for deleted messages
             for (const msgId of toDelete.keys()) {
                 if (activeTimeouts.has(msgId)) {
                     clearTimeout(activeTimeouts.get(msgId));
@@ -41,13 +36,6 @@ function resetInactivityTimer(channel) {
     }, INACTIVITY_PURGE_MS);
 }
 
-/**
- * Parse character and series from a Mudae embed.
- * Handles multiple formats:
- * - Character in embed.author.name, series lines before claim phrase.
- * - Fallback: lines[0] = character, lines[1] = series.
- * - Also tries regex extraction.
- */
 function parseRollEmbed(embed) {
     if (!embed || !embed.description) return null;
     const lines = embed.description.split('\n').filter(l => l.trim().length > 0);
@@ -57,19 +45,15 @@ function parseRollEmbed(embed) {
     let character = null;
     let series = null;
 
-    // Try to get character from embed.author.name (most reliable for Mudae)
     if (embed.author && embed.author.name) {
         character = embed.author.name.trim();
-        // series is everything between character and claim phrase
         const seriesLines = lines.slice(0, claimIdx);
         series = seriesLines.join(' ').trim();
     }
-    // Fallback: assume first line is character, second is series
     if (!character && claimIdx >= 2) {
         character = lines[0].trim();
         series = lines[1].trim();
     }
-    // Another fallback: use regex to capture character and series
     if (!character) {
         const match = embed.description.match(/^([^\n]+)\n([^\n]+)\nReact with any emoji to claim!/);
         if (match) {
@@ -85,17 +69,11 @@ function parseRollEmbed(embed) {
 }
 
 function initMudaeMessageHandler(client) {
-    // ---- General handler: delete non‑whitelisted messages and reset inactivity timer ----
     client.on('messageCreate', async (message) => {
         if (message.channel.id !== helpers.ids.channels.mudae_roll) return;
 
-        // Reset the global inactivity timer on ANY message in the channel
         resetInactivityTimer(message.channel);
-
-        // If message is whitelisted, do nothing else
         if (WHITELISTED_MESSAGE_IDS.has(message.id)) return;
-
-        // Schedule individual deletion after 2 minutes
         if (activeTimeouts.has(message.id)) clearTimeout(activeTimeouts.get(message.id));
         const timeout = setTimeout(async () => {
             try {
@@ -110,7 +88,6 @@ function initMudaeMessageHandler(client) {
         activeTimeouts.set(message.id, timeout);
     });
 
-    // ---- Roll detection & reaction ----
     client.on('messageCreate', async (message) => {
         if (message.author.id !== helpers.ids.bots.mudae) return;
         if (message.channel.id !== helpers.ids.channels.mudae_roll) return;
@@ -137,10 +114,11 @@ function initMudaeMessageHandler(client) {
             }
         }, CLAIM_LOOKUP_TIMEOUT_MS);
 
-        // Add VERIFY reaction
+        // Add a random VERIFY reaction
         try {
-            await message.react(helpers.releaseEmojis.VERIFY);
-    //        console.log(`✅ Added VERIFY to ${character} (${series || 'series unknown'})`);
+            const randomVerify = helpers.releaseEmojis.getRandomVerify();
+            await message.react(randomVerify);
+            // console.log(`✅ Added random verify to ${character}`);
         } catch (err) {
             console.error(`Failed to react: ${err.message}`);
         }
