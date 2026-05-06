@@ -56,6 +56,7 @@ module.exports = {
         VERIFY_RED: '<a:Verifyred:1501010312583712778>',
         VERIFY_YELLOW: '<a:Verifyyellow:1501010314077012150>',
         EIGHTEEN: '<a:18:1491670036799029288>',
+        EIGHTEENPLUS: '<a:18plus:1501639943443709952>',
         LINK: '<a:Link:1491670128562274475>',
         ALERT: '<a:alert:1493698480034676736>',
         HOURGLASS: '<a:Hourglass:1491762676416905267>',
@@ -65,7 +66,7 @@ module.exports = {
         PROGRESS: '<a:progress:1491670111923212308>',
         WAVE: '<a:wave:1492326023080185987>',
         waveId: '1492326023080185987',
-
+        
         // Array of all verify emojis (existing + new colourful ones)
         VERIFY_EMOJIS: [
             '<a:Verify:1491669023245729924>',
