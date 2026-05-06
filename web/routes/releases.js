@@ -73,8 +73,8 @@ module.exports = function setupReleasesRoutes(app, client, upload, FORUM_ID, SUP
   const getRandomDownArrow = () => h.releaseEmojis.DOWN_ARROWS[Math.floor(Math.random() * h.releaseEmojis.DOWN_ARROWS.length)];
 
   const PREVIEW_RELEASE_HEADER = `${h.releaseEmojis.NEW1}${h.releaseEmojis.NEW2} RELEASE`;
-  const SUPPORTER_RELEASE_HEADER = `🔞 ${h.releaseEmojis.NEW1}${h.releaseEmojis.NEW2} SUPPORTER RELEASE`;
-
+  const SUPPORTER_RELEASE_HEADER = `${h.releaseEmojis.EIGHTEENPLUS} ${h.releaseEmojis.NEW1}${h.releaseEmojis.NEW2} SUPPORTER RELEASE`;
+  
   // ────────────────────────────────────────────────
   // 8. RELEASE PREVIEW
   // ────────────────────────────────────────────────
