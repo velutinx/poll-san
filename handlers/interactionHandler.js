@@ -7,6 +7,7 @@ const { handleSlotsBet } = require('../services/slotsHandler');
 const { startHangmanGame } = require('../services/hangmanGame');
 const { handleCoinTossBet } = require('../services/coinTossHandler');
 const { handleShopSelect, handleShopPurchase } = require('../services/shopHandler');
+const { handleRedeemStart, handleRedeemSeries, handleRedeemCancel } = require('../services/redeemHandler');
 
 // Store checkin sessions to update the same ephemeral message
 const checkinSessions = new Map(); // key: userId -> { interaction, messageId, timestamp }
@@ -25,6 +26,7 @@ module.exports = async function handleInteraction(interaction) {
                 case 'post_verify_ui': await require('../commands/admin/post-verify-ui').execute(interaction); break;
                 case 'post_checkin_ui': await require('../commands/admin/post-checkin-ui').execute(interaction); break;
                 case 'post_cointoss_ui': await require('../commands/admin/post-cointoss-ui').execute(interaction); break;
+                case 'post_redeem_ui': await require('../commands/admin/post-redeem-ui').execute(interaction); break;
                 default: break;
             }
         }
@@ -64,6 +66,18 @@ module.exports = async function handleInteraction(interaction) {
             else if (interaction.customId === 'cointoss_bet_25') {
                 await handleCoinTossBet(interaction, 25);
             }
+            // ----- Redeem flow -----
+            else if (interaction.customId === 'redeem_start') {
+                await handleRedeemStart(interaction);
+            }
+            else if (interaction.customId.startsWith('redeem_series_')) {
+                const index = parseInt(interaction.customId.split('_')[2]);
+                await handleRedeemSeries(interaction, index);
+            }
+            else if (interaction.customId === 'redeem_cancel') {
+                await handleRedeemCancel(interaction);
+            }
+            // -----------------------
             else {
                 await giveawayCommand.handleGiveawayButton(interaction);
             }
