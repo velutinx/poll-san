@@ -167,16 +167,7 @@ async function handleRedeemSeries(interaction, index) {
     });
     activeSessions.delete(userId);
 
-    // Optional staff log
-    try {
-        const logChannelId = 'YOUR_LOG_CHANNEL_ID'; // replace with your actual log channel ID
-        const logChannel = interaction.guild.channels.cache.get(logChannelId);
-        if (logChannel) {
-            await logChannel.send(
-                `📥 **${interaction.user.tag}** requested a character from **${selectedSeries}** (balance: ${newBalance})`
-            );
-        }
-    } catch {}
+
 }
 
 async function handleRedeemCancel(interaction) {
