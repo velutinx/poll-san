@@ -151,4 +151,7 @@ client.on(Events.MessageCreate, async (message) => {
 client.on('error', console.error);
 process.on('unhandledRejection', console.error);
 
+const { startCleanup } = require('./services/redeemHandler');
+startCleanup();
+
 client.login(process.env.DISCORD_TOKEN);
