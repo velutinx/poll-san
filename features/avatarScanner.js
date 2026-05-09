@@ -97,8 +97,30 @@ async function handleScanCommand(message) {
     if (message.author.id !== ids.users.Velutinx) return;
     if (!message.content.startsWith('!scan')) return;
 
-    const target = message.mentions.members.first() || message.member;
-    if (!target) return message.reply('Mention a user to scan.');
+    // Extract the argument after !scan
+    const input = message.content.slice('!scan'.length).trim();
+    let target;
+
+    // 1. If a mention is present, use it
+    if (message.mentions.members.size > 0) {
+        target = message.mentions.members.first();
+    }
+    // 2. If a raw ID (17-21 digits) is provided, try to fetch that guild member
+    else if (input && /^\d{17,21}$/.test(input)) {
+        try {
+            target = await message.guild.members.fetch(input);
+        } catch {
+            return message.reply('❌ User not found in this server.');
+        }
+    }
+    // 3. No argument – scan yourself
+    else if (!input) {
+        target = message.member;
+    }
+    // 4. Anything else is invalid
+    else {
+        return message.reply('❌ Provide a valid user ID or mention.');
+    }
 
     const reply = await message.reply(`🔍 Scanning avatar of ${target.user.tag}...`);
     await processMember(message.client, target);
