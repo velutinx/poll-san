@@ -309,7 +309,7 @@ sightengine: {
 },
 
 avatarRestrictedChannels: [
-    '1465442050001342620',   // #general
+//    '1465442050001342620',   // #general
     '1466147508345503953',   // #❓how-did-you-find-me
     '1472450019067171008',   // #🎁giveaways-and-events
     '1467280145315528955',   // #📚requests-concepts
