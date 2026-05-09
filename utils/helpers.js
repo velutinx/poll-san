@@ -163,8 +163,7 @@ module.exports = {
             restricted: ['1468666174102442227', '1467233133362544642', '1487554855068368916'],
             unverified: '1495679222264627321',
             member: '1495684657730158724',
-            creator: '1466144237643890728',
-            avatar_muted: '1502506796017782804'
+            creator: '1466144237643890728'
         },
         tags: {
             preview_female: '1465939310720192637',
@@ -309,9 +308,20 @@ module.exports = {
         apiSecret: 'ParHXHCpXwt2eQ7SePcCZJjfHsJc6Kdk'
     },
 
-avatarRestrictedChannels: [
-    '1465442050001342620'   // #general
-    // add more channel IDs as needed
+avatarRestrictedLocations: [
+    { type: 'channel', id: 
+          '1465442050001342620'   // #general
+          '1466147508345503953'   // #❓how-did-you-find-me
+          '1472450019067171008'   // #🎁giveaways-and-events
+          '1467280145315528955'   // #📚requests-concepts
+          '1469437804231659660'   // #🛠️current-works
+    },
+    { type: 'category', id: 
+          '1401446105421451364'  // 💬 COMMUNITY
+          '1465921730785579141'  // 💬OFF TOPIC
+          '1494747375204433940'  // 🎲 CASINO
+          '1466151443286196451'  // 💭FEEDBACK
+    },
 ],
     
 };
