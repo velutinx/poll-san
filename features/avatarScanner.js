@@ -11,7 +11,7 @@ const { ids, sightengine } = require('../utils/helpers');
 const supabase = require('../services/supabase');
 
 // ========== CONFIG ==========
-const NUDITY_THRESHOLD = 0.5;
+const NUDITY_THRESHOLD = 0.3;
 const MASS_SCAN_THRESHOLD = 0.3;
 const SCAN_DELAY_MS = 2000;
 const MONTHLY_CREDITS = 2000;
