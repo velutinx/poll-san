@@ -2,8 +2,7 @@
 const { EmbedBuilder } = require('discord.js');
 const { ids, sightengine } = require('../utils/helpers');
 
-// ========== CONFIG ==========
-const SCAN_DELAY_MS = 1500;  // cooldown between scans for all-member check
+const SCAN_DELAY_MS = 1500;
 
 // ========== SIGHTENGINE SCAN ==========
 async function scanImage(url) {
@@ -45,7 +44,7 @@ async function alertOwner(client, member, result) {
 async function processMember(client, member) {
     if (member.user.bot) return;
     const avatarUrl = member.displayAvatarURL({ dynamic: true, size: 1024 });
-    if (!avatarUrl || avatarUrl.includes('discord.com/assets/')) return; // default avatar
+    if (!avatarUrl || avatarUrl.includes('discord.com/assets/')) return;
 
     try {
         const result = await scanImage(avatarUrl);
@@ -53,8 +52,10 @@ async function processMember(client, member) {
         const weaponProb = result.weapon || 0;
         const offensiveProb = result.offensive?.prob || 0;
 
+        console.log(`[AvatarScan] ${member.user.tag}: nudity=${nudityProb.toFixed(2)}, weapon=${weaponProb.toFixed(2)}, offensive=${offensiveProb.toFixed(2)}`);
+
         if (nudityProb > 0.3 || weaponProb > 0.3 || offensiveProb > 0.3) {
-            console.log(`[AvatarScan] NSFW detected: ${member.user.tag} (${member.id})`);
+            console.log(`[AvatarScan] NSFW detected: ${member.user.tag}`);
             await alertOwner(client, member, result);
         }
     } catch (err) {
@@ -62,8 +63,24 @@ async function processMember(client, member) {
     }
 }
 
-// ========== STARTUP SCAN ==========
+// ========== MANUAL OWNER SCAN COMMAND ==========
+async function handleScanCommand(message) {
+    if (message.author.id !== ids.users.Velutinx) return;
+    if (!message.content.startsWith('!scan')) return;
+
+    const target = message.mentions.members.first() || message.member;
+    if (!target) return message.reply('Mention a user to scan.');
+
+    const reply = await message.reply(`🔍 Scanning avatar of ${target.user.tag}...`);
+    await processMember(message.client, target);
+    reply.edit(`✅ Scan complete for ${target.user.tag}. Check your DM if flagged.`).catch(() => {});
+}
+
+// ========== STARTUP SCAN (commented out to avoid rate limits) ==========
 async function scanAllMembers(client) {
+    // ❗ Disabled for now – fetches all members and can cause rate limits.
+    // Use !scan @user to test specific users.
+    /*
     const guild = client.guilds.cache.first();
     if (!guild) return;
 
@@ -80,6 +97,7 @@ async function scanAllMembers(client) {
         }
     }
     console.log(`[AvatarScan] Full scan complete. Processed ${i} members.`);
+    */
 }
 
 // ========== EVENT LISTENERS ==========
@@ -88,9 +106,11 @@ function init(client) {
         processMember(client, member);
     });
 
+    client.on('messageCreate', handleScanCommand);
+
     client.once('ready', () => {
-        console.log('[AvatarScan] Bot ready, starting initial scan...');
-        scanAllMembers(client);
+        console.log('[AvatarScan] Ready – on‑join scanning active.');
+        // scanAllMembers(client);  // disabled for now
     });
 }
 
