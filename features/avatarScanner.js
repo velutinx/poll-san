@@ -11,9 +11,9 @@ const { ids, sightengine } = require('../utils/helpers');
 const supabase = require('../services/supabase');
 
 // ========== CONFIG ==========
-const NUDITY_THRESHOLD = 0.5;          // normal scans (!scan, on‑join)
-const MASS_SCAN_THRESHOLD = 0.3;       // more sensitive startup scan (only free API)
-const SCAN_DELAY_MS = 2000;            // delay between members during mass scan
+const NUDITY_THRESHOLD = 0.5;
+const MASS_SCAN_THRESHOLD = 0.3;
+const SCAN_DELAY_MS = 2000;
 
 // ========== SIGHTENGINE SCAN ==========
 async function scanWithSightengine(url) {
@@ -237,7 +237,7 @@ async function alertOwnerAvatarChange(client, member, oldHash, newHash) {
     owner.send({ embeds: [embed], components: [row] }).catch(() => {});
 }
 
-// ========== PROCESS MEMBER (normal scan – uses Sightengine + NSFWCheckers) ==========
+// ========== PROCESS MEMBER (normal scan) ==========
 async function processMember(client, member, threshold = NUDITY_THRESHOLD) {
     if (member.user.bot) return;
     const avatarUrl = member.displayAvatarURL({ dynamic: true, size: 1024 });
@@ -275,26 +275,35 @@ async function processMember(client, member, threshold = NUDITY_THRESHOLD) {
     }
 }
 
-// ========== MASS SCAN (FREE API ONLY, with retries and delay) ==========
+// ========== MASS SCAN (FREE API ONLY, with GatewayRateLimitError retry) ==========
 async function scanAllMembersWithFreeAPI(client) {
     const guild = client.guilds.cache.first();
     if (!guild) return;
 
     console.log('[MassScan] Starting full member scan (free API, threshold 0.3)...');
 
-    let members;
-    try {
-        // no force:true – gentler on the API
-        members = await guild.members.fetch();
-    } catch (err) {
-        if (err.code === 429) {
-            const retryAfter = (err.data?.retry_after || 30) * 1000;
-            console.log(`[MassScan] Rate limited fetching members, waiting ${retryAfter / 1000}s...`);
-            await new Promise(resolve => setTimeout(resolve, retryAfter));
-            members = await guild.members.fetch();  // retry once
-        } else {
+    // Helper to fetch members with GatewayRateLimitError retry
+    const fetchAllMembers = async () => {
+        try {
+            return await guild.members.fetch(); // no force:true
+        } catch (err) {
+            // Catch gateway rate-limit errors specifically
+            if (err.name === 'GatewayRateLimitError' && err.data?.retry_after) {
+                const waitMs = (err.data.retry_after + 1) * 1000;
+                console.log(`[MassScan] Gateway rate limited fetching members, waiting ${waitMs / 1000}s...`);
+                await new Promise(resolve => setTimeout(resolve, waitMs));
+                return guild.members.fetch(); // retry once
+            }
             throw err;
         }
+    };
+
+    let members;
+    try {
+        members = await fetchAllMembers();
+    } catch (err) {
+        console.error('[MassScan] Failed to fetch members, aborting:', err.message);
+        return;
     }
 
     const memberArray = [...members.values()];
@@ -312,36 +321,29 @@ async function scanAllMembersWithFreeAPI(client) {
             continue;
         }
 
-        const scanMember = async () => {
-            try {
-                const nsfwCheckersResult = await scanWithNSFWCheckers(avatarUrl);
-                return nsfwCheckersResult;
-            } catch (err) {
-                if (err.code === 429 || err.message?.includes('rate limit')) {
-                    const wait = (err.data?.retry_after || 30) * 1000;
-                    console.log(`[MassScan] Rate limited scanning ${member.user.tag}, waiting ${wait / 1000}s...`);
-                    await new Promise(resolve => setTimeout(resolve, wait));
-                    // Retry once
-                    return scanWithNSFWCheckers(avatarUrl).catch(() => null);
-                }
-                throw err;
-            }
-        };
-
+        // Scan with free API, retry on rate-limit
+        let nsfwCheckersResult = null;
         try {
-            const nsfwCheckersResult = await scanMember();
-            const score = nsfwCheckersResult?.score ?? null;
-            if (score !== null && score >= MASS_SCAN_THRESHOLD) {
-                console.log(`[MassScan] Flagged (free): ${member.user.tag} (score: ${score.toFixed(2)})`);
-                await alertOwner(client, member, null, nsfwCheckersResult, '🔍 **Mass scan (free API only)**');
-                flagged++;
-            }
+            nsfwCheckersResult = await scanWithNSFWCheckers(avatarUrl);
         } catch (err) {
-            console.error(`[MassScan] Error scanning ${member.user.tag}:`, err.message);
+            if (err.name === 'GatewayRateLimitError' && err.data?.retry_after) {
+                const waitMs = (err.data.retry_after + 1) * 1000;
+                console.log(`[MassScan] Rate limited scanning ${member.user.tag}, waiting ${waitMs / 1000}s...`);
+                await new Promise(resolve => setTimeout(resolve, waitMs));
+                nsfwCheckersResult = await scanWithNSFWCheckers(avatarUrl).catch(() => null);
+            } else {
+                console.error(`[MassScan] Error scanning ${member.user.tag}:`, err.message);
+            }
+        }
+
+        const score = nsfwCheckersResult?.score ?? null;
+        if (score !== null && score >= MASS_SCAN_THRESHOLD) {
+            console.log(`[MassScan] Flagged (free): ${member.user.tag} (score: ${score.toFixed(2)})`);
+            await alertOwner(client, member, null, nsfwCheckersResult, '🔍 **Mass scan (free API only)**');
+            flagged++;
         }
 
         scanned++;
-        // Throttle between users
         if (scanned < memberArray.length) {
             await new Promise(resolve => setTimeout(resolve, SCAN_DELAY_MS));
         }
@@ -376,7 +378,7 @@ async function handleScanCommand(message) {
     reply.edit(`✅ Scan complete for <@${target.id}>. Check your DM if flagged.`).catch(() => {});
 }
 
-// ========== BUTTON: WARN USER (with deferred reply) ==========
+// ========== BUTTON: WARN USER ==========
 async function handleWarnButton(interaction) {
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
@@ -399,7 +401,7 @@ async function handleWarnButton(interaction) {
     await interaction.editReply({ content: replyMsg });
 }
 
-// ========== BUTTON: IGNORE (False Flag) ==========
+// ========== BUTTON: IGNORE ==========
 async function handleIgnoreButton(interaction) {
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
@@ -478,9 +480,6 @@ async function onUserUpdate(oldUser, newUser) {
 
 // ========== EVENT LISTENERS ==========
 function init(client) {
-    // On‑join scanning disabled (uncomment to re‑enable)
-    // client.on('guildMemberAdd', member => { processMember(client, member); });
-
     client.on('messageCreate', handleScanCommand);
 
     client.on(Events.InteractionCreate, async interaction => {
@@ -504,11 +503,10 @@ function init(client) {
     client.on(Events.UserUpdate, onUserUpdate);
 
     client.once(Events.ClientReady, () => {
-        console.log('[AvatarScan] Bot ready. Mass scan will start in 15 seconds...');
-        // Delay to avoid rate-limit collisions with other startup services
+        console.log('[AvatarScan] Bot ready. Mass scan will start in 30 seconds...');
         setTimeout(() => {
-            scanAllMembersWithFreeAPI(client).catch(err => console.error('[MassScan] Fatal error:', err));
-        }, 15000);
+            scanAllMembersWithFreeAPI(client).catch(err => console.error('[MassScan] Unexpected error:', err));
+        }, 30000);
     });
 }
 
