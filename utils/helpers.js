@@ -309,4 +309,9 @@ module.exports = {
         apiSecret: 'ParHXHCpXwt2eQ7SePcCZJjfHsJc6Kdk'
     },
 
+avatarRestrictedChannels: [
+    '1465442050001342620'   // #general
+    // add more channel IDs as needed
+],
+    
 };
