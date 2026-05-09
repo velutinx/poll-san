@@ -6,7 +6,7 @@ const {
     ButtonBuilder,
     ButtonStyle
 } = require('discord.js');
-const { ids, sightengine, google, rapidapi } = require('../utils/helpers');
+const { ids, sightengine, google } = require('../utils/helpers');
 
 // ========== CONFIG ==========
 const NUDITY_THRESHOLD = 0.5;  // flag if any engine returns >= this
@@ -46,22 +46,23 @@ async function scanWithGoogle(url) {
     return data.responses[0];
 }
 
-// ========== RAPIDAPI NSFW DETECTION ==========
-async function scanWithRapidapi(url) {
-    const res = await fetch(
-        `https://${rapidapi.host}/nsfw-image-detection`,
-        {
-            method: 'POST',
-            headers: {
-                'content-type': 'application/json',
-                'x-rapidapi-key': rapidapi.key,
-                'x-rapidapi-host': rapidapi.host
-            },
-            body: JSON.stringify({ url: url })
-        }
-    );
-    const data = await res.json();
-    return data;  // typical response: { score: 0.87, ... }
+// ========== NSFWCheckers (FREE FOREVER, no API key) ==========
+async function scanWithNSFWCheckers(url) {
+    // 1. Download the avatar image
+    const imageRes = await fetch(url);
+    if (!imageRes.ok) throw new Error(`Failed to download image: ${imageRes.status}`);
+    const imageBuffer = await imageRes.arrayBuffer();
+
+    // 2. Send to NSFWCheckers as multipart form-data
+    const formData = new FormData();
+    formData.append('image', new Blob([imageBuffer]), 'avatar.webp');
+
+    const res = await fetch('https://api.nsfwcheckers.workers.dev', {
+        method: 'POST',
+        body: formData,
+    });
+    return res.json();
+    // Response: { "nsfw": true/false, "score": 0.87, "daily_limit": 100, "used": 5, "remaining": 95 }
 }
 
 // ========== HELPER: Google likelihood → number ==========
@@ -102,7 +103,8 @@ async function alertOwner(client, member, results) {
     const sightNudity = results.sightengine.nudity?.raw || 0;
     const googleLikelihood = results.google?.likelihood || 'UNKNOWN';
     const googleScore = results.google?.score || 0;
-    const rapidScore = results.rapidapi?.score ?? 'N/A';
+    const nsfwCheckersScore = results.nsfwcheckers?.score ?? 'N/A';
+    const nsfwCheckersVerdict = results.nsfwcheckers?.nsfw ?? 'N/A';
 
     const embed = new EmbedBuilder()
         .setTitle('⚠️ NSFW Avatar Detected')
@@ -113,7 +115,7 @@ async function alertOwner(client, member, results) {
             { name: 'Avatar URL', value: member.displayAvatarURL({ dynamic: true, size: 1024 }) },
             { name: 'Sightengine', value: `${sightNudity.toFixed(2)} (sexual: ${(results.sightengine.nudity?.sexual_activity || 0).toFixed(2)})` },
             { name: 'Google Vision', value: `${googleLikelihood} (${googleScore.toFixed(2)})` },
-            { name: 'RapidAPI NSFW', value: `${typeof rapidScore === 'number' ? rapidScore.toFixed(2) : rapidScore}` },
+            { name: 'NSFWCheckers', value: `${nsfwCheckersVerdict} (score: ${typeof nsfwCheckersScore === 'number' ? nsfwCheckersScore.toFixed(2) : nsfwCheckersScore})` },
             { name: 'Scan Timestamp', value: `<t:${Math.floor(Date.now() / 1000)}:F>` }
         );
 
@@ -136,11 +138,11 @@ async function processMember(client, member) {
     const isTestAccount = member.id === '842917477977161739';
 
     try {
-        // Fire all three APIs in parallel (RapidAPI might fail softly)
-        const [sightResult, googleResponse, rapidResult] = await Promise.all([
+        // Fire all three APIs in parallel
+        const [sightResult, googleResponse, nsfwCheckersResult] = await Promise.all([
             scanWithSightengine(avatarUrl),
             scanWithGoogle(avatarUrl).catch(() => null),
-            scanWithRapidapi(avatarUrl).catch(() => null)
+            scanWithNSFWCheckers(avatarUrl).catch(() => null)
         ]);
 
         const sightNudity = sightResult.nudity?.raw || 0;
@@ -153,22 +155,20 @@ async function processMember(client, member) {
             googleScore = googleLikelihoodToScore(adult);
         }
 
-        // RapidAPI score is usually a number between 0 and 1 (nsfw confidence)
-        const rapidScore = (rapidResult && typeof rapidResult.score === 'number')
-            ? rapidResult.score
-            : null;
+        const nsfwCheckersScore = nsfwCheckersResult?.score ?? null;
 
         console.log(
-            `[AvatarScan] ${member.user.tag}: Sightengine=${sightNudity.toFixed(2)}, ` +
+            `[AvatarScan] ${member.user.tag}: ` +
+            `Sightengine=${sightNudity.toFixed(2)}, ` +
             `Google=${googleLikelihood} (${googleScore.toFixed(2)}), ` +
-            `RapidAPI=${rapidScore !== null ? rapidScore.toFixed(2) : 'N/A'}`
+            `NSFWCheckers=${nsfwCheckersScore !== null ? nsfwCheckersScore.toFixed(2) : 'N/A'}`
         );
 
         const flagged =
             isTestAccount ||
             sightNudity >= NUDITY_THRESHOLD ||
             googleScore >= NUDITY_THRESHOLD ||
-            (rapidScore !== null && rapidScore >= NUDITY_THRESHOLD);
+            (nsfwCheckersScore !== null && nsfwCheckersScore >= NUDITY_THRESHOLD);
 
         if (flagged) {
             if (isTestAccount) console.log('[AvatarScan] Test account forced flag.');
@@ -176,7 +176,7 @@ async function processMember(client, member) {
             await alertOwner(client, member, {
                 sightengine: sightResult,
                 google: { likelihood: googleLikelihood, score: googleScore },
-                rapidapi: { score: rapidScore }
+                nsfwcheckers: nsfwCheckersResult || { score: null, nsfw: null }
             });
         }
     } catch (err) {
@@ -248,14 +248,14 @@ async function handleButton(interaction) {
 
 // ========== EVENT LISTENERS ==========
 function init(client) {
-    // On‑join scanning disabled
+    // On‑join scanning disabled (uncomment to re‑enable)
     // client.on('guildMemberAdd', member => { processMember(client, member); });
 
     client.on('messageCreate', handleScanCommand);
     client.on(Events.InteractionCreate, handleButton);
 
     client.once(Events.ClientReady, () => {
-        console.log('[AvatarScan] Ready – triple scanning (Sightengine + Google + RapidAPI).');
+        console.log('[AvatarScan] Ready – triple‑engine scanning (Sightengine + Google Vision + NSFWCheckers).');
     });
 }
 
