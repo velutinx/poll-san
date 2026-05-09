@@ -10,7 +10,7 @@ const {
 } = require('discord.js');
 const supabase = require('./supabase');
 const helpers = require('../utils/helpers');
-const { getCanonicalSeries, consolidateExistingClaims } = require('./seriesConsolidator');
+const { consolidateExistingClaims } = require('./seriesConsolidator');
 
 // ---- Session cleanup for the series selection (character request) ----
 const activeSessions = new Map(); // userId -> { seriesList, timestamp }
@@ -60,6 +60,10 @@ async function handleRedeemStart(interaction) {
 
     await interaction.deferReply({ flags: 64, withResponse: true });
 
+    // ✅ Automatically consolidate series aliases before fetching claims
+    await consolidateExistingClaims();
+
+    // Ticket check
     const { data: userData } = await supabase
         .from(helpers.tables.GAMES_USER_DATA)
         .select('tickets')
@@ -71,6 +75,7 @@ async function handleRedeemStart(interaction) {
         return interaction.editReply(`❌ You need **${cost}** tickets, but you only have **${balance}**.`);
     }
 
+    // Fetch distinct series from mudae claims
     const { data: claims } = await supabase
         .from(helpers.tables.GAMES_MUDAE_CLAIMS)
         .select('series')
