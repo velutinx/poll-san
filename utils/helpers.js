@@ -275,7 +275,15 @@ module.exports = {
         SYNC_STATE: 'sync_state',
         USER_XP: 'user_xp'
     },
-
+    
+    // ==================== REDEEM STORE ====================
+    redeem: {
+        voteBoostCost: 200,           // tickets for 7‑day vote multiplier
+        suggestCost: 300,             // tickets for a poll character suggestion
+        characterRequestCost: 300,    // tickets for requesting a series character
+        voteBoostDurationDays: 7
+    },
+    
     // ==================== WHITELISTED MESSAGE IDs (per channel) ====================
     whitelistedMessages: {
         // Mudae roll channel (cleanup handled by mudaeMessageHandler.js)
