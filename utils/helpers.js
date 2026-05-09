@@ -251,6 +251,11 @@ module.exports = {
         LOGO_URL: 'https://www.velutinx.com/images/LogoDiscord.png'
     },
 
+sightengine: {
+    apiUser: '1626192318',
+    apiSecret: 'ParHXHCpXwt2eQ7SePcCZJjfHsJc6Kdk'
+}
+    
     // ==================== SUPABASE TABLES ====================
     tables: {
         GAMES_COOLDOWNS: 'games_cooldowns',
