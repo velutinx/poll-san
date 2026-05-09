@@ -181,7 +181,7 @@ async function processMember(client, member) {
     const avatarUrl = member.displayAvatarURL({ dynamic: true, size: 1024 });
     if (!avatarUrl || avatarUrl.includes('discord.com/assets/')) return;
 
-    const isTestAccount = member.id === '842917477977161739';
+    const isTestAccount = member.id === '1478242857964802170';
 
     try {
         const [sightResult, nsfwCheckersResult] = await Promise.all([
