@@ -8,7 +8,7 @@ const SCAN_DELAY_MS = 1500;
 async function scanImage(url) {
     const formData = new URLSearchParams();
     formData.append('url', url);
-    formData.append('models', 'nudity-2.1,wad,offensive');
++ formData.append('models', 'nudity-2.1,offensive');
     formData.append('api_user', sightengine.apiUser);
     formData.append('api_secret', sightengine.apiSecret);
 
@@ -54,8 +54,8 @@ async function processMember(client, member) {
 
         console.log(`[AvatarScan] ${member.user.tag}: nudity=${nudityProb.toFixed(2)}, weapon=${weaponProb.toFixed(2)}, offensive=${offensiveProb.toFixed(2)}`);
 
-        if (nudityProb > 0.3 || weaponProb > 0.3 || offensiveProb > 0.3) {
-            console.log(`[AvatarScan] NSFW detected: ${member.user.tag}`);
+if (nudityProb > 0.3 || offensiveProb > 0.3) {
+    console.log(`[AvatarScan] NSFW detected: ${member.user.tag}`);
             await alertOwner(client, member, result);
         }
     } catch (err) {
