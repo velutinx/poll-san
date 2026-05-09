@@ -255,7 +255,7 @@ function init(client) {
     client.on(Events.InteractionCreate, handleButton);
 
     client.once(Events.ClientReady, () => {
-        console.log('[AvatarScan] Ready – triple‑engine scanning (Sightengine + Google Vision + NSFWCheckers).');
+   //     console.log('[AvatarScan] Ready – triple‑engine scanning (Sightengine + Google Vision + NSFWCheckers).');
     });
 }
 
