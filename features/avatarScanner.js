@@ -8,7 +8,7 @@ const SCAN_DELAY_MS = 1500;
 async function scanImage(url) {
     const formData = new URLSearchParams();
     formData.append('url', url);
-+ formData.append('models', 'nudity-2.1,offensive');
+    formData.append('models', 'nudity-2.1,offensive');  // no more wad
     formData.append('api_user', sightengine.apiUser);
     formData.append('api_secret', sightengine.apiSecret);
 
@@ -32,7 +32,7 @@ async function alertOwner(client, member, result) {
             { name: 'User', value: `${member.user.tag} (${member.id})` },
             { name: 'Avatar URL', value: member.displayAvatarURL({ dynamic: true, size: 1024 }) },
             { name: 'Nudity Score', value: `${(result.nudity?.raw || 0).toFixed(2)} (sexual: ${(result.nudity?.sexual_activity || result.nudity?.sexual_display || 0).toFixed(2)})` },
-            { name: 'Weapon Score', value: `${(result.weapon || 0).toFixed(2)}` },
+            { name: 'Weapon Score', value: `${(result.weapon || 0).toFixed(2)}` },   // will be 0 now
             { name: 'Offensive Score', value: `${(result.offensive?.prob || 0).toFixed(2)}` },
             { name: 'Scan Timestamp', value: `<t:${Math.floor(Date.now() / 1000)}:F>` }
         );
@@ -54,8 +54,9 @@ async function processMember(client, member) {
 
         console.log(`[AvatarScan] ${member.user.tag}: nudity=${nudityProb.toFixed(2)}, weapon=${weaponProb.toFixed(2)}, offensive=${offensiveProb.toFixed(2)}`);
 
-if (nudityProb > 0.3 || offensiveProb > 0.3) {
-    console.log(`[AvatarScan] NSFW detected: ${member.user.tag}`);
+        // Only flag on nudity or offensive content – weapon is ignored
+        if (nudityProb > 0.3 || offensiveProb > 0.3) {
+            console.log(`[AvatarScan] NSFW detected: ${member.user.tag}`);
             await alertOwner(client, member, result);
         }
     } catch (err) {
@@ -76,10 +77,9 @@ async function handleScanCommand(message) {
     reply.edit(`✅ Scan complete for ${target.user.tag}. Check your DM if flagged.`).catch(() => {});
 }
 
-// ========== STARTUP SCAN (commented out to avoid rate limits) ==========
+// ========== STARTUP SCAN (commented out) ==========
 async function scanAllMembers(client) {
     // ❗ Disabled for now – fetches all members and can cause rate limits.
-    // Use !scan @user to test specific users.
     /*
     const guild = client.guilds.cache.first();
     if (!guild) return;
