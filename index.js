@@ -66,10 +66,10 @@ client.once(Events.ClientReady, async (c) => {
         require('./commands/admin/post-checkin-ui').data.toJSON(),
         require('./commands/admin/post-cointoss-ui').data.toJSON(),
         require('./commands/admin/post-redeem-ui').data.toJSON()
-    ];  // ← array ends here, no trailing comma + scanner line removed
+    ];  // ← array ends here
 
-    // ✅ Avatar scanner initialisation (outside the array)
-    require('./features/avatarScanner').init(client);
+    // ❌ Scanner init removed from here – it's now before login
+    // require('./features/avatarScanner').init(client);   <-- REMOVED
 
     const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
     try {
@@ -153,5 +153,8 @@ process.on('unhandledRejection', console.error);
 
 const { startCleanup } = require('./services/redeemHandler');
 startCleanup();
+
+// ✅ Avatar scanner – initialised BEFORE login so 'ready' fires correctly
+require('./features/avatarScanner').init(client);
 
 client.login(process.env.DISCORD_TOKEN);
