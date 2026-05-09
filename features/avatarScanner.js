@@ -338,7 +338,7 @@ async function scanAllMembersWithFreeAPI(client) {
     const guild = client.guilds.cache.first();
     if (!guild) return;
 
-    console.log('[MassScan] Starting full member scan (free API, threshold 0.3)...');
+//    console.log('[MassScan] Starting full member scan (free API, threshold 0.3)...');
     const members = await guild.members.fetch();
     const memberArray = [...members.values()];
     let scanned = 0;
@@ -368,7 +368,7 @@ async function scanAllMembersWithFreeAPI(client) {
             await new Promise(resolve => setTimeout(resolve, SCAN_DELAY_MS));
         }
     }
-    console.log(`[MassScan] Done. Scanned ${scanned} members, flagged ${flagged}.`);
+//    console.log(`[MassScan] Done. Scanned ${scanned} members, flagged ${flagged}.`);
 }
 
 // ========== MONTHLY SIGHTENGINE-ONLY SCAN ==========
