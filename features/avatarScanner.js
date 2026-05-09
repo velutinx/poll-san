@@ -11,7 +11,9 @@ const { ids, sightengine } = require('../utils/helpers');
 const supabase = require('../services/supabase');
 
 // ========== CONFIG ==========
-const NUDITY_THRESHOLD = 0.5;
+const NUDITY_THRESHOLD = 0.5;          // normal scans (!scan, on‑join)
+const MASS_SCAN_THRESHOLD = 0.3;       // more sensitive startup scan (only free API)
+const SCAN_DELAY_MS = 2000;            // delay between members during mass scan
 
 // ========== SIGHTENGINE SCAN ==========
 async function scanWithSightengine(url) {
@@ -49,7 +51,7 @@ function getAvatarHash(member) {
     return member.user.avatar || 'default';
 }
 
-// ========== DATABASE OPERATIONS ==========
+// ========== DATABASE OPERATIONS (flagged) ==========
 async function dbAddFlaggedUser(userId, avatarHash, discordTag) {
     await supabase.from('avatar_flagged_users').upsert({
         user_id: userId,
@@ -71,16 +73,32 @@ async function dbGetFlaggedUser(userId) {
     return data;
 }
 
-// ========== CHANNEL OVERWRITE MANAGEMENT (type check fixed) ==========
+// ========== DATABASE OPERATIONS (ignored) ==========
+async function dbAddIgnoredUser(userId, avatarHash, discordTag) {
+    await supabase.from('avatar_flagged_ignore').upsert({
+        user_id: userId,
+        avatar_hash: avatarHash,
+        discord_tag: discordTag,
+        ignored_at: new Date().toISOString()
+    });
+}
+
+async function dbGetIgnoredUser(userId) {
+    const { data } = await supabase.from('avatar_flagged_ignore')
+        .select('*')
+        .eq('user_id', userId)
+        .maybeSingle();
+    return data;
+}
+
+// ========== CHANNEL OVERWRITE MANAGEMENT ==========
 async function applyDenyOverwrites(guild, member) {
     const helpers = require('../utils/helpers');
     const channelIds = [...(helpers.avatarRestrictedChannels || [])];
     const categoryIds = helpers.avatarRestrictedCategories || [];
 
-    // Add all child channels from specified categories
     for (const categoryId of categoryIds) {
         const category = guild.channels.cache.get(categoryId);
-        // Accept both numeric (v13) and string (v14) category types
         if (category && (category.type === 4 || category.type === 'GUILD_CATEGORY' || category.type === 'CategoryChannel')) {
             const children = guild.channels.cache.filter(
                 c => c.parentId === category.id && c.isTextBased()
@@ -93,7 +111,6 @@ async function applyDenyOverwrites(guild, member) {
         }
     }
 
-    // Apply deny to each channel
     for (const channelId of channelIds) {
         const channel = guild.channels.cache.get(channelId);
         if (channel && channel.isTextBased()) {
@@ -153,12 +170,12 @@ async function sendWarningToUser(client, userId, customMessage) {
     }
 }
 
-// ========== ALERT OWNER – INITIAL FLAG ==========
-async function alertOwner(client, member, sightResult, nsfwCheckersResult) {
+// ========== ALERT OWNER – INITIAL FLAG (with Warn + Ignore buttons) ==========
+async function alertOwner(client, member, sightResult, nsfwCheckersResult, extraText = '') {
     const owner = await client.users.fetch(ids.users.Velutinx).catch(() => null);
     if (!owner) return;
 
-    const sightNudity = sightResult.nudity?.raw || 0;
+    const sightNudity = sightResult ? (sightResult.nudity?.raw || 0) : 'N/A';
     const nsfwCheckersScore = nsfwCheckersResult?.score ?? 'N/A';
     const nsfwCheckersVerdict = nsfwCheckersResult?.nsfw ?? 'N/A';
 
@@ -169,16 +186,22 @@ async function alertOwner(client, member, sightResult, nsfwCheckersResult) {
         .addFields(
             { name: 'User', value: `${member.user.tag} (${member.id})` },
             { name: 'Avatar URL', value: member.displayAvatarURL({ dynamic: true, size: 1024 }) },
-            { name: 'Sightengine', value: `${sightNudity.toFixed(2)} (sexual: ${(sightResult.nudity?.sexual_activity || 0).toFixed(2)})` },
+            { name: 'Sightengine', value: `${typeof sightNudity === 'number' ? sightNudity.toFixed(2) : sightNudity} (sexual: ${typeof sightNudity === 'number' ? (sightResult.nudity?.sexual_activity || 0).toFixed(2) : 'N/A'})` },
             { name: 'NSFWCheckers', value: `${nsfwCheckersVerdict} (score: ${typeof nsfwCheckersScore === 'number' ? nsfwCheckersScore.toFixed(2) : nsfwCheckersScore})` },
             { name: 'Scan Timestamp', value: `<t:${Math.floor(Date.now() / 1000)}:F>` }
         );
+
+    if (extraText) embed.setDescription(extraText);
 
     const row = new ActionRowBuilder().addComponents(
         new ButtonBuilder()
             .setCustomId(`warn_avatar_${member.id}`)
             .setLabel('⚠️ Warn User')
-            .setStyle(ButtonStyle.Danger)
+            .setStyle(ButtonStyle.Danger),
+        new ButtonBuilder()
+            .setCustomId(`ignore_avatar_${member.id}`)
+            .setLabel('🔄 Ignore (False Flag)')
+            .setStyle(ButtonStyle.Secondary)
     );
 
     owner.send({ embeds: [embed], components: [row] }).catch(() => {});
@@ -214,8 +237,8 @@ async function alertOwnerAvatarChange(client, member, oldHash, newHash) {
     owner.send({ embeds: [embed], components: [row] }).catch(() => {});
 }
 
-// ========== PROCESS MEMBER ==========
-async function processMember(client, member) {
+// ========== PROCESS MEMBER (normal scan – uses Sightengine + NSFWCheckers) ==========
+async function processMember(client, member, threshold = NUDITY_THRESHOLD) {
     if (member.user.bot) return;
     const avatarUrl = member.displayAvatarURL({ dynamic: true, size: 1024 });
     if (!avatarUrl || avatarUrl.includes('discord.com/assets/')) return;
@@ -239,17 +262,60 @@ async function processMember(client, member) {
 
         const flagged =
             isTestAccount ||
-            sightNudity >= NUDITY_THRESHOLD ||
-            (nsfwCheckersScore !== null && nsfwCheckersScore >= NUDITY_THRESHOLD);
+            sightNudity >= threshold ||
+            (nsfwCheckersScore !== null && nsfwCheckersScore >= threshold);
 
         if (flagged) {
             if (isTestAccount) console.log('[AvatarScan] Test account forced flag.');
             console.log(`[AvatarScan] NSFW detected: ${member.user.tag}`);
-            await alertOwner(client, member, sightResult, nsfwCheckersResult || { score: null, nsfw: null });
+            await alertOwner(client, member, sightResult, nsfwCheckersResult);
         }
     } catch (err) {
         console.error(`[AvatarScan] Error scanning ${member.user.tag}:`, err.message);
     }
+}
+
+// ========== MASS SCAN (FREE API ONLY) ==========
+async function scanAllMembersWithFreeAPI(client) {
+    const guild = client.guilds.cache.first();
+    if (!guild) return;
+    console.log('[AvatarScan] Starting mass scan (free API, threshold 0.3)...');
+    const members = await guild.members.fetch({ force: true });
+    const memberArray = [...members.values()];
+    let scanned = 0;
+    let flagged = 0;
+
+    for (const member of memberArray) {
+        if (member.user.bot) continue;
+        const avatarUrl = member.displayAvatarURL({ dynamic: true, size: 1024 });
+        if (!avatarUrl || avatarUrl.includes('discord.com/assets/')) continue;
+
+        // Check ignore list – skip if avatar unchanged
+        const ignoredEntry = await dbGetIgnoredUser(member.id);
+        if (ignoredEntry && ignoredEntry.avatar_hash === getAvatarHash(member)) {
+            console.log(`[MassScan] Skipping ignored user: ${member.user.tag}`);
+            continue;
+        }
+
+        try {
+            const nsfwCheckersResult = await scanWithNSFWCheckers(avatarUrl).catch(() => null);
+            const score = nsfwCheckersResult?.score ?? null;
+            if (score !== null && score >= MASS_SCAN_THRESHOLD) {
+                console.log(`[MassScan] Flagged (free): ${member.user.tag} (score: ${score.toFixed(2)})`);
+                // Alert owner without Sightengine data
+                await alertOwner(client, member, null, nsfwCheckersResult, '🔍 **Mass scan (free API)**');
+                flagged++;
+            }
+        } catch (err) {
+            console.error(`[MassScan] Error scanning ${member.user.tag}:`, err.message);
+        }
+        scanned++;
+        // Throttle
+        if (scanned < memberArray.length) {
+            await new Promise(resolve => setTimeout(resolve, SCAN_DELAY_MS));
+        }
+    }
+    console.log(`[MassScan] Done. Scanned ${scanned} members, flagged ${flagged}.`);
 }
 
 // ========== MANUAL OWNER SCAN COMMAND ==========
@@ -279,37 +345,57 @@ async function handleScanCommand(message) {
     reply.edit(`✅ Scan complete for <@${target.id}>. Check your DM if flagged.`).catch(() => {});
 }
 
-// ========== BUTTON: WARN USER ==========
+// ========== BUTTON: WARN USER (with deferred reply) ==========
 async function handleWarnButton(interaction) {
+    // Defer immediately to prevent Unknown interaction error
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
     const targetUserId = interaction.customId.replace('warn_avatar_', '');
     const guild = interaction.client.guilds.cache.first();
-    if (!guild) return interaction.reply({ content: 'Guild not found.', flags: MessageFlags.Ephemeral });
+    if (!guild) return interaction.editReply({ content: 'Guild not found.' });
 
     const member = await guild.members.fetch(targetUserId).catch(() => null);
-    if (!member) return interaction.reply({ content: 'User not found in server.', flags: MessageFlags.Ephemeral });
+    if (!member) return interaction.editReply({ content: 'User not found in server.' });
 
     const dmSuccess = await sendWarningToUser(interaction.client, targetUserId);
-
     const avatarHash = getAvatarHash(member);
     await dbAddFlaggedUser(targetUserId, avatarHash, member.user.tag);
-
     await applyDenyOverwrites(guild, member);
 
     let replyMsg = '';
     replyMsg += dmSuccess ? `✅ Warning sent to <@${targetUserId}>.` : `❌ Failed to DM <@${targetUserId}>.`;
     replyMsg += ` Channel restrictions applied.`;
 
-    await interaction.reply({ content: replyMsg, flags: MessageFlags.Ephemeral });
+    await interaction.editReply({ content: replyMsg });
+}
+
+// ========== BUTTON: IGNORE (False Flag) ==========
+async function handleIgnoreButton(interaction) {
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+    const targetUserId = interaction.customId.replace('ignore_avatar_', '');
+    const guild = interaction.client.guilds.cache.first();
+    if (!guild) return interaction.editReply({ content: 'Guild not found.' });
+
+    const member = await guild.members.fetch(targetUserId).catch(() => null);
+    if (!member) return interaction.editReply({ content: 'User not found in server.' });
+
+    // Add to ignore list – no action against user
+    await dbAddIgnoredUser(targetUserId, getAvatarHash(member), member.user.tag);
+
+    await interaction.editReply({ content: `✅ <@${targetUserId}> has been added to the ignore list. Future scans will skip them unless they change their avatar.` });
 }
 
 // ========== BUTTON: ACCEPT ==========
 async function handleAcceptButton(interaction) {
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
     const targetUserId = interaction.customId.replace('accept_avatar_', '');
     const guild = interaction.client.guilds.cache.first();
-    if (!guild) return interaction.reply({ content: 'Guild not found.', flags: MessageFlags.Ephemeral });
+    if (!guild) return interaction.editReply({ content: 'Guild not found.' });
 
     const member = await guild.members.fetch(targetUserId).catch(() => null);
-    if (!member) return interaction.reply({ content: 'User not in server.', flags: MessageFlags.Ephemeral });
+    if (!member) return interaction.editReply({ content: 'User not in server.' });
 
     await sendWarningToUser(interaction.client, targetUserId,
         '✅ Your profile picture has been approved. You now have unrestricted access again. Thank you!'
@@ -318,22 +404,21 @@ async function handleAcceptButton(interaction) {
     await removeDenyOverwrites(guild, member);
     await dbRemoveFlaggedUser(targetUserId);
 
-    await interaction.reply({
-        content: `✅ <@${targetUserId}> has been accepted. Their restrictions are lifted.`,
-        flags: MessageFlags.Ephemeral
-    });
+    await interaction.editReply({ content: `✅ <@${targetUserId}> has been accepted. Their restrictions are lifted.` });
 }
 
 // ========== BUTTON: DENY ==========
 async function handleDenyButton(interaction) {
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
     const targetUserId = interaction.customId.replace('deny_avatar_', '');
     const guild = interaction.client.guilds.cache.first();
-    if (!guild) return interaction.reply({ content: 'Guild not found.', flags: MessageFlags.Ephemeral });
+    if (!guild) return interaction.editReply({ content: 'Guild not found.' });
 
     const member = await guild.members.fetch(targetUserId).catch(() => null);
     if (!member) {
         await dbRemoveFlaggedUser(targetUserId);
-        return interaction.reply({ content: 'User no longer in server.', flags: MessageFlags.Ephemeral });
+        return interaction.editReply({ content: 'User no longer in server.' });
     }
 
     await sendWarningToUser(interaction.client, targetUserId,
@@ -343,10 +428,7 @@ async function handleDenyButton(interaction) {
     const newHash = getAvatarHash(member);
     await dbAddFlaggedUser(targetUserId, newHash, member.user.tag);
 
-    await interaction.reply({
-        content: `❌ <@${targetUserId}> has been informed. Awaiting a new avatar change.`,
-        flags: MessageFlags.Ephemeral
-    });
+    await interaction.editReply({ content: `❌ <@${targetUserId}> has been informed. Awaiting a new avatar change.` });
 }
 
 // ========== AVATAR CHANGE DETECTION ==========
@@ -368,6 +450,7 @@ async function onUserUpdate(oldUser, newUser) {
 // ========== EVENT LISTENERS ==========
 function init(client) {
     // On‑join scanning disabled
+    // client.on('guildMemberAdd', member => { processMember(client, member); });
 
     client.on('messageCreate', handleScanCommand);
 
@@ -380,6 +463,8 @@ function init(client) {
 
         if (interaction.customId.startsWith('warn_avatar_')) {
             await handleWarnButton(interaction);
+        } else if (interaction.customId.startsWith('ignore_avatar_')) {
+            await handleIgnoreButton(interaction);
         } else if (interaction.customId.startsWith('accept_avatar_')) {
             await handleAcceptButton(interaction);
         } else if (interaction.customId.startsWith('deny_avatar_')) {
@@ -389,8 +474,10 @@ function init(client) {
 
     client.on(Events.UserUpdate, onUserUpdate);
 
-    client.once(Events.ClientReady, () => {
-        // Ready log disabled
+    client.once(Events.ClientReady, async () => {
+        console.log('[AvatarScan] Bot ready. Starting mass scan with free API...');
+        // Run mass scan in background, don’t block other events
+        scanAllMembersWithFreeAPI(client).catch(err => console.error('[MassScan] Error:', err));
     });
 }
 
