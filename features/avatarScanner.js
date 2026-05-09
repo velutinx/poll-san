@@ -71,9 +71,29 @@ async function dbGetFlaggedUser(userId) {
 }
 
 // ========== CHANNEL OVERWRITE MANAGEMENT ==========
+// Replace the existing applyDenyOverwrites function
 async function applyDenyOverwrites(guild, member) {
-    const channels = require('../utils/helpers').avatarRestrictedChannels;
-    for (const channelId of channels) {
+    const helpers = require('../utils/helpers');
+    const channelIds = [...(helpers.avatarRestrictedChannels || [])];
+    const categoryIds = helpers.avatarRestrictedCategories || [];
+
+    // Add all child channels from specified categories
+    for (const categoryId of categoryIds) {
+        const category = guild.channels.cache.get(categoryId);
+        if (category && category.type === 'CategoryChannel') {
+            const children = guild.channels.cache.filter(
+                c => c.parentId === category.id && c.isTextBased()
+            );
+            for (const child of children.values()) {
+                if (!channelIds.includes(child.id)) {
+                    channelIds.push(child.id);
+                }
+            }
+        }
+    }
+
+    // Apply deny to each channel
+    for (const channelId of channelIds) {
         const channel = guild.channels.cache.get(channelId);
         if (channel && channel.isTextBased()) {
             await channel.permissionOverwrites.create(member, {
@@ -83,9 +103,27 @@ async function applyDenyOverwrites(guild, member) {
     }
 }
 
+// Replace the existing removeDenyOverwrites function
 async function removeDenyOverwrites(guild, member) {
-    const channels = require('../utils/helpers').avatarRestrictedChannels;
-    for (const channelId of channels) {
+    const helpers = require('../utils/helpers');
+    const channelIds = [...(helpers.avatarRestrictedChannels || [])];
+    const categoryIds = helpers.avatarRestrictedCategories || [];
+
+    for (const categoryId of categoryIds) {
+        const category = guild.channels.cache.get(categoryId);
+        if (category && category.type === 'CategoryChannel') {
+            const children = guild.channels.cache.filter(
+                c => c.parentId === category.id && c.isTextBased()
+            );
+            for (const child of children.values()) {
+                if (!channelIds.includes(child.id)) {
+                    channelIds.push(child.id);
+                }
+            }
+        }
+    }
+
+    for (const channelId of channelIds) {
         const channel = guild.channels.cache.get(channelId);
         if (channel) {
             const overwrite = channel.permissionOverwrites.cache.get(member.id);
