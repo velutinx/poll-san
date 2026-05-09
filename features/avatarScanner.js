@@ -43,6 +43,10 @@ async function scanWithGoogle(url) {
         }
     );
     const data = await res.json();
+    // Log error details if Google returns an error
+    if (data.responses && data.responses[0]?.error) {
+        console.error('[AvatarScan] Google Vision API error:', JSON.stringify(data.responses[0].error));
+    }
     return data.responses[0];
 }
 
