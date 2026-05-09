@@ -241,7 +241,7 @@ async function handleScanCommand(message) {
     reply.edit(`✅ Scan complete for <@${target.id}>. Check your DM if flagged.`).catch(() => {});
 }
 
-// ========== BUTTON: WARN USER (initial flag) ==========
+// ========== BUTTON: WARN USER (initial flag – no role change) ==========
 async function handleWarnButton(interaction) {
     const targetUserId = interaction.customId.replace('warn_avatar_', '');
     const guild = interaction.client.guilds.cache.first();
@@ -250,24 +250,19 @@ async function handleWarnButton(interaction) {
     const member = await guild.members.fetch(targetUserId).catch(() => null);
     if (!member) return interaction.reply({ content: 'User not found in server.', flags: MessageFlags.Ephemeral });
 
+    // 1. DM user
     const dmSuccess = await sendWarningToUser(interaction.client, targetUserId);
 
-    let roleSuccess = false;
-    const muteRole = ids.roles.avatar_muted;
-    if (muteRole && !member.roles.cache.has(muteRole)) {
-        await member.roles.add(muteRole);
-        roleSuccess = true;
-    }
-
+    // 2. Store in database
     const avatarHash = getAvatarHash(member);
     await dbAddFlaggedUser(targetUserId, avatarHash);
 
+    // 3. Apply per‑user channel denies (no role assignment)
     await applyDenyOverwrites(guild, member);
 
     let replyMsg = '';
     replyMsg += dmSuccess ? `✅ Warning sent to <@${targetUserId}>.` : `❌ Failed to DM <@${targetUserId}>.`;
-    replyMsg += roleSuccess ? ` Role \`🗣\` assigned.` : ` Could not assign role.`;
-    replyMsg += ` Channel overwrites applied. User stored.`;
+    replyMsg += ` Channel restrictions applied.`;
 
     await interaction.reply({ content: replyMsg, flags: MessageFlags.Ephemeral });
 }
@@ -281,16 +276,15 @@ async function handleAcceptButton(interaction) {
     const member = await guild.members.fetch(targetUserId).catch(() => null);
     if (!member) return interaction.reply({ content: 'User not in server.', flags: MessageFlags.Ephemeral });
 
+    // 1. Notify user
     await sendWarningToUser(interaction.client, targetUserId,
         '✅ Your profile picture has been approved. You now have unrestricted access again. Thank you!'
     );
 
-    const muteRole = ids.roles.avatar_muted;
-    if (muteRole && member.roles.cache.has(muteRole)) {
-        await member.roles.remove(muteRole);
-    }
-
+    // 2. Remove channel overwrites
     await removeDenyOverwrites(guild, member);
+
+    // 3. Remove from database
     await dbRemoveFlaggedUser(targetUserId);
 
     await interaction.reply({
@@ -307,14 +301,17 @@ async function handleDenyButton(interaction) {
 
     const member = await guild.members.fetch(targetUserId).catch(() => null);
     if (!member) {
+        // User left server – clean up
         await dbRemoveFlaggedUser(targetUserId);
         return interaction.reply({ content: 'User no longer in server.', flags: MessageFlags.Ephemeral });
     }
 
+    // 1. Send rejection DM
     await sendWarningToUser(interaction.client, targetUserId,
         '❌ Your new profile picture is still not acceptable. Please change it to a more appropriate one.'
     );
 
+    // 2. Update stored avatar hash (so we detect future changes again)
     const newHash = getAvatarHash(member);
     await dbAddFlaggedUser(targetUserId, newHash);
 
