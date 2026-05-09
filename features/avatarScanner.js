@@ -50,10 +50,11 @@ function getAvatarHash(member) {
 }
 
 // ========== DATABASE OPERATIONS ==========
-async function dbAddFlaggedUser(userId, avatarHash) {
+async function dbAddFlaggedUser(userId, avatarHash, discordTag) {
     await supabase.from('avatar_flagged_users').upsert({
         user_id: userId,
         avatar_hash: avatarHash,
+        discord_tag: discordTag,            // new column
         flagged_at: new Date().toISOString()
     });
 }
@@ -70,40 +71,62 @@ async function dbGetFlaggedUser(userId) {
     return data;
 }
 
-// ========== CHANNEL OVERWRITE MANAGEMENT ==========
-// Replace the existing applyDenyOverwrites function
+// ========== CHANNEL OVERWRITE MANAGEMENT (with debug logging) ==========
 async function applyDenyOverwrites(guild, member) {
     const helpers = require('../utils/helpers');
     const channelIds = [...(helpers.avatarRestrictedChannels || [])];
     const categoryIds = helpers.avatarRestrictedCategories || [];
 
+    console.log(`[Overwrite] Applying denies for ${member.user.tag}.`);
+    console.log(`[Overwrite] Base channel IDs: ${channelIds.length}`);
+    console.log(`[Overwrite] Category IDs: ${categoryIds.length}`);
+
     // Add all child channels from specified categories
     for (const categoryId of categoryIds) {
         const category = guild.channels.cache.get(categoryId);
-        if (category && category.type === 'CategoryChannel') {
-            const children = guild.channels.cache.filter(
-                c => c.parentId === category.id && c.isTextBased()
-            );
-            for (const child of children.values()) {
-                if (!channelIds.includes(child.id)) {
-                    channelIds.push(child.id);
-                }
+        if (!category) {
+            console.log(`[Overwrite] Category not found: ${categoryId}`);
+            continue;
+        }
+        if (category.type !== 'CategoryChannel') {
+            console.log(`[Overwrite] ID ${categoryId} is not a category, type: ${category.type}`);
+            continue;
+        }
+        const children = guild.channels.cache.filter(
+            c => c.parentId === category.id && c.isTextBased()
+        );
+        console.log(`[Overwrite] Category "${category.name}" has ${children.size} text channels.`);
+        for (const child of children.values()) {
+            if (!channelIds.includes(child.id)) {
+                channelIds.push(child.id);
             }
         }
     }
 
+    console.log(`[Overwrite] Total channels to apply: ${channelIds.length}`);
+
     // Apply deny to each channel
     for (const channelId of channelIds) {
         const channel = guild.channels.cache.get(channelId);
-        if (channel && channel.isTextBased()) {
+        if (!channel) {
+            console.log(`[Overwrite] Channel not found: ${channelId}`);
+            continue;
+        }
+        if (!channel.isTextBased()) {
+            console.log(`[Overwrite] Channel ${channel.name} is not text based, skipping.`);
+            continue;
+        }
+        try {
             await channel.permissionOverwrites.create(member, {
                 ViewChannel: false
-            }).catch(() => {});
+            });
+            console.log(`[Overwrite] Denied ViewChannel for ${member.user.tag} in #${channel.name}`);
+        } catch (err) {
+            console.error(`[Overwrite] Failed to deny in #${channel.name} (${channel.id}):`, err.message);
         }
     }
 }
 
-// Replace the existing removeDenyOverwrites function
 async function removeDenyOverwrites(guild, member) {
     const helpers = require('../utils/helpers');
     const channelIds = [...(helpers.avatarRestrictedChannels || [])];
@@ -111,14 +134,13 @@ async function removeDenyOverwrites(guild, member) {
 
     for (const categoryId of categoryIds) {
         const category = guild.channels.cache.get(categoryId);
-        if (category && category.type === 'CategoryChannel') {
-            const children = guild.channels.cache.filter(
-                c => c.parentId === category.id && c.isTextBased()
-            );
-            for (const child of children.values()) {
-                if (!channelIds.includes(child.id)) {
-                    channelIds.push(child.id);
-                }
+        if (!category || category.type !== 'CategoryChannel') continue;
+        const children = guild.channels.cache.filter(
+            c => c.parentId === category.id && c.isTextBased()
+        );
+        for (const child of children.values()) {
+            if (!channelIds.includes(child.id)) {
+                channelIds.push(child.id);
             }
         }
     }
@@ -129,6 +151,7 @@ async function removeDenyOverwrites(guild, member) {
             const overwrite = channel.permissionOverwrites.cache.get(member.id);
             if (overwrite) {
                 await overwrite.delete().catch(() => {});
+                console.log(`[Overwrite] Removed deny for ${member.user.tag} in #${channel.name}`);
             }
         }
     }
@@ -279,7 +302,7 @@ async function handleScanCommand(message) {
     reply.edit(`✅ Scan complete for <@${target.id}>. Check your DM if flagged.`).catch(() => {});
 }
 
-// ========== BUTTON: WARN USER (initial flag – no role change) ==========
+// ========== BUTTON: WARN USER ==========
 async function handleWarnButton(interaction) {
     const targetUserId = interaction.customId.replace('warn_avatar_', '');
     const guild = interaction.client.guilds.cache.first();
@@ -291,11 +314,11 @@ async function handleWarnButton(interaction) {
     // 1. DM user
     const dmSuccess = await sendWarningToUser(interaction.client, targetUserId);
 
-    // 2. Store in database
+    // 2. Store in database (now with discord tag)
     const avatarHash = getAvatarHash(member);
-    await dbAddFlaggedUser(targetUserId, avatarHash);
+    await dbAddFlaggedUser(targetUserId, avatarHash, member.user.tag);
 
-    // 3. Apply per‑user channel denies (no role assignment)
+    // 3. Apply per‑user channel denies
     await applyDenyOverwrites(guild, member);
 
     let replyMsg = '';
@@ -314,15 +337,11 @@ async function handleAcceptButton(interaction) {
     const member = await guild.members.fetch(targetUserId).catch(() => null);
     if (!member) return interaction.reply({ content: 'User not in server.', flags: MessageFlags.Ephemeral });
 
-    // 1. Notify user
     await sendWarningToUser(interaction.client, targetUserId,
         '✅ Your profile picture has been approved. You now have unrestricted access again. Thank you!'
     );
 
-    // 2. Remove channel overwrites
     await removeDenyOverwrites(guild, member);
-
-    // 3. Remove from database
     await dbRemoveFlaggedUser(targetUserId);
 
     await interaction.reply({
@@ -339,19 +358,17 @@ async function handleDenyButton(interaction) {
 
     const member = await guild.members.fetch(targetUserId).catch(() => null);
     if (!member) {
-        // User left server – clean up
         await dbRemoveFlaggedUser(targetUserId);
         return interaction.reply({ content: 'User no longer in server.', flags: MessageFlags.Ephemeral });
     }
 
-    // 1. Send rejection DM
     await sendWarningToUser(interaction.client, targetUserId,
         '❌ Your new profile picture is still not acceptable. Please change it to a more appropriate one.'
     );
 
-    // 2. Update stored avatar hash (so we detect future changes again)
     const newHash = getAvatarHash(member);
-    await dbAddFlaggedUser(targetUserId, newHash);
+    // Update stored record with new hash and current tag
+    await dbAddFlaggedUser(targetUserId, newHash, member.user.tag);
 
     await interaction.reply({
         content: `❌ <@${targetUserId}> has been informed. Awaiting a new avatar change.`,
@@ -378,7 +395,6 @@ async function onUserUpdate(oldUser, newUser) {
 // ========== EVENT LISTENERS ==========
 function init(client) {
     // On‑join scanning disabled
-    // client.on('guildMemberAdd', member => { processMember(client, member); });
 
     client.on('messageCreate', handleScanCommand);
 
