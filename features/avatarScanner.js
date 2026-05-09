@@ -14,6 +14,8 @@ const supabase = require('../services/supabase');
 const NUDITY_THRESHOLD = 0.5;
 const MASS_SCAN_THRESHOLD = 0.3;
 const SCAN_DELAY_MS = 2000;
+const MONTHLY_CREDITS = 2000;           // monthly limit
+const PROMPT_HOURS = [14, 16, 18];      // 2 PM, 4 PM, 6 PM (GMT-7)
 
 // ========== SIGHTENGINE SCAN ==========
 async function scanWithSightengine(url) {
@@ -27,6 +29,9 @@ async function scanWithSightengine(url) {
         method: 'POST',
         body: formData,
     });
+
+    // Increment credit counter after successful scan
+    await incrementCreditsUsed(1);
     return res.json();
 }
 
@@ -89,6 +94,53 @@ async function dbGetIgnoredUser(userId) {
         .eq('user_id', userId)
         .maybeSingle();
     return data;
+}
+
+// ========== DATABASE OPERATIONS (settings) ==========
+async function getSetting(key) {
+    const { data } = await supabase.from('avatar_flagged_settings')
+        .select('value')
+        .eq('key', key)
+        .maybeSingle();
+    return data?.value ?? null;
+}
+
+async function setSetting(key, value) {
+    await supabase.from('avatar_flagged_settings').upsert({ key, value });
+}
+
+// ========== CREDIT TRACKING ==========
+async function getCurrentMonth() {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+}
+
+async function getCreditsUsed() {
+    const value = await getSetting('sightengine_credits_used');
+    return parseInt(value || '0', 10);
+}
+
+async function getResetMonth() {
+    return getSetting('sightengine_credits_reset_month');
+}
+
+async function incrementCreditsUsed(amount) {
+    const currentMonth = await getCurrentMonth();
+    const resetMonth = await getResetMonth();
+
+    // If month changed, reset counter
+    if (resetMonth !== currentMonth) {
+        await setSetting('sightengine_credits_used', amount.toString());
+        await setSetting('sightengine_credits_reset_month', currentMonth);
+    } else {
+        const used = await getCreditsUsed();
+        await setSetting('sightengine_credits_used', (used + amount).toString());
+    }
+}
+
+async function getCreditsRemaining() {
+    const used = await getCreditsUsed();
+    return Math.max(0, MONTHLY_CREDITS - used);
 }
 
 // ========== CHANNEL OVERWRITE MANAGEMENT ==========
@@ -171,7 +223,7 @@ async function sendWarningToUser(client, userId, customMessage) {
 }
 
 // ========== ALERT OWNER – INITIAL FLAG (with Warn + Ignore buttons) ==========
-async function alertOwner(client, member, sightResult, nsfwCheckersResult, extraText = '') {
+async function alertOwner(client, member, sightResult, nsfwCheckersResult, extraText = '', includeCredits = true) {
     const owner = await client.users.fetch(ids.users.Velutinx).catch(() => null);
     if (!owner) return;
 
@@ -192,6 +244,12 @@ async function alertOwner(client, member, sightResult, nsfwCheckersResult, extra
         );
 
     if (extraText) embed.setDescription(extraText);
+
+    // Add credits info if using Sightengine
+    if (includeCredits && sightResult) {
+        const remaining = await getCreditsRemaining();
+        embed.addFields({ name: 'Sightengine Credits', value: `${remaining} remaining this month` });
+    }
 
     const row = new ActionRowBuilder().addComponents(
         new ButtonBuilder()
@@ -275,37 +333,13 @@ async function processMember(client, member, threshold = NUDITY_THRESHOLD) {
     }
 }
 
-// ========== MASS SCAN (FREE API ONLY, with GatewayRateLimitError retry) ==========
+// ========== MASS SCAN (FREE API ONLY) ==========
 async function scanAllMembersWithFreeAPI(client) {
     const guild = client.guilds.cache.first();
     if (!guild) return;
 
     console.log('[MassScan] Starting full member scan (free API, threshold 0.3)...');
-
-    // Helper to fetch members with GatewayRateLimitError retry
-    const fetchAllMembers = async () => {
-        try {
-            return await guild.members.fetch(); // no force:true
-        } catch (err) {
-            // Catch gateway rate-limit errors specifically
-            if (err.name === 'GatewayRateLimitError' && err.data?.retry_after) {
-                const waitMs = (err.data.retry_after + 1) * 1000;
-                console.log(`[MassScan] Gateway rate limited fetching members, waiting ${waitMs / 1000}s...`);
-                await new Promise(resolve => setTimeout(resolve, waitMs));
-                return guild.members.fetch(); // retry once
-            }
-            throw err;
-        }
-    };
-
-    let members;
-    try {
-        members = await fetchAllMembers();
-    } catch (err) {
-        console.error('[MassScan] Failed to fetch members, aborting:', err.message);
-        return;
-    }
-
+    const members = await guild.members.fetch();
     const memberArray = [...members.values()];
     let scanned = 0;
     let flagged = 0;
@@ -315,40 +349,150 @@ async function scanAllMembersWithFreeAPI(client) {
         const avatarUrl = member.displayAvatarURL({ dynamic: true, size: 1024 });
         if (!avatarUrl || avatarUrl.includes('discord.com/assets/')) continue;
 
-        // Skip ignored users with the same avatar hash
         const ignoredEntry = await dbGetIgnoredUser(member.id);
-        if (ignoredEntry && ignoredEntry.avatar_hash === getAvatarHash(member)) {
-            continue;
-        }
+        if (ignoredEntry && ignoredEntry.avatar_hash === getAvatarHash(member)) continue;
 
-        // Scan with free API, retry on rate-limit
-        let nsfwCheckersResult = null;
         try {
-            nsfwCheckersResult = await scanWithNSFWCheckers(avatarUrl);
-        } catch (err) {
-            if (err.name === 'GatewayRateLimitError' && err.data?.retry_after) {
-                const waitMs = (err.data.retry_after + 1) * 1000;
-                console.log(`[MassScan] Rate limited scanning ${member.user.tag}, waiting ${waitMs / 1000}s...`);
-                await new Promise(resolve => setTimeout(resolve, waitMs));
-                nsfwCheckersResult = await scanWithNSFWCheckers(avatarUrl).catch(() => null);
-            } else {
-                console.error(`[MassScan] Error scanning ${member.user.tag}:`, err.message);
+            const nsfwCheckersResult = await scanWithNSFWCheckers(avatarUrl).catch(() => null);
+            const score = nsfwCheckersResult?.score ?? null;
+            if (score !== null && score >= MASS_SCAN_THRESHOLD) {
+                console.log(`[MassScan] Flagged (free): ${member.user.tag} (score: ${score.toFixed(2)})`);
+                await alertOwner(client, member, null, nsfwCheckersResult, '🔍 **Mass scan (free API only)**', false);
+                flagged++;
             }
+        } catch (err) {
+            console.error(`[MassScan] Error scanning ${member.user.tag}:`, err.message);
         }
-
-        const score = nsfwCheckersResult?.score ?? null;
-        if (score !== null && score >= MASS_SCAN_THRESHOLD) {
-            console.log(`[MassScan] Flagged (free): ${member.user.tag} (score: ${score.toFixed(2)})`);
-            await alertOwner(client, member, null, nsfwCheckersResult, '🔍 **Mass scan (free API only)**');
-            flagged++;
-        }
-
         scanned++;
         if (scanned < memberArray.length) {
             await new Promise(resolve => setTimeout(resolve, SCAN_DELAY_MS));
         }
     }
     console.log(`[MassScan] Done. Scanned ${scanned} members, flagged ${flagged}.`);
+}
+
+// ========== MONTHLY SIGHTENGINE-ONLY SCAN ==========
+async function performMonthlyScan(client) {
+    const guild = client.guilds.cache.first();
+    if (!guild) return;
+
+    console.log(`[MonthlyScan] Starting Sightengine-only global scan (threshold 0.3)...`);
+    const members = await guild.members.fetch();
+    const memberArray = [...members.values()];
+    let scanned = 0;
+    let flagged = 0;
+    const creditsBefore = await getCreditsRemaining();
+
+    for (const member of memberArray) {
+        if (member.user.bot) continue;
+        const avatarUrl = member.displayAvatarURL({ dynamic: true, size: 1024 });
+        if (!avatarUrl || avatarUrl.includes('discord.com/assets/')) continue;
+
+        const ignoredEntry = await dbGetIgnoredUser(member.id);
+        if (ignoredEntry && ignoredEntry.avatar_hash === getAvatarHash(member)) continue;
+
+        try {
+            const sightResult = await scanWithSightengine(avatarUrl); // increments credit
+            const nudity = sightResult.nudity?.raw || 0;
+            if (nudity >= 0.3) {
+                console.log(`[MonthlyScan] Flagged: ${member.user.tag} (nudity: ${nudity.toFixed(2)})`);
+                await alertOwner(client, member, sightResult, null, '🔍 **Monthly Sightengine scan**', true);
+                flagged++;
+            }
+        } catch (err) {
+            console.error(`[MonthlyScan] Error scanning ${member.user.tag}:`, err.message);
+        }
+        scanned++;
+        if (scanned < memberArray.length) {
+            await new Promise(resolve => setTimeout(resolve, SCAN_DELAY_MS));
+        }
+    }
+
+    const creditsAfter = await getCreditsRemaining();
+    const used = creditsBefore - creditsAfter;
+    console.log(`[MonthlyScan] Done. Scanned ${scanned}, flagged ${flagged}. Credits used: ${used}, remaining: ${creditsAfter}`);
+    return { scanned, flagged, used };
+}
+
+// ========== MONTHLY PROMPT LOGIC ==========
+async function sendMonthlyPrompt(client) {
+    const owner = await client.users.fetch(ids.users.Velutinx).catch(() => null);
+    if (!owner) return;
+
+    const guild = client.guilds.cache.first();
+    const memberCount = guild ? guild.memberCount : 'unknown';
+    const remaining = await getCreditsRemaining();
+
+    const embed = new EmbedBuilder()
+        .setTitle('🗓️ Monthly Global Scan Available')
+        .setColor(0x0099FF)
+        .setDescription(
+            `It's the end of the month! You can run a full global scan using **Sightengine only** (threshold 0.3).\n` +
+            `This will scan all members, excluding ignored users with unchanged avatars.`
+        )
+        .addFields(
+            { name: 'Server Members', value: `${memberCount}`, inline: true },
+            { name: 'Sightengine Credits Left', value: `${remaining} / ${MONTHLY_CREDITS}`, inline: true },
+            { name: 'Estimated Scan Cost', value: `Up to ${memberCount} credits`, inline: true }
+        );
+
+    const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+            .setCustomId('monthly_scan_accept')
+            .setLabel('🚀 Run Global Scan')
+            .setStyle(ButtonStyle.Success)
+    );
+
+    await owner.send({ embeds: [embed], components: [row] });
+    // Record that we prompted (to avoid duplicate prompts same day)
+    const today = new Date().toISOString().slice(0, 10);
+    await setSetting('monthly_scan_prompt_day', today);
+}
+
+async function checkMonthlyScanPrompt(client) {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = now.getMonth(); // 0-11
+    const date = now.getDate();
+
+    // Calculate the last day of the month
+    const lastDay = new Date(year, month + 1, 0).getDate();
+    const oneDayBeforeLast = lastDay - 1;
+
+    const todayStr = now.toISOString().slice(0, 10);
+    const currentHour = now.getHours(); // GMT-7? We'll assume the server time is UTC but we treat hours as GMT-7.
+    // Since we cannot force timezone easily, we'll rely on whatever the server's timezone is.
+    // If your server is in GMT-7, this works. Otherwise, adjust offset manually.
+    // We'll keep it simple: use the raw UTC hour; if that doesn't match, you'll need to offset.
+    // For now, we'll use UTC and assume prompts sent at 14,16,18 UTC? But you said GMT-7.
+    // To handle this correctly, we'll interpret the hour as GMT-7 by subtracting 7 from UTC.
+    // Let's convert UTC hour to GMT-7: gmt7Hour = (now.getUTCHours() - 7 + 24) % 24.
+    // Then use that for comparisons.
+    const gmt7Hour = (now.getUTCHours() - 7 + 24) % 24;
+
+    // Check if this is the one-day-before-last day
+    if (date === oneDayBeforeLast) {
+        const alreadyPromptedToday = await getSetting('monthly_scan_prompt_day') === todayStr;
+        const alreadyAccepted = await getSetting('monthly_scan_accepted') === 'true';
+        if (!alreadyPromptedToday && !alreadyAccepted) {
+            await sendMonthlyPrompt(client);
+        }
+        return;
+    }
+
+    // Check if it's the last day of the month and during prompt hours
+    if (date === lastDay) {
+        const alreadyAccepted = await getSetting('monthly_scan_accepted') === 'true';
+        if (alreadyAccepted) return;
+
+        if (PROMPT_HOURS.includes(gmt7Hour)) {
+            const lastPromptHour = await getSetting('monthly_scan_last_prompt_hour');
+            if (lastPromptHour !== gmt7Hour.toString()) {
+                await sendMonthlyPrompt(client);
+                await setSetting('monthly_scan_last_prompt_hour', gmt7Hour.toString());
+            }
+        }
+    }
 }
 
 // ========== MANUAL OWNER SCAN COMMAND ==========
@@ -462,6 +606,35 @@ async function handleDenyButton(interaction) {
     await interaction.editReply({ content: `❌ <@${targetUserId}> has been informed. Awaiting a new avatar change.` });
 }
 
+// ========== BUTTON: MONTHLY SCAN ACCEPT ==========
+async function handleMonthlyScanAccept(interaction) {
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+    if (interaction.user.id !== ids.users.Velutinx) {
+        return interaction.editReply({ content: 'Only the server owner can accept this.' });
+    }
+
+    // Prevent double acceptance
+    const alreadyAccepted = await getSetting('monthly_scan_accepted');
+    if (alreadyAccepted === 'true') {
+        return interaction.editReply({ content: 'Monthly scan has already been accepted.' });
+    }
+
+    await setSetting('monthly_scan_accepted', 'true');
+
+    // Start the scan (might take a while, so inform the owner)
+    await interaction.editReply({ content: '✅ Monthly global scan started! You will receive results via DM as users are flagged.' });
+
+    const client = interaction.client;
+    performMonthlyScan(client).then(result => {
+        client.users.fetch(ids.users.Velutinx).then(owner => {
+            owner.send(`📊 Monthly scan completed.\nScanned: ${result.scanned}\nFlagged: ${result.flagged}\nCredits used: ${result.used}\nRemaining: ${MONTHLY_CREDITS - await getCreditsUsed()}`);
+        }).catch(() => {});
+    }).catch(err => {
+        console.error('[MonthlyScan] Fatal error:', err);
+    });
+}
+
 // ========== AVATAR CHANGE DETECTION ==========
 async function onUserUpdate(oldUser, newUser) {
     if (oldUser.avatar === newUser.avatar) return;
@@ -478,12 +651,43 @@ async function onUserUpdate(oldUser, newUser) {
     await alertOwnerAvatarChange(oldUser.client, member, oldUser.avatar, newUser.avatar);
 }
 
+// ========== PERIODIC MONTHLY CHECK ==========
+let monthlyCheckInterval = null;
+
+function startMonthlyCheck(client) {
+    // Check immediately, then every 15 minutes
+    checkMonthlyScanPrompt(client).catch(() => {});
+    monthlyCheckInterval = setInterval(() => {
+        checkMonthlyScanPrompt(client).catch(() => {});
+    }, 900000); // 15 minutes
+
+    // Also reset accepted flag on new month
+    const scheduleMonthReset = () => {
+        const now = new Date();
+        const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+        const msUntilNext = nextMonth - now;
+        setTimeout(() => {
+            setSetting('monthly_scan_accepted', 'false');
+            setSetting('monthly_scan_prompt_day', '');
+            setSetting('monthly_scan_last_prompt_hour', '');
+            scheduleMonthReset(); // schedule next reset
+        }, msUntilNext);
+    };
+    scheduleMonthReset();
+}
+
 // ========== EVENT LISTENERS ==========
 function init(client) {
     client.on('messageCreate', handleScanCommand);
 
     client.on(Events.InteractionCreate, async interaction => {
         if (!interaction.isButton()) return;
+
+        // Owner-only for most buttons, except monthly scan accept
+        if (interaction.customId.startsWith('monthly_scan_accept')) {
+            await handleMonthlyScanAccept(interaction);
+            return;
+        }
 
         if (interaction.user.id !== ids.users.Velutinx) {
             return interaction.reply({ content: 'Only the server owner can use these buttons.', flags: MessageFlags.Ephemeral });
@@ -503,10 +707,12 @@ function init(client) {
     client.on(Events.UserUpdate, onUserUpdate);
 
     client.once(Events.ClientReady, () => {
- //       console.log('[AvatarScan] Bot ready. Mass scan will start in 30 seconds...');
+        console.log('[AvatarScan] Bot ready. Mass scan will start in 30 seconds...');
         setTimeout(() => {
-            scanAllMembersWithFreeAPI(client).catch(err => console.error('[MassScan] Unexpected error:', err));
+            scanAllMembersWithFreeAPI(client).catch(err => console.error('[MassScan] Error:', err));
         }, 30000);
+
+        startMonthlyCheck(client);
     });
 }
 
