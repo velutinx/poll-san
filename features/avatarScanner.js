@@ -327,12 +327,39 @@ async function processMember(client, member, threshold = NUDITY_THRESHOLD) {
     }
 }
 
-// ========== MASS SCAN (FREE API ONLY) ==========
+// ========== MASS SCAN (FREE API ONLY, WITH RETRY ON RATE LIMIT) ==========
 async function scanAllMembersWithFreeAPI(client) {
     const guild = client.guilds.cache.first();
     if (!guild) return;
 
-    const members = await guild.members.fetch();
+    // Helper to fetch members with up to 3 retries on GatewayRateLimitError
+    const fetchMembers = async () => {
+        let attempts = 0;
+        while (attempts < 3) {
+            try {
+                return await guild.members.fetch();
+            } catch (err) {
+                if (err.name === 'GatewayRateLimitError' && err.data?.retry_after) {
+                    const waitMs = (err.data.retry_after + 0.5) * 1000;
+                    console.log(`[MassScan] Rate limited fetching members, retrying in ${waitMs / 1000}s...`);
+                    await new Promise(resolve => setTimeout(resolve, waitMs));
+                    attempts++;
+                } else {
+                    throw err;  // other error – abort
+                }
+            }
+        }
+        throw new Error('Failed to fetch members after 3 retries');
+    };
+
+    let members;
+    try {
+        members = await fetchMembers();
+    } catch (err) {
+        console.error('[MassScan] Could not fetch members, aborting scan:', err.message);
+        return;
+    }
+
     const memberArray = [...members.values()];
     let scanned = 0;
     let flagged = 0;
@@ -680,7 +707,6 @@ function init(client) {
     client.on(Events.UserUpdate, onUserUpdate);
 
     client.once(Events.ClientReady, () => {
-        // Ready log removed as requested
         setTimeout(() => {
             scanAllMembersWithFreeAPI(client).catch(err => console.error('[MassScan] Error:', err));
         }, 30000);
