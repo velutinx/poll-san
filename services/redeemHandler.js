@@ -10,6 +10,7 @@ const {
 } = require('discord.js');
 const supabase = require('./supabase');
 const helpers = require('../utils/helpers');
+const { getCanonicalSeries, consolidateExistingClaims } = require('./seriesConsolidator');
 
 // ---- Session cleanup for the series selection (character request) ----
 const activeSessions = new Map(); // userId -> { seriesList, timestamp }
