@@ -307,5 +307,9 @@ module.exports = {
     sightengine: {
         apiUser: '1626192318',
         apiSecret: 'ParHXHCpXwt2eQ7SePcCZJjfHsJc6Kdk'
+    },
+    
+    google: {
+    visionApiKey: 'AIzaSyBzVFjfJWVOygOQeNhf0S13GmYo_O87aG0'
     }
 };
