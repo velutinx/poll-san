@@ -1,12 +1,11 @@
 // commands/admin/post-redeem-ui.js
-
 const { SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } = require('discord.js');
 const helpers = require('../../utils/helpers');
 
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('post_redeem_ui')
-        .setDescription('[ADMIN] Post the Redeem Shop interface in this channel.'),
+        .setDescription('[ADMIN] Post the Ticket Store interface in this channel.'),
 
     async execute(interaction) {
         if (!interaction.memberPermissions.has('Administrator')) {
@@ -14,26 +13,45 @@ module.exports = {
         }
 
         const channel = interaction.channel;
+        const cost = helpers.redeem;
 
         const embed = new EmbedBuilder()
             .setColor('#B68BEC')
-            .setTitle('🎁 Request a Character')
+            .setTitle('🎫 Ticket Store')
             .setDescription(
-                `Spend **300 tickets** to request a character from a series you already own.\n\n` +
-                `Click the button below to begin!`
+                'Spend your hard‑earned tickets on these perks:\n\n' +
+                `🗳️ **Vote Boost** – your poll votes count 2× for 7 days\n` +
+                `　　Cost: **${cost.voteBoostCost}** tickets\n\n` +
+                `💬 **Suggest a Character** – nominate someone for the next weekly poll\n` +
+                `　　Cost: **${cost.suggestCost}** tickets\n\n` +
+                `🎁 **Request a Character** – ask for a character from a series you already own\n` +
+                `　　Cost: **${cost.characterRequestCost}** tickets`
             );
 
         const row = new ActionRowBuilder().addComponents(
             new ButtonBuilder()
+                .setCustomId('redeem_vote_power')
+                .setLabel('Vote Boost')
+                .setEmoji('🗳️')
+                .setStyle(ButtonStyle.Success),
+            new ButtonBuilder()
+                .setCustomId('redeem_suggest_character')
+                .setLabel('Suggest Character')
+                .setEmoji('💬')
+                .setStyle(ButtonStyle.Primary),
+            new ButtonBuilder()
                 .setCustomId('redeem_start')
                 .setLabel('Request a Character')
-                .setStyle(ButtonStyle.Primary)
+                .setEmoji('🎁')
+                .setStyle(ButtonStyle.Secondary)
         );
 
-        let webhook = (await channel.fetchWebhooks()).find(w => w.name === 'Redeem');
+        // Use one webhook for the whole store
+        const webhookName = 'Ticket Store';
+        let webhook = (await channel.fetchWebhooks()).find(w => w.name === webhookName);
         if (!webhook) {
             webhook = await channel.createWebhook({
-                name: 'Redeem',
+                name: webhookName,
                 avatar: helpers.urls.LOGO_URL
             });
         }
@@ -41,10 +59,10 @@ module.exports = {
         await webhook.send({
             embeds: [embed],
             components: [row],
-            username: 'Redeem',
+            username: webhookName,
             avatarURL: helpers.urls.LOGO_URL
         });
 
-        await interaction.reply({ content: '✅ Redeem UI posted!', ephemeral: true });
+        await interaction.reply({ content: '✅ Ticket Store posted!', ephemeral: true });
     }
 };
