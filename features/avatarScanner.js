@@ -4,10 +4,11 @@ const {
     Events,
     ActionRowBuilder,
     ButtonBuilder,
-    ButtonStyle
+    ButtonStyle,
+    MessageFlags
 } = require('discord.js');
 const { ids, sightengine } = require('../utils/helpers');
-const supabase = require('../services/supabase');   // reuse your existing supabase client
+const supabase = require('../services/supabase');
 
 // ========== CONFIG ==========
 const NUDITY_THRESHOLD = 0.5;
@@ -45,7 +46,7 @@ async function scanWithNSFWCheckers(url) {
 
 // ========== AVATAR HASH HELPER ==========
 function getAvatarHash(member) {
-    return member.user.avatar || 'default';   // null means default avatar
+    return member.user.avatar || 'default';
 }
 
 // ========== DATABASE OPERATIONS ==========
@@ -77,7 +78,7 @@ async function applyDenyOverwrites(guild, member) {
         if (channel && channel.isTextBased()) {
             await channel.permissionOverwrites.create(member, {
                 ViewChannel: false
-            }).catch(() => {});  // skip if we lack permission
+            }).catch(() => {});
         }
     }
 }
@@ -237,22 +238,20 @@ async function handleScanCommand(message) {
 
     const reply = await message.reply(`🔍 Scanning avatar of ${target.user.tag}...`);
     await processMember(message.client, target);
-    reply.edit(`✅ Scan complete for ${target.user.tag}. Check your DM if flagged.`).catch(() => {});
+    reply.edit(`✅ Scan complete for <@${target.id}>. Check your DM if flagged.`).catch(() => {});
 }
 
 // ========== BUTTON: WARN USER (initial flag) ==========
 async function handleWarnButton(interaction) {
     const targetUserId = interaction.customId.replace('warn_avatar_', '');
     const guild = interaction.client.guilds.cache.first();
-    if (!guild) return interaction.reply({ content: 'Guild not found.', ephemeral: true });
+    if (!guild) return interaction.reply({ content: 'Guild not found.', flags: MessageFlags.Ephemeral });
 
     const member = await guild.members.fetch(targetUserId).catch(() => null);
-    if (!member) return interaction.reply({ content: 'User not found in server.', ephemeral: true });
+    if (!member) return interaction.reply({ content: 'User not found in server.', flags: MessageFlags.Ephemeral });
 
-    // 1. DM user
     const dmSuccess = await sendWarningToUser(interaction.client, targetUserId);
 
-    // 2. Assign mute role
     let roleSuccess = false;
     const muteRole = ids.roles.avatar_muted;
     if (muteRole && !member.roles.cache.has(muteRole)) {
@@ -260,11 +259,9 @@ async function handleWarnButton(interaction) {
         roleSuccess = true;
     }
 
-    // 3. Store in database
     const avatarHash = getAvatarHash(member);
     await dbAddFlaggedUser(targetUserId, avatarHash);
 
-    // 4. Apply per‑user channel denies
     await applyDenyOverwrites(guild, member);
 
     let replyMsg = '';
@@ -272,85 +269,74 @@ async function handleWarnButton(interaction) {
     replyMsg += roleSuccess ? ` Role \`🗣\` assigned.` : ` Could not assign role.`;
     replyMsg += ` Channel overwrites applied. User stored.`;
 
-    await interaction.reply({ content: replyMsg, ephemeral: true });
+    await interaction.reply({ content: replyMsg, flags: MessageFlags.Ephemeral });
 }
 
-// ========== BUTTON: ACCEPT (avatar change reviewed) ==========
+// ========== BUTTON: ACCEPT ==========
 async function handleAcceptButton(interaction) {
     const targetUserId = interaction.customId.replace('accept_avatar_', '');
     const guild = interaction.client.guilds.cache.first();
-    if (!guild) return interaction.reply({ content: 'Guild not found.', ephemeral: true });
+    if (!guild) return interaction.reply({ content: 'Guild not found.', flags: MessageFlags.Ephemeral });
 
     const member = await guild.members.fetch(targetUserId).catch(() => null);
-    if (!member) return interaction.reply({ content: 'User not in server.', ephemeral: true });
+    if (!member) return interaction.reply({ content: 'User not in server.', flags: MessageFlags.Ephemeral });
 
-    // 1. Notify user
     await sendWarningToUser(interaction.client, targetUserId,
         '✅ Your profile picture has been approved. You now have unrestricted access again. Thank you!'
     );
 
-    // 2. Remove mute role
     const muteRole = ids.roles.avatar_muted;
     if (muteRole && member.roles.cache.has(muteRole)) {
         await member.roles.remove(muteRole);
     }
 
-    // 3. Remove channel overwrites
     await removeDenyOverwrites(guild, member);
-
-    // 4. Remove from database
     await dbRemoveFlaggedUser(targetUserId);
 
     await interaction.reply({
         content: `✅ <@${targetUserId}> has been accepted. Their restrictions are lifted.`,
-        ephemeral: true
+        flags: MessageFlags.Ephemeral
     });
 }
 
-// ========== BUTTON: DENY (avatar change still not ok) ==========
+// ========== BUTTON: DENY ==========
 async function handleDenyButton(interaction) {
     const targetUserId = interaction.customId.replace('deny_avatar_', '');
     const guild = interaction.client.guilds.cache.first();
-    if (!guild) return interaction.reply({ content: 'Guild not found.', ephemeral: true });
+    if (!guild) return interaction.reply({ content: 'Guild not found.', flags: MessageFlags.Ephemeral });
 
     const member = await guild.members.fetch(targetUserId).catch(() => null);
     if (!member) {
-        // User left server? Clean up
         await dbRemoveFlaggedUser(targetUserId);
-        return interaction.reply({ content: 'User no longer in server.', ephemeral: true });
+        return interaction.reply({ content: 'User no longer in server.', flags: MessageFlags.Ephemeral });
     }
 
-    // 1. Send rejection DM
     await sendWarningToUser(interaction.client, targetUserId,
         '❌ Your new profile picture is still not acceptable. Please change it to a more appropriate one.'
     );
 
-    // 2. Update stored avatar hash to the new one (so we can detect future changes again)
     const newHash = getAvatarHash(member);
     await dbAddFlaggedUser(targetUserId, newHash);
 
     await interaction.reply({
         content: `❌ <@${targetUserId}> has been informed. Awaiting a new avatar change.`,
-        ephemeral: true
+        flags: MessageFlags.Ephemeral
     });
 }
 
 // ========== AVATAR CHANGE DETECTION ==========
 async function onUserUpdate(oldUser, newUser) {
-    // Only care if the user actually changed their avatar
     if (oldUser.avatar === newUser.avatar) return;
 
     const userId = newUser.id;
     const dbEntry = await dbGetFlaggedUser(userId);
-    if (!dbEntry) return;   // not a flagged user
+    if (!dbEntry) return;
 
-    // Try to get the guild member object (the user is in our server)
     const guild = oldUser.client.guilds.cache.first();
     if (!guild) return;
     const member = await guild.members.fetch(userId).catch(() => null);
     if (!member) return;
 
-    // Notify owner
     await alertOwnerAvatarChange(oldUser.client, member, oldUser.avatar, newUser.avatar);
 }
 
@@ -361,12 +347,11 @@ function init(client) {
 
     client.on('messageCreate', handleScanCommand);
 
-    // Global interaction handler for all our buttons
     client.on(Events.InteractionCreate, async interaction => {
         if (!interaction.isButton()) return;
 
         if (interaction.user.id !== ids.users.Velutinx) {
-            return interaction.reply({ content: 'Only the server owner can use these buttons.', ephemeral: true });
+            return interaction.reply({ content: 'Only the server owner can use these buttons.', flags: MessageFlags.Ephemeral });
         }
 
         if (interaction.customId.startsWith('warn_avatar_')) {
@@ -378,11 +363,10 @@ function init(client) {
         }
     });
 
-    // User avatar change detection
     client.on(Events.UserUpdate, onUserUpdate);
 
     client.once(Events.ClientReady, () => {
-        console.log('[AvatarScan] Ready – dual-engine scanning with full enforcement workflow.');
+        // Ready log disabled
     });
 }
 
