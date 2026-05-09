@@ -44,7 +44,7 @@ async function notifyAdmin(interaction, message) {
         const adminUser = await interaction.client.users.fetch(adminId);
         if (adminUser) {
             await adminUser.send(message);
-            console.log(`📨 Admin notified: ${message.split('\n')[0]}`);
+        //    console.log(`📨 Admin notified: ${message.split('\n')[0]}`);
         } else {
             console.error('❌ Could not fetch admin user.');
         }
