@@ -1,6 +1,7 @@
 // handlers/mudaeMessageHandler.js
 const helpers = require('../utils/helpers');
 const supabase = require('../services/supabase');
+const { getCanonicalSeries } = require('../services/seriesConsolidator'); // NEW
 
 const activeTimeouts = new Map();
 let channelInactivityTimeout = null;
@@ -21,7 +22,6 @@ function resetInactivityTimer(channel) {
             const toDelete = messages.filter(m => !WHITELISTED_MESSAGE_IDS.has(m.id));
             if (toDelete.size === 0) return;
             await channel.bulkDelete(toDelete);
-        //    console.log(`🧹 Purged ${toDelete.size} messages from ${channel.name} due to inactivity.`);
             for (const msgId of toDelete.keys()) {
                 if (activeTimeouts.has(msgId)) {
                     clearTimeout(activeTimeouts.get(msgId));
@@ -78,7 +78,6 @@ function initMudaeMessageHandler(client) {
         const timeout = setTimeout(async () => {
             try {
                 await message.delete();
-                // console.log(`🗑️ Deleted message ${message.id}`);
             } catch (err) {
                 if (err.code !== 10008) console.error(`Failed to delete message ${message.id}:`, err.message);
             } finally {
@@ -102,7 +101,7 @@ function initMudaeMessageHandler(client) {
 
         const { character, series } = parsed;
 
-        // Store for claim matching
+        // Store for claim matching – use original series (canonical later)
         pendingClaims.set(character, {
             series,
             messageId: message.id,
@@ -118,7 +117,6 @@ function initMudaeMessageHandler(client) {
         try {
             const randomVerify = helpers.releaseEmojis.getRandomVerify();
             await message.react(randomVerify);
-            // console.log(`✅ Added random verify to ${character}`);
         } catch (err) {
             console.error(`Failed to react: ${err.message}`);
         }
@@ -136,7 +134,8 @@ function initMudaeMessageHandler(client) {
         const claimerUsername = match[1].replace(/\*\*/g, '').trim();
         const characterName = match[2].replace(/\*\*/g, '').trim();
         const pending = pendingClaims.get(characterName);
-        const series = pending ? pending.series : null;
+        const originalSeries = pending ? pending.series : null;
+        const canonicalSeries = getCanonicalSeries(originalSeries); // NEW – apply alias mapping
 
         let userId = null;
         try {
@@ -149,13 +148,13 @@ function initMudaeMessageHandler(client) {
                 user_id: userId,
                 username: claimerUsername,
                 character_name: characterName,
-                series: series,
+                series: canonicalSeries,                  // use canonical name
                 claimed_at: new Date().toISOString()
             });
             if (error) {
                 console.error('Insert error:', error);
             } else {
-                console.log(`📝 Recorded: ${claimerUsername} claimed ${characterName} (${series || 'unknown series'})`);
+                console.log(`📝 Recorded: ${claimerUsername} claimed ${characterName} (${canonicalSeries || 'unknown series'})`);
             }
         } catch (err) {
             console.error('DB error:', err);
