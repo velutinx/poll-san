@@ -200,7 +200,7 @@ function init(client) {
     client.on(Events.InteractionCreate, handleButton);
 
     client.once(Events.ClientReady, () => {
-        console.log('[AvatarScan] Ready – dual‑engine scanning (Sightengine + NSFWCheckers).');
+//        console.log('[AvatarScan] Ready – dual‑engine scanning (Sightengine + NSFWCheckers).');
     });
 }
 
