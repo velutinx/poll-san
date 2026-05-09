@@ -6,11 +6,10 @@ const {
     ButtonBuilder,
     ButtonStyle
 } = require('discord.js');
-const { ids, sightengine, google } = require('../utils/helpers');
+const { ids, sightengine, google, rapidapi } = require('../utils/helpers');
 
 // ========== CONFIG ==========
-const NUDITY_THRESHOLD = 0.5;          // flag if any API returns >= this
-const GOOGLE_API_KEY = google.visionApiKey;
+const NUDITY_THRESHOLD = 0.5;  // flag if any engine returns >= this
 
 // ========== SIGHTENGINE SCAN ==========
 async function scanWithSightengine(url) {
@@ -29,17 +28,14 @@ async function scanWithSightengine(url) {
 
 // ========== GOOGLE CLOUD VISION SCAN ==========
 async function scanWithGoogle(url) {
-    if (!GOOGLE_API_KEY) throw new Error('Missing Google Vision API key');
-
     const body = {
         requests: [{
             image: { source: { imageUri: url } },
             features: [{ type: 'SAFE_SEARCH_DETECTION' }]
         }]
     };
-
     const res = await fetch(
-        `https://vision.googleapis.com/v1/images:annotate?key=${GOOGLE_API_KEY}`,
+        `https://vision.googleapis.com/v1/images:annotate?key=${google.visionApiKey}`,
         {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -50,7 +46,25 @@ async function scanWithGoogle(url) {
     return data.responses[0];
 }
 
-// ========== HELPER: map SafeSearch likelihood to score ==========
+// ========== RAPIDAPI NSFW DETECTION ==========
+async function scanWithRapidapi(url) {
+    const res = await fetch(
+        `https://${rapidapi.host}/nsfw-image-detection`,
+        {
+            method: 'POST',
+            headers: {
+                'content-type': 'application/json',
+                'x-rapidapi-key': rapidapi.key,
+                'x-rapidapi-host': rapidapi.host
+            },
+            body: JSON.stringify({ url: url })
+        }
+    );
+    const data = await res.json();
+    return data;  // typical response: { score: 0.87, ... }
+}
+
+// ========== HELPER: Google likelihood → number ==========
 function googleLikelihoodToScore(likelihood) {
     switch (likelihood) {
         case 'VERY_LIKELY':  return 0.9;
@@ -81,15 +95,14 @@ async function sendWarningToUser(client, userId) {
 }
 
 // ========== ALERT OWNER (with button) ==========
-async function alertOwner(client, member, sightResult, googleResult) {
+async function alertOwner(client, member, results) {
     const owner = await client.users.fetch(ids.users.Velutinx).catch(() => null);
     if (!owner) return;
 
-    const sightNudity = sightResult.nudity?.raw || 0;
-    const googleAdultScore = googleResult ? googleResult.score : 'N/A';
-    const googleAdultDetails = googleResult
-        ? `${googleResult.likelihood} (score: ${googleAdultScore})`
-        : 'Not scanned';
+    const sightNudity = results.sightengine.nudity?.raw || 0;
+    const googleLikelihood = results.google?.likelihood || 'UNKNOWN';
+    const googleScore = results.google?.score || 0;
+    const rapidScore = results.rapidapi?.score ?? 'N/A';
 
     const embed = new EmbedBuilder()
         .setTitle('⚠️ NSFW Avatar Detected')
@@ -98,8 +111,9 @@ async function alertOwner(client, member, sightResult, googleResult) {
         .addFields(
             { name: 'User', value: `${member.user.tag} (${member.id})` },
             { name: 'Avatar URL', value: member.displayAvatarURL({ dynamic: true, size: 1024 }) },
-            { name: 'Sightengine Nudity', value: `${sightNudity.toFixed(2)} (sexual: ${(sightResult.nudity?.sexual_activity || 0).toFixed(2)})` },
-            { name: 'Google Vision Adult', value: googleAdultDetails },
+            { name: 'Sightengine', value: `${sightNudity.toFixed(2)} (sexual: ${(results.sightengine.nudity?.sexual_activity || 0).toFixed(2)})` },
+            { name: 'Google Vision', value: `${googleLikelihood} (${googleScore.toFixed(2)})` },
+            { name: 'RapidAPI NSFW', value: `${typeof rapidScore === 'number' ? rapidScore.toFixed(2) : rapidScore}` },
             { name: 'Scan Timestamp', value: `<t:${Math.floor(Date.now() / 1000)}:F>` }
         );
 
@@ -119,31 +133,50 @@ async function processMember(client, member) {
     const avatarUrl = member.displayAvatarURL({ dynamic: true, size: 1024 });
     if (!avatarUrl || avatarUrl.includes('discord.com/assets/')) return;
 
+    const isTestAccount = member.id === '842917477977161739';
+
     try {
-        // Run both APIs concurrently
-        const [sightResult, googleResponse] = await Promise.all([
+        // Fire all three APIs in parallel (RapidAPI might fail softly)
+        const [sightResult, googleResponse, rapidResult] = await Promise.all([
             scanWithSightengine(avatarUrl),
-            scanWithGoogle(avatarUrl).catch(() => null)   // don’t crash if Google fails
+            scanWithGoogle(avatarUrl).catch(() => null),
+            scanWithRapidapi(avatarUrl).catch(() => null)
         ]);
 
         const sightNudity = sightResult.nudity?.raw || 0;
 
         let googleScore = 0;
         let googleLikelihood = 'UNKNOWN';
-        if (googleResponse && googleResponse.safeSearchAnnotation) {
+        if (googleResponse?.safeSearchAnnotation) {
             const adult = googleResponse.safeSearchAnnotation.adult || 'UNKNOWN';
             googleLikelihood = adult;
             googleScore = googleLikelihoodToScore(adult);
         }
 
-        console.log(`[AvatarScan] ${member.user.tag}: Sightengine=${sightNudity.toFixed(2)}, Google=${googleLikelihood} (${googleScore.toFixed(2)})`);
+        // RapidAPI score is usually a number between 0 and 1 (nsfw confidence)
+        const rapidScore = (rapidResult && typeof rapidResult.score === 'number')
+            ? rapidResult.score
+            : null;
 
-        // Flag if either API is above threshold
-        if (sightNudity >= NUDITY_THRESHOLD || googleScore >= NUDITY_THRESHOLD) {
+        console.log(
+            `[AvatarScan] ${member.user.tag}: Sightengine=${sightNudity.toFixed(2)}, ` +
+            `Google=${googleLikelihood} (${googleScore.toFixed(2)}), ` +
+            `RapidAPI=${rapidScore !== null ? rapidScore.toFixed(2) : 'N/A'}`
+        );
+
+        const flagged =
+            isTestAccount ||
+            sightNudity >= NUDITY_THRESHOLD ||
+            googleScore >= NUDITY_THRESHOLD ||
+            (rapidScore !== null && rapidScore >= NUDITY_THRESHOLD);
+
+        if (flagged) {
+            if (isTestAccount) console.log('[AvatarScan] Test account forced flag.');
             console.log(`[AvatarScan] NSFW detected: ${member.user.tag}`);
-            await alertOwner(client, member, sightResult, {
-                likelihood: googleLikelihood,
-                score: googleScore
+            await alertOwner(client, member, {
+                sightengine: sightResult,
+                google: { likelihood: googleLikelihood, score: googleScore },
+                rapidapi: { score: rapidScore }
             });
         }
     } catch (err) {
@@ -222,7 +255,7 @@ function init(client) {
     client.on(Events.InteractionCreate, handleButton);
 
     client.once(Events.ClientReady, () => {
-        console.log('[AvatarScan] Ready – dual scanning (Sightengine + Google Vision).');
+        console.log('[AvatarScan] Ready – triple scanning (Sightengine + Google + RapidAPI).');
     });
 }
 
