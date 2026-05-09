@@ -7,10 +7,16 @@ const { handleSlotsBet } = require('../services/slotsHandler');
 const { startHangmanGame } = require('../services/hangmanGame');
 const { handleCoinTossBet } = require('../services/coinTossHandler');
 const { handleShopSelect, handleShopPurchase } = require('../services/shopHandler');
-const { handleRedeemStart, handleRedeemSeries, handleRedeemCancel } = require('../services/redeemHandler');
+const {
+    handleRedeemStart,
+    handleRedeemSeries,
+    handleRedeemCancel,
+    handleRedeemVoteBoost,
+    handleRedeemSuggestCharacter,
+    handleSuggestModalSubmit
+} = require('../services/redeemHandler');
 
-// Store checkin sessions to update the same ephemeral message
-const checkinSessions = new Map(); // key: userId -> { interaction, messageId, timestamp }
+const checkinSessions = new Map(); // userId -> { interaction, messageId, timestamp }
 
 module.exports = async function handleInteraction(interaction) {
     try {
@@ -38,22 +44,22 @@ module.exports = async function handleInteraction(interaction) {
         else if (interaction.isButton()) {
             if (interaction.customId === 'shop_buy_confirm') {
                 await handleShopPurchase(interaction);
-            } 
+            }
             else if (interaction.customId === 'slots_bet_1') {
                 await handleSlotsBet(interaction, 1);
-            } 
+            }
             else if (interaction.customId === 'slots_bet_5') {
                 await handleSlotsBet(interaction, 5);
-            } 
+            }
             else if (interaction.customId === 'slots_bet_25') {
                 await handleSlotsBet(interaction, 25);
-            } 
+            }
             else if (interaction.customId === 'hangman_start_button') {
                 await startHangmanGame(interaction);
-            } 
+            }
             else if (interaction.customId === 'verify_start') {
                 await handleVerifyStart(interaction);
-            } 
+            }
             else if (interaction.customId === 'checkin_claim') {
                 await handleCheckinClaim(interaction);
             }
@@ -66,7 +72,7 @@ module.exports = async function handleInteraction(interaction) {
             else if (interaction.customId === 'cointoss_bet_25') {
                 await handleCoinTossBet(interaction, 25);
             }
-            // ----- Redeem flow -----
+            // ========== Ticket Store buttons ==========
             else if (interaction.customId === 'redeem_start') {
                 await handleRedeemStart(interaction);
             }
@@ -77,9 +83,21 @@ module.exports = async function handleInteraction(interaction) {
             else if (interaction.customId === 'redeem_cancel') {
                 await handleRedeemCancel(interaction);
             }
-            // -----------------------
+            else if (interaction.customId === 'redeem_vote_power') {
+                await handleRedeemVoteBoost(interaction);
+            }
+            else if (interaction.customId === 'redeem_suggest_character') {
+                await handleRedeemSuggestCharacter(interaction);
+            }
+            // ===========================================
             else {
                 await giveawayCommand.handleGiveawayButton(interaction);
+            }
+        }
+        // Modals
+        else if (interaction.isModalSubmit()) {
+            if (interaction.customId === 'redeem_suggest_modal') {
+                await handleSuggestModalSubmit(interaction);
             }
         }
         // Select menus
@@ -89,26 +107,26 @@ module.exports = async function handleInteraction(interaction) {
     } catch (err) {
         console.error('Interaction Error:', err);
         if (!interaction.replied && !interaction.deferred) {
-            await interaction.reply({ content: 'An error occurred.', ephemeral: true }).catch(() => {});
+            await interaction.reply({ content: 'An error occurred.', flags: 64 }).catch(() => {});
         }
     }
 };
 
-// ----- Helper functions -----
+// ----- Helper functions (unchanged, but de-deprecated) -----
 async function handleVerifyStart(interaction) {
     const member = interaction.member;
     const supporterRoleId = helpers.ids.roles.supporter;
     const memberRoleId = helpers.ids.roles.member;
     const hasSupporter = member.roles.cache.has(supporterRoleId);
     const hasMember = member.roles.cache.has(memberRoleId);
-    
+
     if (hasSupporter || hasMember) {
         return interaction.reply({
             content: '✅ You are already verified! No need to verify again.',
             flags: 64
         });
     }
-    
+
     const workerUrl = process.env.VERIFY_WORKER_URL;
     if (!workerUrl) {
         return interaction.reply({
@@ -126,8 +144,7 @@ async function handleVerifyStart(interaction) {
 async function handleCheckinClaim(interaction) {
     const userId = interaction.user.id;
     const gameKey = userId;
-    
-    // Rate limit (2 seconds)
+
     const cooldownMap = global.checkinCooldown || new Map();
     if (!global.checkinCooldown) global.checkinCooldown = cooldownMap;
     const lastClick = cooldownMap.get(userId);
@@ -139,7 +156,6 @@ async function handleCheckinClaim(interaction) {
     }
     cooldownMap.set(userId, Date.now());
 
-    // 1. Decide to deferUpdate (edit existing) or deferReply (create new)
     let existingSession = checkinSessions.get(gameKey);
     let messageUpdated = false;
 
@@ -148,7 +164,6 @@ async function handleCheckinClaim(interaction) {
             await interaction.deferUpdate();
             messageUpdated = true;
         } catch (err) {
-            // Ignore if webhook/interaction expired, handled below
             checkinSessions.delete(gameKey);
         }
     }
@@ -156,20 +171,19 @@ async function handleCheckinClaim(interaction) {
     if (!messageUpdated) {
         await interaction.deferReply({ flags: 64 });
     }
-    
-    // Get user data
+
     let { data: userData, error } = await supabase
         .from(helpers.tables.GAMES_USER_DATA)
         .select('*')
         .eq('user_id', userId)
         .maybeSingle();
-    
+
     if (error) console.error('Fetch error:', error);
-    
+
     const now = new Date();
     let canClaim = true;
     let timeLeft = '';
-    
+
     if (userData && userData.last_checkin) {
         const last = new Date(userData.last_checkin);
         const diffMs = now - last;
@@ -182,7 +196,7 @@ async function handleCheckinClaim(interaction) {
             timeLeft = `${hoursLeft}h ${minutesLeft}m`;
         }
     }
-    
+
     let finalContent = '';
 
     if (!canClaim) {
@@ -194,7 +208,7 @@ async function handleCheckinClaim(interaction) {
         const nowIso = now.toISOString();
         const discordUsername = interaction.user.tag;
         const displayName = interaction.member?.displayName || interaction.user.globalName || interaction.user.username;
-        
+
         const updatePayload = {
             tickets: newBalance,
             last_checkin: nowIso,
@@ -215,8 +229,6 @@ async function handleCheckinClaim(interaction) {
             if (updateError) {
                 console.error('Update error:', updateError);
                 finalContent = '❌ Database error. Please try again later.';
-            } else {
-           //     console.log(`[Checkin] Updated user ${userId} tickets: ${currentTickets} → ${newBalance}`);
             }
         } else {
             const { error: insertError } = await supabase
@@ -225,12 +237,9 @@ async function handleCheckinClaim(interaction) {
             if (insertError) {
                 console.error('Insert error:', insertError);
                 finalContent = '❌ Database error. Please try again later.';
-            } else {
-       ///         console.log(`[Checkin] Inserted user ${userId} with tickets ${newBalance}`);
             }
         }
-        
-        // --- RESET HANGMAN COOLDOWN ---
+
         if (!finalContent.includes('Database error')) {
             const { error: deleteError } = await supabase
                 .from(helpers.tables.GAMES_COOLDOWNS)
@@ -249,21 +258,18 @@ async function handleCheckinClaim(interaction) {
                            `Your Hangman ticket cooldown has also been reset – you can earn another ticket immediately!`;
         }
     }
-    
-    // 2. Final Execution: Edit vs FollowUp/EditReply
+
     if (messageUpdated) {
         try {
             await existingSession.interaction.webhook.editMessage(existingSession.messageId, { content: finalContent });
         } catch (err) {
-            // Fallback
             const msg = await interaction.followUp({ content: finalContent, flags: 64, fetchReply: true });
             checkinSessions.set(gameKey, { interaction, messageId: msg.id, timestamp: Date.now() });
         }
     } else {
-        // Because we used deferReply earlier, we use editReply here
         const msg = await interaction.editReply({ content: finalContent });
         checkinSessions.set(gameKey, { interaction, messageId: msg.id, timestamp: Date.now() });
     }
-    
+
     setTimeout(() => cooldownMap.delete(userId), 2000);
 }
