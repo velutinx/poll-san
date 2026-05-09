@@ -7,9 +7,10 @@ const {
     ButtonStyle
 } = require('discord.js');
 const { ids, sightengine } = require('../utils/helpers');
+const supabase = require('../services/supabase');   // reuse your existing supabase client
 
 // ========== CONFIG ==========
-const NUDITY_THRESHOLD = 0.5;  // flag if any engine returns >= this
+const NUDITY_THRESHOLD = 0.5;
 
 // ========== SIGHTENGINE SCAN ==========
 async function scanWithSightengine(url) {
@@ -42,17 +43,70 @@ async function scanWithNSFWCheckers(url) {
     return res.json();
 }
 
+// ========== AVATAR HASH HELPER ==========
+function getAvatarHash(member) {
+    return member.user.avatar || 'default';   // null means default avatar
+}
+
+// ========== DATABASE OPERATIONS ==========
+async function dbAddFlaggedUser(userId, avatarHash) {
+    await supabase.from('avatar_flagged_users').upsert({
+        user_id: userId,
+        avatar_hash: avatarHash,
+        flagged_at: new Date().toISOString()
+    });
+}
+
+async function dbRemoveFlaggedUser(userId) {
+    await supabase.from('avatar_flagged_users').delete().eq('user_id', userId);
+}
+
+async function dbGetFlaggedUser(userId) {
+    const { data } = await supabase.from('avatar_flagged_users')
+        .select('*')
+        .eq('user_id', userId)
+        .maybeSingle();
+    return data;
+}
+
+// ========== CHANNEL OVERWRITE MANAGEMENT ==========
+async function applyDenyOverwrites(guild, member) {
+    const channels = require('../utils/helpers').avatarRestrictedChannels;
+    for (const channelId of channels) {
+        const channel = guild.channels.cache.get(channelId);
+        if (channel && channel.isTextBased()) {
+            await channel.permissionOverwrites.create(member, {
+                ViewChannel: false
+            }).catch(() => {});  // skip if we lack permission
+        }
+    }
+}
+
+async function removeDenyOverwrites(guild, member) {
+    const channels = require('../utils/helpers').avatarRestrictedChannels;
+    for (const channelId of channels) {
+        const channel = guild.channels.cache.get(channelId);
+        if (channel) {
+            const overwrite = channel.permissionOverwrites.cache.get(member.id);
+            if (overwrite) {
+                await overwrite.delete().catch(() => {});
+            }
+        }
+    }
+}
+
 // ========== WARNING MESSAGE ==========
-async function sendWarningToUser(client, userId) {
+async function sendWarningToUser(client, userId, customMessage) {
     try {
         const user = await client.users.fetch(userId);
-        await user.send(
+        const msg = customMessage || (
             `⚠️ **Notice from Velutinx's server**\n\n` +
             `Your profile picture has been flagged as potentially inappropriate. ` +
             `Please change it to something more suitable to continue having unrestricted access to the server.\n\n` +
             `Your access to content channels remains unaffected, but communication may be limited until this is resolved.\n\n` +
             `If you have any questions, please message <@1380051214766444617>.`
         );
+        await user.send(msg);
         return true;
     } catch (err) {
         console.error(`[AvatarScan] Could not DM user ${userId}:`, err.message);
@@ -60,7 +114,7 @@ async function sendWarningToUser(client, userId) {
     }
 }
 
-// ========== ALERT OWNER (with button) ==========
+// ========== ALERT OWNER – INITIAL FLAG ==========
 async function alertOwner(client, member, sightResult, nsfwCheckersResult) {
     const owner = await client.users.fetch(ids.users.Velutinx).catch(() => null);
     if (!owner) return;
@@ -85,6 +139,36 @@ async function alertOwner(client, member, sightResult, nsfwCheckersResult) {
         new ButtonBuilder()
             .setCustomId(`warn_avatar_${member.id}`)
             .setLabel('⚠️ Warn User')
+            .setStyle(ButtonStyle.Danger)
+    );
+
+    owner.send({ embeds: [embed], components: [row] }).catch(() => {});
+}
+
+// ========== ALERT OWNER – AVATAR CHANGE DETECTED ==========
+async function alertOwnerAvatarChange(client, member, oldHash, newHash) {
+    const owner = await client.users.fetch(ids.users.Velutinx).catch(() => null);
+    if (!owner) return;
+
+    const embed = new EmbedBuilder()
+        .setTitle('🔄 Flagged User Changed Avatar')
+        .setColor(0xFFA500)
+        .setThumbnail(member.displayAvatarURL({ dynamic: true, size: 256 }))
+        .setDescription(`${member.user.tag} (${member.id}) changed their profile picture.`)
+        .addFields(
+            { name: 'New Avatar URL', value: member.displayAvatarURL({ dynamic: true, size: 1024 }) },
+            { name: 'Old Hash', value: oldHash },
+            { name: 'New Hash', value: newHash }
+        );
+
+    const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+            .setCustomId(`accept_avatar_${member.id}`)
+            .setLabel('✅ Accept')
+            .setStyle(ButtonStyle.Success),
+        new ButtonBuilder()
+            .setCustomId(`deny_avatar_${member.id}`)
+            .setLabel('❌ Deny')
             .setStyle(ButtonStyle.Danger)
     );
 
@@ -156,51 +240,149 @@ async function handleScanCommand(message) {
     reply.edit(`✅ Scan complete for ${target.user.tag}. Check your DM if flagged.`).catch(() => {});
 }
 
-// ========== BUTTON INTERACTION HANDLER ==========
-async function handleButton(interaction) {
-    if (!interaction.isButton()) return;
-    if (!interaction.customId.startsWith('warn_avatar_')) return;
-
-    if (interaction.user.id !== ids.users.Velutinx) {
-        return interaction.reply({ content: 'Only the server owner can use this button.', ephemeral: true });
-    }
-
+// ========== BUTTON: WARN USER (initial flag) ==========
+async function handleWarnButton(interaction) {
     const targetUserId = interaction.customId.replace('warn_avatar_', '');
+    const guild = interaction.client.guilds.cache.first();
+    if (!guild) return interaction.reply({ content: 'Guild not found.', ephemeral: true });
 
+    const member = await guild.members.fetch(targetUserId).catch(() => null);
+    if (!member) return interaction.reply({ content: 'User not found in server.', ephemeral: true });
+
+    // 1. DM user
     const dmSuccess = await sendWarningToUser(interaction.client, targetUserId);
 
+    // 2. Assign mute role
     let roleSuccess = false;
-    const guild = interaction.client.guilds.cache.first();
-    if (guild) {
-        try {
-            const member = await guild.members.fetch(targetUserId);
-            const muteRole = ids.roles.avatar_muted;
-            if (muteRole && !member.roles.cache.has(muteRole)) {
-                await member.roles.add(muteRole);
-                roleSuccess = true;
-            }
-        } catch (err) {
-            console.error(`[AvatarScan] Failed to assign mute role to ${targetUserId}:`, err.message);
-        }
+    const muteRole = ids.roles.avatar_muted;
+    if (muteRole && !member.roles.cache.has(muteRole)) {
+        await member.roles.add(muteRole);
+        roleSuccess = true;
     }
+
+    // 3. Store in database
+    const avatarHash = getAvatarHash(member);
+    await dbAddFlaggedUser(targetUserId, avatarHash);
+
+    // 4. Apply per‑user channel denies
+    await applyDenyOverwrites(guild, member);
 
     let replyMsg = '';
     replyMsg += dmSuccess ? `✅ Warning sent to <@${targetUserId}>.` : `❌ Failed to DM <@${targetUserId}>.`;
-    replyMsg += roleSuccess ? ` Role \`🗣\` assigned.` : ` Could not assign role (maybe missing).`;
+    replyMsg += roleSuccess ? ` Role \`🗣\` assigned.` : ` Could not assign role.`;
+    replyMsg += ` Channel overwrites applied. User stored.`;
 
     await interaction.reply({ content: replyMsg, ephemeral: true });
 }
 
+// ========== BUTTON: ACCEPT (avatar change reviewed) ==========
+async function handleAcceptButton(interaction) {
+    const targetUserId = interaction.customId.replace('accept_avatar_', '');
+    const guild = interaction.client.guilds.cache.first();
+    if (!guild) return interaction.reply({ content: 'Guild not found.', ephemeral: true });
+
+    const member = await guild.members.fetch(targetUserId).catch(() => null);
+    if (!member) return interaction.reply({ content: 'User not in server.', ephemeral: true });
+
+    // 1. Notify user
+    await sendWarningToUser(interaction.client, targetUserId,
+        '✅ Your profile picture has been approved. You now have unrestricted access again. Thank you!'
+    );
+
+    // 2. Remove mute role
+    const muteRole = ids.roles.avatar_muted;
+    if (muteRole && member.roles.cache.has(muteRole)) {
+        await member.roles.remove(muteRole);
+    }
+
+    // 3. Remove channel overwrites
+    await removeDenyOverwrites(guild, member);
+
+    // 4. Remove from database
+    await dbRemoveFlaggedUser(targetUserId);
+
+    await interaction.reply({
+        content: `✅ <@${targetUserId}> has been accepted. Their restrictions are lifted.`,
+        ephemeral: true
+    });
+}
+
+// ========== BUTTON: DENY (avatar change still not ok) ==========
+async function handleDenyButton(interaction) {
+    const targetUserId = interaction.customId.replace('deny_avatar_', '');
+    const guild = interaction.client.guilds.cache.first();
+    if (!guild) return interaction.reply({ content: 'Guild not found.', ephemeral: true });
+
+    const member = await guild.members.fetch(targetUserId).catch(() => null);
+    if (!member) {
+        // User left server? Clean up
+        await dbRemoveFlaggedUser(targetUserId);
+        return interaction.reply({ content: 'User no longer in server.', ephemeral: true });
+    }
+
+    // 1. Send rejection DM
+    await sendWarningToUser(interaction.client, targetUserId,
+        '❌ Your new profile picture is still not acceptable. Please change it to a more appropriate one.'
+    );
+
+    // 2. Update stored avatar hash to the new one (so we can detect future changes again)
+    const newHash = getAvatarHash(member);
+    await dbAddFlaggedUser(targetUserId, newHash);
+
+    await interaction.reply({
+        content: `❌ <@${targetUserId}> has been informed. Awaiting a new avatar change.`,
+        ephemeral: true
+    });
+}
+
+// ========== AVATAR CHANGE DETECTION ==========
+async function onUserUpdate(oldUser, newUser) {
+    // Only care if the user actually changed their avatar
+    if (oldUser.avatar === newUser.avatar) return;
+
+    const userId = newUser.id;
+    const dbEntry = await dbGetFlaggedUser(userId);
+    if (!dbEntry) return;   // not a flagged user
+
+    // Try to get the guild member object (the user is in our server)
+    const guild = oldUser.client.guilds.cache.first();
+    if (!guild) return;
+    const member = await guild.members.fetch(userId).catch(() => null);
+    if (!member) return;
+
+    // Notify owner
+    await alertOwnerAvatarChange(oldUser.client, member, oldUser.avatar, newUser.avatar);
+}
+
 // ========== EVENT LISTENERS ==========
 function init(client) {
-    // On‑join scanning disabled (uncomment to re‑enable)
+    // On‑join scanning disabled
     // client.on('guildMemberAdd', member => { processMember(client, member); });
 
     client.on('messageCreate', handleScanCommand);
-    client.on(Events.InteractionCreate, handleButton);
+
+    // Global interaction handler for all our buttons
+    client.on(Events.InteractionCreate, async interaction => {
+        if (!interaction.isButton()) return;
+
+        if (interaction.user.id !== ids.users.Velutinx) {
+            return interaction.reply({ content: 'Only the server owner can use these buttons.', ephemeral: true });
+        }
+
+        if (interaction.customId.startsWith('warn_avatar_')) {
+            await handleWarnButton(interaction);
+        } else if (interaction.customId.startsWith('accept_avatar_')) {
+            await handleAcceptButton(interaction);
+        } else if (interaction.customId.startsWith('deny_avatar_')) {
+            await handleDenyButton(interaction);
+        }
+    });
+
+    // User avatar change detection
+    client.on(Events.UserUpdate, onUserUpdate);
 
     client.once(Events.ClientReady, () => {
-//        console.log('[AvatarScan] Ready – dual‑engine scanning (Sightengine + NSFWCheckers).');
+        console.log('[AvatarScan] Ready – dual-engine scanning with full enforcement workflow.');
     });
 }
 
