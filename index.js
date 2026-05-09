@@ -68,6 +68,7 @@ client.once(Events.ClientReady, async (c) => {
         require('./commands/admin/post-checkin-ui').data.toJSON(),
         require('./commands/admin/post-cointoss-ui').data.toJSON(),
         require('./commands/admin/post-redeem-ui').data.toJSON(),
+        require('./features/avatarScanner').init(client);
     ];
 
     const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
