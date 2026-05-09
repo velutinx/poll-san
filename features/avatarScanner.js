@@ -229,6 +229,13 @@ async function alertOwner(client, member, sightResult, nsfwCheckersResult, extra
     const nsfwCheckersScore = nsfwCheckersResult?.score ?? 'N/A';
     const nsfwCheckersVerdict = nsfwCheckersResult?.nsfw ?? 'N/A';
 
+    // Build Sightengine field name with credits if applicable
+    let sightFieldName = 'Sightengine';
+    if (includeCredits && sightResult) {
+        const remaining = await getCreditsRemaining();
+        sightFieldName = `Sightengine (${remaining} remaining this month)`;
+    }
+
     const embed = new EmbedBuilder()
         .setTitle('⚠️ NSFW Avatar Detected')
         .setColor(0xFF0000)
@@ -236,17 +243,12 @@ async function alertOwner(client, member, sightResult, nsfwCheckersResult, extra
         .addFields(
             { name: 'User', value: `${member.user.tag} (${member.id})` },
             { name: 'Avatar URL', value: member.displayAvatarURL({ dynamic: true, size: 1024 }) },
-            { name: 'Sightengine', value: `${typeof sightNudity === 'number' ? sightNudity.toFixed(2) : sightNudity} (sexual: ${typeof sightNudity === 'number' ? (sightResult.nudity?.sexual_activity || 0).toFixed(2) : 'N/A'})` },
+            { name: sightFieldName, value: `${typeof sightNudity === 'number' ? sightNudity.toFixed(2) : sightNudity} (sexual: ${typeof sightNudity === 'number' ? (sightResult.nudity?.sexual_activity || 0).toFixed(2) : 'N/A'})` },
             { name: 'NSFWCheckers', value: `${nsfwCheckersVerdict} (score: ${typeof nsfwCheckersScore === 'number' ? nsfwCheckersScore.toFixed(2) : nsfwCheckersScore})` },
             { name: 'Scan Timestamp', value: `<t:${Math.floor(Date.now() / 1000)}:F>` }
         );
 
     if (extraText) embed.setDescription(extraText);
-
-    if (includeCredits && sightResult) {
-        const remaining = await getCreditsRemaining();
-        embed.addFields({ name: 'Sightengine Credits', value: `${remaining} remaining this month` });
-    }
 
     const row = new ActionRowBuilder().addComponents(
         new ButtonBuilder()
@@ -309,11 +311,7 @@ async function processMember(client, member, threshold = NUDITY_THRESHOLD) {
         const sightNudity = sightResult.nudity?.raw || 0;
         const nsfwCheckersScore = nsfwCheckersResult?.score ?? null;
 
-        console.log(
-            `[AvatarScan] ${member.user.tag}: ` +
-            `Sightengine=${sightNudity.toFixed(2)}, ` +
-            `NSFWCheckers=${nsfwCheckersScore !== null ? nsfwCheckersScore.toFixed(2) : 'N/A'}`
-        );
+        // (scan log removed)
 
         const flagged =
             isTestAccount ||
@@ -321,8 +319,7 @@ async function processMember(client, member, threshold = NUDITY_THRESHOLD) {
             (nsfwCheckersScore !== null && nsfwCheckersScore >= threshold);
 
         if (flagged) {
-            if (isTestAccount) console.log('[AvatarScan] Test account forced flag.');
-            console.log(`[AvatarScan] NSFW detected: ${member.user.tag}`);
+            // (test account flag log removed)
             await alertOwner(client, member, sightResult, nsfwCheckersResult);
         }
     } catch (err) {
@@ -335,7 +332,6 @@ async function scanAllMembersWithFreeAPI(client) {
     const guild = client.guilds.cache.first();
     if (!guild) return;
 
-    // console.log removed as requested
     const members = await guild.members.fetch();
     const memberArray = [...members.values()];
     let scanned = 0;
@@ -365,7 +361,6 @@ async function scanAllMembersWithFreeAPI(client) {
             await new Promise(resolve => setTimeout(resolve, SCAN_DELAY_MS));
         }
     }
-    // console.log removed
 }
 
 // ========== MONTHLY SIGHTENGINE-ONLY SCAN ==========
@@ -373,7 +368,6 @@ async function performMonthlyScan(client) {
     const guild = client.guilds.cache.first();
     if (!guild) return;
 
-    // console.log removed
     const members = await guild.members.fetch();
     const memberArray = [...members.values()];
     let scanned = 0;
@@ -407,7 +401,6 @@ async function performMonthlyScan(client) {
 
     const creditsAfter = await getCreditsRemaining();
     const used = creditsBefore - creditsAfter;
-    // console.log removed
     return { scanned, flagged, used };
 }
 
@@ -687,7 +680,7 @@ function init(client) {
     client.on(Events.UserUpdate, onUserUpdate);
 
     client.once(Events.ClientReady, () => {
-  //      console.log('[AvatarScan] Bot ready. Mass scan will start in 30 seconds...');
+        // Ready log removed as requested
         setTimeout(() => {
             scanAllMembersWithFreeAPI(client).catch(err => console.error('[MassScan] Error:', err));
         }, 30000);
