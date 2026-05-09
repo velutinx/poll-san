@@ -687,7 +687,7 @@ function init(client) {
     client.on(Events.UserUpdate, onUserUpdate);
 
     client.once(Events.ClientReady, () => {
-        console.log('[AvatarScan] Bot ready. Mass scan will start in 30 seconds...');
+  //      console.log('[AvatarScan] Bot ready. Mass scan will start in 30 seconds...');
         setTimeout(() => {
             scanAllMembersWithFreeAPI(client).catch(err => console.error('[MassScan] Error:', err));
         }, 30000);
