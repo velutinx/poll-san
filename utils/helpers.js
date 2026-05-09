@@ -301,27 +301,26 @@ module.exports = {
         ]
     },
 
-    CHECKIN_REWARD_TICKETS: 50,   // <-- ADD COMMA HERE
+    CHECKIN_REWARD_TICKETS: 50,
 
-    sightengine: {
-        apiUser: '1626192318',
-        apiSecret: 'ParHXHCpXwt2eQ7SePcCZJjfHsJc6Kdk'
-    },
+sightengine: {
+    apiUser: '1626192318',
+    apiSecret: 'ParHXHCpXwt2eQ7SePcCZJjfHsJc6Kdk'
+},
 
-avatarRestrictedLocations: [
-    { type: 'channel', id: 
-          '1465442050001342620'   // #general
-          '1466147508345503953'   // #❓how-did-you-find-me
-          '1472450019067171008'   // #🎁giveaways-and-events
-          '1467280145315528955'   // #📚requests-concepts
-          '1469437804231659660'   // #🛠️current-works
-    },
-    { type: 'category', id: 
-          '1401446105421451364'  // 💬 COMMUNITY
-          '1465921730785579141'  // 💬OFF TOPIC
-          '1494747375204433940'  // 🎲 CASINO
-          '1466151443286196451'  // 💭FEEDBACK
-    },
+avatarRestrictedChannels: [
+    '1465442050001342620',   // #general
+    '1466147508345503953',   // #❓how-did-you-find-me
+    '1472450019067171008',   // #🎁giveaways-and-events
+    '1467280145315528955',   // #📚requests-concepts
+    '1469437804231659660'    // #🛠️current-works
+],
+
+avatarRestrictedCategories: [
+    '1401446105421451364',   // 💬 COMMUNITY
+    '1465921730785579141',   // 💬 OFF TOPIC
+    '1494747375204433940',   // 🎲 CASINO
+    '1466151443286196451'    // 💭 FEEDBACK
 ],
     
 };
