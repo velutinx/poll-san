@@ -1,5 +1,5 @@
 // features/avatarScanner.js
-const { EmbedBuilder } = require('discord.js');
+const { EmbedBuilder, Events } = require('discord.js');
 const { ids, sightengine } = require('../utils/helpers');
 
 const SCAN_DELAY_MS = 1500;
@@ -8,7 +8,7 @@ const SCAN_DELAY_MS = 1500;
 async function scanImage(url) {
     const formData = new URLSearchParams();
     formData.append('url', url);
-    formData.append('models', 'nudity-2.1,offensive');  // no more wad
+    formData.append('models', 'nudity-2.1');                // only nudity
     formData.append('api_user', sightengine.apiUser);
     formData.append('api_secret', sightengine.apiSecret);
 
@@ -32,8 +32,6 @@ async function alertOwner(client, member, result) {
             { name: 'User', value: `${member.user.tag} (${member.id})` },
             { name: 'Avatar URL', value: member.displayAvatarURL({ dynamic: true, size: 1024 }) },
             { name: 'Nudity Score', value: `${(result.nudity?.raw || 0).toFixed(2)} (sexual: ${(result.nudity?.sexual_activity || result.nudity?.sexual_display || 0).toFixed(2)})` },
-            { name: 'Weapon Score', value: `${(result.weapon || 0).toFixed(2)}` },   // will be 0 now
-            { name: 'Offensive Score', value: `${(result.offensive?.prob || 0).toFixed(2)}` },
             { name: 'Scan Timestamp', value: `<t:${Math.floor(Date.now() / 1000)}:F>` }
         );
 
@@ -49,13 +47,11 @@ async function processMember(client, member) {
     try {
         const result = await scanImage(avatarUrl);
         const nudityProb = result.nudity?.raw || 0;
-        const weaponProb = result.weapon || 0;
-        const offensiveProb = result.offensive?.prob || 0;
 
-        console.log(`[AvatarScan] ${member.user.tag}: nudity=${nudityProb.toFixed(2)}, weapon=${weaponProb.toFixed(2)}, offensive=${offensiveProb.toFixed(2)}`);
+        console.log(`[AvatarScan] ${member.user.tag}: nudity=${nudityProb.toFixed(2)}`);
 
-        // Only flag on nudity or offensive content – weapon is ignored
-        if (nudityProb > 0.3 || offensiveProb > 0.3) {
+        // Only flag on nudity – weapon and offensive completely ignored
+        if (nudityProb > 0.5) {
             console.log(`[AvatarScan] NSFW detected: ${member.user.tag}`);
             await alertOwner(client, member, result);
         }
@@ -79,38 +75,18 @@ async function handleScanCommand(message) {
 
 // ========== STARTUP SCAN (commented out) ==========
 async function scanAllMembers(client) {
-    // ❗ Disabled for now – fetches all members and can cause rate limits.
-    /*
-    const guild = client.guilds.cache.first();
-    if (!guild) return;
-
-    console.log(`[AvatarScan] Scanning all members in ${guild.name}...`);
-    const members = await guild.members.fetch({ force: true });
-    const memberArray = [...members.values()];
-
-    let i = 0;
-    for (const member of memberArray) {
-        await processMember(client, member);
-        i++;
-        if (i < memberArray.length) {
-            await new Promise(resolve => setTimeout(resolve, SCAN_DELAY_MS));
-        }
-    }
-    console.log(`[AvatarScan] Full scan complete. Processed ${i} members.`);
-    */
+    // Disabled for now
 }
 
 // ========== EVENT LISTENERS ==========
 function init(client) {
-    client.on('guildMemberAdd', member => {
-        processMember(client, member);
-    });
+    // On‑join scanning disabled
+    // client.on('guildMemberAdd', member => { processMember(client, member); });
 
     client.on('messageCreate', handleScanCommand);
 
-    client.once('ready', () => {
-        console.log('[AvatarScan] Ready – on‑join scanning active.');
-        // scanAllMembers(client);  // disabled for now
+    client.once(Events.ClientReady, () => {
+        console.log('[AvatarScan] Ready – manual scanning only (!scan @user).');
     });
 }
 
