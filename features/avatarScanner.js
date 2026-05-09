@@ -32,7 +32,7 @@ async function sendWarningToUser(client, userId) {
             `Your profile picture has been flagged as potentially inappropriate. ` +
             `Please change it to something more suitable to continue having unrestricted access to the server.\n\n` +
             `Your access to content channels remains unaffected, but communication may be limited until this is resolved.\n\n` +
-            `If you have any questions, please message **velutinx**.`
+            `If you have any questions, please message <@1380051214766444617>.`   // ← clickable mention
         );
         return true;
     } catch (err) {
@@ -80,10 +80,7 @@ async function processMember(client, member) {
 
         console.log(`[AvatarScan] ${member.user.tag}: nudity=${nudityProb.toFixed(2)}`);
 
-        // Flag if score > 0.5, OR if it's the test account
-        const isTestAccount = member.id === '842917477977161739';
-        if (nudityProb > 0.5 || isTestAccount) {
-            if (isTestAccount) console.log('[AvatarScan] Test account forced flag.');
+        if (nudityProb > 0.5) {
             console.log(`[AvatarScan] NSFW detected: ${member.user.tag}`);
             await alertOwner(client, member, result);
         }
@@ -97,28 +94,20 @@ async function handleScanCommand(message) {
     if (message.author.id !== ids.users.Velutinx) return;
     if (!message.content.startsWith('!scan')) return;
 
-    // Extract the argument after !scan
     const input = message.content.slice('!scan'.length).trim();
     let target;
 
-    // 1. If a mention is present, use it
     if (message.mentions.members.size > 0) {
         target = message.mentions.members.first();
-    }
-    // 2. If a raw ID (17-21 digits) is provided, try to fetch that guild member
-    else if (input && /^\d{17,21}$/.test(input)) {
+    } else if (input && /^\d{17,21}$/.test(input)) {
         try {
             target = await message.guild.members.fetch(input);
         } catch {
             return message.reply('❌ User not found in this server.');
         }
-    }
-    // 3. No argument – scan yourself
-    else if (!input) {
+    } else if (!input) {
         target = message.member;
-    }
-    // 4. Anything else is invalid
-    else {
+    } else {
         return message.reply('❌ Provide a valid user ID or mention.');
     }
 
@@ -138,14 +127,32 @@ async function handleButton(interaction) {
     }
 
     const targetUserId = interaction.customId.replace('warn_avatar_', '');
-    const success = await sendWarningToUser(interaction.client, targetUserId);
 
-    await interaction.reply({
-        content: success
-            ? `✅ Warning sent to <@${targetUserId}>.`
-            : `❌ Failed to DM <@${targetUserId}>. They may have DMs disabled.`,
-        ephemeral: true
-    });
+    // 1. Send warning DM
+    const dmSuccess = await sendWarningToUser(interaction.client, targetUserId);
+
+    // 2. Assign the muted role in the guild
+    let roleSuccess = false;
+    const guild = interaction.client.guilds.cache.first(); // your only guild
+    if (guild) {
+        try {
+            const member = await guild.members.fetch(targetUserId);
+            const muteRole = ids.roles.avatar_muted;
+            if (muteRole && !member.roles.cache.has(muteRole)) {
+                await member.roles.add(muteRole);
+                roleSuccess = true;
+            }
+        } catch (err) {
+            console.error(`[AvatarScan] Failed to assign mute role to ${targetUserId}:`, err.message);
+        }
+    }
+
+    // 3. Reply to owner
+    let replyMsg = '';
+    replyMsg += dmSuccess ? `✅ Warning sent to <@${targetUserId}>.` : `❌ Failed to DM <@${targetUserId}>.`;
+    replyMsg += roleSuccess ? ` Role \`🗣\` assigned.` : ` Could not assign role (maybe missing).`;
+
+    await interaction.reply({ content: replyMsg, ephemeral: true });
 }
 
 // ========== EVENT LISTENERS ==========
