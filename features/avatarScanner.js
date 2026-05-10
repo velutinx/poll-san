@@ -7,8 +7,10 @@ const {
     ButtonStyle,
     MessageFlags
 } = require('discord.js');
-const { ids, sightengine } = require('../utils/helpers');
+const { ids, sightengine, releaseEmojis } = require('../utils/helpers');
 const supabase = require('../services/supabase');
+
+const ALERT_EMOJI = releaseEmojis.ALERT;  // <a:alert:1493698480034676736>
 
 // ========== CONFIG ==========
 const NUDITY_THRESHOLD = 0.3;
@@ -240,11 +242,10 @@ function getSightNudityScore(sightResult) {
     return probs.length > 0 ? Math.max(...probs) : 0;
 }
 
-// ========== OWNER NOTIFICATION (now always sends on manual scan) ==========
+// ========== OWNER NOTIFICATION ==========
 async function alertOwner(client, member, sightResult, nsfwCheckersResult, {
     extraText = '',
     includeCredits = true,
-    showButtons = true,
     isFlagged = true
 } = {}) {
     const owner = await client.users.fetch(ids.users.Velutinx).catch(() => null);
@@ -254,27 +255,29 @@ async function alertOwner(client, member, sightResult, nsfwCheckersResult, {
     const nsfwCheckersScore = nsfwCheckersResult?.score ?? 'N/A';
     const nsfwCheckersVerdict = nsfwCheckersResult?.nsfw ?? 'N/A';
 
+    // Build Sightengine field name with credits if applicable
+    let sightFieldName = 'Sightengine';
+    if (includeCredits && sightResult) {
+        const remaining = await getCreditsRemaining();
+        sightFieldName = `Sightengine (${remaining} remaining this month)`;
+    }
+
     const embed = new EmbedBuilder()
-        .setTitle(isFlagged ? '⚠️ NSFW Avatar Detected' : '🔍 Avatar Scan Result')
+        .setTitle(isFlagged ? `${ALERT_EMOJI} NSFW Avatar Detected` : `${ALERT_EMOJI} Avatar Scan Result`)
         .setColor(isFlagged ? 0xFF0000 : 0x00FF00)
         .setThumbnail(member.displayAvatarURL({ dynamic: true, size: 256 }))
         .addFields(
             { name: 'User', value: `${member.user.tag} (${member.id})` },
             { name: 'Avatar URL', value: member.displayAvatarURL({ dynamic: true, size: 1024 }) },
-            { name: 'Sightengine', value: `${sightResult ? sightNudity.toFixed(2) : 'N/A'} (sexual: ${sightResult ? (sightResult.nudity?.sexual_activity || 0).toFixed(2) : 'N/A'})` },
+            { name: sightFieldName, value: `${sightResult ? sightNudity.toFixed(2) : 'N/A'} (sexual: ${sightResult ? (sightResult.nudity?.sexual_activity || 0).toFixed(2) : 'N/A'})` },
             { name: 'NSFWCheckers', value: `${nsfwCheckersVerdict} (score: ${typeof nsfwCheckersScore === 'number' ? nsfwCheckersScore.toFixed(2) : nsfwCheckersScore})` },
             { name: 'Scan Timestamp', value: `<t:${Math.floor(Date.now() / 1000)}:F>` }
         );
 
     if (extraText) embed.setDescription(extraText);
 
-    if (includeCredits && sightResult) {
-        const remaining = await getCreditsRemaining();
-        embed.addFields({ name: 'Sightengine Credits', value: `${remaining} remaining this month` });
-    }
-
     const components = [];
-    if (showButtons && isFlagged) {
+    if (isFlagged) {
         const row = new ActionRowBuilder().addComponents(
             new ButtonBuilder()
                 .setCustomId(`warn_avatar_${member.id}`)
@@ -282,7 +285,16 @@ async function alertOwner(client, member, sightResult, nsfwCheckersResult, {
                 .setStyle(ButtonStyle.Danger),
             new ButtonBuilder()
                 .setCustomId(`ignore_avatar_${member.id}`)
-                .setLabel('🔄 Ignore (False Flag)')
+                .setLabel('🔍 Add to Ignore')
+                .setStyle(ButtonStyle.Secondary)
+        );
+        components.push(row);
+    } else {
+        // Clean scan – still offer "Add to Ignore" button for tracking
+        const row = new ActionRowBuilder().addComponents(
+            new ButtonBuilder()
+                .setCustomId(`ignore_avatar_${member.id}`)
+                .setLabel('🔍 Add to Ignore')
                 .setStyle(ButtonStyle.Secondary)
         );
         components.push(row);
@@ -297,7 +309,7 @@ async function alertOwnerAvatarChange(client, member, oldHash, newHash) {
     if (!owner) return;
 
     const embed = new EmbedBuilder()
-        .setTitle('🔄 Flagged User Changed Avatar')
+        .setTitle(`${ALERT_EMOJI} Flagged User Changed Avatar`)
         .setColor(0xFFA500)
         .setThumbnail(member.displayAvatarURL({ dynamic: true, size: 256 }))
         .setDescription(`${member.user.tag} (${member.id}) changed their profile picture.`)
@@ -321,7 +333,7 @@ async function alertOwnerAvatarChange(client, member, oldHash, newHash) {
     owner.send({ embeds: [embed], components: [row] }).catch(() => {});
 }
 
-// ========== PROCESS MEMBER (normal scan – now always notifies owner) ==========
+// ========== PROCESS MEMBER (normal scan) ==========
 async function processMember(client, member, threshold = NUDITY_THRESHOLD) {
     if (member.user.bot) return;
     const avatarUrl = member.displayAvatarURL({ dynamic: true, size: 1024 });
@@ -343,11 +355,10 @@ async function processMember(client, member, threshold = NUDITY_THRESHOLD) {
             sightNudity >= threshold ||
             (nsfwCheckersScore !== null && nsfwCheckersScore >= threshold);
 
-        // Always notify owner of scan result – buttons only if flagged
+        // Always notify owner – with Add to Ignore button on clean scans
         await alertOwner(client, member, sightResult, nsfwCheckersResult, {
             isFlagged: flagged,
-            showButtons: flagged,
-            extraText: flagged ? '' : 'Manual scan (clean)'
+            extraText: ''
         });
 
         if (flagged) {
@@ -409,9 +420,8 @@ async function scanAllMembersWithFreeAPI(client) {
                 console.log(`[MassScan] Flagged (free): ${member.user.tag} (score: ${score.toFixed(2)})`);
                 await alertOwner(client, member, null, nsfwCheckersResult, {
                     isFlagged: true,
-                    showButtons: true,
-                    extraText: '🔍 **Mass scan (free API only)**',
-                    includeCredits: false
+                    includeCredits: false,
+                    extraText: '🔍 **Mass scan (free API only)**'
                 });
                 flagged++;
             }
@@ -451,7 +461,6 @@ async function performMonthlyScan(client) {
                 console.log(`[MonthlyScan] Flagged: ${member.user.tag} (nudity: ${nudity.toFixed(2)})`);
                 await alertOwner(client, member, sightResult, null, {
                     isFlagged: true,
-                    showButtons: true,
                     extraText: '🔍 **Monthly Sightengine scan**'
                 });
                 flagged++;
@@ -480,7 +489,7 @@ async function sendMonthlyPrompt(client) {
     const remaining = await getCreditsRemaining();
 
     const embed = new EmbedBuilder()
-        .setTitle('🗓️ Monthly Global Scan Available')
+        .setTitle(`${ALERT_EMOJI} Monthly Global Scan Available`)
         .setColor(0x0099FF)
         .setDescription(
             `It's the end of the month! You can run a full global scan using **Sightengine only** (threshold 0.3).\n` +
