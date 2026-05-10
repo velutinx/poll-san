@@ -220,48 +220,75 @@ async function sendWarningToUser(client, userId, customMessage) {
     }
 }
 
-// ========== ALERT OWNER – INITIAL FLAG (with Warn + Ignore buttons) ==========
-async function alertOwner(client, member, sightResult, nsfwCheckersResult, extraText = '', includeCredits = true) {
+// ========== RELIABLE NUDITY SCORE EXTRACTOR ==========
+function getSightNudityScore(sightResult) {
+    if (!sightResult || !sightResult.nudity) return 0;
+    const n = sightResult.nudity;
+
+    if (typeof n.raw === 'number') return n.raw;
+    if (typeof n.none === 'number') return 1 - n.none;
+
+    const probs = [
+        n.sexual_activity,
+        n.erotica,
+        n.suggestive,
+        n.sexual_display,
+        n.very_suggestive,
+        n.mildly_suggestive
+    ].filter(v => typeof v === 'number');
+
+    return probs.length > 0 ? Math.max(...probs) : 0;
+}
+
+// ========== OWNER NOTIFICATION (now always sends on manual scan) ==========
+async function alertOwner(client, member, sightResult, nsfwCheckersResult, {
+    extraText = '',
+    includeCredits = true,
+    showButtons = true,
+    isFlagged = true
+} = {}) {
     const owner = await client.users.fetch(ids.users.Velutinx).catch(() => null);
     if (!owner) return;
 
-    const sightNudity = sightResult ? (sightResult.nudity?.raw || 0) : 'N/A';
+    const sightNudity = getSightNudityScore(sightResult);
     const nsfwCheckersScore = nsfwCheckersResult?.score ?? 'N/A';
     const nsfwCheckersVerdict = nsfwCheckersResult?.nsfw ?? 'N/A';
 
-    // Build Sightengine field name with credits if applicable
-    let sightFieldName = 'Sightengine';
-    if (includeCredits && sightResult) {
-        const remaining = await getCreditsRemaining();
-        sightFieldName = `Sightengine (${remaining} remaining this month)`;
-    }
-
     const embed = new EmbedBuilder()
-        .setTitle('⚠️ NSFW Avatar Detected')
-        .setColor(0xFF0000)
+        .setTitle(isFlagged ? '⚠️ NSFW Avatar Detected' : '🔍 Avatar Scan Result')
+        .setColor(isFlagged ? 0xFF0000 : 0x00FF00)
         .setThumbnail(member.displayAvatarURL({ dynamic: true, size: 256 }))
         .addFields(
             { name: 'User', value: `${member.user.tag} (${member.id})` },
             { name: 'Avatar URL', value: member.displayAvatarURL({ dynamic: true, size: 1024 }) },
-            { name: sightFieldName, value: `${typeof sightNudity === 'number' ? sightNudity.toFixed(2) : sightNudity} (sexual: ${typeof sightNudity === 'number' ? (sightResult.nudity?.sexual_activity || 0).toFixed(2) : 'N/A'})` },
+            { name: 'Sightengine', value: `${sightResult ? sightNudity.toFixed(2) : 'N/A'} (sexual: ${sightResult ? (sightResult.nudity?.sexual_activity || 0).toFixed(2) : 'N/A'})` },
             { name: 'NSFWCheckers', value: `${nsfwCheckersVerdict} (score: ${typeof nsfwCheckersScore === 'number' ? nsfwCheckersScore.toFixed(2) : nsfwCheckersScore})` },
             { name: 'Scan Timestamp', value: `<t:${Math.floor(Date.now() / 1000)}:F>` }
         );
 
     if (extraText) embed.setDescription(extraText);
 
-    const row = new ActionRowBuilder().addComponents(
-        new ButtonBuilder()
-            .setCustomId(`warn_avatar_${member.id}`)
-            .setLabel('⚠️ Warn User')
-            .setStyle(ButtonStyle.Danger),
-        new ButtonBuilder()
-            .setCustomId(`ignore_avatar_${member.id}`)
-            .setLabel('🔄 Ignore (False Flag)')
-            .setStyle(ButtonStyle.Secondary)
-    );
+    if (includeCredits && sightResult) {
+        const remaining = await getCreditsRemaining();
+        embed.addFields({ name: 'Sightengine Credits', value: `${remaining} remaining this month` });
+    }
 
-    owner.send({ embeds: [embed], components: [row] }).catch(() => {});
+    const components = [];
+    if (showButtons && isFlagged) {
+        const row = new ActionRowBuilder().addComponents(
+            new ButtonBuilder()
+                .setCustomId(`warn_avatar_${member.id}`)
+                .setLabel('⚠️ Warn User')
+                .setStyle(ButtonStyle.Danger),
+            new ButtonBuilder()
+                .setCustomId(`ignore_avatar_${member.id}`)
+                .setLabel('🔄 Ignore (False Flag)')
+                .setStyle(ButtonStyle.Secondary)
+        );
+        components.push(row);
+    }
+
+    owner.send({ embeds: [embed], components }).catch(() => {});
 }
 
 // ========== ALERT OWNER – AVATAR CHANGE DETECTED ==========
@@ -294,7 +321,7 @@ async function alertOwnerAvatarChange(client, member, oldHash, newHash) {
     owner.send({ embeds: [embed], components: [row] }).catch(() => {});
 }
 
-// ========== PROCESS MEMBER (normal scan) ==========
+// ========== PROCESS MEMBER (normal scan – now always notifies owner) ==========
 async function processMember(client, member, threshold = NUDITY_THRESHOLD) {
     if (member.user.bot) return;
     const avatarUrl = member.displayAvatarURL({ dynamic: true, size: 1024 });
@@ -308,31 +335,34 @@ async function processMember(client, member, threshold = NUDITY_THRESHOLD) {
             scanWithNSFWCheckers(avatarUrl).catch(() => null)
         ]);
 
-        const sightNudity = sightResult.nudity?.raw || 0;
+        const sightNudity = getSightNudityScore(sightResult);
         const nsfwCheckersScore = nsfwCheckersResult?.score ?? null;
-
-        // (scan log removed)
 
         const flagged =
             isTestAccount ||
             sightNudity >= threshold ||
             (nsfwCheckersScore !== null && nsfwCheckersScore >= threshold);
 
+        // Always notify owner of scan result – buttons only if flagged
+        await alertOwner(client, member, sightResult, nsfwCheckersResult, {
+            isFlagged: flagged,
+            showButtons: flagged,
+            extraText: flagged ? '' : 'Manual scan (clean)'
+        });
+
         if (flagged) {
-            // (test account flag log removed)
-            await alertOwner(client, member, sightResult, nsfwCheckersResult);
+            console.log(`[AvatarScan] Flagged: ${member.user.tag}`);
         }
     } catch (err) {
         console.error(`[AvatarScan] Error scanning ${member.user.tag}:`, err.message);
     }
 }
 
-// ========== MASS SCAN (FREE API ONLY, WITH RETRY ON RATE LIMIT) ==========
+// ========== MASS SCAN (FREE API ONLY) ==========
 async function scanAllMembersWithFreeAPI(client) {
     const guild = client.guilds.cache.first();
     if (!guild) return;
 
-    // Helper to fetch members with up to 3 retries on GatewayRateLimitError
     const fetchMembers = async () => {
         let attempts = 0;
         while (attempts < 3) {
@@ -345,7 +375,7 @@ async function scanAllMembersWithFreeAPI(client) {
                     await new Promise(resolve => setTimeout(resolve, waitMs));
                     attempts++;
                 } else {
-                    throw err;  // other error – abort
+                    throw err;
                 }
             }
         }
@@ -377,7 +407,12 @@ async function scanAllMembersWithFreeAPI(client) {
             const score = nsfwCheckersResult?.score ?? null;
             if (score !== null && score >= MASS_SCAN_THRESHOLD) {
                 console.log(`[MassScan] Flagged (free): ${member.user.tag} (score: ${score.toFixed(2)})`);
-                await alertOwner(client, member, null, nsfwCheckersResult, '🔍 **Mass scan (free API only)**', false);
+                await alertOwner(client, member, null, nsfwCheckersResult, {
+                    isFlagged: true,
+                    showButtons: true,
+                    extraText: '🔍 **Mass scan (free API only)**',
+                    includeCredits: false
+                });
                 flagged++;
             }
         } catch (err) {
@@ -411,10 +446,14 @@ async function performMonthlyScan(client) {
 
         try {
             const sightResult = await scanWithSightengine(avatarUrl);
-            const nudity = sightResult.nudity?.raw || 0;
+            const nudity = getSightNudityScore(sightResult);
             if (nudity >= 0.3) {
                 console.log(`[MonthlyScan] Flagged: ${member.user.tag} (nudity: ${nudity.toFixed(2)})`);
-                await alertOwner(client, member, sightResult, null, '🔍 **Monthly Sightengine scan**', true);
+                await alertOwner(client, member, sightResult, null, {
+                    isFlagged: true,
+                    showButtons: true,
+                    extraText: '🔍 **Monthly Sightengine scan**'
+                });
                 flagged++;
             }
         } catch (err) {
@@ -524,7 +563,7 @@ async function handleScanCommand(message) {
 
     const reply = await message.reply(`🔍 Scanning avatar of ${target.user.tag}...`);
     await processMember(message.client, target);
-    reply.edit(`✅ Scan complete for <@${target.id}>. Check your DM if flagged.`).catch(() => {});
+    reply.edit(`✅ Scan complete for <@${target.id}>. Check your DM for details.`).catch(() => {});
 }
 
 // ========== BUTTON: WARN USER ==========
