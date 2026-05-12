@@ -84,8 +84,8 @@ async function generateMessageContent(endTime, resultsText, characters, isEnded 
         return `${h.emojis[i]} \` 0.00 ${name.padEnd(30)} \` \n`;
     }).join('');
 
-    const footer = `\nDiscord weighted vote + ${e.LINK} **[Website poll results](https://velutinx.com/poll)**\n\n` +
-                   `${randomDownArrow} Click the thread below for images & discussion!`;
+const footer = `\n${e.DISCORD} Discord weighted vote + ${e.LINK} **[Website poll results](https://velutinx.com/poll)**\n\n` +
+               `${randomDownArrow} Click the thread below for images & discussion!`;
 
     return header + body + footer;
 }
@@ -108,7 +108,7 @@ async function getFinalPollMessageContent(pollList) {
     const e = h.releaseEmojis;
     const randomDownArrow = e.DOWN_ARROWS[Math.floor(Math.random() * e.DOWN_ARROWS.length)];
 
-    return `🛑 **Poll has ended.**\n\n${resultsString}\n\nDiscord weighted vote + ${e.LINK} **[Website poll results](https://velutinx.com/poll)**\n\n${randomDownArrow} Click the thread below for images & discussion!`;
+return `🛑 **Poll has ended.**\n\n${resultsString}\n\n${e.DISCORD} Discord weighted vote + ${e.LINK} **[Website poll results](https://velutinx.com/poll)**\n\n${randomDownArrow} Click the thread below for images & discussion!`;
 }
 
 // ----- runPollInterval -----
