@@ -50,6 +50,7 @@ module.exports = {
     releaseEmojis: {
         NEW1: '<a:NEW1:1491321234015911977>',
         NEW2: '<a:NEW2:1491321257780580414>',
+        DISCORD: '<a:discord:1503836514986102875>',
         VERIFY: '<a:Verify:1491669023245729924>',
         VERIFY_BLUE: '<a:Verifyblue:1501010309790437467>',
         VERIFY_PINK: '<a:Verifypink:1501010311279542312>',
