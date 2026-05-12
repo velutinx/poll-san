@@ -7,7 +7,8 @@ const supabaseRetry = db.supabaseRetry;
 
 const TIER_ROLES = h.weights.tierMapping; 
 const SUPPORTER_ROLE = h.ids.roles.supporter; 
-const CREATOR_ROLE = h.ids.roles.creator; // 👈 added
+const CREATOR_ROLE = h.ids.roles.creator;
+const MEMBER_ROLE = h.ids.roles.member;
 
 const MESSAGES = {
   en: {
@@ -265,11 +266,10 @@ async function syncMembershipRoles(client) {
     }
 
     const inactiveUserIds = [...previousActiveIds].filter(id => !currentActiveIds.has(id));
-    for (const discordId of inactiveUserIds) {
-      try {
+for (const discordId of inactiveUserIds) {
+    try {
         const member = await guild.members.fetch(discordId).catch(() => null);
         if (!member) continue;
-        // Skip Creator role
         if (member.roles.cache.has(CREATOR_ROLE)) continue;
 
         const currentRoleIds = member.roles.cache.map(r => r.id);
@@ -278,14 +278,20 @@ async function syncMembershipRoles(client) {
         const hasSupporter = currentRoleIds.includes(SUPPORTER_ROLE);
 
         if (hasTierRole || hasSupporter) {
-          for (const roleId of tierRoleIds) {
-            if (currentRoleIds.includes(roleId)) await member.roles.remove(roleId);
-          }
-          if (hasSupporter) await member.roles.remove(SUPPORTER_ROLE);
-          changesMade = true;
+            for (const roleId of tierRoleIds) {
+                if (currentRoleIds.includes(roleId)) await member.roles.remove(roleId);
+            }
+            if (hasSupporter) await member.roles.remove(SUPPORTER_ROLE);
+            changesMade = true;
         }
-      } catch (err) {}
-    }
+
+        // ✅ ADD THIS: ensure they still have the base Member role
+        if (!member.roles.cache.has(MEMBER_ROLE)) {
+            await member.roles.add(MEMBER_ROLE);
+            changesMade = true;
+        }
+    } catch (err) { /* existing error handling */ }
+}
 
     await storeCurrentActiveSet(currentActiveIds);
     if (changesMade) console.log('[MembershipSync] Sync completed.');
