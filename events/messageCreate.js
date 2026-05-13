@@ -92,24 +92,23 @@ module.exports = async (message) => {
         return;
     }
 
+    // React with ticket emoji
     await message.react('🎟️').catch(() => {});
 
+    // Delete the original win message quickly (clean up)
     setTimeout(() => {
         message.delete().catch(() => {});
     }, 2000);
 
-    const dmMessage = `${h.releaseEmojis.CONFETTI} Nice win! You've earned **1 ticket**! You now have **${result.newCount}** ticket(s).`;
+    // Ephemeral-like notification (mentions the user, auto-deletes after 8 seconds)
+    const notifyText = `${h.releaseEmojis.CONFETTI} Nice win, <@${message.author.id}>! You earned **1 ticket**! You now have **${result.newCount}** ticket(s).`;
 
-    try {
-        await message.author.send(dmMessage);
-    } catch (dmError) {
-        const tempMsg = await message.channel.send({
-            content: `<@${message.author.id}> ${dmMessage}\n*(Enable DMs to receive these privately)*`,
-            allowedMentions: { users: [message.author.id] }
-        }).catch(() => {});
+    const notifyMsg = await message.channel.send({
+        content: notifyText,
+        allowedMentions: { users: [message.author.id] }
+    }).catch(() => {});
 
-        if (tempMsg) {
-            setTimeout(() => tempMsg.delete().catch(() => {}), 8000);
-        }
+    if (notifyMsg) {
+        setTimeout(() => notifyMsg.delete().catch(() => {}), 8000);
     }
 };
