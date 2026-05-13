@@ -284,23 +284,21 @@ async function startHangmanGame(interaction) {
             }, 2000);
         }
 
-        if (gameWon) {
-            const result = await awardTicket(interaction.user.id, interaction.user.username);
-            if (result.awarded) {
-                const dmMessage = `${h.releaseEmojis.CONFETTI} You solved the hangman! You've earned **1 ticket**! You now have **${result.newCount}** ticket(s).\n\n*You can earn another ticket from Hangman in 24 hours. I'll DM you when it's available.*`;
-                try {
-                    await interaction.user.send(dmMessage);
-                } catch {
-                    await interaction.followUp({ content: dmMessage, flags: MessageFlags.Ephemeral });
-                }
-            } else if (result.reason === 'cooldown') {
-                const minutes = result.remainingMinutes;
-                const hours = Math.floor(minutes / 60);
-                const mins = minutes % 60;
-                const timeStr = hours > 0 ? `${hours}h ${mins}m` : `${mins} minutes`;
-                const cooldownMsg = `⏳ You can earn another ticket from Hangman in **${timeStr}**. I'll DM you when it's available!`;
-                await interaction.followUp({ content: cooldownMsg, flags: MessageFlags.Ephemeral });
-            }
+if (gameWon) {
+    const result = await awardTicket(interaction.user.id, interaction.user.username);
+    if (result.awarded) {
+        // No more DM – just thank the player and tell them to play again tomorrow
+        const winMsg = `${h.releaseEmojis.CONFETTI} You solved the hangman! You've earned **1 ticket**! You now have **${result.newCount}** ticket(s).\n\nYou can earn another ticket from Hangman in 24 hours.`;
+        await interaction.followUp({ content: winMsg, flags: MessageFlags.Ephemeral });
+    } else if (result.reason === 'cooldown') {
+        const minutes = result.remainingMinutes;
+        const hours = Math.floor(minutes / 60);
+        const mins = minutes % 60;
+        const timeStr = hours > 0 ? `${hours}h ${mins}m` : `${mins} minutes`;
+        const cooldownMsg = `⏳ You can earn another ticket from Hangman in **${timeStr}**.`;
+        await interaction.followUp({ content: cooldownMsg, flags: MessageFlags.Ephemeral });
+    }
+}
         } else if (!gameOver) {
             await interaction.editReply({ content: '⏰ Game timed out.', embeds: [], components: [] }).catch(() => {});
         }
