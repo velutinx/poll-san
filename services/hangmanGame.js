@@ -110,9 +110,41 @@ async function getCooldownRemaining(userId) {
 async function startHangmanGame(interaction) {
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
+    // ====================== NEW: Check and notify cooldown reset ======================
+    try {
+        const { data: cooldownRow } = await supabase
+            .from(h.tables.GAMES_COOLDOWNS)
+            .select('last_win_at, notified_reset')
+            .eq('discord_id', interaction.user.id)
+            .eq('game_type', GAME_TYPE)
+            .maybeSingle();
+
+        if (cooldownRow && !cooldownRow.notified_reset) {
+            const lastWin = new Date(cooldownRow.last_win_at);
+            const hoursSince = (Date.now() - lastWin.getTime()) / (1000 * 60 * 60);
+            if (hoursSince >= COOLDOWN_HOURS) {
+                // Cooldown expired and user hasn't been told yet
+                await interaction.followUp({
+                    content: `${h.releaseEmojis.CONFETTI} Your **Hangman** ticket cooldown has reset! You can now earn another ticket by winning a game.`,
+                    flags: MessageFlags.Ephemeral
+                });
+                // Mark as notified so we don't say it again
+                await supabase
+                    .from(h.tables.GAMES_COOLDOWNS)
+                    .update({ notified_reset: true, updated_at: new Date().toISOString() })
+                    .eq('discord_id', interaction.user.id)
+                    .eq('game_type', GAME_TYPE);
+            }
+        }
+    } catch (err) {
+        console.error('Cooldown reset check error:', err);
+    }
+    // ====================== END NEW ======================
+
     const item = words[Math.floor(Math.random() * words.length)];
     const word = item.word;
     const hint = item.hint;
+    // ... rest of your existing hangman code ...
 
     let maxWrongGuesses = word.length >= 7 ? word.length : 6;
     maxWrongGuesses = Math.min(maxWrongGuesses, HANGMAN_STAGES.length - 1);
