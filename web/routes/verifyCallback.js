@@ -56,22 +56,36 @@ router.post('/api/verify', async (req, res) => {
     const memberRoleId = helpers.ids.roles.member;
     const unverifiedRoleId = helpers.ids.roles.unverified;
 
+    // ----- Already verified? -----
     const hasSupporter = member.roles.cache.has(supporterRoleId);
+    const hasMember = member.roles.cache.has(memberRoleId);
+    const hasUnverified = member.roles.cache.has(unverifiedRoleId);
+
+    // Supporter without Unverified = verified
+    // Free user with Member role = verified
+    const alreadyVerified = (hasSupporter && !hasUnverified) || hasMember;
+
+    if (alreadyVerified) {
+        return res.json({ success: true, message: 'Already verified', alreadyVerified: true });
+    }
+    // ----- End check -----
+
     const unverifiedRole = guild.roles.cache.get(unverifiedRoleId);
     const memberRole = guild.roles.cache.get(memberRoleId);
 
     try {
         if (hasSupporter) {
+            // Supporter: just remove Unverified
             if (unverifiedRole) await member.roles.remove(unverifiedRole);
         } else {
-            // For non‑supporters
+            // Free user: remove Unverified, add Member
             if (memberRole && unverifiedRole) {
                 try {
                     await member.roles.remove(unverifiedRole);
                     await member.roles.add(memberRole);
                 } catch (err) {
                     console.error(`Role assignment failed for ${member.user.tag}:`, err);
-                    // rollback: re-add Unverified if we accidentally removed it
+                    // rollback
                     try {
                         if (!member.roles.cache.has(unverifiedRoleId)) {
                             await member.roles.add(unverifiedRole);
@@ -84,11 +98,13 @@ router.post('/api/verify', async (req, res) => {
             }
         }
 
+        // Only send DM once, when we actually changed roles
         try {
             await member.send(`${helpers.releaseEmojis.VERIFY} You have successfully verified in **${guild.name}**! You now have access to the server.`);
         } catch (err) {
             console.log(`Could not send DM to ${member.user.tag}`);
         }
+
         return res.json({ success: true, message: 'Verification successful' });
     } catch (err) {
         console.error('Role assignment error:', err);
