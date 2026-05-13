@@ -1,4 +1,4 @@
-// this is poll-san/utils/xputils.js
+// poll-san/utils/xputils.js
 
 require('dotenv').config({ quiet: true });
 const { weights, releaseEmojis } = require('./helpers');
@@ -27,7 +27,6 @@ const XPLib = {
     try {
       const url = `${SUPABASE_URL}/rest/v1/user_xp?user_id=eq.${message.author.id}&guild_id=eq.${message.guild.id}`;
 
-      // Using native global fetch (Node 18+)
       const res = await fetch(url, {
         headers: {
           apikey: SUPABASE_KEY,
@@ -61,14 +60,8 @@ const XPLib = {
         })
       });
 
-      if (newLevel > oldLevel) {
-        const totalBonus = (newLevel * weights.xpFactor).toFixed(2);
-        const s = releaseEmojis.SPARKLES;
-        
-        message.author.send(
-          `${s} **Level Up!** ${s}\n\nYou reached **Level ${newLevel}**!\nYour vote bonus is now **+${totalBonus}**.\n\nType **/level** anytime to check progress.`
-        ).catch(() => {});
-      }
+      // Level-up notification completely removed.
+      // The user will see their new level only when they use /level.
 
     } catch (err) {
       console.error('[XP Update Error]', err.message);
