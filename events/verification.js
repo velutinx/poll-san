@@ -26,25 +26,10 @@ module.exports = {
             return;
         }
 
-        // Add Unverified role
+        // Add Unverified role (no messages sent)
         const unverifiedRole = member.guild.roles.cache.get(helpers.ids.roles.unverified);
         if (unverifiedRole) {
             await member.roles.add(unverifiedRole).catch(console.error);
-        }
-
-        // --- Send ephemeral-like welcome in verify channel ---
-        const verifyChannelId = helpers.ids.channels.verify;
-        const verifyChannel = member.guild.channels.cache.get(verifyChannelId);
-        if (verifyChannel) {
-            const welcomeMsg = await verifyChannel.send({
-                content: `<@${member.user.id}> Welcome to **${member.guild.name}**!\nPlease verify in <#${verifyChannelId}> to unlock the server.`,
-                allowedMentions: { users: [member.user.id] }
-            }).catch(err => console.error('Failed to send verify channel welcome:', err));
-
-            // Delete after 5 minutes (ephemeral-like)
-            if (welcomeMsg) {
-                setTimeout(() => welcomeMsg.delete().catch(() => {}), 5 * 60 * 1000);
-            }
         }
     }
 };
