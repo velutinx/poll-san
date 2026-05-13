@@ -21,7 +21,7 @@ function isWordleWin(message) {
 async function awardTicket(userId, username) {
     try {
         const { data: userData, error: fetchError } = await supabase
-            .from(h.tables.GAMES_WORDLE)   // 👈 changed
+            .from(h.tables.GAMES_WORDLE)
             .select('last_win_at')
             .eq('discord_id', userId)
             .maybeSingle();
@@ -89,18 +89,44 @@ module.exports = async (message) => {
     const result = await awardTicket(message.author.id, message.author.username);
     if (!result.awarded) return;
 
+    // React with ticket emoji
     await message.react('🎟️').catch(() => {});
-    setTimeout(() => message.delete().catch(() => {}), 2000);
 
-    // Ephemeral-like notification
+    // Delete the original win message quickly (clean up)
+    setTimeout(() => {
+        message.delete().catch(() => {});
+    }, 2000);
+
+    // ======================================================
+    //   Webhook notification – sends as "Rewards"
+    // ======================================================
     const notifyText = `${h.releaseEmojis.CONFETTI} Nice win, <@${message.author.id}>! You earned **1 ticket**! You now have **${result.newCount}** ticket(s).`;
 
-    const notifyMsg = await message.channel.send({
-        content: notifyText,
-        allowedMentions: { users: [message.author.id] }
-    }).catch(err => console.error('Notify send error:', err));
+    try {
+        // Find or create the "Rewards" webhook in this channel
+        let rewardWebhook = (await message.channel.fetchWebhooks())
+            .find(w => w.name === 'Rewards');
 
-    if (notifyMsg) {
-        setTimeout(() => notifyMsg.delete().catch(() => {}), 8000);
+        if (!rewardWebhook) {
+            rewardWebhook = await message.channel.createWebhook({
+                name: 'Rewards',
+                avatar: h.urls.LOGO_URL   // uses your LogoDiscord.png
+            });
+        }
+
+        // Send the ephemeral-like message
+        const notifyMsg = await rewardWebhook.send({
+            content: notifyText,
+            allowedMentions: { users: [message.author.id] },
+            username: 'Rewards',
+            avatarURL: h.urls.LOGO_URL
+        });
+
+        // Delete after 8 seconds
+        if (notifyMsg) {
+            setTimeout(() => notifyMsg.delete().catch(() => {}), 8000);
+        }
+    } catch (err) {
+        console.error('Webhook notification error:', err);
     }
 };
