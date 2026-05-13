@@ -181,7 +181,8 @@ module.exports = {
             preview_forum: '1465938599378812980',
             supporter_forum: '1465937644394512516',
             mudae_roll: '1494520781244334291',
-            admin_channel: '1504216521839345824'
+            admin_channel: '1504216521839345824',
+            xp_channel: '1504218575580430436'
         },
         users: {
             Velutinx: '1380051214766444617'
