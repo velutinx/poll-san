@@ -44,7 +44,7 @@ async function awardTicket(userId, username) {
     const now = new Date();
 
     const { data: cooldownData, error: fetchError } = await supabase
-        .from(h.tables.GAMES_COOLDOWNS)   // 👈 changed
+        .from(h.tables.GAMES_COOLDOWNS)
         .select('last_win_at')
         .eq('discord_id', userId)
         .eq('game_type', GAME_TYPE)
@@ -74,7 +74,7 @@ async function awardTicket(userId, username) {
     }
 
     const { error: upsertError } = await supabase
-        .from(h.tables.GAMES_COOLDOWNS)   // 👈 changed
+        .from(h.tables.GAMES_COOLDOWNS)
         .upsert({
             discord_id: userId,
             discord_username: username,
@@ -91,7 +91,7 @@ async function awardTicket(userId, username) {
 
 async function getCooldownRemaining(userId) {
     const { data } = await supabase
-        .from(h.tables.GAMES_COOLDOWNS)   // 👈 changed
+        .from(h.tables.GAMES_COOLDOWNS)
         .select('last_win_at')
         .eq('discord_id', userId)
         .eq('game_type', GAME_TYPE)
@@ -110,7 +110,7 @@ async function getCooldownRemaining(userId) {
 async function startHangmanGame(interaction) {
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
-    // ====================== NEW: Check and notify cooldown reset ======================
+    // --- Cooldown reset check (ephemeral) ---
     try {
         const { data: cooldownRow } = await supabase
             .from(h.tables.GAMES_COOLDOWNS)
@@ -123,12 +123,12 @@ async function startHangmanGame(interaction) {
             const lastWin = new Date(cooldownRow.last_win_at);
             const hoursSince = (Date.now() - lastWin.getTime()) / (1000 * 60 * 60);
             if (hoursSince >= COOLDOWN_HOURS) {
-                // Cooldown expired and user hasn't been told yet
+                // Cooldown expired, tell the user privately
                 await interaction.followUp({
                     content: `${h.releaseEmojis.CONFETTI} Your **Hangman** ticket cooldown has reset! You can now earn another ticket by winning a game.`,
                     flags: MessageFlags.Ephemeral
                 });
-                // Mark as notified so we don't say it again
+                // Mark notified so we don't repeat
                 await supabase
                     .from(h.tables.GAMES_COOLDOWNS)
                     .update({ notified_reset: true, updated_at: new Date().toISOString() })
@@ -139,12 +139,10 @@ async function startHangmanGame(interaction) {
     } catch (err) {
         console.error('Cooldown reset check error:', err);
     }
-    // ====================== END NEW ======================
 
     const item = words[Math.floor(Math.random() * words.length)];
     const word = item.word;
     const hint = item.hint;
-    // ... rest of your existing hangman code ...
 
     let maxWrongGuesses = word.length >= 7 ? word.length : 6;
     maxWrongGuesses = Math.min(maxWrongGuesses, HANGMAN_STAGES.length - 1);
@@ -157,7 +155,6 @@ async function startHangmanGame(interaction) {
     const generateEmbed = () => {
         let wordDisplay;
         if (gameWon) {
-            // Show the full word in uppercase when won
             wordDisplay = word.toUpperCase().split('').join(' ');
         } else {
             wordDisplay = word.split('').map(l => usedLetters.has(l) ? l.toUpperCase() : '\\_').join(' ');
@@ -209,21 +206,15 @@ async function startHangmanGame(interaction) {
 
     collector.on('collect', async (msg) => {
         const content = msg.content.toLowerCase().trim();
-        // Delete the user's guess message immediately
         msg.delete().catch(() => {});
 
-        // ---- Word guess (length > 1) ----
         if (content.length > 1) {
             if (content === word) {
-                // Add all letters of the word so the final display shows the full word
-                for (const letter of word) {
-                    usedLetters.add(letter);
-                }
+                for (const letter of word) usedLetters.add(letter);
                 gameWon = true;
                 gameOver = true;
                 collector.stop();
             } else {
-                // Incorrect word guess: increment wrong guesses, no letters added
                 wrongGuesses++;
                 const warning = await interaction.followUp({
                     content: `❌ "${msg.content}" is not the correct word. You lost a guess.`,
@@ -241,7 +232,6 @@ async function startHangmanGame(interaction) {
             return;
         }
 
-        // ---- Single letter guess ----
         const letter = content;
         if (!/[a-zA-Z]/.test(letter)) return;
 
@@ -252,9 +242,7 @@ async function startHangmanGame(interaction) {
         }
 
         usedLetters.add(letter);
-        if (!word.includes(letter)) {
-            wrongGuesses++;
-        }
+        if (!word.includes(letter)) wrongGuesses++;
 
         const wordGuessed = word.split('').every(l => usedLetters.has(l));
         if (wordGuessed) {
@@ -271,7 +259,7 @@ async function startHangmanGame(interaction) {
     });
 
     collector.on('end', async () => {
-        // Clean up any remaining messages from the player in this channel
+        // Clean up user's non-pinned messages
         if (gameOver) {
             setTimeout(async () => {
                 try {
@@ -284,22 +272,21 @@ async function startHangmanGame(interaction) {
             }, 2000);
         }
 
-if (gameWon) {
-    const result = await awardTicket(interaction.user.id, interaction.user.username);
-    if (result.awarded) {
-        // No more DM – just thank the player and tell them to play again tomorrow
-        const winMsg = `${h.releaseEmojis.CONFETTI} You solved the hangman! You've earned **1 ticket**! You now have **${result.newCount}** ticket(s).\n\nYou can earn another ticket from Hangman in 24 hours.`;
-        await interaction.followUp({ content: winMsg, flags: MessageFlags.Ephemeral });
-    } else if (result.reason === 'cooldown') {
-        const minutes = result.remainingMinutes;
-        const hours = Math.floor(minutes / 60);
-        const mins = minutes % 60;
-        const timeStr = hours > 0 ? `${hours}h ${mins}m` : `${mins} minutes`;
-        const cooldownMsg = `⏳ You can earn another ticket from Hangman in **${timeStr}**.`;
-        await interaction.followUp({ content: cooldownMsg, flags: MessageFlags.Ephemeral });
-    }
-}
+        if (gameWon) {
+            const result = await awardTicket(interaction.user.id, interaction.user.username);
+            if (result.awarded) {
+                const winMsg = `${h.releaseEmojis.CONFETTI} You solved the hangman! You've earned **1 ticket**! You now have **${result.newCount}** ticket(s).\n\nYou can earn another ticket from Hangman in 24 hours.`;
+                await interaction.followUp({ content: winMsg, flags: MessageFlags.Ephemeral });
+            } else if (result.reason === 'cooldown') {
+                const minutes = result.remainingMinutes;
+                const hours = Math.floor(minutes / 60);
+                const mins = minutes % 60;
+                const timeStr = hours > 0 ? `${hours}h ${mins}m` : `${mins} minutes`;
+                const cooldownMsg = `⏳ You can earn another ticket from Hangman in **${timeStr}**.`;
+                await interaction.followUp({ content: cooldownMsg, flags: MessageFlags.Ephemeral });
+            }
         } else if (!gameOver) {
+            // Timed out
             await interaction.editReply({ content: '⏰ Game timed out.', embeds: [], components: [] }).catch(() => {});
         }
     });
