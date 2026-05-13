@@ -4,6 +4,7 @@ const h = require('../utils/helpers');
 
 const COOLDOWN_HOURS = 24;
 const GAME_TYPE = 'hangman';
+const HANGMAN_CHANNEL_ID = h.games.hangman.channelId;   // '1494747527801470986'
 
 async function checkAndNotifyCooldowns(client) {
     const now = new Date();
@@ -21,18 +22,36 @@ async function checkAndNotifyCooldowns(client) {
         return;
     }
 
+    const channel = client.channels.cache.get(HANGMAN_CHANNEL_ID);
+    if (!channel) {
+        console.error('Hangman channel not found.');
+        return;
+    }
+
     for (const user of users) {
         try {
-            const discordUser = await client.users.fetch(user.discord_id);
-            await discordUser.send(`${h.releaseEmojis.CONFETTI} Your **Hangman** ticket cooldown has reset! You can now earn another ticket by winning a game.`);
-            
+            // --- NO DM ---
+
+            // Send a temporary mention in the hangman channel
+            const notifyMsg = await channel.send({
+                content: `${h.releaseEmojis.CONFETTI} <@${user.discord_id}>, your **Hangman** ticket cooldown has reset! You can now earn another ticket by winning a game.`,
+                allowedMentions: { users: [user.discord_id] }
+            }).catch(err => console.error(`Failed to send channel notification to ${user.discord_id}:`, err.message));
+
+            if (notifyMsg) {
+                // Delete after 15 seconds – ephemeral‑like
+                setTimeout(() => notifyMsg.delete().catch(() => {}), 15_000);
+            }
+
+            // Mark as notified
             await supabase
                 .from(h.tables.GAMES_COOLDOWNS)
                 .update({ notified_reset: true, updated_at: now.toISOString() })
                 .eq('discord_id', user.discord_id)
                 .eq('game_type', GAME_TYPE);
         } catch (err) {
-            console.error(`Failed to notify user ${user.discord_id} (${user.discord_username}):`, err.message);
+            console.error(`Failed to process user ${user.discord_id}:`, err.message);
+            // Still mark notified to avoid repeated failures
             await supabase
                 .from(h.tables.GAMES_COOLDOWNS)
                 .update({ notified_reset: true, updated_at: now.toISOString() })
