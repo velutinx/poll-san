@@ -41,8 +41,8 @@ async function handleTriviaMessage(message) {
 }
 
 /**
- * Process end‑of‑day awards (unchanged from previous version).
- * This function is called periodically by the bot.
+ * Process end‑of‑day awards (unchanged logic, no DM).
+ * Called periodically by the bot.
  */
 async function processEndOfDayAwards(client) {
     const yesterday = new Date();
@@ -64,6 +64,7 @@ async function processEndOfDayAwards(client) {
         const ticketsToAward = Math.min(highScore, (TRIVIA_CONFIG.dailyTicketCap || 10));
 
         if (ticketsToAward > 0) {
+            // Award tickets
             await supabase.rpc('add_tickets', { user_id: userId, amount: ticketsToAward });
             await supabase
                 .from(h.tables.GAMES_TRIVIA_DAILY)
@@ -71,13 +72,7 @@ async function processEndOfDayAwards(client) {
                 .eq('discord_id', userId)
                 .eq('date', dateStr);
 
-            const user = await client.users.fetch(userId).catch(() => null);
-            if (user) {
-                const dmMessage = `${h.releaseEmojis.CONFETTI} Your trivia high score for yesterday was **${highScore}**! You've earned **${ticketsToAward}** ticket(s).`;
-                try {
-                    await user.send(dmMessage);
-                } catch {}
-            }
+            // --- DM removed completely ---
         }
     }
 }
