@@ -74,39 +74,31 @@ module.exports = async (message) => {
         if (content.includes('congratulations! you\'ve unlocked an achievement') ||
             content.includes('here is the faq page')) {
             setTimeout(() => message.delete().catch(() => {}), 1500);
+            return;   // stop processing these spam messages
         }
-        return;
+        // Fall through — let win messages from the Wordle bot be checked
     }
 
     // --- 2. IGNORE OTHER BOTS AND WRONG CHANNEL ---
-    if (message.author.bot) return;
+    if (message.author.bot && message.author.id !== WORDLE_BOT_ID) return;
     if (message.channel.id !== WORDLE_CHANNEL_ID) return;
 
     // --- 3. CHECK FOR WORDLE WIN & AWARD TICKET ---
     if (!isWordleWin(message)) return;
 
     const result = await awardTicket(message.author.id, message.author.username);
+    if (!result.awarded) return;
 
-    if (!result.awarded) {
-        // Silent cooldown – do nothing
-        return;
-    }
-
-    // React with ticket emoji
     await message.react('🎟️').catch(() => {});
+    setTimeout(() => message.delete().catch(() => {}), 2000);
 
-    // Delete the original win message quickly (clean up)
-    setTimeout(() => {
-        message.delete().catch(() => {});
-    }, 2000);
-
-    // Ephemeral-like notification (mentions the user, auto-deletes after 8 seconds)
+    // Ephemeral-like notification
     const notifyText = `${h.releaseEmojis.CONFETTI} Nice win, <@${message.author.id}>! You earned **1 ticket**! You now have **${result.newCount}** ticket(s).`;
 
     const notifyMsg = await message.channel.send({
         content: notifyText,
         allowedMentions: { users: [message.author.id] }
-    }).catch(() => {});
+    }).catch(err => console.error('Notify send error:', err));
 
     if (notifyMsg) {
         setTimeout(() => notifyMsg.delete().catch(() => {}), 8000);
