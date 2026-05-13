@@ -84,11 +84,7 @@ router.post('/api/verify', async (req, res) => {
             }
         }
 
-        try {
-            await member.send(`${helpers.releaseEmojis.VERIFY} You have successfully verified in **${guild.name}**! You now have access to the server.`);
-        } catch (err) {
-            console.log(`Could not send DM to ${member.user.tag}`);
-        }
+        // --- NO DM SENT ---
         return res.json({ success: true, message: 'Verification successful' });
     } catch (err) {
         console.error('Role assignment error:', err);
