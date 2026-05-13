@@ -21,21 +21,39 @@ router.post('/api/reminder', async (req, res) => {
         return res.status(404).json({ error: 'User not in guild' });
     }
 
+    // ---- Get the check‑in channel ----
+    const checkinChannelId = helpers.ids.channels.checkin;
+    const checkinChannel = guild.channels.cache.get(checkinChannelId);
+    if (!checkinChannel) {
+        console.error('Check‑in channel not found, cannot send reminder');
+        return res.status(500).json({ error: 'Check‑in channel missing' });
+    }
+
     try {
-        await member.send(`🌟 **Your daily check-in is now available!**\nClick the button in <#${helpers.ids.channels.checkin}> to claim your **${helpers.CHECKIN_REWARD_TICKETS} tickets** and reset your game cooldowns.`);
-        console.log(`Sent check-in reminder to ${member.user.tag}`);
-        
-        // Update reminder_sent to true so we don't send again
+        // Send an ephemeral‑like mention
+        const notifyMsg = await checkinChannel.send({
+            content: `<@${member.user.id}> 🌟 **Your daily check‑in is now available!**\nClick the button in <#${checkinChannelId}> to claim your **${helpers.CHECKIN_REWARD_TICKETS} tickets** and reset your game cooldowns.`,
+            allowedMentions: { users: [member.user.id] }
+        });
+
+        if (notifyMsg) {
+            // Delete after 15 seconds so it disappears like an ephemeral message
+            setTimeout(() => notifyMsg.delete().catch(() => {}), 15_000);
+        }
+
+        console.log(`Sent check‑in reminder (channel ping) to ${member.user.tag}`);
+
+        // Mark as reminded so we don't send again
         const supabase = require('../../services/supabase');
         await supabase
             .from(h.tables.GAMES_USER_DATA)
             .update({ reminder_sent: true })
             .eq('user_id', user_id);
-        
+
         res.json({ success: true });
-    } catch (dmErr) {
-        console.error(`Failed to DM ${user_id}:`, dmErr.message);
-        res.status(500).json({ error: 'Failed to send DM' });
+    } catch (err) {
+        console.error(`Failed to send check‑in reminder for ${user_id}:`, err.message);
+        res.status(500).json({ error: 'Failed to send reminder' });
     }
 });
 
