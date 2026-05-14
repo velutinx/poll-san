@@ -266,11 +266,17 @@ async function syncMembershipRoles(client) {
     }
 
     const inactiveUserIds = [...previousActiveIds].filter(id => !currentActiveIds.has(id));
-for (const discordId of inactiveUserIds) {
-    try {
+    for (const discordId of inactiveUserIds) {
+      try {
         const member = await guild.members.fetch(discordId).catch(() => null);
-        if (!member) continue;
-        if (member.roles.cache.has(CREATOR_ROLE)) continue;
+        if (!member) {
+          console.log(`[MembershipSync] Inactive user ${discordId} not found in guild, skipping.`);
+          continue;
+        }
+        if (member.roles.cache.has(CREATOR_ROLE)) {
+          console.log(`[MembershipSync] Skipping inactive Creator ${member.user.tag} (${discordId})`);
+          continue;
+        }
 
         const currentRoleIds = member.roles.cache.map(r => r.id);
         const tierRoleIds = Object.values(TIER_ROLES);
@@ -278,20 +284,30 @@ for (const discordId of inactiveUserIds) {
         const hasSupporter = currentRoleIds.includes(SUPPORTER_ROLE);
 
         if (hasTierRole || hasSupporter) {
-            for (const roleId of tierRoleIds) {
-                if (currentRoleIds.includes(roleId)) await member.roles.remove(roleId);
+          for (const roleId of tierRoleIds) {
+            if (currentRoleIds.includes(roleId)) {
+              await member.roles.remove(roleId);
+              changesMade = true;
             }
-            if (hasSupporter) await member.roles.remove(SUPPORTER_ROLE);
+          }
+          if (hasSupporter) {
+            await member.roles.remove(SUPPORTER_ROLE);
             changesMade = true;
+          }
         }
 
-        // ✅ ADD THIS: ensure they still have the base Member role
+        // ✅ ENSURE THEY GET THE BASE MEMBER ROLE
         if (!member.roles.cache.has(MEMBER_ROLE)) {
-            await member.roles.add(MEMBER_ROLE);
-            changesMade = true;
+          await member.roles.add(MEMBER_ROLE);
+          changesMade = true;
+          console.log(`[MembershipSync] ✅ Added Member role to ${member.user.tag} (${discordId})`);
+        } else {
+          console.log(`[MembershipSync] ℹ️ ${member.user.tag} already has Member role, no action needed.`);
         }
-    } catch (err) { /* existing error handling */ }
-}
+      } catch (err) {
+        console.error(`[MembershipSync] ❌ Error processing inactive user ${discordId}:`, err.message);
+      }
+    }
 
     await storeCurrentActiveSet(currentActiveIds);
     if (changesMade) console.log('[MembershipSync] Sync completed.');
