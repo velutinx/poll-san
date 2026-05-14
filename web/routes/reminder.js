@@ -41,8 +41,6 @@ router.post('/api/reminder', async (req, res) => {
             setTimeout(() => notifyMsg.delete().catch(() => {}), 15_000);
         }
 
-        console.log(`Sent check‑in reminder (channel ping) to ${member.user.tag}`);
-
         // Mark as reminded so we don't send again
         const supabase = require('../../services/supabase');
         await supabase
