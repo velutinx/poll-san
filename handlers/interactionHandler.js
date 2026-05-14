@@ -88,8 +88,11 @@ module.exports = async function handleInteraction(interaction) {
     }
 };
 
-// ----- Helper functions (unchanged, but de-deprecated) -----
+// ----- Verify: defer immediately to avoid timeout -----
 async function handleVerifyStart(interaction) {
+    // Defer first so Discord knows we're working
+    await interaction.deferReply({ flags: 64 });
+
     const member = interaction.member;
     const supporterRoleId = helpers.ids.roles.supporter;
     const memberRoleId = helpers.ids.roles.member;
@@ -97,26 +100,24 @@ async function handleVerifyStart(interaction) {
     const hasMember = member.roles.cache.has(memberRoleId);
 
     if (hasSupporter || hasMember) {
-        return interaction.reply({
-            content: '✅ You are already verified! No need to verify again.',
-            flags: 64
+        return interaction.editReply({
+            content: '✅ You are already verified! No need to verify again.'
         });
     }
 
     const workerUrl = process.env.VERIFY_WORKER_URL;
     if (!workerUrl) {
-        return interaction.reply({
-            content: '❌ Verification service is not configured. Please contact an admin.',
-            flags: 64
+        return interaction.editReply({
+            content: '❌ Verification service is not configured. Please contact an admin.'
         });
     }
     const uniqueUrl = `${workerUrl}?user=${interaction.user.id}&guild=${interaction.guild.id}`;
-    await interaction.reply({
-        content: `🔗 **Your verification link** (expires after 10 minutes):\n${uniqueUrl}\n\nComplete the CAPTCHA in your browser to gain access.`,
-        flags: 64
+    await interaction.editReply({
+        content: `🔗 **Your verification link** (expires after 10 minutes):\n${uniqueUrl}\n\nComplete the CAPTCHA in your browser to gain access.`
     });
 }
 
+// ----- Checkin: already deferred, keep as is -----
 async function handleCheckinClaim(interaction) {
     const userId = interaction.user.id;
     const gameKey = userId;
