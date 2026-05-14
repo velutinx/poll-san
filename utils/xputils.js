@@ -2,6 +2,7 @@
 
 require('dotenv').config({ quiet: true });
 const { weights, releaseEmojis } = require('./helpers');
+const h = require('./helpers');   // needed for channel IDs
 
 const XP_MIN_CHARS = 5;
 
@@ -12,6 +13,9 @@ const LEVEL_THRESHOLDS = Array.from({ length: 26 }, (_, index) =>
 
 const SUPABASE_URL = process.env.SUPABASE_URL?.replace(/\/$/, '') || '';
 const SUPABASE_KEY = process.env.SUPABASE_KEY || '';
+
+// XP channel ID from helpers.js
+const XP_CHANNEL_ID = h.ids.channels.xp_channel;
 
 const XPLib = {
   getLevel(messages) {
@@ -60,8 +64,21 @@ const XPLib = {
         })
       });
 
-      // Level-up notification completely removed.
-      // The user will see their new level only when they use /level.
+      // ---------- Level‑up notification (xp channel) ----------
+      if (newLevel > oldLevel) {
+        const totalBonus = (newLevel * weights.xpFactor).toFixed(2);
+        const s = releaseEmojis.SPARKLES;
+
+        const xpChannel = message.guild.channels.cache.get(XP_CHANNEL_ID);
+        if (xpChannel) {
+          await xpChannel.send({
+            content: `<@${message.author.id}> ${s} **Level Up!** ${s}\n` +
+                     `You reached **Level ${newLevel}**!\n` +
+                     `Your vote bonus is now **+${totalBonus}**.`,
+            allowedMentions: { users: [message.author.id] }
+          }).catch(() => {});
+        }
+      }
 
     } catch (err) {
       console.error('[XP Update Error]', err.message);
