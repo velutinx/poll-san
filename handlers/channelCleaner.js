@@ -19,7 +19,6 @@ function initChannelCleaner(client, channelId, whitelistIds = [], inactivityMs =
                 const toDelete = messages.filter(m => !whitelistIds.includes(m.id));
                 if (toDelete.size === 0) return;
                 await channel.bulkDelete(toDelete);
-                console.log(`🧹 Purged ${toDelete.size} messages from ${channel.name} due to inactivity.`);
             } catch (err) {
                 console.error(`Failed to purge channel ${channelId}:`, err);
             } finally {
