@@ -1,27 +1,88 @@
-// this is poll-san/web/public/js/poll.js
-
 // ======================================================
 // POLL FUNCTIONS
 // ======================================================
 
+let pollEndTime = null;          // timestamp in ms
+let pollTimerInterval = null;
+
+// ------- Countdown helpers -------
+function updatePollTimerDisplay() {
+    const el = document.getElementById('poll-timer');
+    if (!el) return;
+
+    if (!pollEndTime) {
+        el.textContent = '';
+        return;
+    }
+
+    const diff = pollEndTime - Date.now();
+    if (diff <= 0) {
+        el.textContent = '⏰ Poll ended';
+        stopPollTimer();
+        return;
+    }
+
+    const d = Math.floor(diff / 86400000);
+    const h = Math.floor((diff % 86400000) / 3600000);
+    const m = Math.floor((diff % 3600000) / 60000);
+    const s = Math.floor((diff % 60000) / 1000);
+    el.textContent = `⏳ Time left: ${d}d ${h}h ${m}m ${s}s`;
+}
+
+function startPollTimer(endTimeISO) {
+    stopPollTimer();
+    if (!endTimeISO) return;
+
+    pollEndTime = new Date(endTimeISO).getTime();
+    updatePollTimerDisplay();
+    pollTimerInterval = setInterval(updatePollTimerDisplay, 1000);
+}
+
+function stopPollTimer() {
+    if (pollTimerInterval) {
+        clearInterval(pollTimerInterval);
+        pollTimerInterval = null;
+    }
+    pollEndTime = null;
+    const el = document.getElementById('poll-timer');
+    if (el) el.textContent = '';
+}
+
+// ------- Main poll data loader -------
 async function loadActivePoll() {
     const listArea = document.getElementById('winner-list');
     if (!listArea) return;
+
     try {
         const res = await fetch('/api/poll-results-data');
         const data = await res.json();
 
-        // Handle the case where the API might return { results: [], pollId: ... } 
-        // or just a flat array. Adjusting for both.
-        const pollData = Array.isArray(data) ? data : (data.results || []);
+        // Accept both old flat array and new { results, endTime } object
+        let resultsArray, endTime;
+        if (Array.isArray(data)) {
+            resultsArray = data;
+            endTime = null;
+        } else {
+            resultsArray = data.results || [];
+            endTime = data.endTime || null;
+        }
 
-        if (!pollData || pollData.length === 0) {
+        // Manage the countdown timer
+        if (endTime) {
+            startPollTimer(endTime);
+        } else {
+            stopPollTimer();
+        }
+
+        // No active poll
+        if (!resultsArray || resultsArray.length === 0) {
             listArea.innerHTML = '<p>No active poll.</p>';
             document.getElementById('launch-btn').disabled = false;
             document.getElementById('stop-btn').disabled = true;
             return;
         }
 
+        // Active poll exists
         document.getElementById('launch-btn').disabled = true;
         document.getElementById('stop-btn').disabled = false;
         listArea.innerHTML = '';
@@ -29,16 +90,16 @@ async function loadActivePoll() {
         const buttons = [];
         let highestScore = -Infinity;
 
-        pollData.forEach((item) => {
+        resultsArray.forEach((item) => {
             const btn = document.createElement('button');
             const score = parseFloat(item.score);
             const hasWinner = !!item.selected_at;
-            
+
             btn.className = 'winner-btn' + (hasWinner ? ' selected' : '');
             btn.innerText = `${item.character_name} (${score.toFixed(1)})`;
             btn.onclick = hasWinner ? null : () => markWinner(item.character_name);
             btn.setAttribute('data-score', score);
-            
+
             listArea.appendChild(btn);
             buttons.push(btn);
 
@@ -47,7 +108,7 @@ async function loadActivePoll() {
             }
         });
 
-        // Apply 'highest-score' class to top contenders
+        // Highlight the current leader(s)
         if (highestScore > -Infinity) {
             buttons.forEach(btn => {
                 if (!btn.classList.contains('selected') && parseFloat(btn.getAttribute('data-score')) === highestScore) {
@@ -61,11 +122,12 @@ async function loadActivePoll() {
     }
 }
 
+// ------- Control actions -------
 async function triggerPoll() {
     const channel = document.getElementById('poll_channel').value;
     const days = document.getElementById('poll_days').value;
     const list = document.getElementById('poll_list').value;
-    
+
     const res = await fetch('/api/trigger-poll', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
