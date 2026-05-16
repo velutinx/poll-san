@@ -52,24 +52,39 @@ module.exports = function setupPollRoutes(app, client, supabase, supabaseRetry) 
     });
 
     // POLL RESULTS DATA
-    app.get('/api/poll-results-data', async (req, res) => {
-        try {
-            if (cachedPollResultsData && (Date.now() - cachedPollResultsTime) < POLL_CACHE_TTL) {
-                return res.json(cachedPollResultsData);
-            }
-            const { data } = await supabaseRetry(() =>
-                supabase.from(h.tables.POLL_VOTES_FINAL)
-                    .select('character_name, score, selected_at')
-                    .order('option_id', { ascending: true })
-            );
-            cachedPollResultsData = data || [];
-            cachedPollResultsTime = Date.now();
-            res.json(cachedPollResultsData);
-        } catch (e) {
-            console.error('Poll results error:', e);
-            res.json(cachedPollResultsData || []);
+app.get('/api/poll-results-data', async (req, res) => {
+    try {
+        if (cachedPollResultsData && (Date.now() - cachedPollResultsTime) < POLL_CACHE_TTL) {
+            return res.json(cachedPollResultsData);
         }
-    });
+        const { data } = await supabaseRetry(() =>
+            supabase.from(h.tables.POLL_VOTES_FINAL)
+                .select('character_name, score, selected_at')
+                .order('option_id', { ascending: true })
+        );
+        // ---- NEW: fetch active poll end time ----
+        const { data: activePoll } = await supabaseRetry(() =>
+            supabase.from(h.tables.POLL_AUTO_RESUME)
+                .select('ends_at')
+                .gt('ends_at', new Date().toISOString())
+                .order('id', { ascending: false })
+                .limit(1)
+                .maybeSingle()
+        );
+        const endTime = activePoll?.ends_at ? new Date(activePoll.ends_at).toISOString() : null;
+        // ----------------------------------------
+        const responseData = {
+            results: data || [],
+            endTime: endTime
+        };
+        cachedPollResultsData = responseData;
+        cachedPollResultsTime = Date.now();
+        res.json(responseData);
+    } catch (e) {
+        console.error('Poll results error:', e);
+        res.json(cachedPollResultsData || { results: [], endTime: null });
+    }
+});
 
     // STOP POLL
     app.post('/api/stop-poll', async (req, res) => {
