@@ -28,6 +28,7 @@ const verification = require('./events/verification');
 const initMudaeMessageHandler = require('./handlers/mudaeMessageHandler');
 const h = require('./utils/helpers');
 const initChannelCleaner = require('./handlers/channelCleaner');
+const roleConsistency = require('./events/roleConsistency');
 
 // ==================== DISCORD CLIENT SETUP ====================
 const client = new Client({
@@ -141,6 +142,7 @@ client.on(Events.MessageReactionAdd, (reaction, user) => require('./events/react
 client.on(Events.MessageReactionRemove, (reaction, user) => require('./events/reactions')(reaction, user, 'remove'));
 client.on('guildMemberRemove', require('./events/guildMemberPollRemove'));
 client.on('messageCreate', messageCreateEvent);
+client.on(Events.GuildMemberUpdate, roleConsistency);
 client.on('messageCreate', (message) => {
     handleTriviaMessage(message).catch(err => console.error('Trivia handler error:', err));
 });
