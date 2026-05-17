@@ -2,7 +2,7 @@
 
 require('dotenv').config({ quiet: true });
 const { weights, releaseEmojis } = require('./helpers');
-const h = require('./helpers');   // needed for channel IDs
+const h = require('./helpers');
 
 const XP_MIN_CHARS = 5;
 
@@ -64,19 +64,39 @@ const XPLib = {
         })
       });
 
-      // ---------- Level‑up notification (xp channel) ----------
+      // ---------- Level‑up notification via webhook ----------
       if (newLevel > oldLevel) {
         const totalBonus = (newLevel * weights.xpFactor).toFixed(2);
         const s = releaseEmojis.SPARKLES;
 
         const xpChannel = message.guild.channels.cache.get(XP_CHANNEL_ID);
-        if (xpChannel) {
-          await xpChannel.send({
+        if (!xpChannel) return;
+
+        try {
+          // Fetch or create the "Leveling" webhook
+          const hooks = await xpChannel.fetchWebhooks();
+          let levelingWebhook = hooks.find(w => w.name === 'Leveling');
+
+          if (!levelingWebhook) {
+            levelingWebhook = await xpChannel.createWebhook({
+              name: 'Leveling',
+              avatar: h.urls.LOGO_URL   // same logo used everywhere
+            });
+          }
+
+          // Send the notification as the webhook
+          const notifyMsg = await levelingWebhook.send({
             content: `<@${message.author.id}> ${s} **Level Up!** ${s}\n` +
                      `You reached **Level ${newLevel}**!\n` +
                      `Your vote bonus is now **+${totalBonus}**.`,
-            allowedMentions: { users: [message.author.id] }
-          }).catch(() => {});
+            allowedMentions: { users: [message.author.id] },
+            username: 'Leveling',
+            avatarURL: h.urls.LOGO_URL
+          });
+
+          // Optional: delete after some time? (keeping it permanent for now)
+        } catch (webhookErr) {
+          console.error('Level‑up webhook error:', webhookErr);
         }
       }
 
