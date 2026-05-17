@@ -76,5 +76,4 @@ module.exports = function initAuditLogHandler(client) {
         await enforceRoleConsistency(member);
     });
 
-    console.log(`[AuditLogHandler] ✅ Watching audit log channel ${h.ids.channels.audit_log}`);
 };
