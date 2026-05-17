@@ -52,39 +52,39 @@ module.exports = function setupPollRoutes(app, client, supabase, supabaseRetry) 
     });
 
     // POLL RESULTS DATA
-app.get('/api/poll-results-data', async (req, res) => {
-    try {
-        if (cachedPollResultsData && (Date.now() - cachedPollResultsTime) < POLL_CACHE_TTL) {
-            return res.json(cachedPollResultsData);
+    app.get('/api/poll-results-data', async (req, res) => {
+        try {
+            if (cachedPollResultsData && (Date.now() - cachedPollResultsTime) < POLL_CACHE_TTL) {
+                return res.json(cachedPollResultsData);
+            }
+            const { data } = await supabaseRetry(() =>
+                supabase.from(h.tables.POLL_VOTES_FINAL)
+                    .select('character_name, score, selected_at')
+                    .order('option_id', { ascending: true })
+            );
+            // Fetch active poll end time
+            const { data: activePoll } = await supabaseRetry(() =>
+                supabase.from(h.tables.POLL_AUTO_RESUME)
+                    .select('ends_at')
+                    .gt('ends_at', new Date().toISOString())
+                    .order('id', { ascending: false })
+                    .limit(1)
+                    .maybeSingle()
+            );
+            const endTime = activePoll?.ends_at ? new Date(activePoll.ends_at).toISOString() : null;
+
+            const responseData = {
+                results: data || [],
+                endTime: endTime
+            };
+            cachedPollResultsData = responseData;
+            cachedPollResultsTime = Date.now();
+            res.json(responseData);
+        } catch (e) {
+            console.error('Poll results error:', e);
+            res.json(cachedPollResultsData || { results: [], endTime: null });
         }
-        const { data } = await supabaseRetry(() =>
-            supabase.from(h.tables.POLL_VOTES_FINAL)
-                .select('character_name, score, selected_at')
-                .order('option_id', { ascending: true })
-        );
-        // ---- NEW: fetch active poll end time ----
-        const { data: activePoll } = await supabaseRetry(() =>
-            supabase.from(h.tables.POLL_AUTO_RESUME)
-                .select('ends_at')
-                .gt('ends_at', new Date().toISOString())
-                .order('id', { ascending: false })
-                .limit(1)
-                .maybeSingle()
-        );
-        const endTime = activePoll?.ends_at ? new Date(activePoll.ends_at).toISOString() : null;
-        // ----------------------------------------
-        const responseData = {
-            results: data || [],
-            endTime: endTime
-        };
-        cachedPollResultsData = responseData;
-        cachedPollResultsTime = Date.now();
-        res.json(responseData);
-    } catch (e) {
-        console.error('Poll results error:', e);
-        res.json(cachedPollResultsData || { results: [], endTime: null });
-    }
-});
+    });
 
     // STOP POLL
     app.post('/api/stop-poll', async (req, res) => {
@@ -109,7 +109,6 @@ app.get('/api/poll-results-data', async (req, res) => {
                 const results = await pollService.getPollResults(pollMessage, characters);
                 const content = await pollService.generateMessageContent(0, results, characters, true);
                 
-                // Edit the poll message via the Poll webhook
                 const webhooks = await channel.fetchWebhooks();
                 const pollWebhook = webhooks.find(w => w.name === 'Poll');
                 if (pollWebhook) {
@@ -133,7 +132,7 @@ app.get('/api/poll-results-data', async (req, res) => {
         }
     });
 
-    // MARK WINNER
+    // MARK WINNER (combined message)
     app.post('/api/mark-winner', async (req, res) => {
         const { winner_name } = req.body;
         const e = h.releaseEmojis;
@@ -197,35 +196,35 @@ app.get('/api/poll-results-data', async (req, res) => {
                 scoreboard += line;
             });
 
-            // Send scoreboard via the Poll webhook
+            // Build single payload: scoreboard + optional image embed
             const webhooks = await channel.fetchWebhooks();
             const pollWebhook = webhooks.find(w => w.name === 'Poll');
-            if (pollWebhook) {
-                await pollWebhook.send({
-                    content: scoreboard,
-                    threadId: thread.id,
-                    username: 'Poll',
-                    avatarURL: h.urls.LOGO_URL
-                });
-            } else {
-                await thread.send(scoreboard);
-            }
 
-            // Send winner image embed (also via webhook for consistency)
+            const payload = {
+                content: scoreboard,
+                threadId: thread.id,
+                username: 'Poll',
+                avatarURL: h.urls.LOGO_URL,
+                embeds: []
+            };
+
             if (winnerOptionId) {
                 const imageUrl = `https://www.velutinx.com/images/poll/${winnerOptionId}.jpg`;
                 const embed = new EmbedBuilder().setImage(imageUrl).setColor(0x00FF00);
-                if (pollWebhook) {
-                    await pollWebhook.send({
-                        embeds: [embed],
-                        threadId: thread.id,
-                        username: 'Poll',
-                        avatarURL: h.urls.LOGO_URL
-                    });
+                payload.embeds.push(embed);
+            }
+
+            if (pollWebhook) {
+                await pollWebhook.send(payload);
+            } else {
+                // Fallback: send directly to thread
+                if (payload.embeds.length > 0) {
+                    await thread.send({ content: payload.content, embeds: payload.embeds });
                 } else {
-                    await thread.send({ embeds: [embed] });
+                    await thread.send(payload.content);
                 }
             }
+
             res.json({ success: true });
         } catch (err) {
             console.error('Mark winner error:', err);
