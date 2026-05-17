@@ -8,7 +8,6 @@ const CREATOR_ROLE = h.ids.roles.creator;
 const TIER_ROLES = Object.values(h.weights.tierMapping);
 
 module.exports = async function handleRoleUpdate(oldMember, newMember) {
-    console.log(`[RoleConsistency] Fired for ${newMember.user.tag}`);
     if (newMember.roles.cache.has(CREATOR_ROLE)) return;
 
     try {
