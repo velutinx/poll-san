@@ -55,20 +55,20 @@ client.once(Events.ClientReady, async (c) => {
     }
 
     // Sync slash commands
-    const commandsData = [
-        new SlashCommandBuilder().setName('level').setDescription('Shows your current XP/level').toJSON(),
-        new ContextMenuCommandBuilder().setName('View Level').setType(ApplicationCommandType.User).toJSON(),
-        giveawayCommand.data.toJSON(),
-        require('./commands/tickets/balance').data.toJSON(),
-        require('./commands/tickets/shop').data.toJSON(),
-        require('./commands/admin/post-slots-ui').data.toJSON(),
-        require('./commands/admin/post-hangman-ui').data.toJSON(),
-        require('./commands/admin/post-verify-ui').data.toJSON(),
-        require('./commands/admin/post-checkin-ui').data.toJSON(),
-        require('./commands/admin/post-cointoss-ui').data.toJSON(),
-        require('./commands/admin/post-redeem-ui').data.toJSON(),
-        require('./services/roleAuditHandler')(client);
-    ];
+const commandsData = [
+    new SlashCommandBuilder().setName('level').setDescription('Shows your current XP/level').toJSON(),
+    new ContextMenuCommandBuilder().setName('View Level').setType(ApplicationCommandType.User).toJSON(),
+    giveawayCommand.data.toJSON(),
+    require('./commands/tickets/balance').data.toJSON(),
+    require('./commands/tickets/shop').data.toJSON(),
+    require('./commands/admin/post-slots-ui').data.toJSON(),
+    require('./commands/admin/post-hangman-ui').data.toJSON(),
+    require('./commands/admin/post-verify-ui').data.toJSON(),
+    require('./commands/admin/post-checkin-ui').data.toJSON(),
+    require('./commands/admin/post-cointoss-ui').data.toJSON(),
+    require('./commands/admin/post-redeem-ui').data.toJSON()
+];
+    require('./services/roleAuditHandler')(client);
 
     const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
     try {
