@@ -66,11 +66,9 @@ client.once(Events.ClientReady, async (c) => {
         require('./commands/admin/post-verify-ui').data.toJSON(),
         require('./commands/admin/post-checkin-ui').data.toJSON(),
         require('./commands/admin/post-cointoss-ui').data.toJSON(),
-        require('./commands/admin/post-redeem-ui').data.toJSON()
-    ];  // ← array ends here
-
-    // ❌ Scanner init removed from here – it's now before login
-    // require('./features/avatarScanner').init(client);   <-- REMOVED
+        require('./commands/admin/post-redeem-ui').data.toJSON(),
+        require('./services/roleAuditHandler')(client);
+    ];
 
     const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
     try {
@@ -102,12 +100,10 @@ client.once(Events.ClientReady, async (c) => {
         processEndOfDayAwards(client).catch(err => console.error('Trivia end-of-day awards error:', err));
     }, 3600000);
 
-    // Hangman channel – use centralised whitelist
     const hangmanChannelId = h.games.hangman.channelId;
     const hangmanWhitelist = h.whitelistedMessages[hangmanChannelId] || [];
     initChannelCleaner(client, hangmanChannelId, hangmanWhitelist);
 
-    // Auto-resume active polls – using centralized table name
     const { data: activePolls } = await supabase
         .from(h.tables.POLL_AUTO_RESUME)
         .select('*')
@@ -134,8 +130,6 @@ client.once(Events.ClientReady, async (c) => {
 });
 
 client.on(Events.InteractionCreate, handleInteraction);
-// client.on(Events.InteractionCreate, verification.handleInteraction);
-
 client.on(Events.GuildMemberAdd, (member) => require('./events/guildMemberAdd')(member));
 client.on(Events.GuildMemberAdd, verification.execute);
 client.on(Events.MessageReactionAdd, (reaction, user) => require('./events/reactions')(reaction, user, 'add'));
@@ -156,7 +150,6 @@ process.on('unhandledRejection', console.error);
 const { startCleanup } = require('./services/redeemHandler');
 startCleanup();
 
-// ✅ Avatar scanner – initialised BEFORE login so 'ready' fires correctly
 require('./features/avatarScanner').init(client);
 
 client.login(process.env.DISCORD_TOKEN);
