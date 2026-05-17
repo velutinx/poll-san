@@ -182,6 +182,7 @@ module.exports = {
             supporter_forum: '1465937644394512516',
             mudae_roll: '1494520781244334291',
             admin_channel: '1504216521839345824',
+            audit_log: '1494737302260551822',
             xp_channel: '1504218575580430436'
         },
         users: {
