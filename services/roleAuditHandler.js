@@ -5,28 +5,20 @@ const MEMBER_ROLE = h.ids.roles.member;
 const CREATOR_ROLE = h.ids.roles.creator;
 const TIER_ROLES = Object.values(h.weights.tierMapping);
 
-// Regex to find the user ID from embed author field or field value
-const USER_ID_REGEX = /@.*?\((\d{17,20})\)/;  // matches @username (123456789...)
+// Audit messages are sent by webhooks. We’ll ignore our own bot’s webhook.
+const OWN_WEBHOOK_NAME = 'SapphireAPP';   // your bot’s name used for audit logs
 
-async function enforceRoleConsistency(member) {
-    // ignore creator
-    if (member.roles.cache.has(CREATOR_ROLE)) return;
+// Regex to extract role IDs from the embed’s description
+// Example: "Added: @Supporter, @✨ Bronze" or "Removed: @Supporter"
+const ROLE_MENTION_REGEX = /<@&(\d{17,20})>/g;
 
-    try {
-        const hasSupporter = member.roles.cache.has(SUPPORTER_ROLE);
-        const hasMember = member.roles.cache.has(MEMBER_ROLE);
-        const hasAnyPaidTier = TIER_ROLES.some(id => member.roles.cache.has(id));
-
-        if (hasSupporter && hasMember) {
-            await member.roles.remove(MEMBER_ROLE);
-            console.log(`[AuditLogHandler] Removed Member from ${member.user.tag} (now Supporter).`);
-        } else if (!hasSupporter && !hasMember && !hasAnyPaidTier) {
-            await member.roles.add(MEMBER_ROLE);
-            console.log(`[AuditLogHandler] Added Member to ${member.user.tag} (no longer Supporter).`);
-        }
-    } catch (err) {
-        console.error(`[AuditLogHandler] Error for ${member.user.tag}:`, err);
+function extractRoleIds(text) {
+    const ids = new Set();
+    let match;
+    while ((match = ROLE_MENTION_REGEX.exec(text)) !== null) {
+        ids.add(match[1]);
     }
+    return ids;
 }
 
 module.exports = function initAuditLogHandler(client) {
@@ -40,20 +32,26 @@ module.exports = function initAuditLogHandler(client) {
         if (message.channel.id !== h.ids.channels.audit_log) return;
         if (!message.embeds || message.embeds.length === 0) return;
 
-        // We need the embed that contains "User roles added" or "User roles removed"
-        const embed = message.embeds[0];
-        const title = embed.title || '';
-        const description = embed.description || '';
+        // Ignore messages from our own webhook to prevent loops
+        if (message.webhookId) {
+            try {
+                const webhook = await client.fetchWebhook(message.webhookId);
+                if (webhook.name === OWN_WEBHOOK_NAME) return;
+            } catch (_) { /* ignore if can't fetch */ }
+        }
 
-        // Determine if it's an add or remove event
+        const embed = message.embeds[0];
+        const description = embed.description || '';
+        const title = embed.title || '';
+
         const isAdd = title.includes('added') || description.includes('Added:');
         const isRemove = title.includes('removed') || description.includes('Removed:');
 
         if (!isAdd && !isRemove) return;
 
-        // Extract the user ID – it appears in the description like:
-        // "User: @Username (ID)" or just "User: @Username" with the ID elsewhere
-        const userIdMatch = description.match(/ID:\s*(\d{17,20})/) || description.match(USER_ID_REGEX);
+        // Extract the user ID from description (e.g., "User: @Pete (12345)" or "ID: 12345")
+        const userIdMatch = description.match(/ID:\s*(\d{17,20})/) ||
+                            description.match(/@.*?\((\d{17,20})\)/);
         if (!userIdMatch) return;
 
         const discordId = userIdMatch[1];
@@ -64,16 +62,43 @@ module.exports = function initAuditLogHandler(client) {
         try {
             member = await guild.members.fetch(discordId);
         } catch (err) {
-            // User may have left the server
             console.log(`[AuditLogHandler] User ${discordId} not in guild, skipping.`);
             return;
         }
 
-        // Wait a short moment for Discord to actually update the roles in cache
-        await new Promise(resolve => setTimeout(resolve, 200));
+        // Find out exactly which roles were added/removed from the embed
+        const changedRoleIds = extractRoleIds(description);
 
-        // Enforce consistency
-        await enforceRoleConsistency(member);
+        // ---- CASE: Supporter was ADDED ----
+        if (isAdd && changedRoleIds.has(SUPPORTER_ROLE)) {
+            // Remove Member and Unverified if they still exist
+            if (member.roles.cache.has(MEMBER_ROLE)) {
+                await member.roles.remove(MEMBER_ROLE);
+                console.log(`[AuditLogHandler] Removed Member from ${member.user.tag} (Supporter added).`);
+            }
+            if (member.roles.cache.has(h.ids.roles.unverified)) {
+                await member.roles.remove(h.ids.roles.unverified);
+                console.log(`[AuditLogHandler] Removed Unverified from ${member.user.tag} (Supporter added).`);
+            }
+            return;
+        }
+
+        // ---- CASE: Supporter was REMOVED ----
+        if (isRemove && changedRoleIds.has(SUPPORTER_ROLE)) {
+            // Wait a short time for Discord to propagate the role change
+            await new Promise(resolve => setTimeout(resolve, 500));
+            // Re-fetch to get definitive roles
+            const freshMember = await guild.members.fetch(discordId).catch(() => null);
+            if (!freshMember) return;
+
+            const hasAnyPaidTier = TIER_ROLES.some(roleId => freshMember.roles.cache.has(roleId));
+            if (!hasAnyPaidTier && !freshMember.roles.cache.has(MEMBER_ROLE)) {
+                await freshMember.roles.add(MEMBER_ROLE);
+                console.log(`[AuditLogHandler] Added Member to ${freshMember.user.tag} (Supporter removed).`);
+            }
+            return;
+        }
     });
 
+    console.log(`[AuditLogHandler] ✅ Watching audit log channel ${h.ids.channels.audit_log}`);
 };
