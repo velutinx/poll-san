@@ -4,7 +4,7 @@ const supabase = require('../services/supabase');
 const { supabaseRetry } = require('./db');
 const h = require('./helpers');
 
-const ADMIN_ID = h.ids.users.Velutinx;      // still used for DM fallback if channel missing
+const ADMIN_ID = h.ids.users.Velutinx;      // only used for member DM link
 
 async function sendMembershipMessage(client, discordId, membership) {
   const now = new Date().toISOString();
@@ -46,11 +46,11 @@ async function sendMembershipMessage(client, discordId, membership) {
     console.error(`Failed to send DM to ${member.tag}:`, err.message);
   });
 
-  // ----- 2. Admin notification → private channel instead of DM -----
+  // ----- 2. Admin notification → private channel (NO DM fallback) -----
   const adminChannelId = h.ids.channels.admin_channel;
-  const adminChannel = client.channels.cache.get(adminChannelId);
-
-  if (adminChannel) {
+  try {
+    // fetch the channel even if not cached
+    const adminChannel = await client.channels.fetch(adminChannelId);
     const expiryFormatted = new Date(membership.expires_at).toLocaleDateString('en-US', {
       year: 'numeric',
       month: 'long',
@@ -63,17 +63,11 @@ async function sendMembershipMessage(client, discordId, membership) {
 
     await adminChannel.send({
       content: adminMessage,
-      allowedMentions: { users: [] }   // no ping, just info
-    }).catch(err => console.error('Failed to send admin channel notification:', err));
-  } else {
-    // Fallback: DM admin if the channel is missing
-    console.warn('Admin channel not found, falling back to DM');
-    const admin = await client.users.fetch(ADMIN_ID).catch(() => null);
-    if (admin) {
-      const expiryFormatted = new Date(membership.expires_at).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
-      const adminMessage = `📢 **New membership period started for [DM ${member.tag}](${`https://discord.com/users/${discordId}`})**\nTier: ${tierName}\nExpires on ${expiryFormatted}\nPlease reach out to them.`;
-      await admin.send(adminMessage).catch(err => console.error(`Failed to send DM to admin:`, err.message));
-    }
+      allowedMentions: { users: [] }
+    });
+  } catch (err) {
+    console.error('Failed to send admin channel notification (admin channel not found or send failed):', err.message);
+    // No DM fallback – you won't be pinged again
   }
 
   // ----- 3. Log the action -----
