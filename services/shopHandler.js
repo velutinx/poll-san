@@ -4,7 +4,6 @@ const { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, MessageFlags
 const h = require('../utils/helpers');
 const supabase = require('./supabase');
 
-// Shop items definition
 const SHOP_ITEMS = [
     {
         id: 'custom_request',
@@ -16,29 +15,30 @@ const SHOP_ITEMS = [
 ];
 
 async function handleShopSelect(interaction) {
+    // Acknowledge immediately so we can fetch data safely
+    await interaction.deferUpdate();
+
     const selectedId = interaction.values[0];
     const item = SHOP_ITEMS.find(i => i.id === selectedId);
     if (!item) {
-        return interaction.reply({ content: '❌ Item not found.', flags: { ephemeral: true } });
+        return interaction.followUp({ content: '❌ Item not found.', flags: MessageFlags.Ephemeral });
     }
 
     const { data: userData, error } = await supabase
-        .from(h.tables.GAMES_WORDLE)   // 👈 changed
+        .from(h.tables.GAMES_WORDLE)
         .select('ticket_count')
         .eq('discord_id', interaction.user.id)
         .maybeSingle();
 
     if (error) {
         console.error('Balance fetch error in shop select:', error);
-        return interaction.reply({ content: '❌ Could not retrieve your balance.', flags: { ephemeral: true } });
+        return interaction.followUp({ content: '❌ Could not retrieve your balance.', flags: MessageFlags.Ephemeral });
     }
 
     const balance = userData?.ticket_count || 0;
-    const itemDescription = item.description || 'No description available.';
-
     const embed = new EmbedBuilder()
         .setTitle(`${item.emoji} ${item.name}`)
-        .setDescription(itemDescription)
+        .setDescription(item.description || 'No description available.')
         .addFields(
             { name: 'Cost', value: `${item.cost} Tickets`, inline: true },
             { name: 'Your Balance', value: `${balance} Tickets`, inline: true },
@@ -54,7 +54,8 @@ async function handleShopSelect(interaction) {
 
     const row = new ActionRowBuilder().addComponents(buyButton);
 
-    await interaction.update({
+    // Edit the original message (the shop selection message)
+    await interaction.editReply({
         embeds: [embed],
         components: [row],
         flags: MessageFlags.Ephemeral
@@ -62,23 +63,26 @@ async function handleShopSelect(interaction) {
 }
 
 async function handleShopPurchase(interaction) {
+    // Acknowledge immediately
+    await interaction.deferUpdate();
+
     const item = SHOP_ITEMS[0];
 
     const { data: userData, error: fetchError } = await supabase
-        .from(h.tables.GAMES_WORDLE)   // 👈 changed
+        .from(h.tables.GAMES_WORDLE)
         .select('ticket_count')
         .eq('discord_id', interaction.user.id)
         .maybeSingle();
 
     if (fetchError) {
         console.error('Fetch balance error:', fetchError);
-        return interaction.reply({ content: '❌ Error checking balance.', flags: { ephemeral: true } });
+        return interaction.followUp({ content: '❌ Error checking balance.', flags: MessageFlags.Ephemeral });
     }
 
     const balance = userData?.ticket_count || 0;
 
     if (balance < item.cost) {
-        return interaction.reply({ content: '❌ You do not have enough tickets.', flags: { ephemeral: true } });
+        return interaction.followUp({ content: '❌ You do not have enough tickets.', flags: MessageFlags.Ephemeral });
     }
 
     const { data: newBalance, error: deductError } = await supabase
@@ -86,11 +90,11 @@ async function handleShopPurchase(interaction) {
 
     if (deductError) {
         console.error('Deduct error:', deductError);
-        return interaction.reply({ content: '❌ Purchase failed. Please try again.', flags: { ephemeral: true } });
+        return interaction.followUp({ content: '❌ Purchase failed. Please try again.', flags: MessageFlags.Ephemeral });
     }
 
     const { error: logError } = await supabase
-        .from(h.tables.GAMES_PURCHASES)   // 👈 changed
+        .from(h.tables.GAMES_PURCHASES)
         .insert({
             discord_id: interaction.user.id,
             discord_username: interaction.user.username,
@@ -119,7 +123,8 @@ async function handleShopPurchase(interaction) {
         )
         .setColor('#00FFCC');
 
-    await interaction.update({
+    // Update the original ephemeral shop message
+    await interaction.editReply({
         embeds: [embed],
         components: [],
         flags: MessageFlags.Ephemeral
