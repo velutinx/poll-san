@@ -108,17 +108,106 @@ async function handleCheckinClaim(interaction) {
 
     const cooldownMap = global.checkinCooldown || new Map();
     if (!global.checkinCooldown) global.checkinCooldown = cooldownMap;
+
+    // Look for an existing valid message session to edit
+    let existingSession = checkinSessions.get(gameKey);
+    let hasValidSession = existingSession && (Date.now() - existingSession.timestamp < 14 * 60 * 1000);
+
+    let finalContent = '';
+    let runDatabaseCheck = true;
+
+    // 1. Rate Limit Check (Anti-spam protection)
     const lastClick = cooldownMap.get(userId);
     if (lastClick && Date.now() - lastClick < 2000) {
-        return interaction.reply({ content: '⏳ You’re clicking too fast!', flags: 64 });
+        finalContent = '⏳ You’re clicking too fast!';
+        runDatabaseCheck = false; // Bypass database transactions if spamming
+    } else {
+        cooldownMap.set(userId, Date.now());
     }
-    cooldownMap.set(userId, Date.now());
 
-    let existingSession = checkinSessions.get(gameKey);
+    // 2. Cooldown & Claim Verification
+    if (runDatabaseCheck) {
+        let { data: userData, error } = await supabase
+            .from(helpers.tables.GAMES_USER_DATA)
+            .select('*')
+            .eq('user_id', userId)
+            .maybeSingle();
+
+        if (error) console.error('Fetch error:', error);
+
+        const now = new Date();
+        let canClaim = true;
+        let timeLeft = '';
+
+        if (userData?.last_checkin) {
+            const diffHours = (now - new Date(userData.last_checkin)) / (1000 * 60 * 60);
+            if (diffHours < 24) {
+                canClaim = false;
+                const remainingMs = 24 * 60 * 60 * 1000 - (now - new Date(userData.last_checkin));
+                timeLeft = `${Math.floor(remainingMs / (1000 * 60 * 60))}h ${Math.floor((remainingMs % (1000 * 60 * 60)) / (1000 * 60))}m`;
+            }
+        }
+
+        if (!canClaim) {
+            finalContent = `⏳ You already claimed your daily reward! Come back in **${timeLeft}**.`;
+        } else {
+            const ticketAmount = helpers.CHECKIN_REWARD_TICKETS;
+            const currentTickets = userData?.tickets || 0;
+            const newBalance = currentTickets + ticketAmount;
+            const nowIso = now.toISOString();
+            const discordUsername = interaction.user.tag;
+            const displayName = interaction.member?.displayName || interaction.user.globalName || interaction.user.username;
+
+            const updatePayload = {
+                tickets: newBalance,
+                last_checkin: nowIso,
+                wordle_last_played: null,
+                hangman_last_played: null,
+                trivia_last_played: null,
+                updated_at: nowIso,
+                discord_username: discordUsername,
+                display_name: displayName,
+                reminder_sent: false
+            };
+
+            if (userData) {
+                const { error: updateError } = await supabase
+                    .from(helpers.tables.GAMES_USER_DATA)
+                    .update(updatePayload)
+                    .eq('user_id', userId);
+                if (updateError) console.error('Update error:', updateError);
+                else finalContent = buildSuccessMessage(ticketAmount, newBalance);
+            } else {
+                const { error: insertError } = await supabase
+                    .from(helpers.tables.GAMES_USER_DATA)
+                    .insert({ user_id: userId, ...updatePayload });
+                if (insertError) console.error('Insert error:', insertError);
+                else finalContent = buildSuccessMessage(ticketAmount, newBalance);
+            }
+
+            if (finalContent === '') {
+                finalContent = '❌ Database error.';
+            } else {
+                // Reset hangman cooldown status
+                try {
+                    await supabase
+                        .from(helpers.tables.GAMES_COOLDOWNS)
+                        .delete()
+                        .eq('discord_id', userId)
+                        .eq('game_type', 'hangman');
+                } catch (err) {
+                    console.error('Cooldown delete error:', err);
+                }
+            }
+        }
+    }
+
+    // 3. Response Execution Engine (Binds layout states together)
     let messageUpdated = false;
 
-    if (existingSession && (Date.now() - existingSession.timestamp < 14 * 60 * 1000)) {
+    if (hasValidSession) {
         try {
+            // Acknowledge the instant button interaction securely 
             await interaction.deferUpdate();
             messageUpdated = true;
         } catch (err) {
@@ -126,92 +215,18 @@ async function handleCheckinClaim(interaction) {
         }
     }
 
-    if (!messageUpdated) {
-        await interaction.deferReply({ flags: 64 });
-    }
-
-    let { data: userData, error } = await supabase
-        .from(helpers.tables.GAMES_USER_DATA)
-        .select('*')
-        .eq('user_id', userId)
-        .maybeSingle();
-
-    if (error) console.error('Fetch error:', error);
-
-    const now = new Date();
-    let canClaim = true;
-    let timeLeft = '';
-
-    if (userData?.last_checkin) {
-        const diffHours = (now - new Date(userData.last_checkin)) / (1000 * 60 * 60);
-        if (diffHours < 24) {
-            canClaim = false;
-            const remainingMs = 24 * 60 * 60 * 1000 - (now - new Date(userData.last_checkin));
-            timeLeft = `${Math.floor(remainingMs / (1000 * 60 * 60))}h ${Math.floor((remainingMs % (1000 * 60 * 60)) / (1000 * 60))}m`;
-        }
-    }
-
-    let finalContent = '';
-    if (!canClaim) {
-        finalContent = `⏳ You already claimed your daily reward! Come back in **${timeLeft}**.`;
-    } else {
-        const ticketAmount = helpers.CHECKIN_REWARD_TICKETS;
-        const currentTickets = userData?.tickets || 0;
-        const newBalance = currentTickets + ticketAmount;
-        const nowIso = now.toISOString();
-        const discordUsername = interaction.user.tag;
-        const displayName = interaction.member?.displayName || interaction.user.globalName || interaction.user.username;
-
-        const updatePayload = {
-            tickets: newBalance,
-            last_checkin: nowIso,
-            wordle_last_played: null,
-            hangman_last_played: null,
-            trivia_last_played: null,
-            updated_at: nowIso,
-            discord_username: discordUsername,
-            display_name: displayName,
-            reminder_sent: false
-        };
-
-        if (userData) {
-            const { error: updateError } = await supabase
-                .from(helpers.tables.GAMES_USER_DATA)
-                .update(updatePayload)
-                .eq('user_id', userId);
-            if (updateError) console.error('Update error:', updateError);
-            else finalContent = buildSuccessMessage(ticketAmount, newBalance);
-        } else {
-            const { error: insertError } = await supabase
-                .from(helpers.tables.GAMES_USER_DATA)
-                .insert({ user_id: userId, ...updatePayload });
-            if (insertError) console.error('Insert error:', insertError);
-            else finalContent = buildSuccessMessage(ticketAmount, newBalance);
-        }
-
-        if (finalContent === '') finalContent = '❌ Database error.';
-        else {
-            // Reset hangman cooldown (safe, wrapped in try/catch)
-            try {
-                await supabase
-                    .from(helpers.tables.GAMES_COOLDOWNS)
-                    .delete()
-                    .eq('discord_id', userId)
-                    .eq('game_type', 'hangman');
-            } catch (err) {
-                console.error('Cooldown delete error:', err);
-            }
-        }
-    }
-
     if (messageUpdated) {
         try {
+            // Update context onto the original active ephemeral target 
             await existingSession.interaction.webhook.editMessage(existingSession.messageId, { content: finalContent });
         } catch {
+            // If the message was dismissed or expired, provide a clean replacement fallback
             const msg = await interaction.followUp({ content: finalContent, flags: 64, fetchReply: true });
             checkinSessions.set(gameKey, { interaction, messageId: msg.id, timestamp: Date.now() });
         }
     } else {
+        // Build out the baseline fallback if no tracking context was found
+        await interaction.deferReply({ flags: 64 });
         const msg = await interaction.editReply({ content: finalContent });
         checkinSessions.set(gameKey, { interaction, messageId: msg.id, timestamp: Date.now() });
     }
