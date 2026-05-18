@@ -13,7 +13,7 @@ const helpers = require('../utils/helpers');
 const { consolidateExistingClaims } = require('./seriesConsolidator');
 
 // ---- Session cleanup for the series selection (character request) ----
-const activeSessions = new Map(); // userId -> { seriesList, timestamp }
+const activeSessions = new Map();
 let cleanupInterval = null;
 
 function startCleanup() {
@@ -44,7 +44,6 @@ async function notifyAdmin(interaction, message) {
         const adminUser = await interaction.client.users.fetch(adminId);
         if (adminUser) {
             await adminUser.send(message);
-        //    console.log(`📨 Admin notified: ${message.split('\n')[0]}`);
         } else {
             console.error('❌ Could not fetch admin user.');
         }
@@ -53,17 +52,15 @@ async function notifyAdmin(interaction, message) {
     }
 }
 
-// ============ CHARACTER REQUEST (existing flow) ============
+// ============ CHARACTER REQUEST ============
 async function handleRedeemStart(interaction) {
     const userId = interaction.user.id;
     const cost = helpers.redeem.characterRequestCost;
 
     await interaction.deferReply({ flags: 64, withResponse: true });
 
-    // ✅ Automatically consolidate series aliases before fetching claims
     await consolidateExistingClaims();
 
-    // Ticket check
     const { data: userData } = await supabase
         .from(helpers.tables.GAMES_USER_DATA)
         .select('tickets')
@@ -75,7 +72,6 @@ async function handleRedeemStart(interaction) {
         return interaction.editReply(`❌ You need **${cost}** tickets, but you only have **${balance}**.`);
     }
 
-    // Fetch distinct series from mudae claims
     const { data: claims } = await supabase
         .from(helpers.tables.GAMES_MUDAE_CLAIMS)
         .select('series')
@@ -124,16 +120,19 @@ async function handleRedeemStart(interaction) {
 
 async function handleRedeemSeries(interaction, index) {
     const userId = interaction.user.id;
-    const session = activeSessions.get(userId);
     const cost = helpers.redeem.characterRequestCost;
 
+    // ✅ Defer IMMEDIATELY – all later responses use editReply
+    await interaction.deferReply({ flags: 64 });
+
+    const session = activeSessions.get(userId);
     if (!session) {
-        return interaction.reply({ content: '❌ Session expired. Please start again.', flags: 64 });
+        return interaction.editReply('❌ Session expired. Please start again.');
     }
 
     const seriesList = session.seriesList;
     if (index < 0 || index >= seriesList.length) {
-        return interaction.reply({ content: '❌ Invalid selection.', flags: 64 });
+        return interaction.editReply('❌ Invalid selection.');
     }
 
     const selectedSeries = seriesList[index];
@@ -146,7 +145,7 @@ async function handleRedeemSeries(interaction, index) {
     const balance = userData?.tickets || 0;
 
     if (balance < cost) {
-        await interaction.reply({ content: `❌ Insufficient tickets (need ${cost}, have ${balance}).`, flags: 64 });
+        await interaction.editReply(`❌ Insufficient tickets (need ${cost}, have ${balance}).`);
         activeSessions.delete(userId);
         return;
     }
@@ -159,7 +158,7 @@ async function handleRedeemSeries(interaction, index) {
 
     if (updateError) {
         console.error('Redeem deduction error:', updateError);
-        await interaction.reply({ content: '❌ Database error. Tickets not deducted.', flags: 64 });
+        await interaction.editReply('❌ Database error. Tickets not deducted.');
         activeSessions.delete(userId);
         return;
     }
@@ -174,26 +173,23 @@ async function handleRedeemSeries(interaction, index) {
 
     if (insertError) {
         console.error('Request insert error:', insertError);
-        // Refund
         await supabase.from(helpers.tables.GAMES_USER_DATA).update({ tickets: balance }).eq('user_id', userId);
-        await interaction.reply({ content: '❌ Failed to record your request. Tickets have been refunded.', flags: 64 });
+        await interaction.editReply('❌ Failed to record your request. Tickets have been refunded.');
         activeSessions.delete(userId);
         return;
     }
 
-    await interaction.reply({
-        content: `✅ Request recorded! You requested a character from **${selectedSeries}**.\nYour new balance: **${newBalance}** tickets.`,
-        flags: 64
-    });
+    await interaction.editReply(`✅ Request recorded! You requested a character from **${selectedSeries}**.\nYour new balance: **${newBalance}** tickets.`);
     activeSessions.delete(userId);
 
-    // DM admin
     await notifyAdmin(interaction, `🎁 <@${userId}> (${interaction.user.tag}) requested a character from **${selectedSeries}**.\nBalance: ${newBalance} tickets.`);
 }
 
 async function handleRedeemCancel(interaction) {
+    // ✅ Defer first
+    await interaction.deferReply({ flags: 64 });
     activeSessions.delete(interaction.user.id);
-    await interaction.reply({ content: 'Request cancelled.', flags: 64 });
+    await interaction.editReply('Request cancelled.');
 }
 
 // ============ VOTE BOOST ============
@@ -236,14 +232,12 @@ async function handleRedeemVoteBoost(interaction) {
 
     if (insertError) {
         console.error('Vote boost insert error:', insertError);
-        // Refund
         await supabase.from(helpers.tables.GAMES_USER_DATA).update({ tickets: balance }).eq('user_id', userId);
         return interaction.editReply('❌ Failed to record your boost. Tickets have been refunded.');
     }
 
     await interaction.editReply(`✅ **Vote Boost activated!** Your poll votes will count double for 7 days.\nNew balance: **${newBalance}** tickets.`);
 
-    // DM admin
     await notifyAdmin(interaction, `🗳️ <@${userId}> (${interaction.user.tag}) purchased a **Vote Boost** (7 days). Balance: ${newBalance} tickets.`);
 }
 
@@ -252,7 +246,10 @@ async function handleRedeemSuggestCharacter(interaction) {
     const userId = interaction.user.id;
     const cost = helpers.redeem.suggestCost;
 
-    // Quick ticket check before showing modal
+    // ✅ Defer first, then check tickets. If insufficient, editReply. If OK, show modal (which is fine after defer? Actually showModal can't be used after defer. We need to check tickets BEFORE deferring or use a different flow.)
+    // So we must do the ticket check WITHOUT deferring, but we can avoid timeout by making it fast. The supabase query is quick; we'll keep the original approach but wrap in a try-catch with a fallback defer if needed.
+    // However, to be safe, we can defer only if tickets are insufficient? No, because if tickets are OK we need to showModal which cannot be done after defer. So we keep the original logic: quick query, if balance < cost reply immediately (no defer). If balance >= cost, showModal directly (no defer). That's safe because both reply and showModal are immediate responses. The only risk is if the supabase query takes >3s, but that's rare. We'll leave it as is.
+    
     const { data: userData } = await supabase
         .from(helpers.tables.GAMES_USER_DATA)
         .select('tickets')
@@ -296,14 +293,17 @@ async function handleRedeemSuggestCharacter(interaction) {
 async function handleSuggestModalSubmit(interaction) {
     const userId = interaction.user.id;
     const cost = helpers.redeem.suggestCost;
+
+    // ✅ Defer the modal submission to avoid timeout
+    await interaction.deferReply({ flags: 64 });
+
     const characterName = interaction.fields.getTextInputValue('suggest_character_name')?.trim();
     const series = interaction.fields.getTextInputValue('suggest_character_series')?.trim() || 'Not provided';
 
     if (!characterName) {
-        return interaction.reply({ content: '❌ Character name is required.', flags: 64 });
+        return interaction.editReply('❌ Character name is required.');
     }
 
-    // Re-check tickets
     const { data: userData } = await supabase
         .from(helpers.tables.GAMES_USER_DATA)
         .select('tickets')
@@ -312,14 +312,12 @@ async function handleSuggestModalSubmit(interaction) {
     const balance = userData?.tickets || 0;
 
     if (balance < cost) {
-        return interaction.reply({ content: `❌ Insufficient tickets (need ${cost}, have ${balance}).`, flags: 64 });
+        return interaction.editReply(`❌ Insufficient tickets (need ${cost}, have ${balance}).`);
     }
 
-    // Deduct
     const newBalance = balance - cost;
     await supabase.from(helpers.tables.GAMES_USER_DATA).update({ tickets: newBalance }).eq('user_id', userId);
 
-    // Record suggestion
     await supabase.from('games_character_suggestions').insert({
         user_id: userId,
         username: interaction.user.tag,
@@ -327,12 +325,8 @@ async function handleSuggestModalSubmit(interaction) {
         series: series
     });
 
-    await interaction.reply({
-        content: `✅ Suggestion recorded: **${characterName}**${series !== 'Not provided' ? ` (${series})` : ''}.\nNew balance: **${newBalance}** tickets.`,
-        flags: 64
-    });
+    await interaction.editReply(`✅ Suggestion recorded: **${characterName}**${series !== 'Not provided' ? ` (${series})` : ''}.\nNew balance: **${newBalance}** tickets.`);
 
-    // DM admin
     await notifyAdmin(interaction, `💬 <@${userId}> (${interaction.user.tag}) suggested:\n**Character:** ${characterName}\n**Series:** ${series}\nPlease consider it for the next poll.`);
 }
 
