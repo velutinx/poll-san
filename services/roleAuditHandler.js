@@ -100,5 +100,4 @@ module.exports = function initAuditLogHandler(client) {
         }
     });
 
-    console.log(`[AuditLogHandler] ✅ Watching audit log channel ${h.ids.channels.audit_log}`);
 };
