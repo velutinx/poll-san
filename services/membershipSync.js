@@ -130,16 +130,22 @@ async function sendMembershipMessage(client, discordId, membership) {
     if (success) {
       await recordMessageSent(discordId, orderId, lang, membership, discordName);
 
+      // ---- Admin notification → admin_channel (NO DM) ----
       try {
-        const owner = await client.users.fetch(OWNER_ID);
+        const adminChannelId = h.ids.channels.admin_channel;
+        const adminChannel = await client.channels.fetch(adminChannelId);
         const userLink = `[${discordName}](https://discord.com/users/${discordId})`;
         const adminMsg = `${h.releaseEmojis.SPARKLES} **New membership period started for** ${userLink}\n` +
                          `**Tier:** ${tierName}\n` +
                          `**Expires on:** ${formatDate(expiresAt)}\n` +
                          `*Please reach out to them.*`;
-        await owner.send({ content: adminMsg, flags: ["SuppressEmbeds"] });
-      } catch (adminErr) {
-        console.error('[MembershipSync] Could not notify owner:', adminErr.message);
+        await adminChannel.send({
+          content: adminMsg,
+          allowedMentions: { users: [] }
+        });
+      } catch (channelErr) {
+        console.error('[MembershipSync] Could not send to admin channel:', channelErr.message);
+        // No DM fallback – you'll see errors only in logs
       }
     }
   } catch (err) {
