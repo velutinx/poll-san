@@ -1,6 +1,6 @@
 // handlers/interactionHandler.js
 
-const supabase = require('../services/supabase');  // ✅ correct path
+const supabase = require('../services/supabase');
 const helpers = require('../utils/helpers');
 const giveawayCommand = require('../commands/giveaway');
 const { handleSlotsBet } = require('../services/slotsHandler');
@@ -191,11 +191,16 @@ async function handleCheckinClaim(interaction) {
 
         if (finalContent === '') finalContent = '❌ Database error.';
         else {
-            await supabase.from(helpers.tables.GAMES_COOLDOWNS)
-                .delete()
-                .eq('discord_id', userId)
-                .eq('game_type', 'hangman')
-                .catch(() => {});
+            // Reset hangman cooldown (safe, wrapped in try/catch)
+            try {
+                await supabase
+                    .from(helpers.tables.GAMES_COOLDOWNS)
+                    .delete()
+                    .eq('discord_id', userId)
+                    .eq('game_type', 'hangman');
+            } catch (err) {
+                console.error('Cooldown delete error:', err);
+            }
         }
     }
 
