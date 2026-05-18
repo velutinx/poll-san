@@ -127,6 +127,11 @@ const commandsData = [
     const { restoreGiveaways } = require('./commands/giveaway');
     await restoreGiveaways(client).catch(console.error);
     initMudaeMessageHandler(client);
+
+    setInterval(async () => {
+    const guild = client.guilds.cache.get(process.env.GUILD_ID);
+    if (guild) await require('./services/accessGuard')(guild);
+}, 60_000);
 });
 
 client.on(Events.InteractionCreate, handleInteraction);
