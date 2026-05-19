@@ -22,7 +22,7 @@ module.exports = {
         // If user already has Supporter (e.g., from external sync), skip Unverified role
         const supporterRoleId = helpers.ids.roles.supporter;
         if (member.roles.cache.has(supporterRoleId)) {
-            console.log(`[Verify] ${member.user.tag} is already a supporter – skipping unverified role.`);
+      //      console.log(`[Verify] ${member.user.tag} is already a supporter – skipping unverified role.`);
             return;
         }
 
