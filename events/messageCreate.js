@@ -95,7 +95,7 @@ module.exports = async (message) => {
     // Delete the original win message quickly (clean up)
     setTimeout(() => {
         message.delete().catch(() => {});
-    }, 2000);
+    }, 600000); // change back to 2000
 
     // ======================================================
     //   Webhook notification – sends as "Rewards"
@@ -124,7 +124,7 @@ module.exports = async (message) => {
 
         // Delete after 8 seconds
         if (notifyMsg) {
-            setTimeout(() => notifyMsg.delete().catch(() => {}), 8000);
+            setTimeout(() => notifyMsg.delete().catch(() => {}), 600000); // change back to 8000
         }
     } catch (err) {
         console.error('Webhook notification error:', err);
