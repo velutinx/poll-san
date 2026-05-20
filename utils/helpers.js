@@ -65,6 +65,7 @@ module.exports = {
         CONFETTI: '<a:confetti:1491689074002755664>',
         SPARKLES: '<a:sparkles:1491697348718493786>',
         PROGRESS: '<a:progress:1491670111923212308>',
+        DICE: '<a:dice:1491669867441426542>',
         CATCOIN: '<a:catcoin:1506632039749910598>',
         YOSHICOIN: '<:yoshicoin:1506632090165313586>',
         SKULL: '<:skull:1506692152313512046>',
