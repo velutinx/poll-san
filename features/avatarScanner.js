@@ -10,14 +10,14 @@ const {
 const { ids, sightengine, releaseEmojis } = require('../utils/helpers');
 const supabase = require('../services/supabase');
 
-const ALERT_EMOJI = releaseEmojis.ALERT;  // <a:alert:1493698480034676736>
+const ALERT_EMOJI = releaseEmojis.ALERT;
 
 // ========== CONFIG ==========
 const NUDITY_THRESHOLD = 0.3;
 const MASS_SCAN_THRESHOLD = 0.3;
 const SCAN_DELAY_MS = 2000;
 const MONTHLY_CREDITS = 2000;
-const PROMPT_HOURS = [14, 16, 18];      // 2 PM, 4 PM, 6 PM (GMT-7)
+const PROMPT_HOURS = [14, 16, 18];
 
 // ========== SIGHTENGINE SCAN ==========
 async function scanWithSightengine(url) {
@@ -31,12 +31,11 @@ async function scanWithSightengine(url) {
         method: 'POST',
         body: formData,
     });
-
     await incrementCreditsUsed(1);
     return res.json();
 }
 
-// ========== NSFWCheckers (FREE FOREVER, no API key) ==========
+// ========== NSFWCheckers ==========
 async function scanWithNSFWCheckers(url) {
     const imageRes = await fetch(url);
     if (!imageRes.ok) throw new Error(`Failed to download image: ${imageRes.status}`);
@@ -44,7 +43,6 @@ async function scanWithNSFWCheckers(url) {
 
     const formData = new FormData();
     formData.append('image', new Blob([imageBuffer]), 'avatar.webp');
-
     const res = await fetch('https://api.nsfwcheckers.workers.dev', {
         method: 'POST',
         body: formData,
@@ -156,9 +154,7 @@ async function applyDenyOverwrites(guild, member) {
                 c => c.parentId === category.id && c.isTextBased()
             );
             for (const child of children.values()) {
-                if (!channelIds.includes(child.id)) {
-                    channelIds.push(child.id);
-                }
+                if (!channelIds.includes(child.id)) channelIds.push(child.id);
             }
         }
     }
@@ -185,9 +181,7 @@ async function removeDenyOverwrites(guild, member) {
                 c => c.parentId === category.id && c.isTextBased()
             );
             for (const child of children.values()) {
-                if (!channelIds.includes(child.id)) {
-                    channelIds.push(child.id);
-                }
+                if (!channelIds.includes(child.id)) channelIds.push(child.id);
             }
         }
     }
@@ -255,7 +249,6 @@ async function alertOwner(client, member, sightResult, nsfwCheckersResult, {
     const nsfwCheckersScore = nsfwCheckersResult?.score ?? 'N/A';
     const nsfwCheckersVerdict = nsfwCheckersResult?.nsfw ?? 'N/A';
 
-    // Build Sightengine field name with credits if applicable
     let sightFieldName = 'Sightengine';
     if (includeCredits && sightResult) {
         const remaining = await getCreditsRemaining();
@@ -290,7 +283,6 @@ async function alertOwner(client, member, sightResult, nsfwCheckersResult, {
         );
         components.push(row);
     } else {
-        // Clean scan – still offer "Add to Ignore" button for tracking
         const row = new ActionRowBuilder().addComponents(
             new ButtonBuilder()
                 .setCustomId(`ignore_avatar_${member.id}`)
@@ -355,15 +347,12 @@ async function processMember(client, member, threshold = NUDITY_THRESHOLD) {
             sightNudity >= threshold ||
             (nsfwCheckersScore !== null && nsfwCheckersScore >= threshold);
 
-        // Always notify owner – with Add to Ignore button on clean scans
         await alertOwner(client, member, sightResult, nsfwCheckersResult, {
             isFlagged: flagged,
             extraText: ''
         });
 
-        if (flagged) {
-            console.log(`[AvatarScan] Flagged: ${member.user.tag}`);
-        }
+        if (flagged) console.log(`[AvatarScan] Flagged: ${member.user.tag}`);
     } catch (err) {
         console.error(`[AvatarScan] Error scanning ${member.user.tag}:`, err.message);
     }
@@ -398,7 +387,7 @@ async function scanAllMembersWithFreeAPI(client) {
         members = await fetchMembers();
     } catch (err) {
         console.error('[MassScan] Could not fetch members, aborting scan:', err.message);
-        return;
+        throw err; // rethrow so the caller knows we failed
     }
 
     const memberArray = [...members.values()];
@@ -433,6 +422,8 @@ async function scanAllMembersWithFreeAPI(client) {
             await new Promise(resolve => setTimeout(resolve, SCAN_DELAY_MS));
         }
     }
+
+    console.log(`[MassScan] Finished scanning ${scanned} members, flagged ${flagged}.`);
 }
 
 // ========== DAILY FREE MASS SCAN GATING ==========
@@ -766,9 +757,9 @@ function init(client) {
 
     client.on(Events.UserUpdate, onUserUpdate);
 
-    // ------------------------------------------------------------------
-    //  CHANGED: Daily‑gated mass scan on startup (free API only)
-    // ------------------------------------------------------------------
+    // ---------------------------------------------------------------
+    //  DAILY‑GATED FREE MASS SCAN (with clear completion logging)
+    // ---------------------------------------------------------------
     client.once(Events.ClientReady, async () => {
         setTimeout(async () => {
             try {
@@ -776,11 +767,12 @@ function init(client) {
                     console.log('[MassScan] Running daily free mass scan...');
                     await scanAllMembersWithFreeAPI(client);
                     await markMassScanDoneToday();
+                    console.log('[MassScan] Daily free mass scan finished and date recorded.');
                 } else {
                     console.log('[MassScan] Already scanned today, skipping free mass scan.');
                 }
             } catch (err) {
-                console.error('[MassScan] Error during daily gated scan:', err);
+                console.error('[MassScan] Fatal error during daily free mass scan (will retry next restart):', err);
             }
         }, 30000);
 
