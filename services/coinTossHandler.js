@@ -17,8 +17,13 @@ async function handleCoinTossBet(interaction, betAmount) {
     const channel = interaction.channel;
     const gameKey = `${userId}-${channel.id}`;
 
-    // 1. Acknowledge the static button click
-    await interaction.deferUpdate();
+    // 1. Acknowledge the static button click SAFELY
+    try {
+        await interaction.deferUpdate();
+    } catch (error) {
+        // If the interaction expired (10062) or was already acknowledged, silently abort.
+        return; 
+    }
 
     // Fetch user tickets
     const { data: userData, error } = await supabase
@@ -57,6 +62,9 @@ async function handleCoinTossBet(interaction, betAmount) {
     let winAmount = 0;
     let winMessage = '';
 
+    // Swap standard 🎉 for the custom confetti emoji
+    const confettiEmoji = helpers.releaseEmojis?.CONFETTI || '<a:confetti:1491689074002755664>';
+
     if (isHeads) {
         winAmount = betAmount * 2;
         newBalance += winAmount;
@@ -64,7 +72,7 @@ async function handleCoinTossBet(interaction, betAmount) {
             .from(helpers.tables.GAMES_USER_DATA)
             .update({ tickets: newBalance })
             .eq('user_id', userId);
-        winMessage = `**You won ${betAmount} tickets!** 🎉`;
+        winMessage = `**You won ${betAmount} tickets!** ${confettiEmoji}`;
     } else {
         winMessage = '**You lost.** Better luck next time!';
     }
@@ -73,9 +81,9 @@ async function handleCoinTossBet(interaction, betAmount) {
         ? 'https://www.velutinx.com/images/CoinHead.jpg'
         : 'https://www.velutinx.com/images/CoinTails.jpg';
 
-    const titleEmoji = helpers.releaseEmojis.CATCOIN;               // <a:catcoin:...>
-    const outcomeEmoji = isHeads ? helpers.releaseEmojis.YOSHICOIN : '🪙';
-    const ticketEmoji = helpers.releaseEmojis.TICKET;               // <a:ticket:...>
+    const titleEmoji = helpers.releaseEmojis?.CATCOIN || '🪙';
+    const outcomeEmoji = isHeads ? (helpers.releaseEmojis?.YOSHICOIN || '🪙') : '🪙';
+    const ticketEmoji = helpers.releaseEmojis?.TICKET || '🎫';
 
     const embed = new EmbedBuilder()
         .setColor(isHeads ? 0x00FF00 : 0xFF0000)
@@ -86,34 +94,37 @@ async function handleCoinTossBet(interaction, betAmount) {
             `**Balance:** ${newBalance} tickets ${ticketEmoji}\n` +
             `**Bet:** ${betAmount} tickets`
         )
-        .setImage(imageUrl)
-        .setFooter({ text: `${outcomeEmoji} Velutinx's Coin Toss\nOld messages are cleared to keep chat clean.` });
+        .setImage(imageUrl);
+        // .setFooter is completely removed
 
     let game = activeGames.get(gameKey);
 
     // 2. Delete the old ephemeral message to prevent clutter
     if (game && (Date.now() - game.timestamp < 14 * 60 * 1000)) {
         try {
-            // Attempt to delete the previous ephemeral message
             await game.interaction.webhook.deleteMessage(game.messageId);
         } catch (err) {
-            // Silently ignore: The user likely dismissed it manually, or the token expired.
+            // Silently ignore manual dismissals or expired tokens
         }
     }
 
     // 3. ALWAYS send a brand new ephemeral message tied to the current click
-    const sentMsg = await interaction.followUp({ 
-        embeds: [embed], 
-        ephemeral: true, 
-        fetchReply: true 
-    });
+    try {
+        const sentMsg = await interaction.followUp({ 
+            embeds: [embed], 
+            ephemeral: true, 
+            fetchReply: true 
+        });
 
-    // 4. Update the active game cache with the NEW message details
-    activeGames.set(gameKey, {
-        interaction: interaction,
-        messageId: sentMsg.id,
-        timestamp: Date.now()
-    });
+        // 4. Update the active game cache with the NEW message details
+        activeGames.set(gameKey, {
+            interaction: interaction,
+            messageId: sentMsg.id,
+            timestamp: Date.now()
+        });
+    } catch (err) {
+        console.error('Failed to send followUp for coin toss:', err.message);
+    }
 }
 
 module.exports = { handleCoinTossBet };
