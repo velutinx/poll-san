@@ -59,6 +59,7 @@ module.exports = {
         EIGHTEEN: '<a:18:1491670036799029288>',
         EIGHTEENPLUS: '<a:18plus:1501639943443709952>',
         LINK: '<a:Link:1491670128562274475>',
+        BATSU: '<a:batsu:1506693567165370519>',
         ALERT: '<a:alert:1493698480034676736>',
         HOURGLASS: '<a:Hourglass:1491762676416905267>',
         CHAT: '<a:chat:1491669036998594600>',
