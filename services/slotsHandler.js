@@ -1,4 +1,5 @@
 // services/slotsHandler.js
+const { EmbedBuilder, MessageFlags } = require('discord.js');
 const helpers = require('../utils/helpers');
 const supabase = require('./supabase');
 
@@ -56,14 +57,17 @@ async function handleSlotsBet(interaction, betAmount) {
 
     if (error) {
         console.error('Slots fetch error:', error);
-        return interaction.followUp({ content: '❌ Database error. Please try again later.', ephemeral: true });
+        return interaction.followUp({ 
+            content: `${helpers.releaseEmojis?.BATSU || '❌'} Database error. Please try again later.`, 
+            flags: MessageFlags.Ephemeral 
+        });
     }
 
     const currentTickets = userData?.tickets || 0;
     if (currentTickets < betAmount) {
         return interaction.followUp({
-            content: `❌ You need ${betAmount} tickets, but you have only ${currentTickets}.`,
-            ephemeral: true
+            content: `${helpers.releaseEmojis?.BATSU || '❌'} You need ${betAmount} tickets, but you have only ${currentTickets}.`,
+            flags: MessageFlags.Ephemeral
         });
     }
 
@@ -75,16 +79,16 @@ async function handleSlotsBet(interaction, betAmount) {
         
     if (updateError) {
         console.error('Slots deduct error:', updateError);
-        return interaction.followUp({ content: '❌ Database error. Please try again later.', ephemeral: true });
+        return interaction.followUp({ 
+            content: `${helpers.releaseEmojis?.BATSU || '❌'} Database error. Please try again later.`, 
+            flags: MessageFlags.Ephemeral 
+        });
     }
 
     const reels = spin();
     const winAmount = calculateWin(reels, betAmount);
     let finalBalance = newBalance;
     let winMessage = '';
-    
-    const confettiEmoji = helpers.releaseEmojis?.CONFETTI || '<a:confetti:1491689074002755664>';
-    const ticketEmoji = helpers.releaseEmojis?.TICKET || '🎫';
 
     if (winAmount > 0) {
         finalBalance = newBalance + winAmount;
@@ -93,18 +97,22 @@ async function handleSlotsBet(interaction, betAmount) {
             .update({ tickets: finalBalance })
             .eq('user_id', userId);
         winMessage = winAmount >= betAmount
-            ? `**You won ${winAmount} tickets!** ${confettiEmoji}`
-            : `**You got a small win of ${winAmount} tickets!** 🎲`;
+            ? `**You won ${winAmount} tickets!** ${helpers.releaseEmojis?.CONFETTI || '🎉'}`
+            : `**You got a small win of ${winAmount} tickets!** ${helpers.releaseEmojis?.DICE || '🎲'}`;
     } else {
         winMessage = '**You lost.** Better luck next time!';
     }
 
     const resultLine = `${reels.join(' | ')}`;
-    const embed = {
-        color: winAmount > 0 ? 0x00FF00 : 0xFF0000,
-        title: `🎰 ${interaction.user.displayName}'s Slots`,
-        description: `${resultLine}\n\n${winMessage}\n\n**Balance:** ${finalBalance} tickets ${ticketEmoji}\n**Bet:** ${betAmount} tickets`
-    };
+    
+    const embed = new EmbedBuilder()
+        .setColor(winAmount > 0 ? 0x00FF00 : 0xFF0000)
+        .setTitle(`🎰 ${interaction.user.displayName}'s Slots`)
+        .setDescription(
+            `${resultLine}\n\n${winMessage}\n\n` +
+            `**Balance:** ${finalBalance} tickets ${helpers.releaseEmojis?.TICKET || '🎫'}\n` +
+            `**Bet:** ${betAmount} tickets`
+        );
 
     let game = activeGames.get(gameKey);
 
@@ -118,7 +126,7 @@ async function handleSlotsBet(interaction, betAmount) {
     try {
         const sentMsg = await interaction.followUp({ 
             embeds: [embed], 
-            ephemeral: true, 
+            flags: MessageFlags.Ephemeral, 
             fetchReply: true 
         });
         
