@@ -769,7 +769,6 @@ function init(client) {
                     await markMassScanDoneToday();
                     console.log('[MassScan] Daily free mass scan finished and date recorded.');
                 } else {
-                    console.log('[MassScan] Already scanned today, skipping free mass scan.');
                 }
             } catch (err) {
                 console.error('[MassScan] Fatal error during daily free mass scan (will retry next restart):', err);
