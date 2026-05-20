@@ -15,13 +15,12 @@ const SHOP_ITEMS = [
 ];
 
 async function handleShopSelect(interaction) {
-    // Acknowledge immediately so we can fetch data safely
     await interaction.deferUpdate();
 
     const selectedId = interaction.values[0];
     const item = SHOP_ITEMS.find(i => i.id === selectedId);
     if (!item) {
-        return interaction.followUp({ content: '❌ Item not found.', flags: MessageFlags.Ephemeral });
+        return interaction.followUp({ content: `${h.releaseEmojis.BATSU} Item not found.`, flags: MessageFlags.Ephemeral });
     }
 
     const { data: userData, error } = await supabase
@@ -32,29 +31,31 @@ async function handleShopSelect(interaction) {
 
     if (error) {
         console.error('Balance fetch error in shop select:', error);
-        return interaction.followUp({ content: '❌ Could not retrieve your balance.', flags: MessageFlags.Ephemeral });
+        return interaction.followUp({ content: `${h.releaseEmojis.BATSU} Could not retrieve your balance.`, flags: MessageFlags.Ephemeral });
     }
 
     const balance = userData?.ticket_count || 0;
+    const canAfford = balance >= item.cost;
+    const randomCheck = h.releaseEmojis.getRandomVerify();
+
     const embed = new EmbedBuilder()
         .setTitle(`${item.emoji} ${item.name}`)
         .setDescription(item.description || 'No description available.')
         .addFields(
             { name: 'Cost', value: `${item.cost} Tickets`, inline: true },
             { name: 'Your Balance', value: `${balance} Tickets`, inline: true },
-            { name: 'Status', value: balance >= item.cost ? '✅ You can afford this!' : '❌ Insufficient tickets', inline: false }
+            { name: 'Status', value: canAfford ? `${randomCheck} You can afford this!` : `${h.releaseEmojis.BATSU} Insufficient tickets`, inline: false }
         )
-        .setColor(balance >= item.cost ? '#00FFCC' : '#FF0000');
+        .setColor(canAfford ? '#00FFCC' : '#FF0000');
 
     const buyButton = new ButtonBuilder()
         .setCustomId('shop_buy_confirm')
         .setLabel(`Buy for ${item.cost} Tickets`)
         .setStyle(ButtonStyle.Success)
-        .setDisabled(balance < item.cost);
+        .setDisabled(!canAfford);
 
     const row = new ActionRowBuilder().addComponents(buyButton);
 
-    // Edit the original message (the shop selection message)
     await interaction.editReply({
         embeds: [embed],
         components: [row],
@@ -63,7 +64,6 @@ async function handleShopSelect(interaction) {
 }
 
 async function handleShopPurchase(interaction) {
-    // Acknowledge immediately
     await interaction.deferUpdate();
 
     const item = SHOP_ITEMS[0];
@@ -76,13 +76,13 @@ async function handleShopPurchase(interaction) {
 
     if (fetchError) {
         console.error('Fetch balance error:', fetchError);
-        return interaction.followUp({ content: '❌ Error checking balance.', flags: MessageFlags.Ephemeral });
+        return interaction.followUp({ content: `${h.releaseEmojis.BATSU} Error checking balance.`, flags: MessageFlags.Ephemeral });
     }
 
     const balance = userData?.ticket_count || 0;
 
     if (balance < item.cost) {
-        return interaction.followUp({ content: '❌ You do not have enough tickets.', flags: MessageFlags.Ephemeral });
+        return interaction.followUp({ content: `${h.releaseEmojis.BATSU} You do not have enough tickets.`, flags: MessageFlags.Ephemeral });
     }
 
     const { data: newBalance, error: deductError } = await supabase
@@ -90,7 +90,7 @@ async function handleShopPurchase(interaction) {
 
     if (deductError) {
         console.error('Deduct error:', deductError);
-        return interaction.followUp({ content: '❌ Purchase failed. Please try again.', flags: MessageFlags.Ephemeral });
+        return interaction.followUp({ content: `${h.releaseEmojis.BATSU} Purchase failed. Please try again.`, flags: MessageFlags.Ephemeral });
     }
 
     const { error: logError } = await supabase
@@ -103,19 +103,22 @@ async function handleShopPurchase(interaction) {
             status: 'pending'
         });
 
-    if (logError) {
-        console.error('Logging error:', logError);
-    }
+    if (logError) console.error('Logging error:', logError);
 
+    // Admin notification (already in channel, no change)
     try {
-        const adminUser = await interaction.client.users.fetch(h.ids.users.Velutinx);
-        await adminUser.send(`🛒 **New Purchase!**\nUser: ${interaction.user.tag} (${interaction.user.id})\nItem: ${item.name}\nTickets: ${item.cost}\nRemaining balance: ${newBalance}`);
+        const adminChannelId = h.ids.channels.admin_channel;
+        const adminChannel = await interaction.client.channels.fetch(adminChannelId);
+        await adminChannel.send({
+            content: `🛒 **New Purchase!**\nUser: ${interaction.user.tag} (${interaction.user.id})\nItem: ${item.name}\nTickets: ${item.cost}\nRemaining balance: ${newBalance}`,
+            allowedMentions: { users: [] }
+        });
     } catch (err) {
-        console.error('Could not DM admin:', err);
+        console.error('Could not send to admin channel:', err);
     }
 
     const embed = new EmbedBuilder()
-        .setTitle('✅ Purchase Successful!')
+        .setTitle(`${h.releaseEmojis.getRandomVerify()} Purchase Successful!`)
         .setDescription(`You bought **${item.name}** for ${item.cost} tickets.`)
         .addFields(
             { name: 'New Balance', value: `${newBalance} Tickets` },
@@ -123,7 +126,6 @@ async function handleShopPurchase(interaction) {
         )
         .setColor('#00FFCC');
 
-    // Update the original ephemeral shop message
     await interaction.editReply({
         embeds: [embed],
         components: [],
