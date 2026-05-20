@@ -49,7 +49,6 @@ async function notifyAdmin(interaction, message) {
 async function handleRedeemStart(interaction) {
     const userId = interaction.user.id;
     const cost = helpers.redeem.characterRequestCost;
-    const cross = helpers.releaseEmojis.BATSU;
 
     await interaction.deferReply({ flags: 64, withResponse: true });
     await consolidateExistingClaims();
@@ -62,7 +61,9 @@ async function handleRedeemStart(interaction) {
     const balance = userData?.tickets || 0;
 
     if (balance < cost) {
-        return interaction.editReply(`${cross} You need **${cost}** tickets, but you only have **${balance}**.`);
+        return interaction.editReply(
+            `${helpers.releaseEmojis.BATSU} You need **${cost}** tickets, but you only have **${balance}**.`
+        );
     }
 
     const { data: claims } = await supabase
@@ -71,7 +72,9 @@ async function handleRedeemStart(interaction) {
         .eq('user_id', userId);
 
     if (!claims || claims.length === 0) {
-        return interaction.editReply(`${cross} You haven't claimed any waifus yet. Start rolling in <#${helpers.ids.channels.mudae_roll}>.`);
+        return interaction.editReply(
+            `${helpers.releaseEmojis.BATSU} You haven't claimed any waifus yet. Start rolling in <#${helpers.ids.channels.mudae_roll}>.`
+        );
     }
 
     const seriesSet = new Set();
@@ -113,17 +116,23 @@ async function handleRedeemStart(interaction) {
 
 async function handleRedeemSeries(interaction, index) {
     await interaction.deferReply({ flags: 64 });
-    const cross = helpers.releaseEmojis.BATSU;
-    const check = helpers.releaseEmojis.getRandomVerify();
-    const present = helpers.getRandomPresent();
 
     const userId = interaction.user.id;
     const session = activeSessions.get(userId);
     const cost = helpers.redeem.characterRequestCost;
 
-    if (!session) return interaction.editReply(`${cross} Session expired. Please start again.`);
+    if (!session) {
+        return interaction.editReply(
+            `${helpers.releaseEmojis.BATSU} Session expired. Please start again.`
+        );
+    }
+
     const seriesList = session.seriesList;
-    if (index < 0 || index >= seriesList.length) return interaction.editReply(`${cross} Invalid selection.`);
+    if (index < 0 || index >= seriesList.length) {
+        return interaction.editReply(
+            `${helpers.releaseEmojis.BATSU} Invalid selection.`
+        );
+    }
 
     const selectedSeries = seriesList[index];
     const { data: userData } = await supabase
@@ -134,7 +143,9 @@ async function handleRedeemSeries(interaction, index) {
     const balance = userData?.tickets || 0;
 
     if (balance < cost) {
-        await interaction.editReply(`${cross} Insufficient tickets (need ${cost}, have ${balance}).`);
+        await interaction.editReply(
+            `${helpers.releaseEmojis.BATSU} Insufficient tickets (need ${cost}, have ${balance}).`
+        );
         activeSessions.delete(userId);
         return;
     }
@@ -146,26 +157,42 @@ async function handleRedeemSeries(interaction, index) {
         .eq('user_id', userId);
     if (updateError) {
         console.error('Redeem deduction error:', updateError);
-        await interaction.editReply(`${cross} Database error. Tickets not deducted.`);
+        await interaction.editReply(
+            `${helpers.releaseEmojis.BATSU} Database error. Tickets not deducted.`
+        );
         activeSessions.delete(userId);
         return;
     }
 
     const { error: insertError } = await supabase
         .from('games_character_requests')
-        .insert({ user_id: userId, username: interaction.user.tag, series: selectedSeries });
+        .insert({
+            user_id: userId,
+            username: interaction.user.tag,
+            series: selectedSeries
+        });
     if (insertError) {
         console.error('Request insert error:', insertError);
-        await supabase.from(helpers.tables.GAMES_USER_DATA).update({ tickets: balance }).eq('user_id', userId);
-        await interaction.editReply(`${cross} Failed to record your request. Tickets have been refunded.`);
+        await supabase
+            .from(helpers.tables.GAMES_USER_DATA)
+            .update({ tickets: balance })
+            .eq('user_id', userId);
+        await interaction.editReply(
+            `${helpers.releaseEmojis.BATSU} Failed to record your request. Tickets have been refunded.`
+        );
         activeSessions.delete(userId);
         return;
     }
 
-    await interaction.editReply(`${check} Request recorded! You requested a character from **${selectedSeries}**.\nYour new balance: **${newBalance}** tickets.`);
+    await interaction.editReply(
+        `${helpers.releaseEmojis.getRandomVerify()} Request recorded! You requested a character from **${selectedSeries}**.\nYour new balance: **${newBalance}** tickets.`
+    );
     activeSessions.delete(userId);
 
-    await notifyAdmin(interaction, `${present} <@${userId}> (${interaction.user.tag}) requested a character from **${selectedSeries}**.\nBalance: ${newBalance} tickets.`);
+    await notifyAdmin(
+        interaction,
+        `${helpers.getRandomPresent()} <@${userId}> (${interaction.user.tag}) requested a character from **${selectedSeries}**.\nBalance: ${newBalance} tickets.`
+    );
 }
 
 async function handleRedeemCancel(interaction) {
@@ -177,11 +204,10 @@ async function handleRedeemCancel(interaction) {
 async function handleRedeemVoteBoost(interaction) {
     const userId = interaction.user.id;
     const cost = helpers.redeem.voteBoostCost;
-    const cross = helpers.releaseEmojis.BATSU;
-    const check = helpers.releaseEmojis.getRandomVerify();
 
     await interaction.deferReply({ flags: 64, withResponse: true });
 
+    // 1. Check balance
     const { data: userData } = await supabase
         .from(helpers.tables.GAMES_USER_DATA)
         .select('tickets')
@@ -190,9 +216,12 @@ async function handleRedeemVoteBoost(interaction) {
     const balance = userData?.tickets || 0;
 
     if (balance < cost) {
-        return interaction.editReply(`${cross} You need **${cost}** tickets, but you only have **${balance}**.`);
+        return interaction.editReply(
+            `${helpers.releaseEmojis.BATSU} You need **${cost}** tickets, but you only have **${balance}**.`
+        );
     }
 
+    // 2. Deduct tickets
     const newBalance = balance - cost;
     const { error: updateError } = await supabase
         .from(helpers.tables.GAMES_USER_DATA)
@@ -200,21 +229,50 @@ async function handleRedeemVoteBoost(interaction) {
         .eq('user_id', userId);
     if (updateError) {
         console.error('Vote boost deduction error:', updateError);
-        return interaction.editReply(`${cross} Database error. Please try again.`);
+        return interaction.editReply(
+            `${helpers.releaseEmojis.BATSU} Database error. Please try again.`
+        );
     }
 
-    const expiresAt = new Date(Date.now() + helpers.redeem.voteBoostDurationDays * 24 * 60 * 60 * 1000).toISOString();
-    const { error: insertError } = await supabase
+    // 3. Upsert the vote boost (extend existing, or create new)
+    const now = new Date();
+    const { data: existingBoost } = await supabase
         .from('games_vote_boosts')
-        .insert({ user_id: userId, username: interaction.user.tag, expires_at: expiresAt });
-    if (insertError) {
-        console.error('Vote boost insert error:', insertError);
-        await supabase.from(helpers.tables.GAMES_USER_DATA).update({ tickets: balance }).eq('user_id', userId);
-        return interaction.editReply(`${cross} Failed to record your boost. Tickets have been refunded.`);
+        .select('id, expires_at')
+        .eq('user_id', userId)
+        .gt('expires_at', now.toISOString())
+        .maybeSingle();
+
+    let newExpiresAt;
+    if (existingBoost) {
+        const currentExpiry = new Date(existingBoost.expires_at);
+        currentExpiry.setDate(currentExpiry.getDate() + helpers.redeem.voteBoostDurationDays);
+        newExpiresAt = currentExpiry.toISOString();
+
+        await supabase
+            .from('games_vote_boosts')
+            .update({ expires_at: newExpiresAt, username: interaction.user.tag })
+            .eq('id', existingBoost.id);
+    } else {
+        newExpiresAt = new Date(
+            now.getTime() + helpers.redeem.voteBoostDurationDays * 24 * 60 * 60 * 1000
+        ).toISOString();
+
+        await supabase
+            .from('games_vote_boosts')
+            .insert({
+                user_id: userId,
+                username: interaction.user.tag,
+                expires_at: newExpiresAt
+            });
     }
 
-    await interaction.editReply(`${check} **Vote Boost activated!** Your poll votes will count double for 7 days.\nNew balance: **${newBalance}** tickets.`);
-    await notifyAdmin(interaction, `🗳️ <@${userId}> (${interaction.user.tag}) purchased a **Vote Boost** (7 days). Balance: ${newBalance} tickets.`);
+    // 4. Reply to the user (no admin notification)
+    await interaction.editReply(
+        `${helpers.releaseEmojis.getRandomVerify()} **Vote Boost activated!** Your poll votes will count double until **<t:${Math.floor(new Date(newExpiresAt).getTime() / 1000)}:R>**. ` +
+        `\nNew balance: **${newBalance}** tickets.`
+    );
+    // Admin notification intentionally removed
 }
 
 // ============ SUGGEST CHARACTER ============
@@ -247,15 +305,17 @@ async function handleRedeemSuggestCharacter(interaction) {
 
 async function handleSuggestModalSubmit(interaction) {
     await interaction.deferReply({ flags: 64 });
-    const cross = helpers.releaseEmojis.BATSU;
-    const check = helpers.releaseEmojis.getRandomVerify();
 
     const userId = interaction.user.id;
     const cost = helpers.redeem.suggestCost;
     const characterName = interaction.fields.getTextInputValue('suggest_character_name')?.trim();
     const series = interaction.fields.getTextInputValue('suggest_character_series')?.trim() || 'Not provided';
 
-    if (!characterName) return interaction.editReply(`${cross} Character name is required.`);
+    if (!characterName) {
+        return interaction.editReply(
+            `${helpers.releaseEmojis.BATSU} Character name is required.`
+        );
+    }
 
     const { data: userData } = await supabase
         .from(helpers.tables.GAMES_USER_DATA)
@@ -264,10 +324,17 @@ async function handleSuggestModalSubmit(interaction) {
         .maybeSingle();
     const balance = userData?.tickets || 0;
 
-    if (balance < cost) return interaction.editReply(`${cross} Insufficient tickets (need ${cost}, have ${balance}).`);
+    if (balance < cost) {
+        return interaction.editReply(
+            `${helpers.releaseEmojis.BATSU} Insufficient tickets (need ${cost}, have ${balance}).`
+        );
+    }
 
     const newBalance = balance - cost;
-    await supabase.from(helpers.tables.GAMES_USER_DATA).update({ tickets: newBalance }).eq('user_id', userId);
+    await supabase
+        .from(helpers.tables.GAMES_USER_DATA)
+        .update({ tickets: newBalance })
+        .eq('user_id', userId);
     await supabase.from('games_character_suggestions').insert({
         user_id: userId,
         username: interaction.user.tag,
@@ -275,9 +342,14 @@ async function handleSuggestModalSubmit(interaction) {
         series: series
     });
 
-    await interaction.editReply(`${check} Suggestion recorded: **${characterName}**${series !== 'Not provided' ? ` (${series})` : ''}.\nNew balance: **${newBalance}** tickets.`);
+    await interaction.editReply(
+        `${helpers.releaseEmojis.getRandomVerify()} Suggestion recorded: **${characterName}**${series !== 'Not provided' ? ` (${series})` : ''}.\nNew balance: **${newBalance}** tickets.`
+    );
 
-    await notifyAdmin(interaction, `${helpers.releaseEmojis.SPEECH} <@${userId}> (${interaction.user.tag}) suggested:\n**Character:** ${characterName}\n**Series:** ${series}\nPlease consider it for the next poll.`);
+    await notifyAdmin(
+        interaction,
+        `${helpers.releaseEmojis.SPEECH} <@${userId}> (${interaction.user.tag}) suggested:\n**Character:** ${characterName}\n**Series:** ${series}\nPlease consider it for the next poll.`
+    );
 }
 
 module.exports = {
