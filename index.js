@@ -44,7 +44,7 @@ const client = new Client({
 
 // --- 1. STARTUP ---
 client.once(Events.ClientReady, async (c) => {
-    console.log(`🚀 ${c.user.tag} online and ready!`);
+  //  console.log(`🚀 ${c.user.tag} online and ready!`);
 
     try {
         const dashboardModule = await import('./web/server.js');
