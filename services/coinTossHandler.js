@@ -73,17 +73,21 @@ async function handleCoinTossBet(interaction, betAmount) {
         ? 'https://www.velutinx.com/images/CoinHead.jpg'
         : 'https://www.velutinx.com/images/CoinTails.jpg';
 
+    const titleEmoji = helpers.releaseEmojis.CATCOIN;               // <a:catcoin:...>
+    const outcomeEmoji = isHeads ? helpers.releaseEmojis.YOSHICOIN : '🪙';
+    const ticketEmoji = helpers.releaseEmojis.TICKET;               // <a:ticket:...>
+
     const embed = new EmbedBuilder()
         .setColor(isHeads ? 0x00FF00 : 0xFF0000)
-        .setTitle(`🪙 ${interaction.user.displayName}'s Coin Toss`)
+        .setTitle(`${titleEmoji} Velutinx's Coin Toss`)
         .setDescription(
-            `**Result:** ${outcome}\n\n` +
+            `**Result:** ${outcomeEmoji} ${outcome}\n\n` +
             `${winMessage}\n\n` +
-            `**Balance:** ${newBalance} tickets 🎫\n` +
+            `**Balance:** ${newBalance} tickets ${ticketEmoji}\n` +
             `**Bet:** ${betAmount} tickets`
         )
         .setImage(imageUrl)
-        .setFooter({ text: 'This message will update on your next toss.' });
+        .setFooter({ text: `${outcomeEmoji} Velutinx's Coin Toss\nThis message will update on your next toss.` });
 
     let game = activeGames.get(gameKey);
     let messageUpdated = false;
