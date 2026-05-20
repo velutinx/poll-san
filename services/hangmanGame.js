@@ -7,7 +7,6 @@ const fs = require('fs');
 const path = require('path');
 const h = helpers;
 
-// Load words with optional hints
 const rawLines = fs.readFileSync(path.join(__dirname, '../utility/words.txt'), { encoding: 'utf-8' })
     .split('\n')
     .map(line => line.trim())
@@ -25,19 +24,19 @@ const COOLDOWN_HOURS = 24;
 const GAME_TYPE = 'hangman';
 
 const HANGMAN_STAGES = [
-    '🟫🟫🟫🟫🟫\n🟫😀🟫\n🟫\n🟫\n🟫',
-    '🟫🟫🟫🟫🟫\n🟫😀🟫\n🟫💪\n🟫\n🟫',
-    '🟫🟫🟫🟫🟫\n🟫😀🟫\n🟫💪💪\n🟫\n🟫',
-    '🟫🟫🟫🟫🟫\n🟫😧🟫\n🟫💪💪\n🟫 🦵\n🟫',
-    '🟫🟫🟫🟫🟫\n🟫😧🟫\n🟫💪💪\n🟫🦵🦵\n🟫',
-    '🟫🟫🟫🟫🟫\n🟫😵🟫\n🟫💪💪\n🟫🦵🦵\n🟫',
-    '🟫🟫🟫🟫🟫\n🟫💀🟫\n🟫💪💪\n🟫🦵🦵\n🟫',
-    '🟫🟫🟫🟫🟫\n🟫💀🟫💧\n🟫💪💪\n🟫🦵🦵\n🟫',
-    '🟫🟫🟫🟫🟫\n🟫💀🟫💧💧\n🟫💪💪\n🟫🦵🦵\n🟫',
-    '🟫🟫🟫🟫🟫\n🟫💀🟫💧💧💧\n🟫💪💪\n🟫🦵🦵\n🟫',
-    '🟫🟫🟫🟫🟫\n🟫💀🟫💧💧💧💧\n🟫💪💪\n🟫🦵🦵\n🟫',
-    '🟫🟫🟫🟫🟫\n🟫💀🟫💧💧💧💧💧\n🟫💪💪\n🟫🦵🦵\n🟫',
-    '🟫🟫🟫🟫🟫\n🟫💀🟫💧💧💧💧💧💧\n🟫💪💪\n🟫🦵🦵\n🟫'
+    `🟫🟫🟫🟫🟫\n🟫😀🟫\n🟫\n🟫\n🟫`,
+    `🟫🟫🟫🟫🟫\n🟫😀🟫\n🟫💪\n🟫\n🟫`,
+    `🟫🟫🟫🟫🟫\n🟫😀🟫\n🟫💪💪\n🟫\n🟫`,
+    `🟫🟫🟫🟫🟫\n🟫😧🟫\n🟫💪💪\n🟫 🦵\n🟫`,
+    `🟫🟫🟫🟫🟫\n🟫😧🟫\n🟫💪💪\n🟫🦵🦵\n🟫`,
+    `🟫🟫🟫🟫🟫\n🟫😵🟫\n🟫💪💪\n🟫🦵🦵\n🟫`,
+    `🟫🟫🟫🟫🟫\n🟫${h.releaseEmojis?.SKULL || '💀'}🟫\n🟫💪💪\n🟫🦵🦵\n🟫`,
+    `🟫🟫🟫🟫🟫\n🟫${h.releaseEmojis?.SKULL || '💀'}🟫💧\n🟫💪💪\n🟫🦵🦵\n🟫`,
+    `🟫🟫🟫🟫🟫\n🟫${h.releaseEmojis?.SKULL || '💀'}🟫💧💧\n🟫💪💪\n🟫🦵🦵\n🟫`,
+    `🟫🟫🟫🟫🟫\n🟫${h.releaseEmojis?.SKULL || '💀'}🟫💧💧💧\n🟫💪💪\n🟫🦵🦵\n🟫`,
+    `🟫🟫🟫🟫🟫\n🟫${h.releaseEmojis?.SKULL || '💀'}🟫💧💧💧💧\n🟫💪💪\n🟫🦵🦵\n🟫`,
+    `🟫🟫🟫🟫🟫\n🟫${h.releaseEmojis?.SKULL || '💀'}🟫💧💧💧💧💧\n🟫💪💪\n🟫🦵🦵\n🟫`,
+    `🟫🟫🟫🟫🟫\n🟫${h.releaseEmojis?.SKULL || '💀'}🟫💧💧💧💧💧💧\n🟫💪💪\n🟫🦵🦵\n🟫`
 ];
 
 async function awardTicket(userId, username) {
@@ -108,9 +107,14 @@ async function getCooldownRemaining(userId) {
 }
 
 async function startHangmanGame(interaction) {
-    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    try {
+        await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    } catch (error) {
+        return;
+    }
 
-    // --- Cooldown reset check (ephemeral) ---
+    const confettiEmoji = h.releaseEmojis?.CONFETTI || '🎉';
+
     try {
         const { data: cooldownRow } = await supabase
             .from(h.tables.GAMES_COOLDOWNS)
@@ -123,12 +127,10 @@ async function startHangmanGame(interaction) {
             const lastWin = new Date(cooldownRow.last_win_at);
             const hoursSince = (Date.now() - lastWin.getTime()) / (1000 * 60 * 60);
             if (hoursSince >= COOLDOWN_HOURS) {
-                // Cooldown expired, tell the user privately
                 await interaction.followUp({
-                    content: `${h.releaseEmojis.CONFETTI} Your **Hangman** ticket cooldown has reset! You can now earn another ticket by winning a game.`,
+                    content: `${confettiEmoji} Your **Hangman** ticket cooldown has reset! You can now earn another ticket by winning a game.`,
                     flags: MessageFlags.Ephemeral
                 });
-                // Mark notified so we don't repeat
                 await supabase
                     .from(h.tables.GAMES_COOLDOWNS)
                     .update({ notified_reset: true, updated_at: new Date().toISOString() })
@@ -151,6 +153,7 @@ async function startHangmanGame(interaction) {
     const usedLetters = new Set();
     let gameOver = false;
     let gameWon = false;
+    let activeBoardMsgId = null;
 
     const generateEmbed = () => {
         let wordDisplay;
@@ -169,11 +172,11 @@ async function startHangmanGame(interaction) {
 
         if (gameWon) {
             color = 0x00FF00;
-            title = `${h.releaseEmojis.CONFETTI} You won!`;
+            title = `${confettiEmoji} You won!`;
             footerText = 'Great job!';
         } else if (wrongGuesses >= maxWrongGuesses) {
             color = 0xFF0000;
-            title = '💀 Game Over';
+            title = `${h.releaseEmojis?.SKULL || '💀'} Game Over`;
             footerText = `The word was "${word}".`;
         }
 
@@ -190,11 +193,16 @@ async function startHangmanGame(interaction) {
         return embed;
     };
 
-    const embed = generateEmbed();
-    await interaction.editReply({
-        embeds: [embed],
-        content: 'Type a single letter or the whole word in this channel to guess!'
-    });
+    try {
+        const initialReply = await interaction.editReply({
+            embeds: [generateEmbed()],
+            content: 'Type a single letter or the whole word in this channel to guess!'
+        });
+        const fetchedReply = await interaction.fetchReply();
+        activeBoardMsgId = fetchedReply.id;
+    } catch (e) {
+        return;
+    }
 
     const filter = (msg) => {
         return msg.author.id === interaction.user.id &&
@@ -202,11 +210,13 @@ async function startHangmanGame(interaction) {
                !gameOver;
     };
 
-    const collector = interaction.channel.createMessageCollector({ filter, time: 180000 }); // 3 min
+    const collector = interaction.channel.createMessageCollector({ filter, time: 180000 });
 
     collector.on('collect', async (msg) => {
         const content = msg.content.toLowerCase().trim();
         msg.delete().catch(() => {});
+
+        let tempWarning = null;
 
         if (content.length > 1) {
             if (content === word) {
@@ -216,50 +226,70 @@ async function startHangmanGame(interaction) {
                 collector.stop();
             } else {
                 wrongGuesses++;
-                const warning = await interaction.followUp({
-                    content: `❌ "${msg.content}" is not the correct word. You lost a guess.`,
-                    flags: MessageFlags.Ephemeral
+                tempWarning = await interaction.followUp({
+                    content: `${h.releaseEmojis?.BATSU || '❌'} "${msg.content}" is not the correct word. You lost a guess.`,
+                    flags: MessageFlags.Ephemeral,
+                    fetchReply: true
                 });
-                setTimeout(() => warning.delete().catch(() => {}), 3000);
 
                 if (wrongGuesses >= maxWrongGuesses) {
                     gameOver = true;
                     collector.stop();
                 }
             }
-            const newEmbed = generateEmbed();
-            await interaction.editReply({ embeds: [newEmbed], content: gameOver ? 'Game ended.' : 'Type a single letter or the whole word in this channel to guess!' });
-            return;
+        } else {
+            const letter = content;
+            if (!/[a-zA-Z]/.test(letter)) return;
+
+            if (usedLetters.has(letter)) {
+                const warningMsg = await interaction.followUp({ 
+                    content: `${h.releaseEmojis?.ALERT || '⚠️'} You already guessed "${letter}".`,
+                    flags: MessageFlags.Ephemeral,
+                    fetchReply: true 
+                });
+                setTimeout(() => interaction.webhook.deleteMessage(warningMsg.id).catch(() => {}), 2000);
+                return;
+            }
+
+            usedLetters.add(letter);
+            if (!word.includes(letter)) wrongGuesses++;
+
+            const wordGuessed = word.split('').every(l => usedLetters.has(l));
+            if (wordGuessed) {
+                gameWon = true;
+                gameOver = true;
+                collector.stop();
+            } else if (wrongGuesses >= maxWrongGuesses) {
+                gameOver = true;
+                collector.stop();
+            }
         }
 
-        const letter = content;
-        if (!/[a-zA-Z]/.test(letter)) return;
-
-        if (usedLetters.has(letter)) {
-            const warning = await interaction.followUp({ content: `⚠️ You already guessed "${letter}".`, flags: MessageFlags.Ephemeral });
-            setTimeout(() => warning.delete().catch(() => {}), 2000);
-            return;
+        if (activeBoardMsgId) {
+            try {
+                await interaction.webhook.deleteMessage(activeBoardMsgId);
+            } catch (err) {
+            }
         }
 
-        usedLetters.add(letter);
-        if (!word.includes(letter)) wrongGuesses++;
-
-        const wordGuessed = word.split('').every(l => usedLetters.has(l));
-        if (wordGuessed) {
-            gameWon = true;
-            gameOver = true;
-            collector.stop();
-        } else if (wrongGuesses >= maxWrongGuesses) {
-            gameOver = true;
-            collector.stop();
+        try {
+            const updatedBoardMsg = await interaction.followUp({ 
+                embeds: [generateEmbed()], 
+                content: gameOver ? 'Game ended.' : 'Type a single letter or the whole word in this channel to guess!',
+                flags: MessageFlags.Ephemeral,
+                fetchReply: true
+            });
+            activeBoardMsgId = updatedBoardMsg.id;
+        } catch (err) {
+            console.error('Failed to update hangman board:', err.message);
         }
 
-        const newEmbed = generateEmbed();
-        await interaction.editReply({ embeds: [newEmbed], content: gameOver ? 'Game ended.' : 'Type a single letter or the whole word in this channel to guess!' });
+        if (tempWarning) {
+            setTimeout(() => interaction.webhook.deleteMessage(tempWarning.id).catch(() => {}), 3000);
+        }
     });
 
     collector.on('end', async () => {
-        // Clean up user's non-pinned messages
         if (gameOver) {
             setTimeout(async () => {
                 try {
@@ -275,19 +305,21 @@ async function startHangmanGame(interaction) {
         if (gameWon) {
             const result = await awardTicket(interaction.user.id, interaction.user.username);
             if (result.awarded) {
-                const winMsg = `${h.releaseEmojis.CONFETTI} You solved the hangman! You've earned **1 ticket**! You now have **${result.newCount}** ticket(s).\n\nYou can earn another ticket from Hangman in 24 hours.`;
+                const winMsg = `${confettiEmoji} You solved the hangman! You've earned **1 ticket**! You now have **${result.newCount}** ticket(s).\n\nYou can earn another ticket from Hangman in 24 hours.`;
                 await interaction.followUp({ content: winMsg, flags: MessageFlags.Ephemeral });
             } else if (result.reason === 'cooldown') {
                 const minutes = result.remainingMinutes;
                 const hours = Math.floor(minutes / 60);
                 const mins = minutes % 60;
                 const timeStr = hours > 0 ? `${hours}h ${mins}m` : `${mins} minutes`;
-                const cooldownMsg = `⏳ You can earn another ticket from Hangman in **${timeStr}**.`;
+                const cooldownMsg = `${h.releaseEmojis?.HOURGLASS || '⏳'} You can earn another ticket from Hangman in **${timeStr}**.`;
                 await interaction.followUp({ content: cooldownMsg, flags: MessageFlags.Ephemeral });
             }
         } else if (!gameOver) {
-            // Timed out
-            await interaction.editReply({ content: '⏰ Game timed out.', embeds: [], components: [] }).catch(() => {});
+            if (activeBoardMsgId) {
+                interaction.webhook.deleteMessage(activeBoardMsgId).catch(() => {});
+            }
+            await interaction.followUp({ content: '⏰ Game timed out.', flags: MessageFlags.Ephemeral });
         }
     });
 }
