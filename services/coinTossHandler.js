@@ -87,36 +87,33 @@ async function handleCoinTossBet(interaction, betAmount) {
             `**Bet:** ${betAmount} tickets`
         )
         .setImage(imageUrl)
-        .setFooter({ text: `${outcomeEmoji} Velutinx's Coin Toss\nThis message will update on your next toss.` });
+        .setFooter({ text: `${outcomeEmoji} Velutinx's Coin Toss\nOld messages are cleared to keep chat clean.` });
 
     let game = activeGames.get(gameKey);
-    let messageUpdated = false;
 
-    // 2. Try to edit the existing ephemeral message if it's less than 14 mins old
+    // 2. Delete the old ephemeral message to prevent clutter
     if (game && (Date.now() - game.timestamp < 14 * 60 * 1000)) {
         try {
-            await game.interaction.webhook.editMessage(game.messageId, { embeds: [embed] });
-            messageUpdated = true;
+            // Attempt to delete the previous ephemeral message
+            await game.interaction.webhook.deleteMessage(game.messageId);
         } catch (err) {
-            console.log('Could not edit old ephemeral toss, sending new one.');
-            activeGames.delete(gameKey);
+            // Silently ignore: The user likely dismissed it manually, or the token expired.
         }
     }
 
-    // 3. If no existing message or edit failed, send a new ephemeral one
-    if (!messageUpdated) {
-        const sentMsg = await interaction.followUp({ 
-            embeds: [embed], 
-            ephemeral: true, 
-            fetchReply: true 
-        });
+    // 3. ALWAYS send a brand new ephemeral message tied to the current click
+    const sentMsg = await interaction.followUp({ 
+        embeds: [embed], 
+        ephemeral: true, 
+        fetchReply: true 
+    });
 
-        activeGames.set(gameKey, {
-            interaction: interaction,
-            messageId: sentMsg.id,
-            timestamp: Date.now()
-        });
-    }
+    // 4. Update the active game cache with the NEW message details
+    activeGames.set(gameKey, {
+        interaction: interaction,
+        messageId: sentMsg.id,
+        timestamp: Date.now()
+    });
 }
 
 module.exports = { handleCoinTossBet };
