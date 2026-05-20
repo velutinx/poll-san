@@ -67,6 +67,7 @@ module.exports = {
         PROGRESS: '<a:progress:1491670111923212308>',
         CATCOIN: '<a:catcoin:1506632039749910598>',
         YOSHICOIN: '<:yoshicoin:1506632090165313586>',
+        SKULL: '<:skull:1506692152313512046>',
         TICKET: '<a:ticket:1506633750300327949>',
         WAVE: '<a:wave:1492326023080185987>',
         waveId: '1492326023080185987',
