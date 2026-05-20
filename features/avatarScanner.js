@@ -435,6 +435,18 @@ async function scanAllMembersWithFreeAPI(client) {
     }
 }
 
+// ========== DAILY FREE MASS SCAN GATING ==========
+async function shouldRunMassScanToday() {
+    const lastScanDate = await getSetting('mass_scan_free_date');
+    const today = new Date().toISOString().slice(0, 10);
+    return lastScanDate !== today;
+}
+
+async function markMassScanDoneToday() {
+    const today = new Date().toISOString().slice(0, 10);
+    await setSetting('mass_scan_free_date', today);
+}
+
 // ========== MONTHLY SIGHTENGINE-ONLY SCAN ==========
 async function performMonthlyScan(client) {
     const guild = client.guilds.cache.first();
@@ -754,10 +766,24 @@ function init(client) {
 
     client.on(Events.UserUpdate, onUserUpdate);
 
-    client.once(Events.ClientReady, () => {
-        setTimeout(() => {
-            scanAllMembersWithFreeAPI(client).catch(err => console.error('[MassScan] Error:', err));
+    // ------------------------------------------------------------------
+    //  CHANGED: Daily‑gated mass scan on startup (free API only)
+    // ------------------------------------------------------------------
+    client.once(Events.ClientReady, async () => {
+        setTimeout(async () => {
+            try {
+                if (await shouldRunMassScanToday()) {
+                    console.log('[MassScan] Running daily free mass scan...');
+                    await scanAllMembersWithFreeAPI(client);
+                    await markMassScanDoneToday();
+                } else {
+                    console.log('[MassScan] Already scanned today, skipping free mass scan.');
+                }
+            } catch (err) {
+                console.error('[MassScan] Error during daily gated scan:', err);
+            }
         }, 30000);
+
         startMonthlyCheck(client);
     });
 }
