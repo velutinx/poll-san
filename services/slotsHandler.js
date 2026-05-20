@@ -2,8 +2,7 @@
 const helpers = require('../utils/helpers');
 const supabase = require('./supabase');
 
-// Store the interaction, messageId, and timestamp to handle Discord's token expiry
-const activeGames = new Map(); // key: `${userId}-${channelId}` -> { interaction, messageId, timestamp }
+const activeGames = new Map();
 
 const SYMBOLS = [
     '🍒', '🍒', '🍒', '🍒', '🍒', '🍒', '🍒', '🍒', '🍒', '🍒',
@@ -43,10 +42,12 @@ async function handleSlotsBet(interaction, betAmount) {
     const channel = interaction.channel;
     const gameKey = `${userId}-${channel.id}`;
 
-    // 1. Immediately acknowledge the static button click so it doesn't fail/load endlessly
-    await interaction.deferUpdate();
+    try {
+        await interaction.deferUpdate();
+    } catch (error) {
+        return;
+    }
 
-    // Fetch tickets
     const { data: userData, error } = await supabase
         .from(helpers.tables.GAMES_USER_DATA)
         .select('tickets')
@@ -55,20 +56,17 @@ async function handleSlotsBet(interaction, betAmount) {
 
     if (error) {
         console.error('Slots fetch error:', error);
-        await interaction.followUp({ content: '❌ Database error. Please try again later.', ephemeral: true });
-        return;
+        return interaction.followUp({ content: '❌ Database error. Please try again later.', ephemeral: true });
     }
 
     const currentTickets = userData?.tickets || 0;
     if (currentTickets < betAmount) {
-        await interaction.followUp({
+        return interaction.followUp({
             content: `❌ You need ${betAmount} tickets, but you have only ${currentTickets}.`,
             ephemeral: true
         });
-        return;
     }
 
-    // Deduct bet
     let newBalance = currentTickets - betAmount;
     const { error: updateError } = await supabase
         .from(helpers.tables.GAMES_USER_DATA)
@@ -77,16 +75,17 @@ async function handleSlotsBet(interaction, betAmount) {
         
     if (updateError) {
         console.error('Slots deduct error:', updateError);
-        await interaction.followUp({ content: '❌ Database error. Please try again later.', ephemeral: true });
-        return;
+        return interaction.followUp({ content: '❌ Database error. Please try again later.', ephemeral: true });
     }
 
-    // Spin and win
     const reels = spin();
     const winAmount = calculateWin(reels, betAmount);
     let finalBalance = newBalance;
     let winMessage = '';
     
+    const confettiEmoji = helpers.releaseEmojis?.CONFETTI || '<a:confetti:1491689074002755664>';
+    const ticketEmoji = helpers.releaseEmojis?.TICKET || '🎫';
+
     if (winAmount > 0) {
         finalBalance = newBalance + winAmount;
         await supabase
@@ -94,7 +93,7 @@ async function handleSlotsBet(interaction, betAmount) {
             .update({ tickets: finalBalance })
             .eq('user_id', userId);
         winMessage = winAmount >= betAmount
-            ? `**You won ${winAmount} tickets!** 🎉`
+            ? `**You won ${winAmount} tickets!** ${confettiEmoji}`
             : `**You got a small win of ${winAmount} tickets!** 🎲`;
     } else {
         winMessage = '**You lost.** Better luck next time!';
@@ -104,36 +103,32 @@ async function handleSlotsBet(interaction, betAmount) {
     const embed = {
         color: winAmount > 0 ? 0x00FF00 : 0xFF0000,
         title: `🎰 ${interaction.user.displayName}'s Slots`,
-        description: `${resultLine}\n\n${winMessage}\n\n**Balance:** ${finalBalance} tickets 🎫\n**Bet:** ${betAmount} tickets`,
-        footer: { text: 'Click the static buttons above to spin again.' }
+        description: `${resultLine}\n\n${winMessage}\n\n**Balance:** ${finalBalance} tickets ${ticketEmoji}\n**Bet:** ${betAmount} tickets`
     };
 
     let game = activeGames.get(gameKey);
-    let messageUpdated = false;
 
-    // 2. Check if we have a saved game AND the original interaction token hasn't expired yet
     if (game && (Date.now() - game.timestamp < 14 * 60 * 1000)) {
         try {
-            // 3. Edit the ephemeral message using the ORIGINAL interaction's webhook
-            await game.interaction.webhook.editMessage(game.messageId, { embeds: [embed] });
-            messageUpdated = true;
+            await game.interaction.webhook.deleteMessage(game.messageId);
         } catch (err) {
-            console.log(`Old ephemeral message missing or webhook failed, creating new one.`);
-            activeGames.delete(gameKey);
         }
     }
 
-    // 4. If we couldn't edit (it's their first time, or the old one expired/errored)
-    if (!messageUpdated) {
-        // Send a new ephemeral message and explicitly ask Discord for the message ID back
-        const sentMsg = await interaction.followUp({ embeds: [embed], ephemeral: true, fetchReply: true });
+    try {
+        const sentMsg = await interaction.followUp({ 
+            embeds: [embed], 
+            ephemeral: true, 
+            fetchReply: true 
+        });
         
-        // Save the NEW interaction, its message ID, and the exact time it was created
         activeGames.set(gameKey, {
             interaction: interaction,
             messageId: sentMsg.id,
             timestamp: Date.now()
         });
+    } catch (err) {
+        console.error('Failed to send followUp for slots:', err.message);
     }
 }
 
