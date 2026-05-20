@@ -233,11 +233,18 @@ async function handleGiveawayButton(interaction) {
             messageUpdated = true;
         } catch (err) {
             giveawaySessions.delete(sessionKey);
+            // Interaction expired – just return, can't do anything
+            return;
         }
     }
 
     if (!messageUpdated) {
-        await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
+        try {
+            await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
+        } catch (err) {
+            // Interaction expired – return silently
+            return;
+        }
     }
 
     let responseContent = '';
