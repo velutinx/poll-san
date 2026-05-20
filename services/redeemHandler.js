@@ -33,22 +33,17 @@ function stopCleanup() {
     }
 }
 
-// ---- Notify the bot owner (Velutinx) via DM ----
+// ---- Notify admin via the private admin channel (NO DM) ----
 async function notifyAdmin(interaction, message) {
     try {
-        const adminId = helpers.ids.users.Velutinx;
-        if (!adminId) {
-            console.error('❌ Admin user ID not found in helpers.ids.users.Velutinx');
-            return;
-        }
-        const adminUser = await interaction.client.users.fetch(adminId);
-        if (adminUser) {
-            await adminUser.send(message);
-        } else {
-            console.error('❌ Could not fetch admin user.');
-        }
+        const adminChannelId = helpers.ids.channels.admin_channel;
+        const adminChannel = await interaction.client.channels.fetch(adminChannelId);
+        await adminChannel.send({
+            content: message,
+            allowedMentions: { users: [] }   // no ping
+        });
     } catch (err) {
-        console.error('❌ Failed to DM admin:', err);
+        console.error('❌ Failed to send to admin channel:', err.message);
     }
 }
 
@@ -119,13 +114,12 @@ async function handleRedeemStart(interaction) {
 }
 
 async function handleRedeemSeries(interaction, index) {
-    const userId = interaction.user.id;
-    const cost = helpers.redeem.characterRequestCost;
-
-    // ✅ Defer IMMEDIATELY – all later responses use editReply
     await interaction.deferReply({ flags: 64 });
 
+    const userId = interaction.user.id;
     const session = activeSessions.get(userId);
+    const cost = helpers.redeem.characterRequestCost;
+
     if (!session) {
         return interaction.editReply('❌ Session expired. Please start again.');
     }
@@ -179,17 +173,18 @@ async function handleRedeemSeries(interaction, index) {
         return;
     }
 
-    await interaction.editReply(`✅ Request recorded! You requested a character from **${selectedSeries}**.\nYour new balance: **${newBalance}** tickets.`);
+    await interaction.editReply(
+        `✅ Request recorded! You requested a character from **${selectedSeries}**.\nYour new balance: **${newBalance}** tickets.`
+    );
     activeSessions.delete(userId);
 
+    // Admin notification (now to channel)
     await notifyAdmin(interaction, `🎁 <@${userId}> (${interaction.user.tag}) requested a character from **${selectedSeries}**.\nBalance: ${newBalance} tickets.`);
 }
 
 async function handleRedeemCancel(interaction) {
-    // ✅ Defer first
-    await interaction.deferReply({ flags: 64 });
     activeSessions.delete(interaction.user.id);
-    await interaction.editReply('Request cancelled.');
+    await interaction.reply({ content: 'Request cancelled.', flags: 64 });
 }
 
 // ============ VOTE BOOST ============
@@ -238,32 +233,13 @@ async function handleRedeemVoteBoost(interaction) {
 
     await interaction.editReply(`✅ **Vote Boost activated!** Your poll votes will count double for 7 days.\nNew balance: **${newBalance}** tickets.`);
 
+    // Admin notification (now to channel)
     await notifyAdmin(interaction, `🗳️ <@${userId}> (${interaction.user.tag}) purchased a **Vote Boost** (7 days). Balance: ${newBalance} tickets.`);
 }
 
 // ============ SUGGEST CHARACTER ============
 async function handleRedeemSuggestCharacter(interaction) {
-    const userId = interaction.user.id;
-    const cost = helpers.redeem.suggestCost;
-
-    // ✅ Defer first, then check tickets. If insufficient, editReply. If OK, show modal (which is fine after defer? Actually showModal can't be used after defer. We need to check tickets BEFORE deferring or use a different flow.)
-    // So we must do the ticket check WITHOUT deferring, but we can avoid timeout by making it fast. The supabase query is quick; we'll keep the original approach but wrap in a try-catch with a fallback defer if needed.
-    // However, to be safe, we can defer only if tickets are insufficient? No, because if tickets are OK we need to showModal which cannot be done after defer. So we keep the original logic: quick query, if balance < cost reply immediately (no defer). If balance >= cost, showModal directly (no defer). That's safe because both reply and showModal are immediate responses. The only risk is if the supabase query takes >3s, but that's rare. We'll leave it as is.
-    
-    const { data: userData } = await supabase
-        .from(helpers.tables.GAMES_USER_DATA)
-        .select('tickets')
-        .eq('user_id', userId)
-        .maybeSingle();
-    const balance = userData?.tickets || 0;
-
-    if (balance < cost) {
-        return interaction.reply({
-            content: `❌ You need **${cost}** tickets, but you only have **${balance}**.`,
-            flags: 64
-        });
-    }
-
+    // No async work before showing the modal
     const modal = new ModalBuilder()
         .setCustomId('redeem_suggest_modal')
         .setTitle('Suggest a Poll Character');
@@ -291,12 +267,10 @@ async function handleRedeemSuggestCharacter(interaction) {
 }
 
 async function handleSuggestModalSubmit(interaction) {
-    const userId = interaction.user.id;
-    const cost = helpers.redeem.suggestCost;
-
-    // ✅ Defer the modal submission to avoid timeout
     await interaction.deferReply({ flags: 64 });
 
+    const userId = interaction.user.id;
+    const cost = helpers.redeem.suggestCost;
     const characterName = interaction.fields.getTextInputValue('suggest_character_name')?.trim();
     const series = interaction.fields.getTextInputValue('suggest_character_series')?.trim() || 'Not provided';
 
@@ -317,7 +291,6 @@ async function handleSuggestModalSubmit(interaction) {
 
     const newBalance = balance - cost;
     await supabase.from(helpers.tables.GAMES_USER_DATA).update({ tickets: newBalance }).eq('user_id', userId);
-
     await supabase.from('games_character_suggestions').insert({
         user_id: userId,
         username: interaction.user.tag,
@@ -325,8 +298,11 @@ async function handleSuggestModalSubmit(interaction) {
         series: series
     });
 
-    await interaction.editReply(`✅ Suggestion recorded: **${characterName}**${series !== 'Not provided' ? ` (${series})` : ''}.\nNew balance: **${newBalance}** tickets.`);
+    await interaction.editReply(
+        `✅ Suggestion recorded: **${characterName}**${series !== 'Not provided' ? ` (${series})` : ''}.\nNew balance: **${newBalance}** tickets.`
+    );
 
+    // Admin notification (now to channel)
     await notifyAdmin(interaction, `💬 <@${userId}> (${interaction.user.tag}) suggested:\n**Character:** ${characterName}\n**Series:** ${series}\nPlease consider it for the next poll.`);
 }
 
