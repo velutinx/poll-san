@@ -19,8 +19,8 @@ module.exports = async (interaction) => {
         .setTitle(`${data.discord_username}'s Stats`)
         .setColor(h.colors.success)
         .addFields(
-            { name: 'Level', value: `⭐ ${data.level}`, inline: true },
-            { name: 'Messages', value: `💬 ${data.total_messages}`, inline: true }
+            { name: 'Level', value: `${h.releaseEmojis.STAR} ${data.level}`, inline: true },
+            { name: 'Messages', value: `${h.releaseEmojis.SPEECH} ${data.total_messages}`, inline: true }
         );
 
     return interaction.editReply({ embeds: [levelEmbed] });
