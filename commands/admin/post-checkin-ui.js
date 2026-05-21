@@ -26,7 +26,7 @@ module.exports = {
         const embed = new EmbedBuilder()
             .setColor(0x2f3136)
             .setDescription(
-                `# 🌟 Daily Check‑In\n\n` +
+                `# ${helpers.releaseEmojis.STAR} Daily Check‑In\n\n` +
                 `Click the button below to claim your **${helpers.CHECKIN_REWARD_TICKETS} tickets** and reset all your game cooldowns!\n\n` +
                 `You can do this once every **24 hours**.`
             );
