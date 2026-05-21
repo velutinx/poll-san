@@ -58,10 +58,10 @@ module.exports = function setupReleasesRoutes(app, client, upload, FORUM_ID, SUP
       
       // 3. Final Fallback: If editing fails, send a new message so the info is at least updated
       try {
-        await thread.send({ 
-          content: `⚠️ **Update:**\n${newContent}`, 
-          flags: ["SuppressEmbeds"] 
-        });
+await thread.send({ 
+  content: `${h.releaseEmojis?.ALERT || '⚠️'} **Update:**\n${newContent}`, 
+  flags: ["SuppressEmbeds"] 
+});
         return { success: true, replaced: true };
       } catch (finalErr) {
         return { success: false, error: finalErr.message };
