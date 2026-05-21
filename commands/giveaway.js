@@ -128,14 +128,19 @@ module.exports = {
 
         if (imageUrl) embed.setImage(imageUrl);
 
-        const row = new ActionRowBuilder()
-            .addComponents(
-                new ButtonBuilder()
-                    .setCustomId('enter_giveaway')
-                    .setLabel('Enter Giveaway')
-                    .setStyle(ButtonStyle.Primary)
-                    .setEmoji('🎁')
-            );
+// Random animated present for the button
+const presentEmojiStr = h.getRandomPresent();
+const match = presentEmojiStr.match(/^<a?:(\w+):(\d+)>$/);
+const emojiData = match ? { name: match[1], id: match[2] } : { name: '🎁' };
+
+const row = new ActionRowBuilder()
+    .addComponents(
+        new ButtonBuilder()
+            .setCustomId('enter_giveaway')
+            .setLabel('Enter Giveaway')
+            .setStyle(ButtonStyle.Primary)
+            .setEmoji(emojiData)
+    );
 
         const messageOptions = { embeds: [embed], components: [row] };
         if (imageAttachment) messageOptions.files = [imageAttachment];
@@ -180,7 +185,7 @@ module.exports = {
         if (error) {
             console.error('Failed to save giveaway to database:', error);
             await webhook.send({
-                content: '⚠️ Giveaway created but failed to save to database. It may not persist after restart.',
+                content: `${releaseEmojis.ALERT} Giveaway created but failed to save to database. It may not persist after restart.`,
                 username: 'Giveaway',
                 avatar: h.urls.LOGO_URL
             });
