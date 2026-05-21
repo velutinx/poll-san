@@ -88,7 +88,7 @@ module.exports = async (message) => {
 
     setTimeout(() => {
         message.delete().catch(() => {});
-    }, 600000); // change back to 2000
+    }, 2000); // change back to 2000
 
     const notifyText = `${h.releaseEmojis?.CONFETTI || '🎉'} Nice win, <@${message.author.id}>! You earned **1 ticket**! You now have **${result.newCount}** ticket(s).`;
 
@@ -111,7 +111,7 @@ module.exports = async (message) => {
         });
 
         if (notifyMsg) {
-            setTimeout(() => notifyMsg.delete().catch(() => {}), 600000); // change back to 8000
+            setTimeout(() => notifyMsg.delete().catch(() => {}), 8000); // change back to 8000
         }
     } catch (err) {
         console.error('Webhook notification error:', err);
