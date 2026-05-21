@@ -59,7 +59,6 @@ async function awardTicket(userId, username) {
 }
 
 module.exports = async (message) => {
-    // --- 0. SILENCE THE OFFICIAL WORDLE ACTIVITY APP ---
     if (message.author.id === WORDLE_ACTIVITY_APP_ID) {
         if (message.channel.id === WORDLE_CHANNEL_ID) {
             message.delete().catch(() => {});
@@ -67,54 +66,43 @@ module.exports = async (message) => {
         return;
     }
 
-    // --- 1. HANDLE WORDLEBOT'S OWN MESSAGES (auto-delete spam) ---
     if (message.author.id === WORDLE_BOT_ID) {
         if (message.channel.id !== WORDLE_CHANNEL_ID) return;
         const content = message.content.toLowerCase();
         if (content.includes('congratulations! you\'ve unlocked an achievement') ||
             content.includes('here is the faq page')) {
             setTimeout(() => message.delete().catch(() => {}), 1500);
-            return;   // stop processing these spam messages
+            return;
         }
-        // Fall through — let win messages from the Wordle bot be checked
     }
 
-    // --- 2. IGNORE OTHER BOTS AND WRONG CHANNEL ---
     if (message.author.bot && message.author.id !== WORDLE_BOT_ID) return;
     if (message.channel.id !== WORDLE_CHANNEL_ID) return;
 
-    // --- 3. CHECK FOR WORDLE WIN & AWARD TICKET ---
     if (!isWordleWin(message)) return;
 
     const result = await awardTicket(message.author.id, message.author.username);
     if (!result.awarded) return;
 
-    // React with ticket emoji
-    await message.react('🎟️').catch(() => {});
+    await message.react(h.releaseEmojis?.TICKET || '🎟️').catch(() => {});
 
-    // Delete the original win message quickly (clean up)
     setTimeout(() => {
         message.delete().catch(() => {});
     }, 600000); // change back to 2000
 
-    // ======================================================
-    //   Webhook notification – sends as "Rewards"
-    // ======================================================
-    const notifyText = `${h.releaseEmojis.CONFETTI} Nice win, <@${message.author.id}>! You earned **1 ticket**! You now have **${result.newCount}** ticket(s).`;
+    const notifyText = `${h.releaseEmojis?.CONFETTI || '🎉'} Nice win, <@${message.author.id}>! You earned **1 ticket**! You now have **${result.newCount}** ticket(s).`;
 
     try {
-        // Find or create the "Rewards" webhook in this channel
         let rewardWebhook = (await message.channel.fetchWebhooks())
             .find(w => w.name === 'Rewards');
 
         if (!rewardWebhook) {
             rewardWebhook = await message.channel.createWebhook({
                 name: 'Rewards',
-                avatar: h.urls.LOGO_URL   // uses your LogoDiscord.png
+                avatar: h.urls.LOGO_URL
             });
         }
 
-        // Send the ephemeral-like message
         const notifyMsg = await rewardWebhook.send({
             content: notifyText,
             allowedMentions: { users: [message.author.id] },
@@ -122,7 +110,6 @@ module.exports = async (message) => {
             avatarURL: h.urls.LOGO_URL
         });
 
-        // Delete after 8 seconds
         if (notifyMsg) {
             setTimeout(() => notifyMsg.delete().catch(() => {}), 600000); // change back to 8000
         }
