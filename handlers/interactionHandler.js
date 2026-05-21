@@ -102,17 +102,20 @@ async function handleVerifyStart(interaction) {
 
 async function handleCheckinClaim(interaction) {
     const userId = interaction.user.id;
+    const gameKey = `${userId}-${interaction.channel.id}`;
     const cooldownMap = global.checkinCooldown || new Map();
     if (!global.checkinCooldown) global.checkinCooldown = cooldownMap;
     const lastClick = cooldownMap.get(userId);
     if (lastClick && Date.now() - lastClick < 2000) {
-        return interaction.reply({ 
-            content: `${helpers.releaseEmojis?.HOURGLASS || '⏳'} You’re clicking too fast!`, 
-            ephemeral: true 
-        });
+        return; 
     }
     cooldownMap.set(userId, Date.now());
-    await interaction.deferReply({ ephemeral: true });
+
+    try {
+        await interaction.deferUpdate();
+    } catch (error) {
+        return; 
+    }
     let finalContent = '';
     let { data: userData, error } = await supabase
         .from(helpers.tables.GAMES_USER_DATA)
@@ -121,9 +124,11 @@ async function handleCheckinClaim(interaction) {
         .maybeSingle();
 
     if (error) console.error('Fetch error:', error);
+
     const now = new Date();
     let canClaim = true;
     let timeLeft = '';
+
     if (userData?.last_checkin) {
         const diffHours = (now - new Date(userData.last_checkin)) / (1000 * 60 * 60);
         if (diffHours < 24) {
@@ -142,6 +147,7 @@ async function handleCheckinClaim(interaction) {
         const nowIso = now.toISOString();
         const discordUsername = interaction.user.tag;
         const displayName = interaction.member?.displayName || interaction.user.globalName || interaction.user.username;
+
         const updatePayload = {
             tickets: newBalance,
             last_checkin: nowIso,
@@ -159,7 +165,8 @@ async function handleCheckinClaim(interaction) {
                 .from(helpers.tables.GAMES_USER_DATA)
                 .update(updatePayload)
                 .eq('user_id', userId);
-        if (updateError) console.error('Update error:', updateError);
+            
+            if (updateError) console.error('Update error:', updateError);
             else finalContent = buildSuccessMessage(ticketAmount, newBalance);
         } else {
             const { error: insertError } = await supabase
@@ -169,6 +176,7 @@ async function handleCheckinClaim(interaction) {
             if (insertError) console.error('Insert error:', insertError);
             else finalContent = buildSuccessMessage(ticketAmount, newBalance);
         }
+
         if (finalContent === '') {
             finalContent = `${helpers.releaseEmojis?.BATSU || '❌'} Database error.`;
         } else {
@@ -183,7 +191,30 @@ async function handleCheckinClaim(interaction) {
             }
         }
     }
-    await interaction.editReply({ content: finalContent });
+
+    let session = checkinSessions.get(gameKey);
+    if (session && (Date.now() - session.timestamp < 14 * 60 * 1000)) {
+        try {
+            await session.interaction.webhook.deleteMessage(session.messageId);
+        } catch (err) {
+        }
+    }
+
+    try {
+        const sentMsg = await interaction.followUp({ 
+            content: finalContent, 
+            ephemeral: true, 
+            fetchReply: true 
+        });
+
+        checkinSessions.set(gameKey, {
+            interaction: interaction,
+            messageId: sentMsg.id,
+            timestamp: Date.now()
+        });
+    } catch (err) {
+        console.error('Failed to send followUp for check-in:', err.message);
+    }
     setTimeout(() => cooldownMap.delete(userId), 2000);
 }
 
