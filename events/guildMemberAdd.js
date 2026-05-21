@@ -1,5 +1,6 @@
 // events/guildMemberAdd.js
 
+const { MessageFlags } = require('discord.js');
 const supabase = require('../services/supabase');
 const { parseMessage } = require('../services/parserService');
 const h = require('../utils/helpers');
@@ -61,7 +62,8 @@ module.exports = async (member) => {
                 const sent = await webhook.send({
                     content: finalMessage,
                     username: 'Welcome Bot',
-                    avatarURL: h.urls.LOGO_URL
+                    avatarURL: h.urls.LOGO_URL,
+                    flags: [MessageFlags.SuppressNotifications]
                 });
 
                 await sent.react(h.releaseEmojis.waveId).catch(err => console.error("Failed to react:", err));
