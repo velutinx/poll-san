@@ -10,7 +10,7 @@ module.exports = {
 
     async execute(interaction) {
         if (!interaction.memberPermissions.has('Administrator')) {
-            return interaction.reply({ content: `${helpers.releaseEmojis.BATSU} Admin only.`, flags: 64 });
+            return interaction.reply({ content: `${helpers.releaseEmojis?.BATSU || '❌'} Admin only.`, flags: 64 });
         }
 
         const channel = interaction.channel;
@@ -30,23 +30,24 @@ module.exports = {
             )
             .setColor('#FFD700');
 
+        const ticketEmoji = helpers.releaseEmojis?.TICKET || '🎫';
+
         const row = new ActionRowBuilder()
             .addComponents(
                 new ButtonBuilder()
                     .setCustomId('slots_bet_1')
-                    .setLabel('Spin 1 🎟️')
+                    .setLabel(`Spin 1 ${ticketEmoji}`)
                     .setStyle(ButtonStyle.Primary),
                 new ButtonBuilder()
                     .setCustomId('slots_bet_5')
-                    .setLabel('Spin 5 🎟️')
+                    .setLabel(`Spin 5 ${ticketEmoji}`)
                     .setStyle(ButtonStyle.Primary),
                 new ButtonBuilder()
                     .setCustomId('slots_bet_25')
-                    .setLabel('Spin 25 🎟️')
+                    .setLabel(`Spin 25 ${ticketEmoji}`)
                     .setStyle(ButtonStyle.Primary)
             );
 
-        // Use webhook to send as "Slots"
         let webhook = (await channel.fetchWebhooks()).find(w => w.name === 'Slots');
         if (!webhook) {
             webhook = await channel.createWebhook({
@@ -62,6 +63,6 @@ module.exports = {
             avatarURL: helpers.urls.LOGO_URL
         });
 
-        await interaction.reply({ content: '✅ Slots UI has been posted!', flags: 64 });
+        await interaction.reply({ content: `${helpers.releaseEmojis?.getRandomVerify?.() || '✅'} Slots UI has been posted!`, flags: 64 });
     }
 };
