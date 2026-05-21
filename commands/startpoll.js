@@ -4,7 +4,6 @@ const { chunkArray, emojis, reactIds, ids, releaseEmojis } = h;
 const { generateMessageContent, runPollInterval } = require('../services/pollService');
 const supabase = require('../services/supabase');
 
-// Helper: get or create the "Poll" webhook in a channel
 async function getPollWebhook(channel) {
   const name = 'Poll';
   const avatar = h.urls.LOGO_URL;
@@ -18,7 +17,6 @@ async function getPollWebhook(channel) {
 }
 
 module.exports = async (interaction) => {
-    // Allow dashboard to bypass Discord checks
     if (typeof interaction.isChatInputCommand === 'function') {
         if (!interaction.isChatInputCommand() && !interaction.isDashboard) return;
     }
@@ -39,25 +37,19 @@ module.exports = async (interaction) => {
     const lines = listRaw.split(/\r?\n/).filter(line => line.trim().length > 0);
     const characters = lines.map(line => line.trim());
     const endTime = Date.now() + (days * 24 * 60 * 60 * 1000);
-
-    // 1. Get or create the "Poll" webhook for this channel
     const channel = interaction.channel;
     const webhook = await getPollWebhook(channel);
-
-    // 2. Send the main poll message via webhook (without threadName)
     const pollMessage = await webhook.send({
         content: await generateMessageContent(endTime, null, characters),
         username: 'Poll',
         avatarURL: h.urls.LOGO_URL,
     });
 
-    // 3. Create a thread from that message using the bot
     const thread = await pollMessage.startThread({
         name: `Character Discussion - ${new Date().toLocaleDateString()}`,
         autoArchiveDuration: 1440
     });
 
-    // 4. Record in Supabase (for auto‑resume)
     try {
         await supabase.from(h.tables.POLL_AUTO_RESUME).upsert({
             message_id: pollMessage.id,
@@ -70,12 +62,10 @@ module.exports = async (interaction) => {
         console.error("❌ Supabase Error:", dbError.message);
     }
 
-    // 5. Add reactions (bot must react)
     await Promise.all(reactIds.map(id =>
         pollMessage.react(id).catch(e => console.error(`Reaction Error (${id}):`, e.message))
     ));
 
-    // 6. Send thread messages (images and prompt) via the same webhook
     const characterChunks = chunkArray(characters, 4);
     const cacheVersion = Date.now();
 
@@ -115,9 +105,8 @@ module.exports = async (interaction) => {
     });
 
     if (interaction.editReply) {
-        await interaction.editReply({ content: '✅ Poll Live!' }).catch(() => {});
+        await interaction.editReply({ content: `${h.releaseEmojis?.getRandomVerify?.() || '✅'} Poll Live!` }).catch(() => {});
     }
 
-    // 7. Start the update interval (edits via webhook)
     runPollInterval(pollMessage, endTime, characters);
 };
