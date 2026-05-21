@@ -20,7 +20,7 @@ async function handleShopSelect(interaction) {
     const selectedId = interaction.values[0];
     const item = SHOP_ITEMS.find(i => i.id === selectedId);
     if (!item) {
-        return interaction.followUp({ content: `${h.releaseEmojis.BATSU} Item not found.`, flags: MessageFlags.Ephemeral });
+        return interaction.followUp({ content: `${h.releaseEmojis?.BATSU || '❌'} Item not found.`, flags: MessageFlags.Ephemeral });
     }
 
     const { data: userData, error } = await supabase
@@ -31,12 +31,12 @@ async function handleShopSelect(interaction) {
 
     if (error) {
         console.error('Balance fetch error in shop select:', error);
-        return interaction.followUp({ content: `${h.releaseEmojis.BATSU} Could not retrieve your balance.`, flags: MessageFlags.Ephemeral });
+        return interaction.followUp({ content: `${h.releaseEmojis?.BATSU || '❌'} Could not retrieve your balance.`, flags: MessageFlags.Ephemeral });
     }
 
     const balance = userData?.ticket_count || 0;
     const canAfford = balance >= item.cost;
-    const randomCheck = h.releaseEmojis.getRandomVerify();
+    const randomCheck = h.releaseEmojis?.getRandomVerify?.() || '✅';
 
     const embed = new EmbedBuilder()
         .setTitle(`${item.emoji} ${item.name}`)
@@ -44,7 +44,7 @@ async function handleShopSelect(interaction) {
         .addFields(
             { name: 'Cost', value: `${item.cost} Tickets`, inline: true },
             { name: 'Your Balance', value: `${balance} Tickets`, inline: true },
-            { name: 'Status', value: canAfford ? `${randomCheck} You can afford this!` : `${h.releaseEmojis.BATSU} Insufficient tickets`, inline: false }
+            { name: 'Status', value: canAfford ? `${randomCheck} You can afford this!` : `${h.releaseEmojis?.BATSU || '❌'} Insufficient tickets`, inline: false }
         )
         .setColor(canAfford ? '#00FFCC' : '#FF0000');
 
@@ -76,13 +76,13 @@ async function handleShopPurchase(interaction) {
 
     if (fetchError) {
         console.error('Fetch balance error:', fetchError);
-        return interaction.followUp({ content: `${h.releaseEmojis.BATSU} Error checking balance.`, flags: MessageFlags.Ephemeral });
+        return interaction.followUp({ content: `${h.releaseEmojis?.BATSU || '❌'} Error checking balance.`, flags: MessageFlags.Ephemeral });
     }
 
     const balance = userData?.ticket_count || 0;
 
     if (balance < item.cost) {
-        return interaction.followUp({ content: `${h.releaseEmojis.BATSU} You do not have enough tickets.`, flags: MessageFlags.Ephemeral });
+        return interaction.followUp({ content: `${h.releaseEmojis?.BATSU || '❌'} You do not have enough tickets.`, flags: MessageFlags.Ephemeral });
     }
 
     const { data: newBalance, error: deductError } = await supabase
@@ -90,7 +90,7 @@ async function handleShopPurchase(interaction) {
 
     if (deductError) {
         console.error('Deduct error:', deductError);
-        return interaction.followUp({ content: `${h.releaseEmojis.BATSU} Purchase failed. Please try again.`, flags: MessageFlags.Ephemeral });
+        return interaction.followUp({ content: `${h.releaseEmojis?.BATSU || '❌'} Purchase failed. Please try again.`, flags: MessageFlags.Ephemeral });
     }
 
     const { error: logError } = await supabase
@@ -105,7 +105,6 @@ async function handleShopPurchase(interaction) {
 
     if (logError) console.error('Logging error:', logError);
 
-    // Admin notification (already in channel, no change)
     try {
         const adminChannelId = h.ids.channels.admin_channel;
         const adminChannel = await interaction.client.channels.fetch(adminChannelId);
@@ -118,7 +117,7 @@ async function handleShopPurchase(interaction) {
     }
 
     const embed = new EmbedBuilder()
-        .setTitle(`${h.releaseEmojis.getRandomVerify()} Purchase Successful!`)
+        .setTitle(`${h.releaseEmojis?.getRandomVerify?.() || '✅'} Purchase Successful!`)
         .setDescription(`You bought **${item.name}** for ${item.cost} tickets.`)
         .addFields(
             { name: 'New Balance', value: `${newBalance} Tickets` },
