@@ -12,15 +12,13 @@ const supabase = require('../services/supabase');
 
 const ALERT_EMOJI = releaseEmojis.ALERT;
 
-// ========== CONFIG ==========
 const NUDITY_THRESHOLD = 0.3;
 const MASS_SCAN_THRESHOLD = 0.3;
 const SCAN_DELAY_MS = 2000;
 const MONTHLY_CREDITS = 2000;
 const PROMPT_HOURS = [14, 16, 18];
-const NSFW_TIMEOUT_MS = 15000;   // 15 seconds per avatar
+const NSFW_TIMEOUT_MS = 15000;
 
-// ========== SIGHTENGINE SCAN ==========
 async function scanWithSightengine(url) {
     const formData = new URLSearchParams();
     formData.append('url', url);
@@ -36,7 +34,6 @@ async function scanWithSightengine(url) {
     return res.json();
 }
 
-// ========== NSFWCheckers (with timeout) ==========
 async function scanWithNSFWCheckers(url) {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), NSFW_TIMEOUT_MS);
@@ -67,12 +64,10 @@ async function scanWithNSFWCheckers(url) {
     }
 }
 
-// ========== AVATAR HASH HELPER ==========
 function getAvatarHash(member) {
     return member.user.avatar || 'default';
 }
 
-// ========== DATABASE OPERATIONS (flagged) ==========
 async function dbAddFlaggedUser(userId, avatarHash, discordTag) {
     await supabase.from('avatar_flagged_users').upsert({
         user_id: userId,
@@ -94,7 +89,6 @@ async function dbGetFlaggedUser(userId) {
     return data;
 }
 
-// ========== DATABASE OPERATIONS (ignored) ==========
 async function dbAddIgnoredUser(userId, avatarHash, discordTag) {
     await supabase.from('avatar_flagged_ignore').upsert({
         user_id: userId,
@@ -112,7 +106,6 @@ async function dbGetIgnoredUser(userId) {
     return data;
 }
 
-// ========== DATABASE OPERATIONS (settings) ==========
 async function getSetting(key) {
     const { data } = await supabase.from('avatar_flagged_settings')
         .select('value')
@@ -125,7 +118,6 @@ async function setSetting(key, value) {
     await supabase.from('avatar_flagged_settings').upsert({ key, value });
 }
 
-// ========== CREDIT TRACKING ==========
 async function getCurrentMonth() {
     const now = new Date();
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
@@ -158,7 +150,6 @@ async function getCreditsRemaining() {
     return Math.max(0, MONTHLY_CREDITS - used);
 }
 
-// ========== CHANNEL OVERWRITE MANAGEMENT ==========
 async function applyDenyOverwrites(guild, member) {
     const helpers = require('../utils/helpers');
     const channelIds = [...(helpers.avatarRestrictedChannels || [])];
@@ -214,12 +205,11 @@ async function removeDenyOverwrites(guild, member) {
     }
 }
 
-// ========== WARNING MESSAGE ==========
 async function sendWarningToUser(client, userId, customMessage) {
     try {
         const user = await client.users.fetch(userId);
         const msg = customMessage || (
-            `⚠️ **Notice from Velutinx's server**\n\n` +
+            `${ALERT_EMOJI} **Notice from Velutinx's server**\n\n` +
             `Your profile picture has been flagged as potentially inappropriate. ` +
             `Please change it to something more suitable to continue having unrestricted access to the server.\n\n` +
             `Your access to content channels remains unaffected, but communication may be limited until this is resolved.\n\n` +
@@ -233,7 +223,6 @@ async function sendWarningToUser(client, userId, customMessage) {
     }
 }
 
-// ========== RELIABLE NUDITY SCORE EXTRACTOR ==========
 function getSightNudityScore(sightResult) {
     if (!sightResult || !sightResult.nudity) return 0;
     const n = sightResult.nudity;
@@ -253,7 +242,6 @@ function getSightNudityScore(sightResult) {
     return probs.length > 0 ? Math.max(...probs) : 0;
 }
 
-// ========== OWNER NOTIFICATION ==========
 async function alertOwner(client, member, sightResult, nsfwCheckersResult, {
     extraText = '',
     includeCredits = true,
@@ -291,7 +279,7 @@ async function alertOwner(client, member, sightResult, nsfwCheckersResult, {
         const row = new ActionRowBuilder().addComponents(
             new ButtonBuilder()
                 .setCustomId(`warn_avatar_${member.id}`)
-                .setLabel('⚠️ Warn User')
+                .setLabel(`${ALERT_EMOJI} Warn User`)
                 .setStyle(ButtonStyle.Danger),
             new ButtonBuilder()
                 .setCustomId(`ignore_avatar_${member.id}`)
@@ -312,7 +300,6 @@ async function alertOwner(client, member, sightResult, nsfwCheckersResult, {
     owner.send({ embeds: [embed], components }).catch(() => {});
 }
 
-// ========== ALERT OWNER – AVATAR CHANGE DETECTED ==========
 async function alertOwnerAvatarChange(client, member, oldHash, newHash) {
     const owner = await client.users.fetch(ids.users.Velutinx).catch(() => null);
     if (!owner) return;
@@ -331,18 +318,17 @@ async function alertOwnerAvatarChange(client, member, oldHash, newHash) {
     const row = new ActionRowBuilder().addComponents(
         new ButtonBuilder()
             .setCustomId(`accept_avatar_${member.id}`)
-            .setLabel('✅ Accept')
+            .setLabel(`${releaseEmojis?.getRandomVerify?.() || '✅'} Accept`)
             .setStyle(ButtonStyle.Success),
         new ButtonBuilder()
             .setCustomId(`deny_avatar_${member.id}`)
-            .setLabel('❌ Deny')
+            .setLabel(`${releaseEmojis?.BATSU || '❌'} Deny`)
             .setStyle(ButtonStyle.Danger)
     );
 
     owner.send({ embeds: [embed], components: [row] }).catch(() => {});
 }
 
-// ========== PROCESS MEMBER (normal scan) ==========
 async function processMember(client, member, threshold = NUDITY_THRESHOLD) {
     if (member.user.bot) return;
     const avatarUrl = member.displayAvatarURL({ dynamic: true, size: 1024 });
@@ -375,12 +361,10 @@ async function processMember(client, member, threshold = NUDITY_THRESHOLD) {
     }
 }
 
-// ========== MASS SCAN (FREE API ONLY) ==========
 async function scanAllMembersWithFreeAPI(client) {
     const guild = client.guilds.cache.first();
     if (!guild) return;
 
-    // Fetch members with retry on rate limit
     const fetchMembers = async () => {
         let attempts = 0;
         while (attempts < 3) {
@@ -451,7 +435,6 @@ async function scanAllMembersWithFreeAPI(client) {
     console.log(`[MassScan] Finished scanning ${scanned} members, flagged ${flagged}.`);
 }
 
-// ========== DAILY FREE MASS SCAN GATING ==========
 async function shouldRunMassScanToday() {
     const lastScanDate = await getSetting('mass_scan_free_date');
     const today = new Date().toISOString().slice(0, 10);
@@ -463,7 +446,6 @@ async function markMassScanDoneToday() {
     await setSetting('mass_scan_free_date', today);
 }
 
-// ========== MONTHLY SIGHTENGINE-ONLY SCAN ==========
 async function performMonthlyScan(client) {
     const guild = client.guilds.cache.first();
     if (!guild) return;
@@ -507,7 +489,6 @@ async function performMonthlyScan(client) {
     return { scanned, flagged, used };
 }
 
-// ========== MONTHLY PROMPT LOGIC ==========
 async function sendMonthlyPrompt(client) {
     const owner = await client.users.fetch(ids.users.Velutinx).catch(() => null);
     if (!owner) return;
@@ -576,7 +557,6 @@ async function checkMonthlyScanPrompt(client) {
     }
 }
 
-// ========== MANUAL OWNER SCAN COMMAND ==========
 async function handleScanCommand(message) {
     if (message.author.id !== ids.users.Velutinx) return;
     if (!message.content.startsWith('!scan')) return;
@@ -590,20 +570,19 @@ async function handleScanCommand(message) {
         try {
             target = await message.guild.members.fetch(input);
         } catch {
-            return message.reply('❌ User not found in this server.');
+            return message.reply(`${releaseEmojis?.BATSU || '❌'} User not found in this server.`);
         }
     } else if (!input) {
         target = message.member;
     } else {
-        return message.reply('❌ Provide a valid user ID or mention.');
+        return message.reply(`${releaseEmojis?.BATSU || '❌'} Provide a valid user ID or mention.`);
     }
 
     const reply = await message.reply(`🔍 Scanning avatar of ${target.user.tag}...`);
     await processMember(message.client, target);
-    reply.edit(`✅ Scan complete for <@${target.id}>. Check your DM for details.`).catch(() => {});
+    reply.edit(`${releaseEmojis?.getRandomVerify?.() || '✅'} Scan complete for <@${target.id}>. Check your DM for details.`).catch(() => {});
 }
 
-// ========== BUTTON: WARN USER ==========
 async function handleWarnButton(interaction) {
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
@@ -620,13 +599,12 @@ async function handleWarnButton(interaction) {
     await applyDenyOverwrites(guild, member);
 
     let replyMsg = '';
-    replyMsg += dmSuccess ? `✅ Warning sent to <@${targetUserId}>.` : `❌ Failed to DM <@${targetUserId}>.`;
+    replyMsg += dmSuccess ? `${releaseEmojis?.getRandomVerify?.() || '✅'} Warning sent to <@${targetUserId}>.` : `${releaseEmojis?.BATSU || '❌'} Failed to DM <@${targetUserId}>.`;
     replyMsg += ` Channel restrictions applied.`;
 
     await interaction.editReply({ content: replyMsg });
 }
 
-// ========== BUTTON: IGNORE ==========
 async function handleIgnoreButton(interaction) {
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
@@ -639,10 +617,9 @@ async function handleIgnoreButton(interaction) {
 
     await dbAddIgnoredUser(targetUserId, getAvatarHash(member), member.user.tag);
 
-    await interaction.editReply({ content: `✅ <@${targetUserId}> has been added to the ignore list. Future scans will skip them unless they change their avatar.` });
+    await interaction.editReply({ content: `${releaseEmojis?.getRandomVerify?.() || '✅'} <@${targetUserId}> has been added to the ignore list. Future scans will skip them unless they change their avatar.` });
 }
 
-// ========== BUTTON: ACCEPT ==========
 async function handleAcceptButton(interaction) {
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
@@ -654,16 +631,15 @@ async function handleAcceptButton(interaction) {
     if (!member) return interaction.editReply({ content: 'User not in server.' });
 
     await sendWarningToUser(interaction.client, targetUserId,
-        '✅ Your profile picture has been approved. You now have unrestricted access again. Thank you!'
+        `${releaseEmojis?.getRandomVerify?.() || '✅'} Your profile picture has been approved. You now have unrestricted access again. Thank you!`
     );
 
     await removeDenyOverwrites(guild, member);
     await dbRemoveFlaggedUser(targetUserId);
 
-    await interaction.editReply({ content: `✅ <@${targetUserId}> has been accepted. Their restrictions are lifted.` });
+    await interaction.editReply({ content: `${releaseEmojis?.getRandomVerify?.() || '✅'} <@${targetUserId}> has been accepted. Their restrictions are lifted.` });
 }
 
-// ========== BUTTON: DENY ==========
 async function handleDenyButton(interaction) {
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
@@ -678,16 +654,15 @@ async function handleDenyButton(interaction) {
     }
 
     await sendWarningToUser(interaction.client, targetUserId,
-        '❌ Your new profile picture is still not acceptable. Please change it to a more appropriate one.'
+        `${releaseEmojis?.BATSU || '❌'} Your new profile picture is still not acceptable. Please change it to a more appropriate one.`
     );
 
     const newHash = getAvatarHash(member);
     await dbAddFlaggedUser(targetUserId, newHash, member.user.tag);
 
-    await interaction.editReply({ content: `❌ <@${targetUserId}> has been informed. Awaiting a new avatar change.` });
+    await interaction.editReply({ content: `${releaseEmojis?.BATSU || '❌'} <@${targetUserId}> has been informed. Awaiting a new avatar change.` });
 }
 
-// ========== BUTTON: MONTHLY SCAN ACCEPT ==========
 async function handleMonthlyScanAccept(interaction) {
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
@@ -697,11 +672,11 @@ async function handleMonthlyScanAccept(interaction) {
 
     const alreadyAccepted = await getSetting('monthly_scan_accepted');
     if (alreadyAccepted === 'true') {
-        return interaction.editReply({ content: 'Monthly scan has already been accepted.' });
+        return interaction.editReply({ content: `${releaseEmojis?.getRandomVerify?.() || '✅'} Monthly scan has already been accepted.` });
     }
 
     await setSetting('monthly_scan_accepted', 'true');
-    await interaction.editReply({ content: '✅ Monthly global scan started! You will receive results via DM as users are flagged.' });
+    await interaction.editReply({ content: `${releaseEmojis?.getRandomVerify?.() || '✅'} Monthly global scan started! You will receive results via DM as users are flagged.` });
 
     const client = interaction.client;
     performMonthlyScan(client).then(async (result) => {
@@ -714,7 +689,6 @@ async function handleMonthlyScanAccept(interaction) {
     });
 }
 
-// ========== AVATAR CHANGE DETECTION ==========
 async function onUserUpdate(oldUser, newUser) {
     if (oldUser.avatar === newUser.avatar) return;
 
@@ -730,7 +704,6 @@ async function onUserUpdate(oldUser, newUser) {
     await alertOwnerAvatarChange(oldUser.client, member, oldUser.avatar, newUser.avatar);
 }
 
-// ========== PERIODIC MONTHLY CHECK ==========
 let monthlyCheckInterval = null;
 
 function startMonthlyCheck(client) {
@@ -753,7 +726,6 @@ function startMonthlyCheck(client) {
     scheduleMonthReset();
 }
 
-// ========== EVENT LISTENERS ==========
 function init(client) {
     client.on('messageCreate', handleScanCommand);
 
@@ -782,9 +754,6 @@ function init(client) {
 
     client.on(Events.UserUpdate, onUserUpdate);
 
-    // ---------------------------------------------------------------
-    //  DAILY‑GATED FREE MASS SCAN (date saved BEFORE scan)
-    // ---------------------------------------------------------------
     client.once(Events.ClientReady, async () => {
         setTimeout(async () => {
             try {
