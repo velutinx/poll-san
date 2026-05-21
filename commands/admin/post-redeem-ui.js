@@ -9,7 +9,7 @@ module.exports = {
 
     async execute(interaction) {
         if (!interaction.memberPermissions.has('Administrator')) {
-            return interaction.reply({ content: '❌ Admin only.', ephemeral: true });
+            return interaction.reply({ content: `${helpers.releaseEmojis.BATSU} Admin only.`, flags: 64 });
         }
 
         const channel = interaction.channel;
