@@ -63,6 +63,7 @@ module.exports = {
         ALERT: '<a:alert:1493698480034676736>',
         HOURGLASS: '<a:Hourglass:1491762676416905267>',
         CHAT: '<a:chat:1491669036998594600>',
+        STAR: '<a:star:1506891386622840873>',
         CONFETTI: '<a:confetti:1491689074002755664>',
         SPARKLES: '<a:sparkles:1491697348718493786>',
         PROGRESS: '<a:progress:1491670111923212308>',
