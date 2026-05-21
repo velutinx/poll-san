@@ -9,12 +9,12 @@ module.exports = {
         .setDescription('[ADMIN] Post the Turnstile verification message'),
     async execute(interaction) {
         if (!interaction.memberPermissions.has('Administrator')) {
-            return interaction.reply({ content: `${helpers.releaseEmojis.BATSU} Admin only.`, flags: 64 });
+            return interaction.reply({ content: `${helpers.releaseEmojis?.BATSU || '❌'} Admin only.`, flags: 64 });
         }
 
         const verifyChannel = interaction.guild.channels.cache.get(helpers.ids.channels.verify);
         if (!verifyChannel) {
-            return interaction.reply({ content: '❌ Verify channel not found.', ephemeral: true });
+            return interaction.reply({ content: `${helpers.releaseEmojis?.BATSU || '❌'} Verify channel not found.`, ephemeral: true });
         }
 
         const embed = new EmbedBuilder()
@@ -34,7 +34,6 @@ module.exports = {
                 .setEmoji('🔒')
         );
 
-        // Use webhook to send as "Verification Bot"
         let webhook = (await verifyChannel.fetchWebhooks()).find(w => w.name === 'Verification Bot');
         if (!webhook) {
             webhook = await verifyChannel.createWebhook({
@@ -56,6 +55,6 @@ module.exports = {
         } catch (err) {
             console.error('Failed to add reaction:', err);
         }
-        await interaction.reply({ content: '✅ Verification message posted!', flags: 64 });
+        await interaction.reply({ content: `${helpers.releaseEmojis?.getRandomVerify?.() || '✅'} Verification message posted!`, flags: 64 });
     }
 };
