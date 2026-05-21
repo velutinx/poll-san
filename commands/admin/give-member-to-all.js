@@ -25,6 +25,6 @@ module.exports = {
                 }
             }
         }
-        await interaction.editReply(`✅ Added Member role to ${count} existing members.`);
+        await interaction.editReply(`${helpers.releaseEmojis?.getRandomVerify?.() || '✅'} Added Member role to ${count} existing members.`);
     }
 };
