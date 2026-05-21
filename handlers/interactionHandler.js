@@ -87,16 +87,16 @@ async function handleVerifyStart(interaction) {
     const hasMember = member.roles.cache.has(memberRoleId);
 
     if (hasSupporter || hasMember) {
-        return interaction.editReply({ content: '✅ You are already verified! No need to verify again.' });
+        return interaction.editReply({ content: `${helpers.releaseEmojis?.getRandomVerify?.() || '✅'} You are already verified! No need to verify again.` });
     }
 
     const workerUrl = process.env.VERIFY_WORKER_URL;
     if (!workerUrl) {
-        return interaction.editReply({ content: '❌ Verification service is not configured.' });
+        return interaction.editReply({ content: `${helpers.releaseEmojis?.BATSU || '❌'} Verification service is not configured.` });
     }
     const uniqueUrl = `${workerUrl}?user=${interaction.user.id}&guild=${interaction.guild.id}`;
     await interaction.editReply({
-        content: `🔗 **Your verification link** (expires after 10 minutes):\n${uniqueUrl}\n\nComplete the CAPTCHA in your browser to gain access.`
+        content: `${helpers.releaseEmojis?.LINK || '🔗'} **Your verification link** (expires after 10 minutes):\n${uniqueUrl}\n\nComplete the CAPTCHA in your browser to gain access.`
     });
 }
 
@@ -107,23 +107,20 @@ async function handleCheckinClaim(interaction) {
     const cooldownMap = global.checkinCooldown || new Map();
     if (!global.checkinCooldown) global.checkinCooldown = cooldownMap;
 
-    // Look for an existing valid message session to edit
     let existingSession = checkinSessions.get(gameKey);
     let hasValidSession = existingSession && (Date.now() - existingSession.timestamp < 14 * 60 * 1000);
 
     let finalContent = '';
     let runDatabaseCheck = true;
 
-    // 1. Rate Limit Check (Anti-spam protection)
     const lastClick = cooldownMap.get(userId);
     if (lastClick && Date.now() - lastClick < 2000) {
-        finalContent = '⏳ You’re clicking too fast!';
-        runDatabaseCheck = false; // Bypass database transactions if spamming
+        finalContent = `${helpers.releaseEmojis?.HOURGLASS || '⏳'} You’re clicking too fast!`;
+        runDatabaseCheck = false;
     } else {
         cooldownMap.set(userId, Date.now());
     }
 
-    // 2. Cooldown & Claim Verification
     if (runDatabaseCheck) {
         let { data: userData, error } = await supabase
             .from(helpers.tables.GAMES_USER_DATA)
@@ -147,7 +144,7 @@ async function handleCheckinClaim(interaction) {
         }
 
         if (!canClaim) {
-            finalContent = `⏳ You already claimed your daily reward! Come back in **${timeLeft}**.`;
+            finalContent = `${helpers.releaseEmojis?.HOURGLASS || '⏳'} You already claimed your daily reward! Come back in **${timeLeft}**.`;
         } else {
             const ticketAmount = helpers.CHECKIN_REWARD_TICKETS;
             const currentTickets = userData?.tickets || 0;
@@ -184,9 +181,8 @@ async function handleCheckinClaim(interaction) {
             }
 
             if (finalContent === '') {
-                finalContent = '❌ Database error.';
+                finalContent = `${helpers.releaseEmojis?.BATSU || '❌'} Database error.`;
             } else {
-                // Reset hangman cooldown status
                 try {
                     await supabase
                         .from(helpers.tables.GAMES_COOLDOWNS)
@@ -200,12 +196,9 @@ async function handleCheckinClaim(interaction) {
         }
     }
 
-    // 3. Response Execution Engine (Binds layout states together)
     let messageUpdated = false;
-
     if (hasValidSession) {
         try {
-            // Acknowledge the instant button interaction securely 
             await interaction.deferUpdate();
             messageUpdated = true;
         } catch (err) {
@@ -215,15 +208,12 @@ async function handleCheckinClaim(interaction) {
 
     if (messageUpdated) {
         try {
-            // Update context onto the original active ephemeral target 
             await existingSession.interaction.webhook.editMessage(existingSession.messageId, { content: finalContent });
         } catch {
-            // If the message was dismissed or expired, provide a clean replacement fallback
             const msg = await interaction.followUp({ content: finalContent, flags: 64, fetchReply: true });
             checkinSessions.set(gameKey, { interaction, messageId: msg.id, timestamp: Date.now() });
         }
     } else {
-        // Build out the baseline fallback if no tracking context was found
         await interaction.deferReply({ flags: 64 });
         const msg = await interaction.editReply({ content: finalContent });
         checkinSessions.set(gameKey, { interaction, messageId: msg.id, timestamp: Date.now() });
@@ -233,8 +223,8 @@ async function handleCheckinClaim(interaction) {
 }
 
 function buildSuccessMessage(ticketAmount, newBalance) {
-    return `${helpers.releaseEmojis?.VERIFY || '✅'} **Daily Check-In Successful!**\n\n` +
-           `You received **${ticketAmount} tickets**! New balance: **${newBalance}** 🎫\n` +
+    return `${helpers.releaseEmojis?.getRandomVerify?.() || '✅'} **Daily Check-In Successful!**\n\n` +
+           `You received **${ticketAmount} tickets**! New balance: **${newBalance}** ${helpers.releaseEmojis?.TICKET || '🎫'}\n` +
            `Your Wordle, Hangman, and Trivia cooldowns have been reset.\n` +
            `Your Hangman ticket cooldown has also been reset – you can earn another ticket immediately!`;
 }
