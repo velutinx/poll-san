@@ -1,6 +1,6 @@
 // commands/admin/post-checkin-ui.js
 
-const { SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } = require('discord.js');
+const { SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, MessageFlags } = require('discord.js');
 const helpers = require('../../utils/helpers');
 
 module.exports = {
@@ -11,7 +11,7 @@ module.exports = {
         if (!interaction.memberPermissions.has('Administrator')) {
             return interaction.reply({
                 content: `${helpers.releaseEmojis.BATSU} Admin only.`,
-                ephemeral: true
+                flags: [MessageFlags.Ephemeral]
             });
         }
 
@@ -19,7 +19,7 @@ module.exports = {
         if (!checkinChannel) {
             return interaction.reply({
                 content: `${helpers.releaseEmojis.BATSU} Check-in channel not found.`,
-                ephemeral: true
+                flags: [MessageFlags.Ephemeral]
             });
         }
 
@@ -61,7 +61,7 @@ module.exports = {
 
         await interaction.reply({
             content: `${helpers.releaseEmojis.getRandomVerify()} Daily check-in message posted!`,
-            ephemeral: true
+            flags: [MessageFlags.Ephemeral]
         });
     }
 };
