@@ -11,7 +11,7 @@ module.exports = {
         if (!interaction.memberPermissions.has('Administrator')) {
             return interaction.reply({
                 content: `${helpers.releaseEmojis?.BATSU || '❌'} Admin only.`,
-                flags: [MessageFlags.Ephemeral]
+                flags: MessageFlags.Ephemeral
             });
         }
 
@@ -19,7 +19,7 @@ module.exports = {
         if (!checkinChannel) {
             return interaction.reply({
                 content: `${helpers.releaseEmojis?.BATSU || '❌'} Check-in channel not found.`,
-                flags: [MessageFlags.Ephemeral]
+                flags: MessageFlags.Ephemeral
             });
         }
 
@@ -61,7 +61,7 @@ module.exports = {
 
         await interaction.reply({
             content: `${helpers.releaseEmojis?.getRandomVerify?.() || '✅'} Daily check-in message posted!`,
-            flags: [MessageFlags.Ephemeral]
+            flags: MessageFlags.Ephemeral
         });
     }
 };
