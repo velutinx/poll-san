@@ -794,7 +794,6 @@ function init(client) {
                     await scanAllMembersWithFreeAPI(client);
                     console.log('[MassScan] Daily free mass scan completed.');
                 } else {
-                    console.log('[MassScan] Already scanned today, skipping free mass scan.');
                 }
             } catch (err) {
                 console.error('[MassScan] Fatal error during daily free mass scan:', err);
