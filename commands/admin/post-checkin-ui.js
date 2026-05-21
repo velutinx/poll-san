@@ -10,7 +10,7 @@ module.exports = {
     async execute(interaction) {
         if (!interaction.memberPermissions.has('Administrator')) {
             return interaction.reply({
-                content: `${helpers.releaseEmojis.BATSU} Admin only.`,
+                content: `${helpers.releaseEmojis?.BATSU || '❌'} Admin only.`,
                 flags: [MessageFlags.Ephemeral]
             });
         }
@@ -18,7 +18,7 @@ module.exports = {
         const checkinChannel = interaction.guild.channels.cache.get(helpers.ids.channels.checkin);
         if (!checkinChannel) {
             return interaction.reply({
-                content: `${helpers.releaseEmojis.BATSU} Check-in channel not found.`,
+                content: `${helpers.releaseEmojis?.BATSU || '❌'} Check-in channel not found.`,
                 flags: [MessageFlags.Ephemeral]
             });
         }
@@ -26,7 +26,7 @@ module.exports = {
         const embed = new EmbedBuilder()
             .setColor(0x2f3136)
             .setDescription(
-                `# ${helpers.releaseEmojis.STAR} Daily Check‑In\n\n` +
+                `# ${helpers.releaseEmojis?.STAR || '🌟'} Daily Check‑In\n\n` +
                 `Click the button below to claim your **${helpers.CHECKIN_REWARD_TICKETS} tickets** and reset all your game cooldowns!\n\n` +
                 `You can do this once every **24 hours**.`
             );
@@ -60,7 +60,7 @@ module.exports = {
         });
 
         await interaction.reply({
-            content: `${helpers.releaseEmojis.getRandomVerify()} Daily check-in message posted!`,
+            content: `${helpers.releaseEmojis?.getRandomVerify?.() || '✅'} Daily check-in message posted!`,
             flags: [MessageFlags.Ephemeral]
         });
     }
