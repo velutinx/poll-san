@@ -8,15 +8,15 @@ module.exports = {
         .setDescription('[ADMIN] Post the Coin Toss game interface'),
     async execute(interaction) {
         if (!interaction.memberPermissions.has('Administrator')) {
-            return interaction.reply({ content: `${helpers.releaseEmojis.BATSU} Admin only.`, flags: 64 });
+            return interaction.reply({ content: `${helpers.releaseEmojis?.BATSU || '❌'} Admin only.`, flags: 64 });
         }
 
         const embed = new EmbedBuilder()
             .setColor(0x2f3136)
             .setDescription(
-                `# ${helpers.releaseEmojis.CATCOIN} Coin Toss\n\n` +
+                `# ${helpers.releaseEmojis?.CATCOIN || '🪙'} Coin Toss\n\n` +
                 `Click a bet button below to toss a coin!\n` +
-                `If it lands ${helpers.releaseEmojis.YOSHICOIN} Heads, you win the bet amount!\n` +
+                `If it lands ${helpers.releaseEmojis?.YOSHICOIN || '🪙'} Heads, you win the bet amount!\n` +
                 `If it lands 🪙 Tails, you lose the bet.`
             );
 
@@ -24,15 +24,15 @@ module.exports = {
             .addComponents(
                 new ButtonBuilder()
                     .setCustomId('cointoss_bet_1')
-                    .setLabel(`Toss 1 ${helpers.releaseEmojis.TICKET}`)
+                    .setLabel(`Toss 1 ${helpers.releaseEmojis?.TICKET || '🎫'}`)
                     .setStyle(ButtonStyle.Primary),
                 new ButtonBuilder()
                     .setCustomId('cointoss_bet_5')
-                    .setLabel(`Toss 5 ${helpers.releaseEmojis.TICKET}`)
+                    .setLabel(`Toss 5 ${helpers.releaseEmojis?.TICKET || '🎫'}`)
                     .setStyle(ButtonStyle.Primary),
                 new ButtonBuilder()
                     .setCustomId('cointoss_bet_25')
-                    .setLabel(`Toss 25 ${helpers.releaseEmojis.TICKET}`)
+                    .setLabel(`Toss 25 ${helpers.releaseEmojis?.TICKET || '🎫'}`)
                     .setStyle(ButtonStyle.Primary)
             );
 
@@ -51,6 +51,6 @@ module.exports = {
             avatarURL: helpers.urls.LOGO_URL
         });
 
-        await interaction.reply({ content: '✅ Coin Toss game posted!', flags: 64 });
+        await interaction.reply({ content: `${helpers.releaseEmojis?.getRandomVerify?.() || '✅'} Coin Toss game posted!`, flags: 64 });
     }
 };
