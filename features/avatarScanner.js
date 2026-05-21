@@ -18,6 +18,7 @@ const MASS_SCAN_THRESHOLD = 0.3;
 const SCAN_DELAY_MS = 2000;
 const MONTHLY_CREDITS = 2000;
 const PROMPT_HOURS = [14, 16, 18];
+const NSFW_TIMEOUT_MS = 15000;   // 15 seconds per avatar
 
 // ========== SIGHTENGINE SCAN ==========
 async function scanWithSightengine(url) {
@@ -35,19 +36,35 @@ async function scanWithSightengine(url) {
     return res.json();
 }
 
-// ========== NSFWCheckers ==========
+// ========== NSFWCheckers (with timeout) ==========
 async function scanWithNSFWCheckers(url) {
-    const imageRes = await fetch(url);
-    if (!imageRes.ok) throw new Error(`Failed to download image: ${imageRes.status}`);
-    const imageBuffer = await imageRes.arrayBuffer();
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), NSFW_TIMEOUT_MS);
 
-    const formData = new FormData();
-    formData.append('image', new Blob([imageBuffer]), 'avatar.webp');
-    const res = await fetch('https://api.nsfwcheckers.workers.dev', {
-        method: 'POST',
-        body: formData,
-    });
-    return res.json();
+    try {
+        const imageRes = await fetch(url, { signal: controller.signal });
+        clearTimeout(timeout);
+        if (!imageRes.ok) throw new Error(`Failed to download image: ${imageRes.status}`);
+        const imageBuffer = await imageRes.arrayBuffer();
+
+        const formData = new FormData();
+        formData.append('image', new Blob([imageBuffer]), 'avatar.webp');
+
+        const res = await fetch('https://api.nsfwcheckers.workers.dev', {
+            method: 'POST',
+            body: formData,
+            signal: controller.signal,
+        });
+        clearTimeout(timeout);
+        return res.json();
+    } catch (err) {
+        clearTimeout(timeout);
+        if (err.name === 'AbortError') {
+            console.warn(`[NSFWCheckers] Timeout scanning ${url}`);
+            return null;
+        }
+        throw err;
+    }
 }
 
 // ========== AVATAR HASH HELPER ==========
@@ -363,6 +380,7 @@ async function scanAllMembersWithFreeAPI(client) {
     const guild = client.guilds.cache.first();
     if (!guild) return;
 
+    // Fetch members with retry on rate limit
     const fetchMembers = async () => {
         let attempts = 0;
         while (attempts < 3) {
@@ -387,12 +405,14 @@ async function scanAllMembersWithFreeAPI(client) {
         members = await fetchMembers();
     } catch (err) {
         console.error('[MassScan] Could not fetch members, aborting scan:', err.message);
-        throw err; // rethrow so the caller knows we failed
+        throw err;
     }
 
     const memberArray = [...members.values()];
     let scanned = 0;
     let flagged = 0;
+
+    console.log(`[MassScan] Starting scan of ${memberArray.length} members...`);
 
     for (const member of memberArray) {
         if (member.user.bot) continue;
@@ -403,7 +423,7 @@ async function scanAllMembersWithFreeAPI(client) {
         if (ignoredEntry && ignoredEntry.avatar_hash === getAvatarHash(member)) continue;
 
         try {
-            const nsfwCheckersResult = await scanWithNSFWCheckers(avatarUrl).catch(() => null);
+            const nsfwCheckersResult = await scanWithNSFWCheckers(avatarUrl);
             const score = nsfwCheckersResult?.score ?? null;
             if (score !== null && score >= MASS_SCAN_THRESHOLD) {
                 console.log(`[MassScan] Flagged (free): ${member.user.tag} (score: ${score.toFixed(2)})`);
@@ -417,7 +437,12 @@ async function scanAllMembersWithFreeAPI(client) {
         } catch (err) {
             console.error(`[MassScan] Error scanning ${member.user.tag}:`, err.message);
         }
+
         scanned++;
+        if (scanned % 10 === 0) {
+            console.log(`[MassScan] Progress: ${scanned}/${memberArray.length} members scanned...`);
+        }
+
         if (scanned < memberArray.length) {
             await new Promise(resolve => setTimeout(resolve, SCAN_DELAY_MS));
         }
@@ -758,20 +783,21 @@ function init(client) {
     client.on(Events.UserUpdate, onUserUpdate);
 
     // ---------------------------------------------------------------
-    //  DAILY‑GATED FREE MASS SCAN (with clear completion logging)
+    //  DAILY‑GATED FREE MASS SCAN (date saved BEFORE scan)
     // ---------------------------------------------------------------
     client.once(Events.ClientReady, async () => {
         setTimeout(async () => {
             try {
                 if (await shouldRunMassScanToday()) {
-                    console.log('[MassScan] Running daily free mass scan...');
-                    await scanAllMembersWithFreeAPI(client);
                     await markMassScanDoneToday();
-                    console.log('[MassScan] Daily free mass scan finished and date recorded.');
+                    console.log('[MassScan] Daily free mass scan marked for today. Starting scan...');
+                    await scanAllMembersWithFreeAPI(client);
+                    console.log('[MassScan] Daily free mass scan completed.');
                 } else {
+                    console.log('[MassScan] Already scanned today, skipping free mass scan.');
                 }
             } catch (err) {
-                console.error('[MassScan] Fatal error during daily free mass scan (will retry next restart):', err);
+                console.error('[MassScan] Fatal error during daily free mass scan:', err);
             }
         }, 30000);
 
