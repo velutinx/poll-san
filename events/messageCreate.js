@@ -1,4 +1,5 @@
 // events/messageCreate.js
+const { MessageFlags } = require('discord.js');
 const supabase = require('../services/supabase');
 const h = require('../utils/helpers');
 
@@ -88,7 +89,7 @@ module.exports = async (message) => {
 
     setTimeout(() => {
         message.delete().catch(() => {});
-    }, 2000); // change back to 2000
+    }, 2000);
 
     const notifyText = `${h.releaseEmojis?.CONFETTI || '🎉'} Nice win, <@${message.author.id}>! You earned **1 ticket**! You now have **${result.newCount}** ticket(s).`;
 
@@ -107,11 +108,12 @@ module.exports = async (message) => {
             content: notifyText,
             allowedMentions: { users: [message.author.id] },
             username: 'Rewards',
-            avatarURL: h.urls.LOGO_URL
+            avatarURL: h.urls.LOGO_URL,
+            flags: [MessageFlags.SuppressNotifications]
         });
 
         if (notifyMsg) {
-            setTimeout(() => notifyMsg.delete().catch(() => {}), 8000); // change back to 8000
+            setTimeout(() => notifyMsg.delete().catch(() => {}), 8000);
         }
     } catch (err) {
         console.error('Webhook notification error:', err);
