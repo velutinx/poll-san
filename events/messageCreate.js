@@ -80,9 +80,9 @@ module.exports = async (message) => {
     if (message.author.bot && message.author.id !== WORDLE_BOT_ID) return;
     if (message.channel.id !== WORDLE_CHANNEL_ID) return;
     if (!isWordleWin(message)) return;
+
     const result = await awardTicket(message.author.id, message.author.username);
     if (!result.awarded) return;
-
     await message.react(h.releaseEmojis?.TICKET || '🎟️').catch(() => {});
 
     setTimeout(() => {
@@ -92,11 +92,28 @@ module.exports = async (message) => {
     const notifyText = `${h.releaseEmojis?.CONFETTI || '🎉'} Nice win, <@${message.author.id}>! You earned **1 ticket**! You now have **${result.newCount}** ticket(s).`;
 
     try {
-        await message.author.send({
+        let rewardWebhook = (await message.channel.fetchWebhooks())
+            .find(w => w.name === 'Rewards');
+
+        if (!rewardWebhook) {
+            rewardWebhook = await message.channel.createWebhook({
+                name: 'Rewards',
+                avatar: h.urls.LOGO_URL
+            });
+        }
+
+        const notifyMsg = await rewardWebhook.send({
             content: notifyText,
+            allowedMentions: { users: [message.author.id] },
+            username: 'Rewards',
+            avatarURL: h.urls.LOGO_URL,
             flags: [MessageFlags.SuppressNotifications]
         });
+
+        if (notifyMsg) {
+            setTimeout(() => notifyMsg.delete().catch(() => {}), 8000);
+        }
     } catch (err) {
-        console.error('Failed to send reward DM to', message.author.tag, err);
+        console.error('Webhook notification error:', err);
     }
 };
