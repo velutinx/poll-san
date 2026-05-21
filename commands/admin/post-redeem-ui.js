@@ -9,7 +9,7 @@ module.exports = {
 
     async execute(interaction) {
         if (!interaction.memberPermissions.has('Administrator')) {
-            return interaction.reply({ content: `${helpers.releaseEmojis.BATSU} Admin only.`, flags: 64 });
+            return interaction.reply({ content: `${helpers.releaseEmojis?.BATSU || '❌'} Admin only.`, flags: 64 });
         }
 
         const channel = interaction.channel;
@@ -17,14 +17,14 @@ module.exports = {
 
         const embed = new EmbedBuilder()
             .setColor('#B68BEC')
-            .setTitle('🎫 Ticket Store')
+            .setTitle(`${helpers.releaseEmojis?.TICKET || '🎫'} Ticket Store`)
             .setDescription(
                 'Spend your hard‑earned tickets on these perks:\n\n' +
                 `🗳️ **Vote Boost** – your poll votes count 2× for 7 days\n` +
                 `　　Cost: **${cost.voteBoostCost}** tickets\n\n` +
-                `💬 **Suggest a Character** – nominate someone for the next weekly poll\n` +
+                `${helpers.releaseEmojis?.SPEECH || '💬'} **Suggest a Character** – nominate someone for the next weekly poll\n` +
                 `　　Cost: **${cost.suggestCost}** tickets\n\n` +
-                `🎁 **Request a Character** – ask for a character from a series you already own\n` +
+                `${helpers.getRandomPresent?.() || '🎁'} **Request a Character** – ask for a character from a series you already own\n` +
                 `　　Cost: **${cost.characterRequestCost}** tickets`
             );
 
@@ -37,16 +37,15 @@ module.exports = {
             new ButtonBuilder()
                 .setCustomId('redeem_suggest_character')
                 .setLabel('Suggest Character')
-                .setEmoji('💬')
+                .setEmoji(`${helpers.releaseEmojis?.SPEECH || '💬'}`)
                 .setStyle(ButtonStyle.Primary),
             new ButtonBuilder()
                 .setCustomId('redeem_start')
                 .setLabel('Request a Character')
-                .setEmoji('🎁')
+                .setEmoji(`${helpers.getRandomPresent?.() || '🎁'}`)
                 .setStyle(ButtonStyle.Secondary)
         );
 
-        // Use one webhook for the whole store
         const webhookName = 'Ticket Store';
         let webhook = (await channel.fetchWebhooks()).find(w => w.name === webhookName);
         if (!webhook) {
@@ -63,6 +62,6 @@ module.exports = {
             avatarURL: helpers.urls.LOGO_URL
         });
 
-        await interaction.reply({ content: '✅ Ticket Store posted!', ephemeral: true });
+        await interaction.reply({ content: `${helpers.releaseEmojis?.getRandomVerify?.() || '✅'} Ticket Store posted!`, ephemeral: true });
     }
 };
