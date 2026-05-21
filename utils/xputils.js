@@ -1,22 +1,17 @@
 // poll-san/utils/xputils.js
 
 require('dotenv').config({ quiet: true });
+const { MessageFlags } = require('discord.js');
 const { weights, releaseEmojis } = require('./helpers');
 const h = require('./helpers');
-
 const XP_MIN_CHARS = 5;
-
-// Thresholds: Level 2 = 50, Level 3 = 100, etc.
 const LEVEL_THRESHOLDS = Array.from({ length: 26 }, (_, index) =>
   index <= 1 ? 0 : (index - 1) * 50
 );
 
 const SUPABASE_URL = process.env.SUPABASE_URL?.replace(/\/$/, '') || '';
 const SUPABASE_KEY = process.env.SUPABASE_KEY || '';
-
-// XP channel ID from helpers.js
 const XP_CHANNEL_ID = h.ids.channels.xp_channel;
-
 const XPLib = {
   getLevel(messages) {
     for (let i = LEVEL_THRESHOLDS.length - 1; i > 0; i--) {
@@ -42,7 +37,6 @@ const XPLib = {
       
       const rows = await res.json();
       const current = rows[0] || { total_messages: 0, level: 0 };
-
       const total = current.total_messages + 1;
       const oldLevel = current.level;
       const newLevel = this.getLevel(total);
@@ -64,7 +58,6 @@ const XPLib = {
         })
       });
 
-      // ---------- Level‑up notification via webhook ----------
       if (newLevel > oldLevel) {
         const totalBonus = (newLevel * weights.xpFactor).toFixed(2);
         const s = releaseEmojis.SPARKLES;
@@ -73,28 +66,24 @@ const XPLib = {
         if (!xpChannel) return;
 
         try {
-          // Fetch or create the "Leveling" webhook
           const hooks = await xpChannel.fetchWebhooks();
           let levelingWebhook = hooks.find(w => w.name === 'Leveling');
-
           if (!levelingWebhook) {
             levelingWebhook = await xpChannel.createWebhook({
               name: 'Leveling',
-              avatar: h.urls.LOGO_URL   // same logo used everywhere
+              avatar: h.urls.LOGO_URL
             });
           }
 
-          // Send the notification as the webhook
-          const notifyMsg = await levelingWebhook.send({
+          await levelingWebhook.send({
             content: `<@${message.author.id}> ${s} **Level Up!** ${s}\n` +
                      `You reached **Level ${newLevel}**!\n` +
                      `Your vote bonus is now **+${totalBonus}**.`,
             allowedMentions: { users: [message.author.id] },
             username: 'Leveling',
-            avatarURL: h.urls.LOGO_URL
+            avatarURL: h.urls.LOGO_URL,
+            flags: [MessageFlags.SuppressNotifications]
           });
-
-          // Optional: delete after some time? (keeping it permanent for now)
         } catch (webhookErr) {
           console.error('Level‑up webhook error:', webhookErr);
         }
