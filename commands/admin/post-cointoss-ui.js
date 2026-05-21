@@ -8,7 +8,7 @@ module.exports = {
         .setDescription('[ADMIN] Post the Coin Toss game interface'),
     async execute(interaction) {
         if (!interaction.memberPermissions.has('Administrator')) {
-            return interaction.reply({ content: '❌ Admin only.', flags: 64 });
+            return interaction.reply({ content: `${helpers.releaseEmojis.BATSU} Admin only.`, flags: 64 });
         }
 
         const embed = new EmbedBuilder()
@@ -24,15 +24,15 @@ module.exports = {
             .addComponents(
                 new ButtonBuilder()
                     .setCustomId('cointoss_bet_1')
-                    .setLabel('Toss 1 🎟️')
+                    .setLabel(`Toss 1 ${helpers.releaseEmojis.TICKET}`)
                     .setStyle(ButtonStyle.Primary),
                 new ButtonBuilder()
                     .setCustomId('cointoss_bet_5')
-                    .setLabel('Toss 5 🎟️')
+                    .setLabel(`Toss 5 ${helpers.releaseEmojis.TICKET}`)
                     .setStyle(ButtonStyle.Primary),
                 new ButtonBuilder()
                     .setCustomId('cointoss_bet_25')
-                    .setLabel('Toss 25 🎟️')
+                    .setLabel(`Toss 25 ${helpers.releaseEmojis.TICKET}`)
                     .setStyle(ButtonStyle.Primary)
             );
 
