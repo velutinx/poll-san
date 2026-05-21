@@ -11,7 +11,7 @@ module.exports = {
 
     async execute(interaction) {
         if (!interaction.memberPermissions.has('Administrator')) {
-            return interaction.reply({ content: `${helpers.releaseEmojis.BATSU} Admin only.`, flags: 64 });
+            return interaction.reply({ content: `${helpers.releaseEmojis?.BATSU || '❌'} Admin only.`, flags: 64 });
         }
 
         const channel = interaction.channel;
@@ -45,6 +45,6 @@ module.exports = {
             avatarURL: helpers.urls.LOGO_URL
         });
 
-        await interaction.reply({ content: '✅ Hangman UI posted!', flags: 64 });
+        await interaction.reply({ content: `${helpers.releaseEmojis?.getRandomVerify?.() || '✅'} Hangman UI posted!`, flags: 64 });
     }
 };
