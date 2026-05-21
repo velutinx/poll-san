@@ -5,7 +5,6 @@ const fs = require('fs').promises;
 const { colors, releaseEmojis } = require('../utils/helpers');
 const h = require('../utils/helpers');
 
-// In-memory caches
 const activeGiveaways = new Map();
 const giveawaySessions = new Map();
 
@@ -36,10 +35,6 @@ async function getGiveawayWebhook(channel) {
     }
     return webhook;
 }
-
-// ──────────────────────────────────────────────
-// Safe timeout helper for durations > 24.8 days
-// ──────────────────────────────────────────────
 const MAX_TIMEOUT = 2147483647;
 
 function safeTimeout(callback, delayMs) {
@@ -128,19 +123,18 @@ module.exports = {
 
         if (imageUrl) embed.setImage(imageUrl);
 
-// Random animated present for the button
-const presentEmojiStr = h.getRandomPresent();
-const match = presentEmojiStr.match(/^<a?:(\w+):(\d+)>$/);
-const emojiData = match ? { name: match[1], id: match[2] } : { name: '🎁' };
+        const presentEmojiStr = h.getRandomPresent();
+        const match = presentEmojiStr.match(/^<a?:(\w+):(\d+)>$/);
+        const emojiData = match ? { name: match[1], id: match[2] } : { name: '🎁' };
 
-const row = new ActionRowBuilder()
-    .addComponents(
-        new ButtonBuilder()
-            .setCustomId('enter_giveaway')
-            .setLabel('Enter Giveaway')
-            .setStyle(ButtonStyle.Primary)
-            .setEmoji(emojiData)
-    );
+        const row = new ActionRowBuilder()
+            .addComponents(
+                new ButtonBuilder()
+                    .setCustomId('enter_giveaway')
+                    .setLabel('Enter Giveaway')
+                    .setStyle(ButtonStyle.Primary)
+                    .setEmoji(emojiData)
+            );
 
         const messageOptions = { embeds: [embed], components: [row] };
         if (imageAttachment) messageOptions.files = [imageAttachment];
@@ -155,7 +149,7 @@ const row = new ActionRowBuilder()
         // Ghost ping with confetti
         try {
             const pingMessage = await webhook.send({
-                content: `${releaseEmojis.CONFETTI} New giveaway! <@&1472273843665113139>`,
+                content: `${releaseEmojis?.CONFETTI || '🎉'} New giveaway! <@&1472273843665113139>`,
                 username: 'Giveaway',
                 avatar: h.urls.LOGO_URL
             });
@@ -185,7 +179,7 @@ const row = new ActionRowBuilder()
         if (error) {
             console.error('Failed to save giveaway to database:', error);
             await webhook.send({
-                content: `${releaseEmojis.ALERT} Giveaway created but failed to save to database. It may not persist after restart.`,
+                content: `${releaseEmojis?.ALERT || '⚠'} Giveaway created but failed to save to database. It may not persist after restart.`,
                 username: 'Giveaway',
                 avatar: h.urls.LOGO_URL
             });
@@ -247,7 +241,6 @@ async function handleGiveawayButton(interaction) {
         try {
             await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
         } catch (err) {
-            // Interaction expired – return silently
             return;
         }
     }
@@ -315,7 +308,7 @@ async function handleGiveawayButton(interaction) {
                 giveaway.entrants.delete(userId);
                 responseContent = 'Failed to enter giveaway due to a database error.';
             } else {
-                responseContent = `${releaseEmojis?.VERIFY || '✅'} You entered the giveaway!`;
+                responseContent = `${releaseEmojis?.getRandomVerify?.() || '✅'} You entered the giveaway!`;
             }
         }
     }
@@ -383,14 +376,14 @@ async function endGiveaway(messageId, client) {
             const winnerMentions = winners.map(id => `<@${id}>`).join(', ');
             const { left, right } = h.getTwoRandomPresents();
             await webhook.send({
-                content: `${releaseEmojis.CONFETTI} Congratulations to ${winnerMentions} for winning ${left} **${dbGiveaway.prize}** ${right}!`,
+                content: `${releaseEmojis?.CONFETTI || '🎉'} Congratulations to ${winnerMentions} for winning ${left} **${dbGiveaway.prize}** ${right}!`,
                 username: 'Giveaway',
                 avatar: h.urls.LOGO_URL
             });
         }
 
         const oldEmbed = message.embeds[0];
-        const endedTitle = `${dbGiveaway.prize} Giveaway Ended ${releaseEmojis.CONFETTI}`;
+        const endedTitle = `${dbGiveaway.prize} Giveaway Ended ${releaseEmojis?.CONFETTI || '🎉'}`;
         const newEmbed = EmbedBuilder.from(oldEmbed)
             .setTitle(endedTitle)
             .setDescription(null)
@@ -489,14 +482,14 @@ async function endGiveawayFromDB(g, client) {
             const winnerMentions = winners.map(id => `<@${id}>`).join(', ');
             const { left, right } = h.getTwoRandomPresents();
             await webhook.send({
-                content: `${releaseEmojis.CONFETTI} Congratulations to ${winnerMentions} for winning ${left} **${g.prize}** ${right}!`,
+                content: `${releaseEmojis?.CONFETTI || '🎉'} Congratulations to ${winnerMentions} for winning ${left} **${g.prize}** ${right}!`,
                 username: 'Giveaway',
                 avatar: h.urls.LOGO_URL
             });
         }
 
         const oldEmbed = message.embeds[0];
-        const endedTitle = `${g.prize} Giveaway Ended ${releaseEmojis.CONFETTI}`;
+        const endedTitle = `${g.prize} Giveaway Ended ${releaseEmojis?.CONFETTI || '🎉'}`;
         const newEmbed = EmbedBuilder.from(oldEmbed)
             .setTitle(endedTitle)
             .setDescription(null)
