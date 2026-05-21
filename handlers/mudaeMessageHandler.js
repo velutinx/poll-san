@@ -11,7 +11,6 @@ const CLAIM_LOOKUP_TIMEOUT_MS = 1 * 60 * 1000;
 
 const pendingClaims = new Map();
 
-// Whitelist: messages that will never be deleted
 const WHITELISTED_MESSAGE_IDS = new Set(helpers.whitelistedMessages[helpers.ids.channels.mudae_roll] || []);
 
 function resetInactivityTimer(channel) {
@@ -101,7 +100,6 @@ function initMudaeMessageHandler(client) {
 
         const { character, series } = parsed;
 
-        // Store for claim matching – use original series (canonical later)
         pendingClaims.set(character, {
             series,
             messageId: message.id,
@@ -113,7 +111,6 @@ function initMudaeMessageHandler(client) {
             }
         }, CLAIM_LOOKUP_TIMEOUT_MS);
 
-        // Add a random VERIFY reaction
         try {
             const randomVerify = helpers.releaseEmojis.getRandomVerify();
             await message.react(randomVerify);
@@ -122,7 +119,6 @@ function initMudaeMessageHandler(client) {
         }
     });
 
-    // ---- Claim detection ----
     client.on('messageCreate', async (message) => {
         if (message.author.id !== helpers.ids.bots.mudae) return;
         if (message.channel.id !== helpers.ids.channels.mudae_roll) return;
@@ -135,7 +131,7 @@ function initMudaeMessageHandler(client) {
         const characterName = match[2].replace(/\*\*/g, '').trim();
         const pending = pendingClaims.get(characterName);
         const originalSeries = pending ? pending.series : null;
-        const canonicalSeries = getCanonicalSeries(originalSeries); // NEW – apply alias mapping
+        const canonicalSeries = getCanonicalSeries(originalSeries);
 
         let userId = null;
         try {
@@ -148,7 +144,7 @@ function initMudaeMessageHandler(client) {
                 user_id: userId,
                 username: claimerUsername,
                 character_name: characterName,
-                series: canonicalSeries,                  // use canonical name
+                series: canonicalSeries,
                 claimed_at: new Date().toISOString()
             });
             if (error) {
@@ -162,7 +158,6 @@ function initMudaeMessageHandler(client) {
         if (pending) pendingClaims.delete(characterName);
     });
 
-    // Cleanup on shutdown
     process.on('beforeExit', () => {
         for (const timeout of activeTimeouts.values()) clearTimeout(timeout);
         activeTimeouts.clear();
