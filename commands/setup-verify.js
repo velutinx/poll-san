@@ -29,7 +29,7 @@ module.exports = {
                 .setCustomId('verify_modal_btn')
                 .setLabel('Verify')
                 .setStyle(ButtonStyle.Primary)
-                .setEmoji('✅')
+                .setEmoji(`${helpers.releaseEmojis?.getRandomVerify?.() || '✅'}`)
         );
 
         await verifyChannel.send({ embeds: [embed], components: [row] });
