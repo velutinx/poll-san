@@ -9,7 +9,7 @@ module.exports = {
         .setDescription('[ADMIN] Post the Turnstile verification message'),
     async execute(interaction) {
         if (!interaction.memberPermissions.has('Administrator')) {
-            return interaction.reply({ content: '❌ Admin only.', ephemeral: true });
+            return interaction.reply({ content: `${helpers.releaseEmojis.BATSU} Admin only.`, flags: 64 });
         }
 
         const verifyChannel = interaction.guild.channels.cache.get(helpers.ids.channels.verify);
