@@ -16,12 +16,10 @@ router.post('/api/reminder', async (req, res) => {
     try {
         member = await guild.members.fetch(user_id);
     } catch (err) {
-        // User not in guild – just log and ignore
         console.log(`User ${user_id} not found in guild, skipping reminder`);
         return res.status(404).json({ error: 'User not in guild' });
     }
 
-    // ---- Get the check‑in channel ----
     const checkinChannelId = helpers.ids.channels.checkin;
     const checkinChannel = guild.channels.cache.get(checkinChannelId);
     if (!checkinChannel) {
@@ -30,18 +28,15 @@ router.post('/api/reminder', async (req, res) => {
     }
 
     try {
-        // Send an ephemeral‑like mention
         const notifyMsg = await checkinChannel.send({
-            content: `<@${member.user.id}> 🌟 **Your daily check‑in is now available!**\nClick the button in <#${checkinChannelId}> to claim your **${helpers.CHECKIN_REWARD_TICKETS} tickets** and reset your game cooldowns.`,
+            content: `<@${member.user.id}> ${h.releaseEmojis?.STAR || '🌟'} **Your daily check‑in is now available!**\nClick the button in <#${checkinChannelId}> to claim your **${helpers.CHECKIN_REWARD_TICKETS} tickets** and reset your game cooldowns.`,
             allowedMentions: { users: [member.user.id] }
         });
 
         if (notifyMsg) {
-            // Delete after 15 seconds so it disappears like an ephemeral message
             setTimeout(() => notifyMsg.delete().catch(() => {}), 15_000);
         }
 
-        // Mark as reminded so we don't send again
         const supabase = require('../../services/supabase');
         await supabase
             .from(h.tables.GAMES_USER_DATA)
