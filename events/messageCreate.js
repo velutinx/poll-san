@@ -60,21 +60,16 @@ async function awardTicket(userId, username) {
 }
 
 module.exports = async (message) => {
-    if (message.author.id === WORDLE_ACTIVITY_APP_ID) {
+    if (
+        message.author.id === WORDLE_BOT_ID ||
+        message.applicationId === WORDLE_BOT_ID ||
+        message.author.id === WORDLE_ACTIVITY_APP_ID ||
+        message.applicationId === WORDLE_ACTIVITY_APP_ID
+    ) {
         if (message.channel.id === WORDLE_CHANNEL_ID) {
-            message.delete().catch(() => {});
+            setTimeout(() => message.delete().catch(() => {}), 1500);
         }
         return;
-    }
-
-    if (message.author.id === WORDLE_BOT_ID) {
-        if (message.channel.id !== WORDLE_CHANNEL_ID) return;
-        const content = message.content.toLowerCase();
-        if (content.includes('congratulations! you\'ve unlocked an achievement') ||
-            content.includes('here is the faq page')) {
-            setTimeout(() => message.delete().catch(() => {}), 1500);
-            return;
-        }
     }
 
     if (message.author.bot && message.author.id !== WORDLE_BOT_ID) return;
@@ -83,6 +78,7 @@ module.exports = async (message) => {
 
     const result = await awardTicket(message.author.id, message.author.username);
     if (!result.awarded) return;
+    
     await message.react(h.releaseEmojis?.TICKET || '🎟️').catch(() => {});
 
     setTimeout(() => {
