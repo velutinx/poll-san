@@ -424,7 +424,7 @@ async function scanAllMembersWithFreeAPI(client) {
 
         scanned++;
         if (scanned % 10 === 0) {
-            console.log(`[MassScan] Progress: ${scanned}/${memberArray.length} members scanned...`);
+     //       console.log(`[MassScan] Progress: ${scanned}/${memberArray.length} members scanned...`);
         }
 
         if (scanned < memberArray.length) {
