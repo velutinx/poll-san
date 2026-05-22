@@ -69,6 +69,7 @@ module.exports = {
         PROGRESS: '<a:progress:1491670111923212308>',
         SPEECH: '<a:speech:1506709601758744828>',
         DICE: '<a:dice:1491669867441426542>',
+        PIXELSKY: '<a:pixelsky:1507262649878974584>',
         CATCOIN: '<a:catcoin:1506632039749910598>',
         YOSHICOIN: '<:yoshicoin:1506632090165313586>',
         SKULL: '<:skull:1506692152313512046>',
