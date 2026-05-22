@@ -28,11 +28,24 @@ router.post('/api/reminder', async (req, res) => {
     }
 
     try {
-        const notifyMsg = await checkinChannel.send({
-            content: `<@${member.user.id}> ${h.releaseEmojis?.STAR || '🌟'} **Your daily check‑in is now available!**\nClick the button in <#${checkinChannelId}> to claim your **${helpers.CHECKIN_REWARD_TICKETS} tickets** and reset your game cooldowns.`,
-            allowedMentions: { users: [member.user.id] }
+        const webhooks = await checkinChannel.fetchWebhooks();
+        let reminderWebhook = webhooks.find(w => w.name === 'Check in Reminder');
+        if (!reminderWebhook) {
+            reminderWebhook = await checkinChannel.createWebhook({
+                name: 'Check in Reminder',
+                avatar: helpers.urls.LOGO_URL
+            });
+        }
+
+        const notifyMsg = await reminderWebhook.send({
+            content: `${h.releaseEmojis?.STAR || '🌟'} **Your daily check‑in is now available!**\n` +
+                     `Head to <#${checkinChannelId}> to claim your **${helpers.CHECKIN_REWARD_TICKETS} tickets** and reset your game cooldowns.`,
+            allowedMentions: { parse: [] },
+            username: 'Check in Reminder',
+            avatarURL: helpers.urls.LOGO_URL
         });
 
+        // Delete after 5 seconds
         if (notifyMsg) {
             setTimeout(() => notifyMsg.delete().catch(() => {}), 15_000);
         }
