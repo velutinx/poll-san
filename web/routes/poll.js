@@ -86,51 +86,54 @@ module.exports = function setupPollRoutes(app, client, supabase, supabaseRetry) 
         }
     });
 
-    // STOP POLL
-    app.post('/api/stop-poll', async (req, res) => {
-        try {
-            pollService.forceStopPoll();
+// STOP POLL
+app.post('/api/stop-poll', async (req, res) => {
+    try {
+        pollService.forceStopPoll();
 
-            const { data: poll } = await supabaseRetry(() =>
-                supabase.from(h.tables.POLL_AUTO_RESUME)
-                    .select('*')
-                    .order('id', { ascending: false })
-                    .limit(1)
-                    .single()
-            );
+        const { data: poll } = await supabaseRetry(() =>
+            supabase.from(h.tables.POLL_AUTO_RESUME)
+                .select('*')
+                .order('id', { ascending: false })
+                .limit(1)
+                .single()
+        );
 
-            if (poll) {
-                const channel = await client.channels.fetch(poll.channel_id);
-                const pollMessage = await channel.messages.fetch(poll.message_id);
-                const characters = poll.poll_list
-                    .split(/(?=:female_sign:|:male_sign:|♀️|♂️|\n)/)
-                    .map(s => s.trim())
-                    .filter(s => s.length > 1);
-                const results = await pollService.getPollResults(pollMessage, characters);
-                const content = await pollService.generateMessageContent(0, results, characters, true);
-                
-                const webhooks = await channel.fetchWebhooks();
-                const pollWebhook = webhooks.find(w => w.name === 'Poll');
-                if (pollWebhook) {
-                    await pollWebhook.editMessage(pollMessage.id, { content });
-                } else {
-                    await pollMessage.edit({ content }).catch(() => {});
-                }
+        if (poll) {
+            const channel = await client.channels.fetch(poll.channel_id);
+            const pollMessage = await channel.messages.fetch(poll.message_id);
+            const characters = poll.poll_list
+                .split(/(?=:female_sign:|:male_sign:|♀️|♂️|\n)/)
+                .map(s => s.trim())
+                .filter(s => s.length > 1);
+            const results = await pollService.getPollResults(pollMessage, characters);
+            const content = await pollService.generateMessageContent(0, results, characters, true);
+            
+            const webhooks = await channel.fetchWebhooks();
+            const pollWebhook = webhooks.find(w => w.name === 'Poll');
+            if (pollWebhook) {
+                await pollWebhook.editMessage(pollMessage.id, { content });
+            } else {
+                await pollMessage.edit({ content }).catch(() => {});
             }
 
-            const { error: rpcError } = await supabaseRetry(() =>
-                supabase.rpc('truncate_poll_tables')
-            );
-            if (rpcError) throw rpcError;
-
-            cachedPollResultsData = null;
-            cachedPollResultsTime = 0;
-            res.json({ success: true });
-        } catch (err) {
-            console.error('Stop poll error:', err);
-            res.status(500).json({ error: err.message });
+            const { startPollReminders } = require('../../services/pollReminders');
+            await startPollReminders(channel, new Date());
         }
-    });
+
+        const { error: rpcError } = await supabaseRetry(() =>
+            supabase.rpc('truncate_poll_tables')
+        );
+        if (rpcError) throw rpcError;
+
+        cachedPollResultsData = null;
+        cachedPollResultsTime = 0;
+        res.json({ success: true });
+    } catch (err) {
+        console.error('Stop poll error:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
 
     // MARK WINNER (combined message)
     app.post('/api/mark-winner', async (req, res) => {
