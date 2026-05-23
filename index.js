@@ -124,6 +124,8 @@ const commandsData = [
 
     const { restoreGiveaways } = require('./commands/giveaway');
     await restoreGiveaways(client).catch(console.error);
+    const { restorePollReminders } = require('./services/pollReminders');
+    await restorePollReminders(client).catch(console.error);
     initMudaeMessageHandler(client);
 
 
