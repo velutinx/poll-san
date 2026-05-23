@@ -21,7 +21,7 @@ async function startPollReminders(channel, pollEndTime) {
     const msg1 = await webhook.send({
       content: message1,
       allowedMentions: { parse: [] },
-      flags: [1 << 12],               // SuppressNotifications
+      flags: [1 << 12, 1 << 2],
       username: 'Poll Reminder',
       avatarURL: h.urls.LOGO_URL
     });
