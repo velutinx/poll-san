@@ -51,7 +51,7 @@ async function startPollReminders(channel, pollEndTime) {
       await handleFridayCleanup(channel.client);
     }, msToFriday);
 
-    console.log(`[PollReminders] First suggestion reminder posted (ID: ${msg1.id}), Thursday & Friday timers set.`);
+//    console.log(`[PollReminders] First suggestion reminder posted (ID: ${msg1.id}), Thursday & Friday timers set.`);
   } catch (err) {
     console.error('[PollReminders] Error posting first reminder:', err);
   }
@@ -103,7 +103,7 @@ async function handleThursday(client) {
       }
     }, { onConflict: 'key' });
 
-    console.log(`[PollReminders] Last-day reminder posted (ID: ${msg2.id}), first one deleted.`);
+ //   console.log(`[PollReminders] Last-day reminder posted (ID: ${msg2.id}), first one deleted.`);
   } catch (err) {
     console.error('[PollReminders] Thursday handler error:', err);
   }
@@ -129,7 +129,7 @@ async function handleFridayCleanup(client) {
     }
 
     await supabase.from(h.tables.POLL_AUTO_RESUME).delete().eq('key', 'suggestion_reminder_2');
-    console.log(`[PollReminders] Friday cleanup done.`);
+//    console.log(`[PollReminders] Friday cleanup done.`);
   } catch (err) {
     console.error('[PollReminders] Friday cleanup error:', err);
   }
@@ -177,7 +177,7 @@ async function restorePollReminders(client) {
       const thursdayDelay = 5 * 24 * 60 * 60 * 1000 - timeSinceEnd;
       if (thursdayDelay > 0) {
         safeTimeout(() => handleThursday(client), thursdayDelay);
-        console.log(`[PollReminders] Restored Thursday timer (in ${Math.floor(thursdayDelay/3600000)}h).`);
+  //      console.log(`[PollReminders] Restored Thursday timer (in ${Math.floor(thursdayDelay/3600000)}h).`);
       } else {
         // Thursday already passed, maybe run immediately? But we also need to check if second reminder exists
         const fridayDelay = 6 * 24 * 60 * 60 * 1000 - timeSinceEnd;
