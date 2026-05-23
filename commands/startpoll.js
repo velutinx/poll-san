@@ -62,6 +62,10 @@ module.exports = async (interaction) => {
         console.error("❌ Supabase Error:", dbError.message);
     }
 
+    // 🆕 Start the suggestion reminders immediately (poll started now)
+    const { startPollReminders } = require('../services/pollReminders');
+    await startPollReminders(channel, new Date());
+
     await Promise.all(reactIds.map(id =>
         pollMessage.react(id).catch(e => console.error(`Reaction Error (${id}):`, e.message))
     ));
