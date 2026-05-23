@@ -62,7 +62,6 @@ module.exports = async (interaction) => {
         console.error("❌ Supabase Error:", dbError.message);
     }
 
-    // 🆕 Start the suggestion reminders immediately (poll started now)
     const { startPollReminders } = require('../services/pollReminders');
     await startPollReminders(channel, new Date());
 
@@ -95,6 +94,7 @@ module.exports = async (interaction) => {
             threadId: thread.id,
             username: 'Poll',
             avatarURL: h.urls.LOGO_URL,
+            flags: [1 << 12]
         }).catch(e => console.error("Thread Image Error:", e.message));
     }
 
@@ -102,10 +102,11 @@ module.exports = async (interaction) => {
     const randomUpArrow = upArrows[Math.floor(Math.random() * upArrows.length)];
 
     await webhook.send({
-        content: `${randomUpArrow} Character images for the poll above! <@&${ids.tags.poll_mention}>`,
+        content: `${randomUpArrow} Character images for the poll above!`,
         threadId: thread.id,
         username: 'Poll',
         avatarURL: h.urls.LOGO_URL,
+        flags: [1 << 12]
     });
 
     if (interaction.editReply) {
