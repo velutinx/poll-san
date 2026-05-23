@@ -116,9 +116,6 @@ app.post('/api/stop-poll', async (req, res) => {
             } else {
                 await pollMessage.edit({ content }).catch(() => {});
             }
-
-            const { startPollReminders } = require('../../services/pollReminders');
-            await startPollReminders(channel, new Date());
         }
 
         const { error: rpcError } = await supabaseRetry(() =>
