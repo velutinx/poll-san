@@ -1,8 +1,6 @@
 // events/guildMemberAdd.js
 
-const { MessageFlags } = require('discord.js');
 const supabase = require('../services/supabase');
-const { parseMessage } = require('../services/parserService');
 const h = require('../utils/helpers');
 
 module.exports = async (member) => {
@@ -30,47 +28,6 @@ module.exports = async (member) => {
         }
     } catch (err) {
         console.error('Error assigning Unverified role:', err);
-    }
-
-        try {
-        const { data: settings } = await supabase
-            .from(h.tables.SERVER_SETTINGS)
-            .select('welcome_channel_id, welcome_message')
-            .eq('guild_id', member.guild.id)
-            .single();
-
-        if (settings && settings.welcome_channel_id && settings.welcome_message) {
-            const channel = await member.guild.channels.fetch(settings.welcome_channel_id);
-            if (channel) {
-                const parsedContent = parseMessage(settings.welcome_message, member);
-                let cleanedContent = parsedContent;
-                const username = member.user.username;
-                if (cleanedContent.startsWith(username)) {
-                    cleanedContent = cleanedContent.slice(username.length).trimStart();
-                }
-
-                const finalMessage = `<@${member.id}> ${cleanedContent}`;
-                
-                let webhook = (await channel.fetchWebhooks()).find(w => w.name === 'Welcome Bot');
-                if (!webhook) {
-                    webhook = await channel.createWebhook({
-                        name: 'Welcome Bot',
-                        avatar: h.urls.LOGO_URL
-                    });
-                }
-
-                const sent = await webhook.send({
-                    content: finalMessage,
-                    username: 'Welcome Bot',
-                    avatarURL: h.urls.LOGO_URL,
-                    flags: [MessageFlags.SuppressNotifications]
-                });
-
-                await sent.react(h.releaseEmojis.waveId).catch(err => console.error("Failed to react:", err));
-            }
-        }
-    } catch (err) {
-        console.error('Welcome Message Error:', err);
     }
 
     setTimeout(async () => {
