@@ -1,32 +1,20 @@
 // events/verification.js
 
-const { Events, ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle, EmbedBuilder } = require('discord.js');
+const { Events, ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle, EmbedBuilder, MessageFlags } = require('discord.js');
 const helpers = require('../utils/helpers');
-
-// Store expected captcha answers temporarily (user ID -> answer)
 const pendingCaptchas = new Map();
 
-// ======================== GUILD MEMBER ADD ========================
 module.exports = {
     name: Events.GuildMemberAdd,
     async execute(member) {
-        // Skip bots
         if (member.user.bot) return;
-
-        // ----- SKIP FOR CREATOR ROLE -----
         if (member.roles.cache.has(helpers.ids.roles.creator)) {
             console.log(`[Verify] ${member.user.tag} has Creator role – skipping Unverified role and verification.`);
             return;
         }
 
-        // If user already has Supporter (e.g., from external sync), skip Unverified role
         const supporterRoleId = helpers.ids.roles.supporter;
-        if (member.roles.cache.has(supporterRoleId)) {
-      //      console.log(`[Verify] ${member.user.tag} is already a supporter – skipping unverified role.`);
-            return;
-        }
-
-        // Add Unverified role (no messages sent)
+        if (member.roles.cache.has(supporterRoleId)) return;
         const unverifiedRole = member.guild.roles.cache.get(helpers.ids.roles.unverified);
         if (unverifiedRole) {
             await member.roles.add(unverifiedRole).catch(console.error);
@@ -34,16 +22,16 @@ module.exports = {
     }
 };
 
-// ======================== INTERACTION HANDLER ========================
 module.exports.handleInteraction = async (interaction) => {
     if (!interaction.isButton() && !interaction.isModalSubmit()) return;
 
-    // ---------- BUTTON: open verification modal ----------
     if (interaction.isButton() && interaction.customId === 'verify_modal_btn') {
-        // Cooldown (30 seconds)
         const cooldownKey = `verify_cooldown_${interaction.user.id}`;
         if (pendingCaptchas.has(cooldownKey)) {
-            return interaction.reply({ content: '⏳ Please wait 30 seconds before trying again.', ephemeral: true });
+            return interaction.reply({
+                content: `${helpers.releaseEmojis?.HOURGLASS || '⏳'} Please wait 30 seconds before trying again.`,
+                flags: [MessageFlags.Ephemeral]
+            });
         }
 
         const mathQuestion = generateMathQuestion();
@@ -62,9 +50,7 @@ module.exports.handleInteraction = async (interaction) => {
             )
         );
 
-        // Store the expected answer for this user
         pendingCaptchas.set(interaction.user.id, mathQuestion.answer);
-        // Set cooldown
         pendingCaptchas.set(cooldownKey, true);
         setTimeout(() => {
             pendingCaptchas.delete(cooldownKey);
@@ -75,13 +61,15 @@ module.exports.handleInteraction = async (interaction) => {
         return;
     }
 
-    // ---------- MODAL SUBMIT: check answer ----------
     if (interaction.isModalSubmit() && interaction.customId === 'verify_modal') {
+        await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
         const userAnswer = interaction.fields.getTextInputValue('captcha_answer');
         const expectedAnswer = pendingCaptchas.get(interaction.user.id);
 
         if (!expectedAnswer) {
-            return interaction.reply({ content: '❌ Verification session expired. Please click the button again.', ephemeral: true });
+            return interaction.editReply({
+                content: `${helpers.releaseEmojis.BATSU} Verification session expired. Please click the button again.`
+            });
         }
 
         const member = interaction.member;
@@ -89,11 +77,9 @@ module.exports.handleInteraction = async (interaction) => {
         const memberRoleId = helpers.ids.roles.member;
         const unverifiedRoleId = helpers.ids.roles.unverified;
 
-        // ----- SKIP FOR CREATOR ROLE -----
         if (member.roles.cache.has(helpers.ids.roles.creator)) {
-            return interaction.reply({
-                content: '✅ You have the Creator role – no verification needed.',
-                ephemeral: true
+            return interaction.editReply({
+                content: `${helpers.releaseEmojis.getRandomVerify()} You have the Creator role – no verification needed.`
             });
         }
 
@@ -102,16 +88,12 @@ module.exports.handleInteraction = async (interaction) => {
         const memberRole = interaction.guild.roles.cache.get(memberRoleId);
 
         if (parseInt(userAnswer) === expectedAnswer) {
-            // Success
             if (hasSupporter) {
-                // Supporter: just remove Unverified, do NOT give Member
                 if (unverifiedRole) await member.roles.remove(unverifiedRole);
-                await interaction.reply({
-                    content: '✅ You are already a Supporter – access granted.',
-                    ephemeral: true
+                await interaction.editReply({
+                    content: `${helpers.releaseEmojis.getRandomVerify()} You are already a Supporter – access granted.`
                 });
             } else {
-                // Free user: give Member, remove Unverified
                 if (memberRole && unverifiedRole) {
                     await member.roles.add(memberRole);
                     await member.roles.remove(unverifiedRole);
@@ -124,23 +106,20 @@ module.exports.handleInteraction = async (interaction) => {
                         `You now have the **Member** role and full access.`
                     )
                     .setImage('https://cdn.discordapp.com/attachments/1163490254221738015/1167472390213730335/Embed_Extender_Invisible_Space.png');
-                await interaction.reply({ embeds: [successEmbed], ephemeral: true });
+                await interaction.editReply({ embeds: [successEmbed] });
             }
             await logVerification(interaction.guild, member.user, true);
         } else {
-            // Failure
             const failEmbed = new EmbedBuilder()
-                .setDescription('❌ Verification unsuccessful. Please try again.')
+                .setDescription(`${helpers.releaseEmojis.BATSU} Verification unsuccessful. Please try again.`)
                 .setColor(0xff8b1f);
-            await interaction.reply({ embeds: [failEmbed], ephemeral: true });
+            await interaction.editReply({ embeds: [failEmbed] });
             await logVerification(interaction.guild, interaction.user, false);
         }
-        // Clean up stored answer
         pendingCaptchas.delete(interaction.user.id);
     }
 };
 
-// ======================== HELPER FUNCTIONS ========================
 function generateMathQuestion() {
     const a = Math.floor(Math.random() * 20) + 1;
     const b = Math.floor(Math.random() * 20) + 1;
@@ -160,8 +139,7 @@ function generateMathQuestion() {
 }
 
 async function logVerification(guild, user, success) {
-    // Optional: replace with your log channel ID, or remove if not needed
-    const logChannelId = null; // e.g., '123456789012345678'
+    const logChannelId = null;
     if (!logChannelId) return;
     const logChannel = guild.channels.cache.get(logChannelId);
     if (!logChannel) return;
