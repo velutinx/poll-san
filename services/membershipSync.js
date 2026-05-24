@@ -136,9 +136,9 @@ async function sendMembershipMessage(client, discordId, membership) {
           const adminChannel = await client.channels.fetch(adminChannelId);
           const userLink = `[${discordName}](https://discord.com/users/${discordId})`;
           const adminMsg = `${h.releaseEmojis.SPARKLES} **New membership period started for** ${userLink}\n` +
-                           `**Tier:** ${tierName}\n` +
-                           `**Expires on:** ${formatDate(expiresAt)}\n` +
-                           `*Please reach out to them.*`;
+                 `**Tier:** ${tierName}\n` +
+                 `**Expires on:** ${formatDate(expiresAt)}\n` +
+                 `*Please reach out to them.*`;
 
           await adminChannel.send({
             content: adminMsg,
