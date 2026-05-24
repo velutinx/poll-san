@@ -130,22 +130,24 @@ async function sendMembershipMessage(client, discordId, membership) {
     if (success) {
       await recordMessageSent(discordId, orderId, lang, membership, discordName);
 
-      // ---- Admin notification → admin_channel (NO DM) ----
-      try {
-        const adminChannelId = h.ids.channels.admin_channel;
-        const adminChannel = await client.channels.fetch(adminChannelId);
-        const userLink = `[${discordName}](https://discord.com/users/${discordId})`;
-        const adminMsg = `${h.releaseEmojis.SPARKLES} **New membership period started for** ${userLink}\n` +
-                         `**Tier:** ${tierName}\n` +
-                         `**Expires on:** ${formatDate(expiresAt)}\n` +
-                         `*Please reach out to them.*`;
-        await adminChannel.send({
-          content: adminMsg,
-          allowedMentions: { users: [] }
-        });
-      } catch (channelErr) {
-        console.error('[MembershipSync] Could not send to admin channel:', channelErr.message);
-        // No DM fallback – you'll see errors only in logs
+      if (tier === 2 || tier === 3) {
+        try {
+          const adminChannelId = h.ids.channels.admin_channel;
+          const adminChannel = await client.channels.fetch(adminChannelId);
+          const userLink = `[${discordName}](https://discord.com/users/${discordId})`;
+          const adminMsg = `${h.releaseEmojis.SPARKLES} **New membership period started for** ${userLink}\n` +
+                           `**Tier:** ${tierName}\n` +
+                           `**Expires on:** ${formatDate(expiresAt)}\n` +
+                           `*Please reach out to them.*`;
+
+          await adminChannel.send({
+            content: adminMsg,
+            allowedMentions: { users: [] },
+            flags: [1 << 2]
+          });
+        } catch (channelErr) {
+          console.error('[MembershipSync] Could not send to admin channel:', channelErr.message);
+        }
       }
     }
   } catch (err) {
@@ -242,7 +244,6 @@ async function syncMembershipRoles(client) {
     for (const [discordId, membership] of userBestMembership.entries()) {
       const member = await guild.members.fetch(discordId).catch(() => null);
       if (!member) continue;
-      // Skip Creator role completely
       if (member.roles.cache.has(CREATOR_ROLE)) {
         console.log(`[MembershipSync] Skipping role sync for Creator ${member.user.tag}`);
         continue;
@@ -302,7 +303,6 @@ async function syncMembershipRoles(client) {
           }
         }
 
-        // ✅ ENSURE THEY GET THE BASE MEMBER ROLE
         if (!member.roles.cache.has(MEMBER_ROLE)) {
           await member.roles.add(MEMBER_ROLE);
           changesMade = true;
