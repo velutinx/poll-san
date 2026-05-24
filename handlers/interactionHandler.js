@@ -17,6 +17,7 @@ const {
 } = require('../services/redeemHandler');
 
 const checkinSessions = new Map();
+const verifySessions = new Map(); // Track verification ephemeral sessions
 
 module.exports = async function handleInteraction(interaction) {
     try {
@@ -79,25 +80,61 @@ module.exports = async function handleInteraction(interaction) {
 };
 
 async function handleVerifyStart(interaction) {
-    await interaction.deferReply({ flags: 64 });
+    const userId = interaction.user.id;
+    const verifyKey = `${userId}-${interaction.channel.id}`;
+
+    try {
+        await interaction.deferUpdate();
+    } catch (error) {
+        return; 
+    }
+
     const member = interaction.member;
     const supporterRoleId = helpers.ids.roles.supporter;
     const memberRoleId = helpers.ids.roles.member;
     const hasSupporter = member.roles.cache.has(supporterRoleId);
     const hasMember = member.roles.cache.has(memberRoleId);
 
+    let finalContent = '';
+
     if (hasSupporter || hasMember) {
-        return interaction.editReply({ content: `${helpers.releaseEmojis?.getRandomVerify?.() || '✅'} You are already verified! No need to verify again.` });
+        finalContent = `${helpers.releaseEmojis?.getRandomVerify?.() || '✅'} You are already verified! No need to verify again.`;
+    } else {
+        const workerUrl = process.env.VERIFY_WORKER_URL;
+        if (!workerUrl) {
+            finalContent = `${helpers.releaseEmojis?.BATSU || '❌'} Verification service is not configured.`;
+        } else {
+            const uniqueUrl = `${workerUrl}?user=${interaction.user.id}&guild=${interaction.guild.id}`;
+            finalContent = `${helpers.releaseEmojis?.LINK || '🔗'} **Your verification link** (expires after 10 minutes):\n${uniqueUrl}\n\nComplete the CAPTCHA in your browser to gain access.`;
+        }
     }
 
-    const workerUrl = process.env.VERIFY_WORKER_URL;
-    if (!workerUrl) {
-        return interaction.editReply({ content: `${helpers.releaseEmojis?.BATSU || '❌'} Verification service is not configured.` });
+    // Delete the old verification message if it exists
+    let session = verifySessions.get(verifyKey);
+    if (session && (Date.now() - session.timestamp < 14 * 60 * 1000)) {
+        try {
+            await session.interaction.webhook.deleteMessage(session.messageId);
+        } catch (err) {
+            // Ignore if message already dismissed or expired
+        }
     }
-    const uniqueUrl = `${workerUrl}?user=${interaction.user.id}&guild=${interaction.guild.id}`;
-    await interaction.editReply({
-        content: `${helpers.releaseEmojis?.LINK || '🔗'} **Your verification link** (expires after 10 minutes):\n${uniqueUrl}\n\nComplete the CAPTCHA in your browser to gain access.`
-    });
+
+    // Send new follow-up and store the session data
+    try {
+        const sentMsg = await interaction.followUp({ 
+            content: finalContent, 
+            ephemeral: true, 
+            fetchReply: true 
+        });
+
+        verifySessions.set(verifyKey, {
+            interaction: interaction,
+            messageId: sentMsg.id,
+            timestamp: Date.now()
+        });
+    } catch (err) {
+        console.error('Failed to send followUp for verification:', err.message);
+    }
 }
 
 async function handleCheckinClaim(interaction) {
