@@ -373,7 +373,6 @@ async function scanAllMembersWithFreeAPI(client) {
             } catch (err) {
                 if (err.name === 'GatewayRateLimitError' && err.data?.retry_after) {
                     const waitMs = (err.data.retry_after + 0.5) * 1000;
-                    console.log(`[MassScan] Rate limited fetching members, retrying in ${waitMs / 1000}s...`);
                     await new Promise(resolve => setTimeout(resolve, waitMs));
                     attempts++;
                 } else {
@@ -761,7 +760,6 @@ function init(client) {
                     await markMassScanDoneToday();
                     console.log('[MassScan] Daily free mass scan marked for today. Starting scan...');
                     await scanAllMembersWithFreeAPI(client);
-                    console.log('[MassScan] Daily free mass scan completed.');
                 } else {
                 }
             } catch (err) {
