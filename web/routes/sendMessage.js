@@ -1,6 +1,6 @@
 // web/routes/sendMessage.js
 
-const { sendMembershipMessage } = require('../../utils/messaging');
+const { sendMembershipMessage } = require('../../services/membershipSync');
 const h = require('../../utils/helpers');
 
 module.exports = function setupSendMessageRoute(app, client, supabase, supabaseRetry) {
@@ -21,7 +21,6 @@ module.exports = function setupSendMessageRoute(app, client, supabase, supabaseR
       if (error || !membership) {
         return res.status(404).json({ error: 'No active membership found' });
       }
-
       const success = await sendMembershipMessage(client, discordId, membership);
       if (success) {
         res.json({ success: true });
