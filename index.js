@@ -29,8 +29,7 @@ const initMudaeMessageHandler = require('./handlers/mudaeMessageHandler');
 const h = require('./utils/helpers');
 const initChannelCleaner = require('./handlers/channelCleaner');
 const roleConsistency = require('./events/roleConsistency');
-
-// ==================== DISCORD CLIENT SETUP ====================
+const roleUpdateRecalc = require('./events/roleUpdateRecalc');
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
@@ -42,7 +41,6 @@ const client = new Client({
     partials: [Partials.Message, Partials.Reaction, Partials.User]
 });
 
-// --- 1. STARTUP ---
 client.once(Events.ClientReady, async (c) => {
   //  console.log(`🚀 ${c.user.tag} online and ready!`);
 
@@ -54,7 +52,6 @@ client.once(Events.ClientReady, async (c) => {
         console.error('❌ Failed to start dashboard:', err.message);
     }
 
-    // Sync slash commands
 const commandsData = [
     new SlashCommandBuilder().setName('level').setDescription('Shows your current XP/level').toJSON(),
     new ContextMenuCommandBuilder().setName('View Level').setType(ApplicationCommandType.User).toJSON(),
@@ -139,6 +136,7 @@ client.on(Events.MessageReactionRemove, (reaction, user) => require('./events/re
 client.on('guildMemberRemove', require('./events/guildMemberPollRemove'));
 client.on('messageCreate', messageCreateEvent);
 client.on(Events.GuildMemberUpdate, roleConsistency);
+client.on(Events.GuildMemberUpdate, roleUpdateRecalc);
 client.on('messageCreate', (message) => {
     handleTriviaMessage(message).catch(err => console.error('Trivia handler error:', err));
 });
