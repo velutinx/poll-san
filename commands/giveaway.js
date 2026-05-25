@@ -232,7 +232,6 @@ async function handleGiveawayButton(interaction) {
             messageUpdated = true;
         } catch (err) {
             giveawaySessions.delete(sessionKey);
-            // Interaction expired – just return, can't do anything
             return;
         }
     }
@@ -317,12 +316,12 @@ async function handleGiveawayButton(interaction) {
         try {
             await existingSession.interaction.webhook.editMessage(existingSession.messageId, { content: responseContent });
         } catch (err) {
-            const msg = await interaction.followUp({ content: responseContent, flags: [MessageFlags.Ephemeral], fetchReply: true });
-            giveawaySessions.set(sessionKey, { interaction, messageId: msg.id, timestamp: Date.now() });
+            await interaction.followUp({ content: responseContent, flags: [MessageFlags.Ephemeral], fetchReply: true }).catch(() => {});
+            giveawaySessions.set(sessionKey, { interaction, messageId: null, timestamp: Date.now() });
         }
     } else {
-        const msg = await interaction.editReply({ content: responseContent });
-        giveawaySessions.set(sessionKey, { interaction, messageId: msg.id, timestamp: Date.now() });
+        await interaction.editReply({ content: responseContent }).catch(() => {});
+        giveawaySessions.set(sessionKey, { interaction, messageId: null, timestamp: Date.now() });
     }
 }
 
