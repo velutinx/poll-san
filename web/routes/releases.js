@@ -24,8 +24,7 @@ module.exports = function setupReleasesRoutes(app, client, upload, FORUM_ID, SUP
     return webhook;
   }
 
-  // Helper to safely edit a thread's starter message, falling back to delete+resend
-// Helper to safely edit a thread's starter message
+  // Helper to safely edit a thread's starter message
   async function editThreadMessage(thread, newContent) {
     try {
       const starter = await thread.fetchStarterMessage().catch(() => null);
@@ -58,10 +57,10 @@ module.exports = function setupReleasesRoutes(app, client, upload, FORUM_ID, SUP
       
       // 3. Final Fallback: If editing fails, send a new message so the info is at least updated
       try {
-await thread.send({ 
-  content: `${h.releaseEmojis?.ALERT || '⚠️'} **Update:**\n${newContent}`, 
-  flags: ["SuppressEmbeds"] 
-});
+        await thread.send({ 
+          content: `${h.releaseEmojis?.ALERT || '⚠️'} **Update:**\n${newContent}`, 
+          flags: ["SuppressEmbeds"] 
+        });
         return { success: true, replaced: true };
       } catch (finalErr) {
         return { success: false, error: finalErr.message };
@@ -388,7 +387,7 @@ ${h.releaseEmojis.LINK} [megaLink](${download || 'https://mega.nz'})`;
   });
 
   // ────────────────────────────────────────────────
-  // MEGA UPLOAD (unchanged)
+  // MEGA UPLOAD (with optional download timeout fix)
   // ────────────────────────────────────────────────
   async function getOrCreateFolder(node, pathParts) {
     let current = node;
@@ -438,25 +437,31 @@ ${h.releaseEmojis.LINK} [megaLink](${download || 'https://mega.nz'})`;
       console.log(`✅ Uploaded to Mega: ${megaLink}`);
 
       let localPath = null;
+      // optional local download – if it fails, we still return success
       if (req.body.downloadAfterUpload === 'true') {
-        const downloadDir = req.body.localDownloadPath || './downloads/';
-        if (!fs.existsSync(downloadDir)) fs.mkdirSync(downloadDir, { recursive: true });
+        try {
+          const downloadDir = req.body.localDownloadPath || './downloads/';
+          if (!fs.existsSync(downloadDir)) fs.mkdirSync(downloadDir, { recursive: true });
 
-        const { File } = require('megajs');
-        const megaFile = File.fromURL(megaLink);
-        const localFile = path.join(downloadDir, desiredFileName);
+          const { File } = require('megajs');
+          const megaFile = File.fromURL(megaLink);
+          const localFile = path.join(downloadDir, desiredFileName);
 
-        await new Promise((resolve, reject) => {
-          const writeStream = fs.createWriteStream(localFile);
-          megaFile.download((err, data) => {
-            if (err) return reject(err);
-            writeStream.write(data);
-            writeStream.end();
-            writeStream.on('finish', resolve);
-            writeStream.on('error', reject);
+          await new Promise((resolve, reject) => {
+            const writeStream = fs.createWriteStream(localFile);
+            megaFile.download((err, data) => {
+              if (err) return reject(err);
+              writeStream.write(data);
+              writeStream.end();
+              writeStream.on('finish', resolve);
+              writeStream.on('error', reject);
+            });
           });
-        });
-        localPath = localFile;
+          localPath = localFile;
+        } catch (downloadErr) {
+          console.warn('⚠️ Optional local download failed, continuing:', downloadErr.message);
+          // not fatal – we already have the MEGA link
+        }
       }
 
       fs.unlinkSync(tempFilePath);
