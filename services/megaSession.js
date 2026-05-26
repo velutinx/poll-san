@@ -4,28 +4,36 @@ const { Storage } = require('megajs');
 let megaStorage = null;
 
 async function getMegaStorage() {
-  if (megaStorage) return megaStorage;
+    if (megaStorage) return megaStorage;
 
-  if (process.env.MEGA_SESSION) {
-    try {
-      const saved = JSON.parse(process.env.MEGA_SESSION);
-      saved.key = Buffer.from(saved.key, 'base64');
-      megaStorage = Storage.fromJSON(saved);
-      await megaStorage.ready;
- //     console.log('✅ MEGA session restored from saved token');
-      return megaStorage;
-    } catch (err) {
-//      console.error('❌ Restore failed, using fresh login:', err.message);
-    }
-  }
+    const restoreOrCreate = async () => {
+        if (process.env.MEGA_SESSION) {
+            try {
+                const saved = JSON.parse(process.env.MEGA_SESSION);
+                saved.key = Buffer.from(saved.key, 'base64');
+                const storage = Storage.fromJSON(saved);
+                await storage.ready;
+                return storage;
+            } catch (err) {}
+        }
 
-  megaStorage = new Storage({
-    email: process.env.MEGA_EMAIL,
-    password: process.env.MEGA_PASSWORD
-  });
-  await megaStorage.ready;
-//  console.log('✅ MEGA fresh login successful');
-  return megaStorage;
+        const storage = new Storage({
+            email: process.env.MEGA_EMAIL,
+            password: process.env.MEGA_PASSWORD
+        });
+        await storage.ready;
+        return storage;
+    };
+
+    // 30-second timeout
+    megaStorage = await Promise.race([
+        restoreOrCreate(),
+        new Promise((_, reject) =>
+            setTimeout(() => reject(new Error('MEGA session timeout')), 30000)
+        )
+    ]);
+
+    return megaStorage;
 }
 
 module.exports = { getMegaStorage };
