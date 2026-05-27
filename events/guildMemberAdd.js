@@ -1,9 +1,22 @@
 // events/guildMemberAdd.js
 
+const { MessageFlags, MessageType } = require('discord.js');
 const supabase = require('../services/supabase');
+const { parseMessage } = require('../services/parserService');   // restored!
 const h = require('../utils/helpers');
 
 module.exports = async (member) => {
+    // ==================== BOOST REACTION (confetti) ====================
+    // Listen for the system message that announces a new boost
+    member.client.on('messageCreate', async (message) => {
+        if (message.type === MessageType.UserPremiumGuildSubscription) {
+            try {
+                await message.react(h.releaseEmojis.CONFETTI);
+            } catch {}
+        }
+    });
+
+    // ==================== JOIN HANDLING ====================
     try {
         const supporterRoleId = h.ids.roles.supporter;
         const unverifiedRoleId = h.ids.roles.unverified;
@@ -26,22 +39,65 @@ module.exports = async (member) => {
         } else {
             console.log(`⏭️ Skipped Unverified role for ${member.user.tag} (already Supporter)`);
         }
+
+        // ----- WELCOME MESSAGE -----
+        try {
+            const { data: settings } = await supabase
+                .from(h.tables.SERVER_SETTINGS)
+                .select('welcome_channel_id, welcome_message')
+                .eq('guild_id', member.guild.id)
+                .single();
+
+            if (settings && settings.welcome_channel_id && settings.welcome_message) {
+                const channel = await member.guild.channels.fetch(settings.welcome_channel_id);
+                if (channel) {
+                    const parsedContent = parseMessage(settings.welcome_message, member);
+                    let cleanedContent = parsedContent;
+                    const username = member.user.username;
+                    if (cleanedContent.startsWith(username)) {
+                        cleanedContent = cleanedContent.slice(username.length).trimStart();
+                    }
+
+                    const finalMessage = `<@${member.id}> ${cleanedContent}`;
+
+                    let webhook = (await channel.fetchWebhooks()).find(w => w.name === 'Welcome Bot');
+                    if (!webhook) {
+                        webhook = await channel.createWebhook({
+                            name: 'Welcome Bot',
+                            avatar: h.urls.LOGO_URL
+                        });
+                    }
+
+                    const sent = await webhook.send({
+                        content: finalMessage,
+                        username: 'Welcome Bot',
+                        avatarURL: h.urls.LOGO_URL,
+                        flags: [MessageFlags.SuppressNotifications]
+                    });
+
+                    // Animated wave reaction
+                    await sent.react(h.releaseEmojis.WAVE).catch(err => console.error("Failed to react:", err));
+                }
+            }
+        } catch (err) {
+            console.error('Welcome Message Error:', err);
+        }
+
     } catch (err) {
         console.error('Error assigning Unverified role:', err);
     }
 
+    // ==================== RESTRICTED ROLE CLEANUP ====================
     setTimeout(async () => {
         try {
             const freshMember = await member.guild.members.fetch(member.id).catch(() => null);
             if (!freshMember) return;
 
             const restrictedRoles = h.ids.roles.restricted;
-            
             if (restrictedRoles && Array.isArray(restrictedRoles)) {
                 const rolesToRemove = freshMember.roles.cache.filter(role => 
                     restrictedRoles.includes(role.id)
                 );
-
                 if (rolesToRemove.size > 0) {
                     await freshMember.roles.remove(rolesToRemove);
                     console.log(`⚡ Instant-removed ${rolesToRemove.size} restricted roles from ${freshMember.user.tag}`);
@@ -54,5 +110,5 @@ module.exports = async (member) => {
                 console.error('Role Removal Error (Instant):', e);
             }
         }
-    }, 10000); 
+    }, 10000);
 };
