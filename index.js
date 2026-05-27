@@ -137,7 +137,6 @@ client.on('guildMemberRemove', require('./events/guildMemberPollRemove'));
 client.on('messageCreate', messageCreateEvent);
 client.on(Events.GuildMemberUpdate, roleConsistency);
 client.on(Events.GuildMemberUpdate, roleUpdateRecalc);
-client.on(Events.GuildMemberAdd, (member) => require('./events/guildMemberAdd')(member));
 client.on('messageCreate', require('./events/boostReaction'));
 client.on('messageCreate', (message) => {
     handleTriviaMessage(message).catch(err => console.error('Trivia handler error:', err));
