@@ -44,11 +44,11 @@ module.exports = async function handleRoleUpdate(oldMember, newMember) {
         if (!hadSupporter && hasSupporter) {
             if (hasMember) {
                 await member.roles.remove(MEMBER_ROLE);
-                console.log(`[RoleConsistency] Removed Member from ${member.user.tag} (now Supporter).`);
+     //           console.log(`[RoleConsistency] Removed Member from ${member.user.tag} (now Supporter).`);
             }
             if (hasUnverified) {
                 await member.roles.remove(UNVERIFIED_ROLE);
-                console.log(`[RoleConsistency] Removed Unverified from ${member.user.tag} (now Supporter).`);
+      //          console.log(`[RoleConsistency] Removed Unverified from ${member.user.tag} (now Supporter).`);
             }
             return;
         }
