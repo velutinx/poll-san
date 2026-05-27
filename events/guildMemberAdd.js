@@ -1,22 +1,11 @@
 // events/guildMemberAdd.js
 
-const { MessageFlags, MessageType } = require('discord.js');
+const { MessageFlags } = require('discord.js');
 const supabase = require('../services/supabase');
-const { parseMessage } = require('../services/parserService');   // restored!
+const { parseMessage } = require('../services/parserService');
 const h = require('../utils/helpers');
 
 module.exports = async (member) => {
-    // ==================== BOOST REACTION (confetti) ====================
-    // Listen for the system message that announces a new boost
-    member.client.on('messageCreate', async (message) => {
-        if (message.type === MessageType.UserPremiumGuildSubscription) {
-            try {
-                await message.react(h.releaseEmojis.CONFETTI);
-            } catch {}
-        }
-    });
-
-    // ==================== JOIN HANDLING ====================
     try {
         const supporterRoleId = h.ids.roles.supporter;
         const unverifiedRoleId = h.ids.roles.unverified;
