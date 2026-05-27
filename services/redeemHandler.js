@@ -197,7 +197,7 @@ async function handleRedeemSeries(interaction, index) {
 
 async function handleRedeemCancel(interaction) {
     activeSessions.delete(interaction.user.id);
-    await interaction.reply({ content: 'Request cancelled.', flags: 64 });
+    await interaction.reply({ content: 'Request cancelled.', flags: 64 }).catch(() => {});
 }
 
 // ============ VOTE BOOST ============
