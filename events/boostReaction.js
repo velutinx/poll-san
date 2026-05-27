@@ -5,9 +5,9 @@ const h = require('../utils/helpers');
 module.exports = async (message) => {
     if (message.type === MessageType.UserPremiumGuildSubscription) {
         try {
-            await message.react(h.releaseEmojis.CONFETTI);
+            const confettiEmoji = h.releaseEmojis?.CONFETTI || '🎉';
+            await message.react(confettiEmoji);
         } catch (err) {
-            // Ignore if reaction fails (e.g., missing permissions)
         }
     }
 };
