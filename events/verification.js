@@ -27,12 +27,12 @@ module.exports.handleInteraction = async (interaction) => {
 
     if (interaction.isButton() && interaction.customId === 'verify_modal_btn') {
         const cooldownKey = `verify_cooldown_${interaction.user.id}`;
-        if (pendingCaptchas.has(cooldownKey)) {
-            return interaction.reply({
-                content: `${helpers.releaseEmojis?.HOURGLASS || '⏳'} Please wait 30 seconds before trying again.`,
-                flags: [MessageFlags.Ephemeral]
-            });
-        }
+if (pendingCaptchas.has(cooldownKey)) {
+    return interaction.reply({
+        content: `${helpers.releaseEmojis?.HOURGLASS || '⏳'} Please wait 30 seconds before trying again.`,
+        flags: [MessageFlags.Ephemeral]
+    }).catch(() => {});
+}
 
         const mathQuestion = generateMathQuestion();
         const modal = new ModalBuilder()
