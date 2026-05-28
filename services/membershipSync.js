@@ -316,7 +316,7 @@ async function syncMembershipRoles(client) {
     }
 
     await storeCurrentActiveSet(currentActiveIds);
-    if (changesMade) console.log('[MembershipSync] Sync completed.');
+//    if (changesMade) console.log('[MembershipSync] Sync completed.');
   } catch (err) {
     console.error('[MembershipSync] Fatal error:', err.message);
   }
