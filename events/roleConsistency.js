@@ -56,7 +56,7 @@ module.exports = async function handleRoleUpdate(oldMember, newMember) {
         if (hadSupporter && !hasSupporter) {
             if (!hasAnyPaidTier && !hasMember) {
                 await member.roles.add(MEMBER_ROLE);
-                console.log(`[RoleConsistency] Added Member to ${member.user.tag} (no longer Supporter).`);
+     //           console.log(`[RoleConsistency] Added Member to ${member.user.tag} (no longer Supporter).`);
             }
             return;
         }
