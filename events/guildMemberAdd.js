@@ -4,7 +4,7 @@ const { MessageFlags } = require('discord.js');
 const supabase = require('../services/supabase');
 const { parseMessage } = require('../services/parserService');
 const h = require('../utils/helpers');
-const { processMember } = require('../features/avatarScanner');
+const { processMember, NUDITY_THRESHOLD } = require('../features/avatarScanner');
 
 module.exports = async (member) => {
     try {
@@ -30,10 +30,12 @@ module.exports = async (member) => {
             console.log(`⏭️ Skipped Unverified role for ${member.user.tag} (already Supporter)`);
         }
 
-        processMember(member.client, member).catch(err =>
+        // Scan avatar on join – only alert me if it's flagged
+        processMember(member.client, member, NUDITY_THRESHOLD, true).catch(err =>
             console.error('Avatar scan on join failed:', err)
         );
 
+        // ----- WELCOME MESSAGE -----
         try {
             const { data: settings } = await supabase
                 .from(h.tables.SERVER_SETTINGS)
@@ -68,6 +70,7 @@ module.exports = async (member) => {
                         flags: [MessageFlags.SuppressNotifications]
                     });
 
+                    // Animated wave reaction
                     await sent.react(h.releaseEmojis.WAVE).catch(err => console.error("Failed to react:", err));
                 }
             }
@@ -79,6 +82,7 @@ module.exports = async (member) => {
         console.error('Error assigning Unverified role:', err);
     }
 
+    // ==================== RESTRICTED ROLE CLEANUP ====================
     setTimeout(async () => {
         try {
             const freshMember = await member.guild.members.fetch(member.id).catch(() => null);
