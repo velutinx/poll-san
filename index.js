@@ -30,6 +30,7 @@ const h = require('./utils/helpers');
 const initChannelCleaner = require('./handlers/channelCleaner');
 const roleConsistency = require('./events/roleConsistency');
 const roleUpdateRecalc = require('./events/roleUpdateRecalc');
+
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
@@ -41,93 +42,7 @@ const client = new Client({
     partials: [Partials.Message, Partials.Reaction, Partials.User]
 });
 
-client.once(Events.ClientReady, async (c) => {
-  //  console.log(`🚀 ${c.user.tag} online and ready!`);
-
-    try {
-        const dashboardModule = await import('./web/server.js');
-        const startDashboard = dashboardModule.default || dashboardModule;
-        startDashboard(client);
-    } catch (err) {
-        console.error('❌ Failed to start dashboard:', err.message);
-    }
-
-const commandsData = [
-    new SlashCommandBuilder().setName('level').setDescription('Shows your current XP/level').toJSON(),
-    new ContextMenuCommandBuilder().setName('View Level').setType(ApplicationCommandType.User).toJSON(),
-    giveawayCommand.data.toJSON(),
-    require('./commands/admin/post-slots-ui').data.toJSON(),
-    require('./commands/admin/post-hangman-ui').data.toJSON(),
-    require('./commands/admin/post-verify-ui').data.toJSON(),
-    require('./commands/admin/post-checkin-ui').data.toJSON(),
-    require('./commands/admin/post-cointoss-ui').data.toJSON(),
-    require('./commands/admin/post-redeem-ui').data.toJSON()
-];
-    require('./services/roleAuditHandler')(client);
-
-    const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
-    try {
-        await rest.put(
-            Routes.applicationGuildCommands(process.env.CLIENT_ID, process.env.GUILD_ID),
-            { body: commandsData }
-        );
-    } catch (err) {
-        console.error('❌ Failed to sync commands:', err);
-    }
-
-    const guild = client.guilds.cache.get(process.env.GUILD_ID);
-    if (guild) cleanRoles(guild);
-    setInterval(() => {
-        const activeGuild = client.guilds.cache.get(process.env.GUILD_ID);
-        if (activeGuild) cleanRoles(activeGuild);
-    }, 3600000);
-
-    try { await syncMembershipRoles(client); } catch (err) { console.error('[MembershipSync] Initial sync failed:', err); }
-    setInterval(() => {
-        syncMembershipRoles(client).catch(err => console.error('[MembershipSync] Sync error:', err));
-    }, 300000);
-
-    setInterval(() => {
-        checkAndNotifyCooldowns(client).catch(err => console.error('Cooldown notifier error:', err));
-    }, 300000);
-
-    setInterval(() => {
-        processEndOfDayAwards(client).catch(err => console.error('Trivia end-of-day awards error:', err));
-    }, 3600000);
-
-    const hangmanChannelId = h.games.hangman.channelId;
-    const hangmanWhitelist = h.whitelistedMessages[hangmanChannelId] || [];
-    initChannelCleaner(client, hangmanChannelId, hangmanWhitelist);
-
-    const { data: activePolls } = await supabase
-        .from(h.tables.POLL_AUTO_RESUME)
-        .select('*')
-        .gt('ends_at', new Date().toISOString());
-    if (activePolls && activePolls.length > 0) {
-        for (const poll of activePolls) {
-            try {
-                const channel = await client.channels.fetch(poll.channel_id);
-                const pollMsg = await channel.messages.fetch(poll.message_id);
-                const characters = poll.poll_list
-                    .split(/(?=:female_sign:|:male_sign:|♀️|♂️)/)
-                    .map(s => s.trim())
-                    .filter(s => s.length > 0);
-                runPollInterval(pollMsg, new Date(poll.ends_at).getTime(), characters);
-            } catch (e) {
-                console.error(`Failed to resume poll ${poll.message_id}:`, e.message);
-            }
-        }
-    }
-
-    const { restoreGiveaways } = require('./commands/giveaway');
-    await restoreGiveaways(client).catch(console.error);
-    const { restorePollReminders } = require('./services/pollReminders');
-    await restorePollReminders(client).catch(console.error);
-    initMudaeMessageHandler(client);
-
-
-});
-
+client.once(Events.ClientReady, (c) => require('./events/ready')(c));
 client.on(Events.InteractionCreate, handleInteraction);
 client.on(Events.GuildMemberAdd, (member) => require('./events/guildMemberAdd')(member));
 client.on(Events.GuildMemberAdd, verification.execute);
@@ -146,7 +61,12 @@ client.on(Events.MessageCreate, async (message) => {
 });
 
 client.on('error', console.error);
-process.on('unhandledRejection', console.error);
+process.on('unhandledRejection', (reason) => {
+    if (reason instanceof Error && reason.cause?.code === 'UND_ERR_CONNECT_TIMEOUT' && reason.message.includes('fetch failed')) {
+        return;
+    }
+    console.error(reason);
+});
 
 const { startCleanup } = require('./services/redeemHandler');
 startCleanup();
