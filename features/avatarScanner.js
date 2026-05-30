@@ -19,6 +19,7 @@ const MONTHLY_CREDITS = 2000;
 const PROMPT_HOURS = [14, 16, 18];
 const NSFW_TIMEOUT_MS = 15000;
 
+// ==================== API CALLS ====================
 async function scanWithSightengine(url) {
     const formData = new URLSearchParams();
     formData.append('url', url);
@@ -64,10 +65,31 @@ async function scanWithNSFWCheckers(url) {
     }
 }
 
+// ==================== HELPERS ====================
 function getAvatarHash(member) {
     return member.user.avatar || 'default';
 }
 
+function getSightNudityScore(sightResult) {
+    if (!sightResult || !sightResult.nudity) return 0;
+    const n = sightResult.nudity;
+
+    if (typeof n.raw === 'number') return n.raw;
+    if (typeof n.none === 'number') return 1 - n.none;
+
+    const probs = [
+        n.sexual_activity,
+        n.erotica,
+        n.suggestive,
+        n.sexual_display,
+        n.very_suggestive,
+        n.mildly_suggestive
+    ].filter(v => typeof v === 'number');
+
+    return probs.length > 0 ? Math.max(...probs) : 0;
+}
+
+// ==================== DATABASE ====================
 async function dbAddFlaggedUser(userId, avatarHash, discordTag) {
     await supabase.from('avatar_flagged_users').upsert({
         user_id: userId,
@@ -118,6 +140,7 @@ async function setSetting(key, value) {
     await supabase.from('avatar_flagged_settings').upsert({ key, value });
 }
 
+// ==================== CREDITS ====================
 async function getCurrentMonth() {
     const now = new Date();
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
@@ -150,6 +173,7 @@ async function getCreditsRemaining() {
     return Math.max(0, MONTHLY_CREDITS - used);
 }
 
+// ==================== PERMISSIONS ====================
 async function applyDenyOverwrites(guild, member) {
     const helpers = require('../utils/helpers');
     const channelIds = [...(helpers.avatarRestrictedChannels || [])];
@@ -205,6 +229,7 @@ async function removeDenyOverwrites(guild, member) {
     }
 }
 
+// ==================== NOTIFICATIONS ====================
 async function sendWarningToUser(client, userId, customMessage) {
     try {
         const user = await client.users.fetch(userId);
@@ -221,25 +246,6 @@ async function sendWarningToUser(client, userId, customMessage) {
         console.error(`[AvatarScan] Could not DM user ${userId}:`, err.message);
         return false;
     }
-}
-
-function getSightNudityScore(sightResult) {
-    if (!sightResult || !sightResult.nudity) return 0;
-    const n = sightResult.nudity;
-
-    if (typeof n.raw === 'number') return n.raw;
-    if (typeof n.none === 'number') return 1 - n.none;
-
-    const probs = [
-        n.sexual_activity,
-        n.erotica,
-        n.suggestive,
-        n.sexual_display,
-        n.very_suggestive,
-        n.mildly_suggestive
-    ].filter(v => typeof v === 'number');
-
-    return probs.length > 0 ? Math.max(...probs) : 0;
 }
 
 async function alertOwner(client, member, sightResult, nsfwCheckersResult, {
@@ -329,7 +335,8 @@ async function alertOwnerAvatarChange(client, member, oldHash, newHash) {
     owner.send({ embeds: [embed], components: [row] }).catch(() => {});
 }
 
-async function processMember(client, member, threshold = NUDITY_THRESHOLD) {
+// ==================== CORE SCANNING ====================
+async function processMember(client, member, threshold = NUDITY_THRESHOLD, skipCleanAlert = false) {
     if (member.user.bot) return;
     const avatarUrl = member.displayAvatarURL({ dynamic: true, size: 1024 });
     if (!avatarUrl || avatarUrl.includes('discord.com/assets/')) return;
@@ -350,18 +357,21 @@ async function processMember(client, member, threshold = NUDITY_THRESHOLD) {
             sightNudity >= threshold ||
             (nsfwCheckersScore !== null && nsfwCheckersScore >= threshold);
 
-        if (flagged) {
+        // Always alert for flagged avatars; for clean avatars, alert only if not skipping
+        if (flagged || !skipCleanAlert) {
             await alertOwner(client, member, sightResult, nsfwCheckersResult, {
-                isFlagged: true,
+                isFlagged: flagged,
                 extraText: ''
             });
-            console.log(`[AvatarScan] Flagged: ${member.user.tag}`);
         }
+
+        if (flagged) console.log(`[AvatarScan] Flagged: ${member.user.tag}`);
     } catch (err) {
         console.error(`[AvatarScan] Error scanning ${member.user.tag}:`, err.message);
     }
 }
 
+// ==================== MASS SCANS ====================
 async function scanAllMembersWithFreeAPI(client) {
     const guild = client.guilds.cache.first();
     if (!guild) return;
@@ -423,27 +433,12 @@ async function scanAllMembersWithFreeAPI(client) {
         }
 
         scanned++;
-        if (scanned % 10 === 0) {
-     //       console.log(`[MassScan] Progress: ${scanned}/${memberArray.length} members scanned...`);
-        }
-
         if (scanned < memberArray.length) {
             await new Promise(resolve => setTimeout(resolve, SCAN_DELAY_MS));
         }
     }
 
     console.log(`[MassScan] Finished scanning ${scanned} members, flagged ${flagged}.`);
-}
-
-async function shouldRunMassScanToday() {
-    const lastScanDate = await getSetting('mass_scan_free_date');
-    const today = new Date().toISOString().slice(0, 10);
-    return lastScanDate !== today;
-}
-
-async function markMassScanDoneToday() {
-    const today = new Date().toISOString().slice(0, 10);
-    await setSetting('mass_scan_free_date', today);
 }
 
 async function performMonthlyScan(client) {
@@ -487,6 +482,18 @@ async function performMonthlyScan(client) {
     const creditsAfter = await getCreditsRemaining();
     const used = creditsBefore - creditsAfter;
     return { scanned, flagged, used };
+}
+
+// ==================== SCHEDULING ====================
+async function shouldRunMassScanToday() {
+    const lastScanDate = await getSetting('mass_scan_free_date');
+    const today = new Date().toISOString().slice(0, 10);
+    return lastScanDate !== today;
+}
+
+async function markMassScanDoneToday() {
+    const today = new Date().toISOString().slice(0, 10);
+    await setSetting('mass_scan_free_date', today);
 }
 
 async function sendMonthlyPrompt(client) {
@@ -557,6 +564,7 @@ async function checkMonthlyScanPrompt(client) {
     }
 }
 
+// ==================== HANDLERS ====================
 async function handleScanCommand(message) {
     if (message.author.id !== ids.users.Velutinx) return;
     if (!message.content.startsWith('!scan')) return;
@@ -579,7 +587,7 @@ async function handleScanCommand(message) {
     }
 
     const reply = await message.reply(`🔍 Scanning avatar of ${target.user.tag}...`);
-    await processMember(message.client, target);
+    await processMember(message.client, target, NUDITY_THRESHOLD, false); // never skip clean alerts for manual scans
     reply.edit(`${releaseEmojis?.getRandomVerify?.() || '✅'} Scan complete for <@${target.id}>. Check your DM for details.`).catch(() => {});
 }
 
@@ -608,16 +616,27 @@ async function handleWarnButton(interaction) {
 async function handleIgnoreButton(interaction) {
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
-    const targetUserId = interaction.customId.replace('ignore_avatar_', '');
-    const guild = interaction.client.guilds.cache.first();
-    if (!guild) return interaction.editReply({ content: 'Guild not found.' });
+    try {
+        const targetUserId = interaction.customId.replace('ignore_avatar_', '');
+        const guild = interaction.client.guilds.cache.first();
+        if (!guild) {
+            return interaction.editReply({ content: 'Guild not found.' });
+        }
 
-    const member = await guild.members.fetch(targetUserId).catch(() => null);
-    if (!member) return interaction.editReply({ content: 'User not found in server.' });
+        const member = await guild.members.fetch(targetUserId).catch(() => null);
+        if (!member) {
+            return interaction.editReply({ content: 'User not found in server.' });
+        }
 
-    await dbAddIgnoredUser(targetUserId, getAvatarHash(member), member.user.tag);
+        await dbAddIgnoredUser(targetUserId, getAvatarHash(member), member.user.tag);
 
-    await interaction.editReply({ content: `${releaseEmojis?.getRandomVerify?.() || '✅'} <@${targetUserId}> has been added to the ignore list. Future scans will skip them unless they change their avatar.` });
+        await interaction.editReply({
+            content: `${releaseEmojis?.getRandomVerify?.() || '✅'} <@${targetUserId}> has been added to the ignore list. Future scans will skip them unless they change their avatar.`
+        });
+    } catch (err) {
+        console.error('Ignore button error:', err);
+        await interaction.editReply({ content: 'An error occurred while adding to ignore list.' }).catch(() => {});
+    }
 }
 
 async function handleAcceptButton(interaction) {
@@ -666,12 +685,9 @@ async function handleDenyButton(interaction) {
 async function handleMonthlyScanAccept(interaction) {
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
-        if (interaction.user.id !== ids.users.Velutinx) {
-            return interaction.reply({
-                content: 'Only the server owner can use these buttons.',
-                flags: MessageFlags.Ephemeral
-            }).catch(() => {});
-        }
+    if (interaction.user.id !== ids.users.Velutinx) {
+        return interaction.editReply({ content: 'Only the server owner can accept this.' });
+    }
 
     const alreadyAccepted = await getSetting('monthly_scan_accepted');
     if (alreadyAccepted === 'true') {
@@ -707,6 +723,7 @@ async function onUserUpdate(oldUser, newUser) {
     await alertOwnerAvatarChange(oldUser.client, member, oldUser.avatar, newUser.avatar);
 }
 
+// ==================== INIT ====================
 let monthlyCheckInterval = null;
 
 function startMonthlyCheck(client) {
@@ -741,7 +758,10 @@ function init(client) {
         }
 
         if (interaction.user.id !== ids.users.Velutinx) {
-            return interaction.reply({ content: 'Only the server owner can use these buttons.', flags: MessageFlags.Ephemeral });
+            return interaction.reply({
+                content: 'Only the server owner can use these buttons.',
+                flags: MessageFlags.Ephemeral
+            }).catch(() => {});
         }
 
         if (interaction.customId.startsWith('warn_avatar_')) {
@@ -764,7 +784,6 @@ function init(client) {
                     await markMassScanDoneToday();
                     console.log('[MassScan] Daily free mass scan marked for today. Starting scan...');
                     await scanAllMembersWithFreeAPI(client);
-                } else {
                 }
             } catch (err) {
                 console.error('[MassScan] Fatal error during daily free mass scan:', err);
@@ -775,4 +794,4 @@ function init(client) {
     });
 }
 
-module.exports = { init, processMember };
+module.exports = { init, processMember, NUDITY_THRESHOLD };
