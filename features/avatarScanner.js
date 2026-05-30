@@ -350,12 +350,13 @@ async function processMember(client, member, threshold = NUDITY_THRESHOLD) {
             sightNudity >= threshold ||
             (nsfwCheckersScore !== null && nsfwCheckersScore >= threshold);
 
-        await alertOwner(client, member, sightResult, nsfwCheckersResult, {
-            isFlagged: flagged,
-            extraText: ''
-        });
-
-        if (flagged) console.log(`[AvatarScan] Flagged: ${member.user.tag}`);
+        if (flagged) {
+            await alertOwner(client, member, sightResult, nsfwCheckersResult, {
+                isFlagged: true,
+                extraText: ''
+            });
+            console.log(`[AvatarScan] Flagged: ${member.user.tag}`);
+        }
     } catch (err) {
         console.error(`[AvatarScan] Error scanning ${member.user.tag}:`, err.message);
     }
@@ -665,9 +666,12 @@ async function handleDenyButton(interaction) {
 async function handleMonthlyScanAccept(interaction) {
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
-    if (interaction.user.id !== ids.users.Velutinx) {
-        return interaction.editReply({ content: 'Only the server owner can accept this.' });
-    }
+        if (interaction.user.id !== ids.users.Velutinx) {
+            return interaction.reply({
+                content: 'Only the server owner can use these buttons.',
+                flags: MessageFlags.Ephemeral
+            }).catch(() => {});
+        }
 
     const alreadyAccepted = await getSetting('monthly_scan_accepted');
     if (alreadyAccepted === 'true') {
