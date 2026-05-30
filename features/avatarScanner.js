@@ -771,4 +771,4 @@ function init(client) {
     });
 }
 
-module.exports = { init };
+module.exports = { init, processMember };
