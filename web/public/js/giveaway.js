@@ -26,8 +26,6 @@ async function loadGiveawayData() {
         const hours = Math.floor(timeLeft / (1000 * 60 * 60));
         const minutes = Math.floor((timeLeft % (3600000)) / 60000);
         const seconds = Math.floor((timeLeft % 60000) / 1000);
-
-        // Format ending time as "1 of May at 9:28 PM"
         const day = endTime.getDate();
         const month = endTime.toLocaleString(undefined, { month: 'long' });
         const timeStr = endTime.toLocaleString(undefined, { hour: 'numeric', minute: '2-digit', hour12: true });
@@ -54,7 +52,6 @@ async function loadGiveawayData() {
                 loadGiveawayData();
                 return;
             }
-            // Refresh every minute to keep "Time left" accurate
             loadGiveawayData();
         }, 60000);
         renderGiveawayTable(currentGiveawayData);
@@ -70,7 +67,7 @@ function renderGiveawayTable(entrants) {
     const tbody = document.getElementById('giveaway-table-body');
     if (!tbody) return;
     if (!entrants.length) {
-        tbody.innerHTML = '<tr><td colspan="5">No entrants yet.‹/td><\/tr>';
+        tbody.innerHTML = '<tr><td colspan="5">No entrants yet.<\/td><\/tr>';
         return;
     }
     let sorted = [...entrants];
@@ -112,9 +109,7 @@ function renderGiveawayTable(entrants) {
     document.querySelectorAll('.giveaway-remove').forEach(btn => {
         btn.addEventListener('click', async (e) => {
             const userId = btn.dataset.id;
-            if (confirm(`Remove user ${userId} from giveaway? This will also delete their poll votes.`)) {
-                await removeFromGiveaway(userId);
-            }
+            await removeFromGiveaway(userId);
         });
     });
 }
@@ -166,12 +161,11 @@ async function adjustGiveawayTime() {
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'Adjustment failed');
         statusDiv.innerHTML = `<span style="color:#4ade80;">✅ Giveaway end time updated by ${hours} hour(s).</span>`;
-        loadGiveawayData(); // refresh display
+        loadGiveawayData();
     } catch (err) {
         statusDiv.innerHTML = `<span style="color:#f87171;">❌ ${err.message}</span>`;
         console.error(err);
     }
 }
 
-// Expose globally so HTML button can call it
 window.adjustGiveawayTime = adjustGiveawayTime;
