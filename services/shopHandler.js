@@ -2,7 +2,7 @@
 
 const { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, MessageFlags } = require('discord.js');
 const h = require('../utils/helpers');
-const supabase = require('./supabase');
+const db = require('./database');
 
 const SHOP_ITEMS = [
     {
@@ -23,18 +23,20 @@ async function handleShopSelect(interaction) {
         return interaction.followUp({ content: `${h.releaseEmojis?.BATSU || '❌'} Item not found.`, flags: MessageFlags.Ephemeral });
     }
 
-    const { data: userData, error } = await supabase
-        .from(h.tables.GAMES_WORDLE)
-        .select('ticket_count')
-        .eq('discord_id', interaction.user.id)
-        .maybeSingle();
-
-    if (error) {
-        console.error('Balance fetch error in shop select:', error);
+    // Fetch ticket balance from games_wordle
+    let balance = 0;
+    try {
+        const row = await db.query(
+            `SELECT ticket_count FROM ${h.tables.GAMES_WORDLE} WHERE discord_id = ?`,
+            [interaction.user.id],
+            true
+        );
+        balance = row?.ticket_count || 0;
+    } catch (err) {
+        console.error('Balance fetch error in shop select:', err);
         return interaction.followUp({ content: `${h.releaseEmojis?.BATSU || '❌'} Could not retrieve your balance.`, flags: MessageFlags.Ephemeral });
     }
 
-    const balance = userData?.ticket_count || 0;
     const canAfford = balance >= item.cost;
     const randomCheck = h.releaseEmojis?.getRandomVerify?.() || '✅';
 
@@ -68,43 +70,49 @@ async function handleShopPurchase(interaction) {
 
     const item = SHOP_ITEMS[0];
 
-    const { data: userData, error: fetchError } = await supabase
-        .from(h.tables.GAMES_WORDLE)
-        .select('ticket_count')
-        .eq('discord_id', interaction.user.id)
-        .maybeSingle();
-
-    if (fetchError) {
+    // Fetch current ticket count from games_wordle
+    let balance = 0;
+    try {
+        const row = await db.query(
+            `SELECT ticket_count FROM ${h.tables.GAMES_WORDLE} WHERE discord_id = ?`,
+            [interaction.user.id],
+            true
+        );
+        balance = row?.ticket_count || 0;
+    } catch (fetchError) {
         console.error('Fetch balance error:', fetchError);
         return interaction.followUp({ content: `${h.releaseEmojis?.BATSU || '❌'} Error checking balance.`, flags: MessageFlags.Ephemeral });
     }
-
-    const balance = userData?.ticket_count || 0;
 
     if (balance < item.cost) {
         return interaction.followUp({ content: `${h.releaseEmojis?.BATSU || '❌'} You do not have enough tickets.`, flags: MessageFlags.Ephemeral });
     }
 
-    const { data: newBalance, error: deductError } = await supabase
-        .rpc('deduct_tickets', { user_id: interaction.user.id, amount: item.cost });
-
-    if (deductError) {
+    // Deduct tickets atomically
+    const newBalance = balance - item.cost;
+    try {
+        const result = await db.query(
+            `UPDATE ${h.tables.GAMES_WORDLE} SET ticket_count = ticket_count - ? WHERE discord_id = ?`,
+            [item.cost, interaction.user.id]
+        );
+        // If no row was updated (user not in table), refund would be complex, but we already checked balance>0, so it should exist.
+    } catch (deductError) {
         console.error('Deduct error:', deductError);
         return interaction.followUp({ content: `${h.releaseEmojis?.BATSU || '❌'} Purchase failed. Please try again.`, flags: MessageFlags.Ephemeral });
     }
 
-    const { error: logError } = await supabase
-        .from(h.tables.GAMES_PURCHASES)
-        .insert({
-            discord_id: interaction.user.id,
-            discord_username: interaction.user.username,
-            item_name: item.name,
-            ticket_cost: item.cost,
-            status: 'pending'
-        });
+    // Log the purchase
+    try {
+        await db.query(
+            `INSERT INTO ${h.tables.GAMES_PURCHASES} (discord_id, discord_username, item_name, ticket_cost, status)
+             VALUES (?, ?, ?, ?, ?)`,
+            [interaction.user.id, interaction.user.username, item.name, item.cost, 'pending']
+        );
+    } catch (logError) {
+        console.error('Logging error:', logError);
+    }
 
-    if (logError) console.error('Logging error:', logError);
-
+    // Notify admin via channel
     try {
         const adminChannelId = h.ids.channels.admin_channel;
         const adminChannel = await interaction.client.channels.fetch(adminChannelId);
