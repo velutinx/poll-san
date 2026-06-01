@@ -14,7 +14,6 @@ const {
     Events
 } = require('discord.js');
 
-const supabase = require('./services/supabase');
 const { runPollInterval } = require('./services/pollService');
 const { cleanRoles } = require('./services/roleCleaner');
 const XPLib = require('./utils/xputils');
@@ -66,14 +65,7 @@ process.on('unhandledRejection', (reason) => {
     if (reason instanceof Error && reason.cause?.code === 'UND_ERR_CONNECT_TIMEOUT' && reason.message.includes('fetch failed')) {
         return;
     }
-    // Supabase 522 / HTML errors – clean
-    if (reason instanceof Error) {
-        const msg = reason.message;
-        if (msg.includes('<title>supabase.co | 522: Connection timed out</title>') || msg.includes('<!DOCTYPE html>')) {
-            console.error('Unhandled rejection: Supabase connection timed out (522).');
-            return;
-        }
-    }
+    // All other errors are logged normally
     console.error(reason);
 });
 
