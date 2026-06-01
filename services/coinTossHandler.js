@@ -1,12 +1,13 @@
 // services/coinTossHandler.js
 const { EmbedBuilder } = require('discord.js');
 const helpers = require('../utils/helpers');
-const supabase = require('./supabase');
-const activeGames = new Map(); 
+const db = require('./database');
+
+const activeGames = new Map();
 
 function tossCoin() {
     const random = Math.random();
-    const isHeads = random < 0.45; // 45% chance to win
+    const isHeads = random < 0.45;
     return { isHeads, outcome: isHeads ? 'Heads' : 'Tails' };
 }
 
@@ -18,21 +19,22 @@ async function handleCoinTossBet(interaction, betAmount) {
     try {
         await interaction.deferUpdate();
     } catch (error) {
-        return; 
+        return;
     }
 
-    const { data: userData, error } = await supabase
-        .from(helpers.tables.GAMES_USER_DATA)
-        .select('tickets')
-        .eq('user_id', userId)
-        .maybeSingle();
-
-    if (error) {
+    let currentTickets = 0;
+    try {
+        const row = await db.query(
+            `SELECT tickets FROM ${helpers.tables.GAMES_USER_DATA} WHERE user_id = ?`,
+            [userId],
+            true
+        );
+        currentTickets = row?.tickets || 0;
+    } catch (error) {
         console.error('Coin toss fetch error:', error);
         return;
     }
 
-    const currentTickets = userData?.tickets || 0;
     if (currentTickets < betAmount) {
         return interaction.followUp({
             content: `${helpers.releaseEmojis?.BATSU || '❌'} You need ${betAmount} tickets, but you only have ${currentTickets}.`,
@@ -41,14 +43,17 @@ async function handleCoinTossBet(interaction, betAmount) {
     }
 
     let newBalance = currentTickets - betAmount;
-    const { error: updateError } = await supabase
-        .from(helpers.tables.GAMES_USER_DATA)
-        .update({ tickets: newBalance })
-        .eq('user_id', userId);
-
-    if (updateError) {
+    try {
+        await db.query(
+            `UPDATE ${helpers.tables.GAMES_USER_DATA} SET tickets = ? WHERE user_id = ?`,
+            [newBalance, userId]
+        );
+    } catch (updateError) {
         console.error('Coin toss deduct error:', updateError);
-        return interaction.followUp({ content: `${helpers.releaseEmojis?.BATSU || '❌'} Database error. Please try again later.`, ephemeral: true });
+        return interaction.followUp({
+            content: `${helpers.releaseEmojis?.BATSU || '❌'} Database error. Please try again later.`,
+            ephemeral: true
+        });
     }
 
     const { isHeads, outcome } = tossCoin();
@@ -60,10 +65,17 @@ async function handleCoinTossBet(interaction, betAmount) {
     if (isHeads) {
         winAmount = betAmount * 2;
         newBalance += winAmount;
-        await supabase
-            .from(helpers.tables.GAMES_USER_DATA)
-            .update({ tickets: newBalance })
-            .eq('user_id', userId);
+        try {
+            await db.query(
+                `UPDATE ${helpers.tables.GAMES_USER_DATA} SET tickets = ? WHERE user_id = ?`,
+                [newBalance, userId]
+            );
+        } catch (err) {
+            console.error('Coin toss update after win error:', err);
+            // The bet was already deducted, but the win addition failed.
+            // This is a rare situation; log it and continue showing the old balance.
+            newBalance -= winAmount; // revert for display
+        }
         winMessage = `**You won ${betAmount} tickets!** ${confettiEmoji}`;
     } else {
         winMessage = '**You lost.** Better luck next time!';
@@ -98,10 +110,10 @@ async function handleCoinTossBet(interaction, betAmount) {
     }
 
     try {
-        const sentMsg = await interaction.followUp({ 
-            embeds: [embed], 
-            ephemeral: true, 
-            fetchReply: true 
+        const sentMsg = await interaction.followUp({
+            embeds: [embed],
+            ephemeral: true,
+            fetchReply: true
         });
 
         activeGames.set(gameKey, {
