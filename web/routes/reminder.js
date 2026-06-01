@@ -3,6 +3,7 @@ const express = require('express');
 const router = express.Router();
 const helpers = require('../../utils/helpers');
 const h = require('../../utils/helpers');
+const db = require('../../services/database');   // D1 client
 
 router.post('/api/reminder', async (req, res) => {
     const { user_id } = req.body;
@@ -45,16 +46,16 @@ router.post('/api/reminder', async (req, res) => {
             avatarURL: helpers.urls.LOGO_URL
         });
 
-        // Delete after 5 seconds
+        // Delete after 5 seconds (set to 5_000 if you prefer; currently 15_000)
         if (notifyMsg) {
             setTimeout(() => notifyMsg.delete().catch(() => {}), 15_000);
         }
 
-        const supabase = require('../../services/supabase');
-        await supabase
-            .from(h.tables.GAMES_USER_DATA)
-            .update({ reminder_sent: true })
-            .eq('user_id', user_id);
+        // Update reminder flag in D1
+        await db.query(
+            `UPDATE ${h.tables.GAMES_USER_DATA} SET reminder_sent = 1 WHERE user_id = ?`,
+            [user_id]
+        );
 
         res.json({ success: true });
     } catch (err) {
