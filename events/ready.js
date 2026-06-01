@@ -68,7 +68,7 @@ module.exports = async (c) => {
   // Membership sync
   try { await syncMembershipRoles(c); } catch (err) { console.error('[MembershipSync] Initial sync failed:', err); }
   setInterval(() => {
-    syncMembershipRoles(c).catch(err => console.error('[MembershipSync] Sync error:', err));
+syncMembershipRoles(c).catch(err => h.logSupabaseError('MembershipSync', err));
   }, 300000);
 
   // Cooldown notifier
