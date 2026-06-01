@@ -1,6 +1,6 @@
 // events/roleConsistency.js
 const h = require('../utils/helpers');
-const supabase = require('../services/supabase');
+const db = require('../services/database');
 
 const SUPPORTER_ROLE = h.ids.roles.supporter;
 const MEMBER_ROLE = h.ids.roles.member;
@@ -14,19 +14,19 @@ module.exports = async function handleRoleUpdate(oldMember, newMember) {
 
     // Skip users with an active website membership – they are handled by the sync
     try {
-        const { data: activeMember } = await supabase
-            .from(h.tables.MEMBERSHIPS)
-            .select('id')
-            .eq('discord_id', newMember.id)
-            .gt('expires_at', new Date().toISOString())
-            .limit(1)
-            .maybeSingle();
+        const activeMember = await db.query(
+            `SELECT id FROM ${h.tables.MEMBERSHIPS}
+             WHERE discord_id = ? AND expires_at > ?
+             LIMIT 1`,
+            [newMember.id, new Date().toISOString()],
+            true   // single row
+        );
 
         if (activeMember) {
             return;
         }
     } catch (err) {
-        console.error(`[RoleConsistency] Supabase check failed for ${newMember.user.tag}:`, err.message);
+        console.error(`[RoleConsistency] Database check failed for ${newMember.user.tag}:`, err.message);
     }
 
     const member = await newMember.fetch();
@@ -44,11 +44,9 @@ module.exports = async function handleRoleUpdate(oldMember, newMember) {
         if (!hadSupporter && hasSupporter) {
             if (hasMember) {
                 await member.roles.remove(MEMBER_ROLE);
-     //           console.log(`[RoleConsistency] Removed Member from ${member.user.tag} (now Supporter).`);
             }
             if (hasUnverified) {
                 await member.roles.remove(UNVERIFIED_ROLE);
-      //          console.log(`[RoleConsistency] Removed Unverified from ${member.user.tag} (now Supporter).`);
             }
             return;
         }
@@ -56,7 +54,6 @@ module.exports = async function handleRoleUpdate(oldMember, newMember) {
         if (hadSupporter && !hasSupporter) {
             if (!hasAnyPaidTier && !hasMember) {
                 await member.roles.add(MEMBER_ROLE);
-     //           console.log(`[RoleConsistency] Added Member to ${member.user.tag} (no longer Supporter).`);
             }
             return;
         }
