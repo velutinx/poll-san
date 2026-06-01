@@ -1,7 +1,7 @@
 // handlers/mudaeMessageHandler.js
 const helpers = require('../utils/helpers');
-const supabase = require('../services/supabase');
-const { getCanonicalSeries } = require('../services/seriesConsolidator'); // NEW
+const db = require('../services/database');
+const { getCanonicalSeries } = require('../services/seriesConsolidator');
 
 const activeTimeouts = new Map();
 let channelInactivityTimeout = null;
@@ -140,18 +140,19 @@ function initMudaeMessageHandler(client) {
         } catch (err) {}
 
         try {
-            const { error } = await supabase.from(helpers.tables.GAMES_MUDAE_CLAIMS).insert({
-                user_id: userId,
-                username: claimerUsername,
-                character_name: characterName,
-                series: canonicalSeries,
-                claimed_at: new Date().toISOString()
-            });
-            if (error) {
-                console.error('Insert error:', error);
-            } else {
-                console.log(`📝 Recorded: ${claimerUsername} claimed ${characterName} (${canonicalSeries || 'unknown series'})`);
-            }
+            await db.query(
+                `INSERT INTO ${helpers.tables.GAMES_MUDAE_CLAIMS}
+                 (user_id, username, character_name, series, claimed_at)
+                 VALUES (?, ?, ?, ?, ?)`,
+                [
+                    userId,
+                    claimerUsername,
+                    characterName,
+                    canonicalSeries,
+                    new Date().toISOString()
+                ]
+            );
+            console.log(`📝 Recorded: ${claimerUsername} claimed ${characterName} (${canonicalSeries || 'unknown series'})`);
         } catch (err) {
             console.error('DB error:', err);
         }
