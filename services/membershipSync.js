@@ -1,13 +1,10 @@
 // services/membershipSync.js
 
-const supabase = require('./supabase');
-const db = require('../utils/db');
-const h = require('../utils/helpers'); 
-const supabaseRetry = db.supabaseRetry;
-const { guardQuery } = require('../utils/supabaseCircuitBreaker');
+const db = require('./database');
+const h = require('../utils/helpers');
 
-const TIER_ROLES = h.weights.tierMapping; 
-const SUPPORTER_ROLE = h.ids.roles.supporter; 
+const TIER_ROLES = h.weights.tierMapping;
+const SUPPORTER_ROLE = h.ids.roles.supporter;
 const CREATOR_ROLE = h.ids.roles.creator;
 const MEMBER_ROLE = h.ids.roles.member;
 
@@ -37,23 +34,17 @@ function formatDate(date) {
 async function getLanguageForOrder(orderId) {
   if (!orderId) return 'en';
   try {
-    const { data, error } = await guardQuery(() =>
-      supabase
-        .from(h.tables.SUCCESSS)
-        .select('language')
-        .eq('paypal_token', orderId)
-        .single()
+    const row = await db.query(
+      `SELECT language FROM ${h.tables.SUCCESSS} WHERE paypal_token = ?`,
+      [orderId],
+      true   // single row
     );
-    if (error || !data) {
-      if (error) console.warn(`[MembershipSync] Language fetch error for ${orderId}:`, error.message);
+    if (!row) {
+      console.warn(`[MembershipSync] Language fetch: no row for order ${orderId}`);
       return 'en';
     }
-    return data.language || 'en';
+    return row.language || 'en';
   } catch (err) {
-    if (err.message === 'Supabase circuit breaker active – skipping query') {
-      console.warn('[MembershipSync] Circuit breaker active, skipping language fetch.');
-      return 'en';
-    }
     console.warn(`[MembershipSync] Language fetch failed for ${orderId}:`, err.message);
     return 'en';
   }
@@ -61,53 +52,38 @@ async function getLanguageForOrder(orderId) {
 
 async function hasMessageBeenSent(discordId, orderId) {
   try {
-    const { data, error } = await guardQuery(() =>
-      supabase
-        .from(h.tables.MEMBER_MESSAGE_LOG)
-        .select('id')
-        .eq('discord_id', discordId)
-        .eq('order_id', orderId)
-        .limit(1)
+    const row = await db.query(
+      `SELECT id FROM ${h.tables.MEMBER_MESSAGE_LOG}
+       WHERE discord_id = ? AND order_id = ?
+       LIMIT 1`,
+      [discordId, orderId],
+      true
     );
-    if (error) {
-      console.error('[MembershipSync] Failed to check message sent status:', error.message);
-      return true; 
-    }
-    return data && data.length > 0;
+    return !!row;
   } catch (err) {
-    if (err.message === 'Supabase circuit breaker active – skipping query') {
-      console.warn('[MembershipSync] Circuit breaker active, assuming message not sent.');
-      return false; // safe: will try again later
-    }
-    console.error('[MembershipSync] Check message sent error:', err.message);
-    return true; // assume sent to avoid spam
+    console.error('[MembershipSync] Failed to check message sent status:', err.message);
+    return true;  // assume sent to avoid spam
   }
 }
 
 async function recordMessageSent(discordId, orderId, language, membership, discordName) {
   try {
-    const { error } = await guardQuery(() =>
-      supabase
-        .from(h.tables.MEMBER_MESSAGE_LOG)
-        .insert({
-          discord_id: discordId,
-          order_id: orderId,
-          language,
-          sent_at: new Date().toISOString(),
-          tier: membership.tier,
-          expires_at: membership.expires_at,
-          discord_name: discordName,
-        })
+    await db.query(
+      `INSERT INTO ${h.tables.MEMBER_MESSAGE_LOG}
+       (discord_id, order_id, language, sent_at, tier, expires_at, discord_name)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [
+        discordId,
+        orderId,
+        language,
+        new Date().toISOString(),
+        membership.tier,
+        membership.expires_at,
+        discordName
+      ]
     );
-    if (error) {
-      console.error('[MembershipSync] Failed to record message sent:', error.message);
-    }
   } catch (err) {
-    if (err.message === 'Supabase circuit breaker active – skipping query') {
-      console.warn('[MembershipSync] Circuit breaker active, could not record message sent.');
-    } else {
-      console.error('[MembershipSync] Record message error:', err.message);
-    }
+    console.error('[MembershipSync] Failed to record message sent:', err.message);
   }
 }
 
@@ -126,7 +102,7 @@ async function sendMembershipMessage(client, discordId, membership) {
   const tier = membership.tier;
   const expiresAt = new Date(membership.expires_at);
   const orderId = membership.order_id;
-  
+
   const tierNames = { 1: 'Bronze', 2: 'Copper', 3: 'Silver', 4: 'Gold', 5: 'Platinum' };
   const tierName = tierNames[tier] || `Tier ${tier}`;
 
@@ -136,7 +112,7 @@ async function sendMembershipMessage(client, discordId, membership) {
   const lang = await getLanguageForOrder(orderId);
   const t = MESSAGES[lang] || MESSAGES.en;
 
-  const OWNER_ID = h.ids.users.Velutinx; 
+  const OWNER_ID = h.ids.users.Velutinx;
   const ownerDmLink = `[DM Velutinx](https://discord.com/users/${OWNER_ID})`;
 
   const messageTemplate = (tier === 1) ? t.welcome_tier1 : t.welcome_tier2_5;
@@ -184,47 +160,33 @@ async function sendMembershipMessage(client, discordId, membership) {
 
 async function getLastActiveSet() {
   try {
-    const { data, error } = await guardQuery(() =>
-      supabase
-        .from(h.tables.SYNC_STATE)
-        .select('value')
-        .eq('key', 'active_members')
-        .single()
+    const row = await db.query(
+      `SELECT value FROM ${h.tables.SYNC_STATE} WHERE key = 'active_members'`,
+      [],
+      true
     );
-    if (error) {
-      console.error('[MembershipSync] Failed to fetch sync state:', error.message);
-      return new Set();
+    if (row && row.value) {
+      const parsed = JSON.parse(row.value);
+      return new Set(parsed.ids || []);
     }
-    return new Set(data?.value?.ids || []);
+    return new Set();
   } catch (err) {
-    if (err.message === 'Supabase circuit breaker active – skipping query') {
-      console.warn('[MembershipSync] Circuit breaker active, reusing previous active set.');
-      return new Set(); // empty set – no role removal this cycle
-    }
-    console.error('[MembershipSync] Get active set error:', err.message);
+    console.error('[MembershipSync] Failed to fetch sync state:', err.message);
     return new Set();
   }
 }
 
 async function storeCurrentActiveSet(ids) {
+  const json = JSON.stringify({ ids: Array.from(ids), updated_at: new Date().toISOString() });
   try {
-    const { error } = await guardQuery(() =>
-      supabase
-        .from(h.tables.SYNC_STATE)
-        .upsert({
-          key: 'active_members',
-          value: { ids: Array.from(ids), updated_at: new Date().toISOString() }
-        }, { onConflict: 'key' })
+    await db.query(
+      `INSERT INTO ${h.tables.SYNC_STATE} (key, value)
+       VALUES ('active_members', ?)
+       ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+      [json]
     );
-    if (error) {
-      console.error('[MembershipSync] Failed to store sync state:', error.message);
-    }
   } catch (err) {
-    if (err.message === 'Supabase circuit breaker active – skipping query') {
-      console.warn('[MembershipSync] Circuit breaker active, could not store active set.');
-    } else {
-      console.error('[MembershipSync] Store active set error:', err.message);
-    }
+    console.error('[MembershipSync] Failed to store sync state:', err.message);
   }
 }
 
@@ -234,14 +196,17 @@ async function syncMembershipRoles(client) {
   try {
     const now = new Date().toISOString();
 
-    // Fetch only necessary columns to reduce egress
-    const { data: activeMemberships, error: activeError } = await guardQuery(() =>
-      supabase
-        .from(h.tables.MEMBERSHIPS)
-        .select('discord_id, tier, expires_at, order_id')
-        .gt('expires_at', now)
+    const activeMemberships = await db.query(
+      `SELECT discord_id, tier, expires_at, order_id
+       FROM ${h.tables.MEMBERSHIPS}
+       WHERE expires_at > ?`,
+      [now]
     );
-    if (activeError) throw activeError;
+
+    if (!activeMemberships || activeMemberships.length === 0) {
+      await storeCurrentActiveSet(new Set());
+      return;
+    }
 
     const userBestMembership = new Map();
     for (const membership of activeMemberships) {
@@ -362,11 +327,7 @@ async function syncMembershipRoles(client) {
 
     await storeCurrentActiveSet(currentActiveIds);
   } catch (err) {
-    if (err.message === 'Supabase circuit breaker active – skipping query') {
-      console.warn('[MembershipSync] Sync skipped – Supabase is temporarily unavailable.');
-    } else {
-      h.logSupabaseError('MembershipSync', err);
-    }
+    console.error('[MembershipSync] Fatal error:', err.message);
   }
 }
 
