@@ -2,20 +2,21 @@
 
 const express = require('express');
 const router = express.Router();
-const supabase = require('../../services/supabase');
+const db = require('../../services/database');
 const h = require('../../utils/helpers');
 
 // GET settings for the guild
 router.get('/api/get-settings', async (req, res) => {
     try {
-        const { data, error } = await supabase
-            .from(h.tables.SERVER_SETTINGS)
-            .select('welcome_channel_id, welcome_message')
-            .eq('guild_id', process.env.GUILD_ID)
-            .maybeSingle();
+        const row = await db.query(
+            `SELECT welcome_channel_id, welcome_message
+             FROM ${h.tables.SERVER_SETTINGS}
+             WHERE guild_id = ?`,
+            [process.env.GUILD_ID],
+            true   // single row
+        );
 
-        if (error) throw error;
-        res.json(data || { welcome_channel_id: '', welcome_message: '' });
+        res.json(row || { welcome_channel_id: '', welcome_message: '' });
     } catch (err) {
         console.error('GET /api/get-settings error:', err);
         res.status(500).json({ error: 'Failed to load settings' });
@@ -26,15 +27,15 @@ router.get('/api/get-settings', async (req, res) => {
 router.post('/api/save-settings', async (req, res) => {
     const { welcome_channel_id, welcome_message } = req.body;
     try {
-        const { error } = await supabase
-            .from(h.tables.SERVER_SETTINGS)
-            .upsert({
-                guild_id: process.env.GUILD_ID,
-                welcome_channel_id,
-                welcome_message
-            }, { onConflict: 'guild_id' });
+        await db.query(
+            `INSERT INTO ${h.tables.SERVER_SETTINGS} (guild_id, welcome_channel_id, welcome_message)
+             VALUES (?, ?, ?)
+             ON CONFLICT(guild_id) DO UPDATE SET
+               welcome_channel_id = excluded.welcome_channel_id,
+               welcome_message = excluded.welcome_message`,
+            [process.env.GUILD_ID, welcome_channel_id, welcome_message]
+        );
 
-        if (error) throw error;
         res.json({ success: true });
     } catch (err) {
         console.error('POST /api/save-settings error:', err);
