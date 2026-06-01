@@ -1,6 +1,7 @@
-// this is poll-san/web/routes/monitoring.js
+// web/routes/monitoring.js
 
 const h = require('../../utils/helpers');
+const db = require('../../services/database');   // D1 client
 
 let cachedData = null;
 let cacheTimestamp = 0;
@@ -31,7 +32,7 @@ async function fetchMembersWithBackoff(getGuildMembers, guild, maxAttempts = 5) 
     }
 }
 
-module.exports = function setupMonitoringRoutes(app, client, supabase, supabaseRetry, getGuildMembers) {
+module.exports = function setupMonitoringRoutes(app, client, getGuildMembers) {
 
     app.get('/api/monitoring/members', async (req, res) => {
         const days = parseInt(req.query.days) || 10;
@@ -57,26 +58,29 @@ module.exports = function setupMonitoringRoutes(app, client, supabase, supabaseR
                 });
             }
 
-            const { data: activePoll, error: pollError } = await supabaseRetry(() =>
-                supabase.from(h.tables.POLL_AUTO_RESUME)
-                    .select('poll_list')
-                    .order('id', { ascending: false })
-                    .limit(1)
-                    .single()
-            );
-            if (pollError) console.error('Poll fetch error:', pollError);
-
+            // Fetch active poll for character list
             let characterList = [];
-            if (activePoll && activePoll.poll_list) {
-                characterList = parseCharacterList(activePoll.poll_list);
+            try {
+                const activePoll = await db.query(
+                    `SELECT poll_list FROM ${h.tables.POLL_AUTO_RESUME}
+                     ORDER BY id DESC
+                     LIMIT 1`,
+                    [],
+                    true
+                );
+                if (activePoll && activePoll.poll_list) {
+                    characterList = parseCharacterList(activePoll.poll_list);
+                }
+            } catch (pollError) {
+                console.error('Poll fetch error:', pollError);
             }
 
-            const { data: votes, error: voteError } = await supabaseRetry(() =>
-                supabase.from(h.tables.POLL_VOTING_DISCORD)
-                    .select('user_id, option_id')
-                    .eq('poll_id', 'character_poll_new')
+            // Fetch votes for current poll
+            const votes = await db.query(
+                `SELECT user_id, option_id FROM ${h.tables.POLL_VOTING_DISCORD}
+                 WHERE poll_id = ?`,
+                ['character_poll_new']
             );
-            if (voteError) console.error('Vote fetch error:', voteError);
 
             const voteMap = {};
             if (votes) {
@@ -149,16 +153,16 @@ module.exports = function setupMonitoringRoutes(app, client, supabase, supabaseR
 
         let deletedVotes = 0;
         try {
-            const { error: deleteError, count } = await supabaseRetry(() =>
-                supabase.from(h.tables.POLL_VOTING_DISCORD)
-                    .delete({ count: 'exact' })
-                    .eq('user_id', userId)
-                    .eq('poll_id', 'character_poll_new')
+            // Delete poll votes for this user
+            const result = await db.query(
+                `DELETE FROM ${h.tables.POLL_VOTING_DISCORD}
+                 WHERE user_id = ? AND poll_id = ?`,
+                [userId, 'character_poll_new']
             );
-            if (!deleteError) deletedVotes = count || 0;
-            else console.error('Delete votes error:', deleteError);
+            // db.query doesn't return affected rows directly for DELETE, but we can estimate
+            deletedVotes = result?.changes || 0;
         } catch (err) {
-            console.error('Exception deleting votes:', err);
+            console.error('Delete votes error:', err);
         }
 
         try {
