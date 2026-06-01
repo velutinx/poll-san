@@ -2,9 +2,10 @@
 
 const { EmbedBuilder } = require('discord.js');
 
-module.exports = function setupPollRoutes(app, client, supabase, supabaseRetry) {
+module.exports = function setupPollRoutes(app, client) {
     const h = require('../../utils/helpers');
     const pollService = require('../../services/pollService');
+    const db = require('../../services/database');   // D1 client
     
     let cachedPollResultsData = null;
     let cachedPollResultsTime = 0;
@@ -41,8 +42,10 @@ module.exports = function setupPollRoutes(app, client, supabase, supabaseRetry) 
                 isCommand: () => true
             };
 
-            // Clear final votes
-            await supabaseRetry(() => supabase.from(h.tables.POLL_VOTES_FINAL).delete().neq('option_id', 0));
+            // Clear final votes from previous poll
+            await db.query(
+                `DELETE FROM ${h.tables.POLL_VOTES_FINAL} WHERE option_id != 0`
+            );
             startPollLogic(mockInteraction);
             res.json({ success: true });
         } catch (err) {
@@ -57,19 +60,22 @@ module.exports = function setupPollRoutes(app, client, supabase, supabaseRetry) 
             if (cachedPollResultsData && (Date.now() - cachedPollResultsTime) < POLL_CACHE_TTL) {
                 return res.json(cachedPollResultsData);
             }
-            const { data } = await supabaseRetry(() =>
-                supabase.from(h.tables.POLL_VOTES_FINAL)
-                    .select('character_name, score, selected_at')
-                    .order('option_id', { ascending: true })
+
+            // Fetch final vote scores
+            const data = await db.query(
+                `SELECT character_name, score, selected_at
+                 FROM ${h.tables.POLL_VOTES_FINAL}
+                 ORDER BY option_id ASC`
             );
+
             // Fetch active poll end time
-            const { data: activePoll } = await supabaseRetry(() =>
-                supabase.from(h.tables.POLL_AUTO_RESUME)
-                    .select('ends_at')
-                    .gt('ends_at', new Date().toISOString())
-                    .order('id', { ascending: false })
-                    .limit(1)
-                    .maybeSingle()
+            const activePoll = await db.query(
+                `SELECT ends_at FROM ${h.tables.POLL_AUTO_RESUME}
+                 WHERE ends_at > ?
+                 ORDER BY id DESC
+                 LIMIT 1`,
+                [new Date().toISOString()],
+                true   // single row
             );
             const endTime = activePoll?.ends_at ? new Date(activePoll.ends_at).toISOString() : null;
 
@@ -86,51 +92,51 @@ module.exports = function setupPollRoutes(app, client, supabase, supabaseRetry) 
         }
     });
 
-// STOP POLL
-app.post('/api/stop-poll', async (req, res) => {
-    try {
-        pollService.forceStopPoll();
+    // STOP POLL
+    app.post('/api/stop-poll', async (req, res) => {
+        try {
+            pollService.forceStopPoll();
 
-        const { data: poll } = await supabaseRetry(() =>
-            supabase.from(h.tables.POLL_AUTO_RESUME)
-                .select('*')
-                .order('id', { ascending: false })
-                .limit(1)
-                .single()
-        );
+            const poll = await db.query(
+                `SELECT * FROM ${h.tables.POLL_AUTO_RESUME}
+                 ORDER BY id DESC
+                 LIMIT 1`,
+                [],
+                true   // single row
+            );
 
-        if (poll) {
-            const channel = await client.channels.fetch(poll.channel_id);
-            const pollMessage = await channel.messages.fetch(poll.message_id);
-            const characters = poll.poll_list
-                .split(/(?=:female_sign:|:male_sign:|♀️|♂️|\n)/)
-                .map(s => s.trim())
-                .filter(s => s.length > 1);
-            const results = await pollService.getPollResults(pollMessage, characters);
-            const content = await pollService.generateMessageContent(0, results, characters, true);
-            
-            const webhooks = await channel.fetchWebhooks();
-            const pollWebhook = webhooks.find(w => w.name === 'Poll');
-            if (pollWebhook) {
-                await pollWebhook.editMessage(pollMessage.id, { content });
-            } else {
-                await pollMessage.edit({ content }).catch(() => {});
+            if (poll) {
+                const channel = await client.channels.fetch(poll.channel_id);
+                const pollMessage = await channel.messages.fetch(poll.message_id);
+                const characters = poll.poll_list
+                    .split(/(?=:female_sign:|:male_sign:|♀️|♂️|\n)/)
+                    .map(s => s.trim())
+                    .filter(s => s.length > 1);
+                const results = await pollService.getPollResults(pollMessage, characters);
+                const content = await pollService.generateMessageContent(0, results, characters, true);
+                
+                const webhooks = await channel.fetchWebhooks();
+                const pollWebhook = webhooks.find(w => w.name === 'Poll');
+                if (pollWebhook) {
+                    await pollWebhook.editMessage(pollMessage.id, { content });
+                } else {
+                    await pollMessage.edit({ content }).catch(() => {});
+                }
             }
+
+            // Truncate poll tables (replaces the old RPC)
+            await db.query(`DELETE FROM ${h.tables.POLL_VOTING_DISCORD} WHERE poll_id = 'character_poll_new'`);
+            await db.query(`DELETE FROM ${h.tables.POLL_VOTING_WEBSITE} WHERE poll_id = 'character_poll_new'`);
+            await db.query(`DELETE FROM ${h.tables.POLL_VOTES_FINAL} WHERE poll_id = 'character_poll_new'`);
+
+            cachedPollResultsData = null;
+            cachedPollResultsTime = 0;
+            res.json({ success: true });
+        } catch (err) {
+            console.error('Stop poll error:', err);
+            res.status(500).json({ error: err.message });
         }
-
-        const { error: rpcError } = await supabaseRetry(() =>
-            supabase.rpc('truncate_poll_tables')
-        );
-        if (rpcError) throw rpcError;
-
-        cachedPollResultsData = null;
-        cachedPollResultsTime = 0;
-        res.json({ success: true });
-    } catch (err) {
-        console.error('Stop poll error:', err);
-        res.status(500).json({ error: err.message });
-    }
-});
+    });
 
     // MARK WINNER (combined message)
     app.post('/api/mark-winner', async (req, res) => {
@@ -138,34 +144,37 @@ app.post('/api/stop-poll', async (req, res) => {
         const e = h.releaseEmojis;
 
         try {
-            const { data: poll } = await supabaseRetry(() =>
-                supabase.from(h.tables.POLL_AUTO_RESUME)
-                    .select('*')
-                    .order('id', { ascending: false })
-                    .limit(1)
-                    .single()
+            const poll = await db.query(
+                `SELECT * FROM ${h.tables.POLL_AUTO_RESUME}
+                 ORDER BY id DESC
+                 LIMIT 1`,
+                [],
+                true   // single row
             );
             if (!poll) return res.status(404).json({ error: "No active poll found." });
 
-            const { data: winnerRow } = await supabaseRetry(() =>
-                supabase.from(h.tables.POLL_VOTES_FINAL)
-                    .select('option_id')
-                    .ilike('character_name', `%${winner_name}%`)
-                    .eq('poll_id', 'character_poll_new')
-                    .maybeSingle()
+            // Find the winner's option ID
+            const winnerRow = await db.query(
+                `SELECT option_id FROM ${h.tables.POLL_VOTES_FINAL}
+                 WHERE LOWER(character_name) LIKE LOWER(?) AND poll_id = ?`,
+                [`%${winner_name}%`, 'character_poll_new'],
+                true   // single row
             );
             const winnerOptionId = winnerRow?.option_id;
 
-            await supabaseRetry(() =>
-                supabase.from(h.tables.POLL_VOTES_FINAL)
-                    .update({ selected_at: new Date().toISOString() })
-                    .filter('character_name', 'ilike', `%${winner_name}%`)
+            // Mark winner with timestamp
+            await db.query(
+                `UPDATE ${h.tables.POLL_VOTES_FINAL}
+                 SET selected_at = ?
+                 WHERE LOWER(character_name) LIKE LOWER(?)`,
+                [new Date().toISOString(), `%${winner_name}%`]
             );
 
-            const { data: voteData } = await supabaseRetry(() =>
-                supabase.from(h.tables.POLL_VOTES_FINAL)
-                    .select('character_name, score, selected_at, option_id')
-                    .order('option_id', { ascending: true })
+            // Fetch updated vote data
+            const voteData = await db.query(
+                `SELECT character_name, score, selected_at, option_id
+                 FROM ${h.tables.POLL_VOTES_FINAL}
+                 ORDER BY option_id ASC`
             );
 
             const channel = await client.channels.fetch(poll.channel_id);
@@ -196,7 +205,6 @@ app.post('/api/stop-poll', async (req, res) => {
                 scoreboard += line;
             });
 
-            // Build single payload: scoreboard + optional image embed
             const webhooks = await channel.fetchWebhooks();
             const pollWebhook = webhooks.find(w => w.name === 'Poll');
 
@@ -217,7 +225,6 @@ app.post('/api/stop-poll', async (req, res) => {
             if (pollWebhook) {
                 await pollWebhook.send(payload);
             } else {
-                // Fallback: send directly to thread
                 if (payload.embeds.length > 0) {
                     await thread.send({ content: payload.content, embeds: payload.embeds });
                 } else {
