@@ -1,27 +1,28 @@
 // events/guildMemberPollRemove.js
-const supabase = require('../services/supabase');
-const { supabaseRetry } = require('../utils/db');
-const h = require('../utils/helpers');   // 👈 added
+const db = require('../services/database');
+const h = require('../utils/helpers');
 
 module.exports = async (member) => {
     try {
         const now = new Date().toISOString();
-        const { data: giveaway, error } = await supabaseRetry(() =>
-            supabase.from(h.tables.GIVEAWAYS)   // 👈 changed
-                .select('*')
-                .eq('ended', false)
-                .gt('end_time', now)
-                .maybeSingle()
+        const giveaway = await db.query(
+            `SELECT * FROM ${h.tables.GIVEAWAYS}
+             WHERE ended = 0 AND end_time > ?
+             LIMIT 1`,
+            [now],
+            true
         );
-        if (error || !giveaway) return;
 
-        let entrants = giveaway.entrants || [];
+        if (!giveaway) return;
+
+        let entrants = JSON.parse(giveaway.entrants || '[]');
         if (entrants.includes(member.id)) {
             entrants = entrants.filter(id => id !== member.id);
-            await supabaseRetry(() =>
-                supabase.from(h.tables.GIVEAWAYS)   // 👈 changed
-                    .update({ entrants })
-                    .eq('message_id', giveaway.message_id)
+            await db.query(
+                `UPDATE ${h.tables.GIVEAWAYS}
+                 SET entrants = ?
+                 WHERE message_id = ?`,
+                [JSON.stringify(entrants), giveaway.message_id]
             );
             console.log(`Removed ${member.user.tag} from active giveaway because they left the server.`);
         }
