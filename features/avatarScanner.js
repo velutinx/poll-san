@@ -732,18 +732,18 @@ function startMonthlyCheck(client) {
         checkMonthlyScanPrompt(client).catch(() => {});
     }, 900000);
 
-    const scheduleMonthReset = () => {
-        const now = new Date();
-        const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
-        const msUntilNext = nextMonth - now;
-        setTimeout(() => {
-            setSetting('monthly_scan_accepted', 'false');
-            setSetting('monthly_scan_prompt_day', '');
-            setSetting('monthly_scan_last_prompt_hour', '');
-            scheduleMonthReset();
-        }, msUntilNext);
-    };
-    scheduleMonthReset();
+const scheduleMonthReset = () => {
+    const now = new Date();
+    const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+    const msUntilNext = nextMonth - now;
+    safeTimeout(async () => {
+        await setSetting('monthly_scan_accepted', 'false');
+        await setSetting('monthly_scan_prompt_day', '');
+        await setSetting('monthly_scan_last_prompt_hour', '');
+        scheduleMonthReset();
+    }, msUntilNext);
+};
+scheduleMonthReset();
 }
 
 function init(client) {
