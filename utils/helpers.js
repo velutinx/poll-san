@@ -259,7 +259,7 @@ module.exports = {
         base: "https://www.velutinx.com",
         pollImages: "https://www.velutinx.com/images/poll/",
         LOGO_URL: 'https://www.velutinx.com/images/LogoDiscord.png',
-        CLOUDFLARE_D1_WORKER: 'database-one-time-setup.velutinx.workers.dev'
+        CLOUDFLARE_D1_WORKER: 'https://database-one-time-setup.velutinx.workers.dev'
     },
 
     // ==================== CLOUDFLARE D1 TABLES ====================
