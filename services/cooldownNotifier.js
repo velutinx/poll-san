@@ -18,7 +18,7 @@ async function checkAndNotifyCooldowns(client) {
         .lt('last_win_at', cutoff.toISOString());
 
     if (error) {
-        console.error('Cooldown notify fetch error:', error);
+        h.logSupabaseError('CooldownNotifier', error);
         return;
     }
 
