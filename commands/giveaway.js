@@ -415,7 +415,7 @@ async function restoreGiveaways(client) {
         .gt('end_time', now);
 
     if (error) {
-        console.error('Failed to fetch giveaways for restoration:', error);
+h.logSupabaseError('GiveawayRestore', error);
         return;
     }
 
