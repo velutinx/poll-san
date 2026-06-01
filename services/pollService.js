@@ -1,7 +1,6 @@
 // services/pollService.js
 
-const supabase = require('./supabase');
-const { supabaseRetry } = require('../utils/db');
+const db = require('./database');
 const h = require('../utils/helpers');
 
 const CURRENT_POLL_ID = 'character_poll_new';
@@ -19,11 +18,19 @@ async function getPollResults(message, characters) {
     }
 
     try {
-        const [{ data: discordVotes }, { data: websiteVotes }, { data: winnerData }] = await Promise.all([
-            supabaseRetry(() => supabase.from(h.tables.POLL_VOTING_DISCORD).select('option_id, weight').eq('poll_id', CURRENT_POLL_ID)),
-            supabaseRetry(() => supabase.from(h.tables.POLL_VOTING_WEBSITE).select('option_id').eq('poll_id', CURRENT_POLL_ID)),
-            supabaseRetry(() => supabase.from(h.tables.POLL_VOTES_FINAL).select('option_id, selected_at').eq('poll_id', CURRENT_POLL_ID))
-        ]);
+        // Fetch all data from D1
+        const discordVotes = await db.query(
+            `SELECT option_id, weight FROM ${h.tables.POLL_VOTING_DISCORD} WHERE poll_id = ?`,
+            [CURRENT_POLL_ID]
+        );
+        const websiteVotes = await db.query(
+            `SELECT option_id FROM ${h.tables.POLL_VOTING_WEBSITE} WHERE poll_id = ?`,
+            [CURRENT_POLL_ID]
+        );
+        const winnerData = await db.query(
+            `SELECT option_id, selected_at FROM ${h.tables.POLL_VOTES_FINAL} WHERE poll_id = ?`,
+            [CURRENT_POLL_ID]
+        );
 
         const winnerMap = {};
         (winnerData || []).forEach(row => {
@@ -59,7 +66,17 @@ async function getPollResults(message, characters) {
             });
         }
 
-        await supabaseRetry(() => supabase.from(h.tables.POLL_VOTES_FINAL).upsert(rawDataForDB, { onConflict: 'poll_id,option_id' }));
+        // Upsert the final scores into D1
+        for (const row of rawDataForDB) {
+            await db.query(
+                `INSERT INTO ${h.tables.POLL_VOTES_FINAL} (poll_id, option_id, character_name, score)
+                 VALUES (?, ?, ?, ?)
+                 ON CONFLICT(poll_id, option_id) DO UPDATE SET
+                    character_name = excluded.character_name,
+                    score = excluded.score`,
+                [row.poll_id, row.option_id, row.character_name, row.score]
+            );
+        }
 
         const resultString = displayResults.join('');
         cachedPollResults = resultString;
@@ -84,8 +101,8 @@ async function generateMessageContent(endTime, resultsText, characters, isEnded 
         return `${h.emojis[i]} \` 0.00 ${name.padEnd(30)} \` \n`;
     }).join('');
 
-const footer = `\n${e.DISCORD} Discord weighted vote + ${e.LINK} **[Website poll results](https://velutinx.com/poll)**\n\n` +
-               `${randomDownArrow} Click the thread below for images & discussion!`;
+    const footer = `\n${e.DISCORD} Discord weighted vote + ${e.LINK} **[Website poll results](https://velutinx.com/poll)**\n\n` +
+                   `${randomDownArrow} Click the thread below for images & discussion!`;
 
     return header + body + footer;
 }
@@ -108,10 +125,9 @@ async function getFinalPollMessageContent(pollList) {
     const e = h.releaseEmojis;
     const randomDownArrow = e.DOWN_ARROWS[Math.floor(Math.random() * e.DOWN_ARROWS.length)];
 
-return `🛑 **Poll has ended.**\n\n${resultsString}\n\n${e.DISCORD} Discord weighted vote + ${e.LINK} **[Website poll results](https://velutinx.com/poll)**\n\n${randomDownArrow} Click the thread below for images & discussion!`;
+    return `🛑 **Poll has ended.**\n\n${resultsString}\n\n${e.DISCORD} Discord weighted vote + ${e.LINK} **[Website poll results](https://velutinx.com/poll)**\n\n${randomDownArrow} Click the thread below for images & discussion!`;
 }
 
-// ----- runPollInterval -----
 function runPollInterval(pollMessage, endTime, characters) {
     forceStopPoll();
 
@@ -123,28 +139,28 @@ function runPollInterval(pollMessage, endTime, characters) {
             const results = await getPollResults(pollMessage, characters);
             const content = await generateMessageContent(endTime, results, characters, isFinished);
 
-            // Edit via the Poll webhook instead of the bot
             const channel = pollMessage.channel;
             const webhooks = await channel.fetchWebhooks();
             const pollWebhook = webhooks.find(w => w.name === 'Poll');
             if (pollWebhook) {
                 await pollWebhook.editMessage(pollMessage.id, { content });
             } else {
-                // Fallback – likely won't work if message is owned by a webhook
                 await pollMessage.edit({ content }).catch(() => {});
             }
 
             if (isFinished) {
                 forceStopPoll();
-                await supabaseRetry(() =>
-                    supabase.from(h.tables.POLL_AUTO_RESUME).delete().eq('message_id', pollMessage.id)
+                await db.query(
+                    `DELETE FROM ${h.tables.POLL_AUTO_RESUME} WHERE message_id = ?`,
+                    [pollMessage.id]
                 );
             }
         } catch (e) {
             if (e.code === 10008) {
                 forceStopPoll();
-                await supabaseRetry(() =>
-                    supabase.from(h.tables.POLL_AUTO_RESUME).delete().eq('message_id', pollMessage.id)
+                await db.query(
+                    `DELETE FROM ${h.tables.POLL_AUTO_RESUME} WHERE message_id = ?`,
+                    [pollMessage.id]
                 );
             } else {
                 console.error("Poll interval error:", e);
@@ -153,7 +169,6 @@ function runPollInterval(pollMessage, endTime, characters) {
     }, UPDATE_INTERVAL);
 }
 
-// ----- refreshPollMessage (used externally, e.g. from website routes) -----
 async function refreshPollMessage(pollMessage, characters, endTime) {
     const results = await getPollResults(pollMessage, characters);
     const content = await generateMessageContent(endTime, results, characters, false);
