@@ -1,7 +1,7 @@
 // services/seriesConsolidator.js
 const fs = require('fs');
 const path = require('path');
-const supabase = require('./supabase');
+const db = require('./database');
 const helpers = require('../utils/helpers');
 
 const ALIAS_FILE = path.join(__dirname, '..', 'utility', 'series_aliases.txt');
@@ -54,34 +54,25 @@ function getCanonicalSeries(rawSeries) {
 
 /**
  * Update all rows in games_mudae_claims so that any series matching an alias
- * is replaced with its canonical name. Runs a series of SQL updates.
- * Returns the total number of affected rows.
+ * is replaced with its canonical name.
+ * Returns the number of aliases that were processed (not rows).
  */
 async function consolidateExistingClaims() {
     if (!aliasMap) aliasMap = parseAliasFile();
     let totalUpdated = 0;
 
-    // For each alias that differs from its canonical, run an update
     for (const [alias, canonical] of aliasMap.entries()) {
-        if (alias === canonical) continue; // don't overwrite self
-        const { error, count } = await supabase
-            .from(helpers.tables.GAMES_MUDAE_CLAIMS)
-            .update({ series: canonical })
-            .eq('series', alias)
-            .select('*'); // to get count we can just do a separate count? We'll just log
+        if (alias === canonical) continue; // skip self-reference
 
-        if (error) {
-            console.error(`Failed to update series from "${alias}" to "${canonical}":`, error);
-        } else {
-            const { count: updatedCount } = await supabase
-                .from(helpers.tables.GAMES_MUDAE_CLAIMS)
-                .select('*', { count: 'exact', head: true })
-                .eq('series', canonical)
-                .not('series', 'is', null); // not needed but safe
-
-            // Simpler: we can just note that the update ran; supabase update doesn't return affected count directly in JS. We'll just log.
+        try {
+            await db.query(
+                `UPDATE ${helpers.tables.GAMES_MUDAE_CLAIMS} SET series = ? WHERE series = ?`,
+                [canonical, alias]
+            );
             console.log(`🔄 Updated series: "${alias}" → "${canonical}"`);
             totalUpdated++;
+        } catch (err) {
+            console.error(`Failed to update series from "${alias}" to "${canonical}":`, err.message);
         }
     }
     return totalUpdated;
