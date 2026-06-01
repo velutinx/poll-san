@@ -1,20 +1,14 @@
-const h = require('../../utils/helpers');
+            // web/routes/memberships.js
 
-module.exports = function setupMembershipsRoute(app, client, supabase, supabaseRetry) {
+
+const h = require('../../utils/helpers');
+const db = require('../../services/database');
+
+module.exports = function setupMembershipsRoute(app, client) {
     app.get('/api/memberships', async (req, res) => {
         try {
-            // 🔧 FIX: added .select('*') to actually fetch data
-const { data: subs, error } = await supabaseRetry(() =>
-    supabase.from(h.tables.MEMBERSHIPS).select('*')
-);
-if (error) {
-    console.error('Membership fetch error:', error);
-    return res.status(500).json({ error: 'Database error' });
-}
-if (!subs || !Array.isArray(subs)) {
-    console.warn('No valid membership data, returning empty array');
-    return res.json([]);
-}
+            // Fetch all active memberships
+            const subs = await db.query(`SELECT * FROM ${h.tables.MEMBERSHIPS}`);
 
             const guild = await client.guilds.fetch(process.env.GUILD_ID);
 
@@ -34,10 +28,9 @@ if (!subs || !Array.isArray(subs)) {
                     userId = member.user.id;
 
                     if (sub.discord_tag !== discordTag) {
-                        await supabaseRetry(() =>
-                            supabase.from(h.tables.MEMBERSHIPS)
-                                .update({ discord_tag: discordTag })
-                                .eq('discord_id', sub.discord_id)
+                        await db.query(
+                            `UPDATE ${h.tables.MEMBERSHIPS} SET discord_tag = ? WHERE discord_id = ?`,
+                            [discordTag, sub.discord_id]
                         );
                         console.log(`✅ Updated discord_tag for ${sub.discord_id} to ${discordTag}`);
                     }
@@ -64,7 +57,6 @@ if (!subs || !Array.isArray(subs)) {
         }
     });
 
-
     app.post('/api/capture-membership-order', async (req, res) => {
         console.log('🔥🔥🔥 CAPTURE ENDPOINT HIT! 🔥🔥🔥');
         try {
@@ -77,22 +69,19 @@ if (!subs || !Array.isArray(subs)) {
             const expirationDate = new Date();
             expirationDate.setDate(now.getDate() + 30);
 
-            const { error } = await supabaseRetry(() =>
-                supabase.from(h.tables.MEMBERSHIPS)
-                    .upsert({
-                        discord_id: discordId,
-                        tier: parseInt(tier),
-                        order_id: orderId,
-                        updated_at: now.toISOString(),
-                        expires_at: expirationDate.toISOString()
-                    }, { onConflict: 'discord_id' })
+            // Upsert membership
+            await db.query(
+                `INSERT INTO ${h.tables.MEMBERSHIPS} (discord_id, tier, order_id, updated_at, expires_at)
+                 VALUES (?, ?, ?, ?, ?)
+                 ON CONFLICT(discord_id) DO UPDATE SET
+                   tier = excluded.tier,
+                   order_id = excluded.order_id,
+                   updated_at = excluded.updated_at,
+                   expires_at = excluded.expires_at`,
+                [discordId, parseInt(tier), orderId, now.toISOString(), expirationDate.toISOString()]
             );
 
-            if (error) {
-                console.error('Supabase Error:', error);
-                return res.status(500).json({ error: "Database error", details: error.message });
-            }
-
+            // Assign Discord role
             try {
                 const guild = await client.guilds.fetch(process.env.GUILD_ID);
                 const member = await guild.members.fetch(discordId).catch(() => null);
