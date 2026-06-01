@@ -1,6 +1,6 @@
 // services/queueService.js
 
-const supabase = require('./supabase');
+const db = require('./database');           // D1 client
 const helpers = require('../utils/helpers');
 
 const QUEUE_CHANNEL_ID = helpers.ids?.channels?.QUEUE || '1473730427318435860';
@@ -8,14 +8,18 @@ const EMOJIS = helpers.emojis || [];
 const PROGRESS_EMOJI = helpers.releaseEmojis?.PROGRESS || '<a:progress:1491670111923212308>';
 
 async function getQueueData() {
-    const { data, error } = await supabase
-        .from(helpers.tables.MAIN_QUEUE)   // 👈 changed
-        .select('*')
-        .eq('id', 'main_queue')
-        .single();
-    
-    if (error && error.code !== 'PGRST116') console.error('Supabase Read Error:', error);
-    return data || { queue: '[]', message_id: null };
+    const row = await db.query(
+        `SELECT * FROM ${helpers.tables.MAIN_QUEUE} WHERE id = ?`,
+        ['main_queue'],
+        true   // single row
+    );
+
+    if (!row) return { queue: '[]', message_id: null };
+
+    return {
+        queue: row.queue || '[]',
+        message_id: row.message_id || null
+    };
 }
 
 function formatQueue(queueArr) {
@@ -53,15 +57,22 @@ async function updateQueueMessage(client, queueArr, existingMessageId) {
             newMessageId = sent.id;
         }
 
-        const { error } = await supabase.from(helpers.tables.MAIN_QUEUE).upsert({   // 👈 changed
-            id: 'main_queue',
-            queue: JSON.stringify(queueArr),
-            message_id: newMessageId,
-            channel_id: QUEUE_CHANNEL_ID,
-            updated_at: new Date().toISOString()
-        }, { onConflict: 'id' });
-
-        if (error) console.error('Supabase Write Error:', error);
+        await db.query(
+            `INSERT INTO ${helpers.tables.MAIN_QUEUE} (id, queue, message_id, channel_id, updated_at)
+             VALUES (?, ?, ?, ?, ?)
+             ON CONFLICT(id) DO UPDATE SET
+               queue = excluded.queue,
+               message_id = excluded.message_id,
+               channel_id = excluded.channel_id,
+               updated_at = excluded.updated_at`,
+            [
+                'main_queue',
+                JSON.stringify(queueArr),
+                newMessageId,
+                QUEUE_CHANNEL_ID,
+                new Date().toISOString()
+            ]
+        );
     } catch (err) {
         console.error('Queue Service Critical Error:', err);
     }
