@@ -1,5 +1,5 @@
 // events/ready.js
-const supabase = require('../services/supabase');
+const db = require('../services/database');
 const { runPollInterval } = require('../services/pollService');
 const { cleanRoles } = require('../services/roleCleaner');
 const { syncMembershipRoles } = require('../services/membershipSync');
@@ -68,7 +68,7 @@ module.exports = async (c) => {
   // Membership sync
   try { await syncMembershipRoles(c); } catch (err) { console.error('[MembershipSync] Initial sync failed:', err); }
   setInterval(() => {
-syncMembershipRoles(c).catch(err => h.logSupabaseError('MembershipSync', err));
+    syncMembershipRoles(c).catch(err => console.error('[MembershipSync] Sync error:', err.message || err));
   }, 300000);
 
   // Cooldown notifier
@@ -87,24 +87,29 @@ syncMembershipRoles(c).catch(err => h.logSupabaseError('MembershipSync', err));
   initChannelCleaner(c, hangmanChannelId, hangmanWhitelist);
 
   // Resume active polls
-  const { data: activePolls } = await supabase
-    .from(h.tables.POLL_AUTO_RESUME)
-    .select('*')
-    .gt('ends_at', new Date().toISOString());
-  if (activePolls && activePolls.length > 0) {
-    for (const poll of activePolls) {
-      try {
-        const channel = await c.channels.fetch(poll.channel_id);
-        const pollMsg = await channel.messages.fetch(poll.message_id);
-        const characters = poll.poll_list
-          .split(/(?=:female_sign:|:male_sign:|♀️|♂️)/)
-          .map(s => s.trim())
-          .filter(s => s.length > 0);
-        runPollInterval(pollMsg, new Date(poll.ends_at).getTime(), characters);
-      } catch (e) {
-        console.error(`Failed to resume poll ${poll.message_id}:`, e.message);
+  try {
+    const now = new Date().toISOString();
+    const activePolls = await db.query(
+      `SELECT * FROM ${h.tables.POLL_AUTO_RESUME} WHERE ends_at > ?`,
+      [now]
+    );
+    if (activePolls && activePolls.length > 0) {
+      for (const poll of activePolls) {
+        try {
+          const channel = await c.channels.fetch(poll.channel_id);
+          const pollMsg = await channel.messages.fetch(poll.message_id);
+          const characters = poll.poll_list
+            .split(/(?=:female_sign:|:male_sign:|♀️|♂️)/)
+            .map(s => s.trim())
+            .filter(s => s.length > 0);
+          runPollInterval(pollMsg, new Date(poll.ends_at).getTime(), characters);
+        } catch (e) {
+          console.error(`Failed to resume poll ${poll.message_id}:`, e.message);
+        }
       }
     }
+  } catch (err) {
+    console.error('Failed to fetch active polls:', err);
   }
 
   // Restore giveaways and poll reminders
