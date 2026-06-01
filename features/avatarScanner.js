@@ -8,7 +8,7 @@ const {
     MessageFlags
 } = require('discord.js');
 const { ids, sightengine, releaseEmojis } = require('../utils/helpers');
-const supabase = require('../services/supabase');
+const db = require('../services/database');
 
 const ALERT_EMOJI = releaseEmojis.ALERT;
 
@@ -100,53 +100,58 @@ function getSightNudityScore(sightResult) {
 
 // ==================== DATABASE ====================
 async function dbAddFlaggedUser(userId, avatarHash, discordTag) {
-    await supabase.from('avatar_flagged_users').upsert({
-        user_id: userId,
-        avatar_hash: avatarHash,
-        discord_tag: discordTag,
-        flagged_at: new Date().toISOString()
-    });
+    await db.query(
+        `INSERT OR REPLACE INTO avatar_flagged_users (user_id, avatar_hash, discord_tag, flagged_at)
+         VALUES (?, ?, ?, ?)`,
+        [userId, avatarHash, discordTag, new Date().toISOString()]
+    );
 }
 
 async function dbRemoveFlaggedUser(userId) {
-    await supabase.from('avatar_flagged_users').delete().eq('user_id', userId);
+    await db.query(
+        `DELETE FROM avatar_flagged_users WHERE user_id = ?`,
+        [userId]
+    );
 }
 
 async function dbGetFlaggedUser(userId) {
-    const { data } = await supabase.from('avatar_flagged_users')
-        .select('*')
-        .eq('user_id', userId)
-        .maybeSingle();
-    return data;
+    return await db.query(
+        `SELECT * FROM avatar_flagged_users WHERE user_id = ?`,
+        [userId],
+        true
+    );
 }
 
 async function dbAddIgnoredUser(userId, avatarHash, discordTag) {
-    await supabase.from('avatar_flagged_ignore').upsert({
-        user_id: userId,
-        avatar_hash: avatarHash,
-        discord_tag: discordTag,
-        ignored_at: new Date().toISOString()
-    });
+    await db.query(
+        `INSERT OR REPLACE INTO avatar_flagged_ignore (user_id, avatar_hash, discord_tag, ignored_at)
+         VALUES (?, ?, ?, ?)`,
+        [userId, avatarHash, discordTag, new Date().toISOString()]
+    );
 }
 
 async function dbGetIgnoredUser(userId) {
-    const { data } = await supabase.from('avatar_flagged_ignore')
-        .select('*')
-        .eq('user_id', userId)
-        .maybeSingle();
-    return data;
+    return await db.query(
+        `SELECT * FROM avatar_flagged_ignore WHERE user_id = ?`,
+        [userId],
+        true
+    );
 }
 
 async function getSetting(key) {
-    const { data } = await supabase.from('avatar_flagged_settings')
-        .select('value')
-        .eq('key', key)
-        .maybeSingle();
-    return data?.value ?? null;
+    const row = await db.query(
+        `SELECT value FROM avatar_flagged_settings WHERE key = ?`,
+        [key],
+        true
+    );
+    return row?.value ?? null;
 }
 
 async function setSetting(key, value) {
-    await supabase.from('avatar_flagged_settings').upsert({ key, value });
+    await db.query(
+        `INSERT OR REPLACE INTO avatar_flagged_settings (key, value) VALUES (?, ?)`,
+        [key, value]
+    );
 }
 
 // ==================== CREDITS ====================
@@ -596,7 +601,7 @@ async function handleScanCommand(message) {
     }
 
     const reply = await message.reply(`🔍 Scanning avatar of ${target.user.tag}...`);
-    await processMember(message.client, target, NUDITY_THRESHOLD, false); // never skip clean alerts for manual scans
+    await processMember(message.client, target, NUDITY_THRESHOLD, false);
     reply.edit(`${releaseEmojis?.getRandomVerify?.() || '✅'} Scan complete for <@${target.id}>. Check your DM for details.`).catch(() => {});
 }
 
