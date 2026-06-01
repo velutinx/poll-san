@@ -4,6 +4,7 @@ const path = require('path');
 const fs = require('fs').promises;
 const { colors, releaseEmojis } = require('../utils/helpers');
 const h = require('../utils/helpers');
+const { guardQuery } = require('../utils/supabaseCircuitBreaker');
 
 const activeGiveaways = new Map();
 const giveawaySessions = new Map();
@@ -408,14 +409,16 @@ async function restoreGiveaways(client) {
     const supabaseClient = await getSupabase();
     const now = new Date().toISOString();
 
-    const { data, error } = await supabaseClient
-        .from(h.tables.GIVEAWAYS)
-        .select('*')
-        .eq('ended', false)
-        .gt('end_time', now);
+    const { data, error } = await guardQuery(() =>
+        supabaseClient
+            .from(h.tables.GIVEAWAYS)
+            .select('*')
+            .eq('ended', false)
+            .gt('end_time', now)
+    );
 
     if (error) {
-h.logSupabaseError('GiveawayRestore', error);
+        h.logSupabaseError('GiveawayRestore', error);
         return;
     }
 
