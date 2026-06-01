@@ -340,17 +340,28 @@ module.exports = {
     ],
 
     // ==================== LOG HELPER (Supabase 522 etc.) ====================
-    logSupabaseError: function(label, err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        if (msg.includes('<title>supabase.co | 522: Connection timed out</title>')) {
-            console.error(`[${label}] Supabase connection timed out (522).`);
-            return;
-        }
-        if (msg.includes('<!DOCTYPE html>')) {
-            console.error(`[${label}] Supabase returned an unexpected HTML page.`);
-            return;
-        }
-        console.error(`[${label}]`, msg);
-    },
+logSupabaseError: function(label, err) {
+    // Extract message from Error, string, or object
+    let msg = '';
+    if (err instanceof Error) {
+        msg = err.message;
+    } else if (typeof err === 'string') {
+        msg = err;
+    } else if (err && typeof err === 'object' && err.message) {
+        msg = String(err.message);
+    } else {
+        msg = String(err);
+    }
+
+    if (msg.includes('<title>supabase.co | 522: Connection timed out</title>')) {
+        console.error(`[${label}] Supabase connection timed out (522).`);
+        return;
+    }
+    if (msg.includes('<!DOCTYPE html>')) {
+        console.error(`[${label}] Supabase returned an unexpected HTML page.`);
+        return;
+    }
+    console.error(`[${label}]`, msg);
+},
     
 };
