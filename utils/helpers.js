@@ -320,23 +320,37 @@ module.exports = {
 
     CHECKIN_REWARD_TICKETS: 50,
 
-sightengine: {
-    apiUser: '1626192318',
-    apiSecret: 'ParHXHCpXwt2eQ7SePcCZJjfHsJc6Kdk'
-},
+    sightengine: {
+        apiUser: '1626192318',
+        apiSecret: 'ParHXHCpXwt2eQ7SePcCZJjfHsJc6Kdk'
+    },
 
-avatarRestrictedChannels: [
-    '1466147508345503953',   // #❓how-did-you-find-me
-    '1472450019067171008',   // #🎁giveaways-and-events
-    '1467280145315528955',   // #📚requests-concepts
-    '1469437804231659660'    // #🛠️current-works
-],
+    avatarRestrictedChannels: [
+        '1466147508345503953',   // #❓how-did-you-find-me
+        '1472450019067171008',   // #🎁giveaways-and-events
+        '1467280145315528955',   // #📚requests-concepts
+        '1469437804231659660'    // #🛠️current-works
+    ],
 
-avatarRestrictedCategories: [
-    '1401446105421451364',   // 💬 COMMUNITY
-    '1465921730785579141',   // 💬 OFF TOPIC
-    '1494747375204433940',   // 🎲 CASINO
-    '1466151443286196451'    // 💭 FEEDBACK
-],
+    avatarRestrictedCategories: [
+        '1401446105421451364',   // 💬 COMMUNITY
+        '1465921730785579141',   // 💬 OFF TOPIC
+        '1494747375204433940',   // 🎲 CASINO
+        '1466151443286196451'    // 💭 FEEDBACK
+    ],
+
+    // ==================== LOG HELPER (Supabase 522 etc.) ====================
+    logSupabaseError: function(label, err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (msg.includes('<title>supabase.co | 522: Connection timed out</title>')) {
+            console.error(`[${label}] Supabase connection timed out (522).`);
+            return;
+        }
+        if (msg.includes('<!DOCTYPE html>')) {
+            console.error(`[${label}] Supabase returned an unexpected HTML page.`);
+            return;
+        }
+        console.error(`[${label}]`, msg);
+    },
     
 };
