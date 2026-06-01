@@ -77,7 +77,6 @@ module.exports = {
         WAVE: '<a:wave:1492326023080185987>',
         waveId: '1492326023080185987',
         
-        // Array of all verify emojis (existing + new colourful ones)
         VERIFY_EMOJIS: [
             '<a:Verify:1491669023245729924>',
             '<a:Verifyblue:1501010309790437467>',
@@ -86,7 +85,6 @@ module.exports = {
             '<a:Verifyyellow:1501010314077012150>'
         ],
 
-        // Function to pick a random verify emoji
         getRandomVerify: function() {
             return this.VERIFY_EMOJIS[Math.floor(Math.random() * this.VERIFY_EMOJIS.length)];
         },
@@ -135,7 +133,6 @@ module.exports = {
         PRESENT_VALENTINE: '<a:presentvalentine:1499806113691074560>',
     },
 
-    // Helper to pick a random present (excluding valentine)
     getRandomPresent: function() {
         const presents = [
             this.releaseEmojis.PRESENT_BLUE,
@@ -205,12 +202,12 @@ module.exports = {
 
     weights: {
         tiers: {
-            '1495684657730158724': 0.9,   // Free verified "member" role
-            '1465444240845963326': 1.1,   // Bronze
-            '1465670134743044139': 1.3,   // Copper
-            '1465904476417163457': 2.0,   // Silver
-            '1465904548320378956': 2.5,   // Gold
-            '1465952085026541804': 3.0    // Platinum
+            '1495684657730158724': 0.9,
+            '1465444240845963326': 1.1,
+            '1465670134743044139': 1.3,
+            '1465904476417163457': 2.0,
+            '1465904548320378956': 2.5,
+            '1465952085026541804': 3.0
         },
         tierMapping: {
             1: '1465444240845963326',
@@ -261,11 +258,13 @@ module.exports = {
     urls: {
         base: "https://www.velutinx.com",
         pollImages: "https://www.velutinx.com/images/poll/",
-        LOGO_URL: 'https://www.velutinx.com/images/LogoDiscord.png'
+        LOGO_URL: 'https://www.velutinx.com/images/LogoDiscord.png',
+        CLOUDFLARE_D1_WORKER: 'https://your-worker-name.your-subdomain.workers.dev'
     },
 
-    // ==================== SUPABASE TABLES ====================
+    // ==================== CLOUDFLARE D1 TABLES ====================
     tables: {
+        // Games
         GAMES_COOLDOWNS: 'games_cooldowns',
         GAMES_MUDAE_CLAIMS: 'games_mudae_claims',
         GAMES_PURCHASES: 'games_purchases',
@@ -273,49 +272,53 @@ module.exports = {
         GAMES_TRIVIA_SESSIONS: 'games_trivia_sessions',
         GAMES_USER_DATA: 'games_user_data',
         GAMES_WORDLE: 'games_wordle',
-        GIVEAWAYS: 'giveaways',
-        MAIN_QUEUE: 'main_queue',
-        MEMBER_MESSAGE_LOG: 'member_message_log',
-        MEMBERSHIPS: 'memberships',
+
+        // Purchases
+        MEMBER_MESSAGE_LOG: 'purchase_member_message_log',
+        MEMBERSHIPS: 'purchase_memberships',
+        PRICE_KEYS: 'purchase_price_keys',
+        PRICE_TIERS: 'purchase_price_tiers',
+        SUCCESSS: 'purchase_success',
+
+        // Poll
         POLL_AUTO_RESUME: 'poll_auto_resume',
         POLL_VOTES_FINAL: 'poll_votes_final',
         POLL_VOTING_DISCORD: 'poll_voting_discord',
         POLL_VOTING_WEBSITE: 'poll_voting_website',
-        PRICE_KEYS: 'price_keys',
-        PRICE_TIERS: 'price_tiers',
-        SERVER_SETTINGS: 'server_settings',
-        SUCCESSS: 'successs',
-        SYNC_STATE: 'sync_state',
-        USER_XP: 'user_xp'
+
+        // Settings & others
+        GIVEAWAYS: 'settings_giveaways',
+        MAIN_QUEUE: 'settings_main_queue',
+        SERVER_SETTINGS: 'settings_server_settings',
+        SYNC_STATE: 'settings_sync_state',
+        USER_XP: 'settings_user_xp'
     },
-    
+
     // ==================== REDEEM STORE ====================
     redeem: {
-        voteBoostCost: 200,           // tickets for 7‑day vote multiplier
-        suggestCost: 300,             // tickets for a poll character suggestion
-        characterRequestCost: 300,    // tickets for requesting a series character
+        voteBoostCost: 200,
+        suggestCost: 300,
+        characterRequestCost: 300,
         voteBoostDurationDays: 7
     },
-    
-    // ==================== WHITELISTED MESSAGE IDs (per channel) ====================
+
+    // ==================== WHITELISTED MESSAGE IDs ====================
     whitelistedMessages: {
-        // Mudae roll channel (cleanup handled by mudaeMessageHandler.js)
-        '1494520781244334291': [ //channel
+        '1494520781244334291': [
             '1498065129626013757',
             '1498065147044823290',
             '1501703483727024191',
             '1501703541901758604',
-            '1501893893606608956',            
+            '1501893893606608956',
             '1501893910383825016'
         ],
-        // Wordle game channel
         '1494747527801470986': [
             '1507132260229447832',
             '1507132334359711794',
             '1507133368318296098',
             '1507133372806463518',
             '1507133533666148584'
-            ]
+        ]
     },
 
     CHECKIN_REWARD_TICKETS: 50,
@@ -326,42 +329,16 @@ module.exports = {
     },
 
     avatarRestrictedChannels: [
-        '1466147508345503953',   // #❓how-did-you-find-me
-        '1472450019067171008',   // #🎁giveaways-and-events
-        '1467280145315528955',   // #📚requests-concepts
-        '1469437804231659660'    // #🛠️current-works
+        '1466147508345503953',
+        '1472450019067171008',
+        '1467280145315528955',
+        '1469437804231659660'
     ],
 
     avatarRestrictedCategories: [
-        '1401446105421451364',   // 💬 COMMUNITY
-        '1465921730785579141',   // 💬 OFF TOPIC
-        '1494747375204433940',   // 🎲 CASINO
-        '1466151443286196451'    // 💭 FEEDBACK
-    ],
-
-    // ==================== LOG HELPER (Supabase 522 etc.) ====================
-logSupabaseError: function(label, err) {
-    // Extract message from Error, string, or object
-    let msg = '';
-    if (err instanceof Error) {
-        msg = err.message;
-    } else if (typeof err === 'string') {
-        msg = err;
-    } else if (err && typeof err === 'object' && err.message) {
-        msg = String(err.message);
-    } else {
-        msg = String(err);
-    }
-
-    if (msg.includes('<title>supabase.co | 522: Connection timed out</title>')) {
-        console.error(`[${label}] Supabase connection timed out (522).`);
-        return;
-    }
-    if (msg.includes('<!DOCTYPE html>')) {
-        console.error(`[${label}] Supabase returned an unexpected HTML page.`);
-        return;
-    }
-    console.error(`[${label}]`, msg);
-},
-    
+        '1401446105421451364',
+        '1465921730785579141',
+        '1494747375204433940',
+        '1466151443286196451'
+    ]
 };
