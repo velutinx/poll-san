@@ -62,8 +62,17 @@ client.on(Events.MessageCreate, async (message) => {
 
 client.on('error', console.error);
 process.on('unhandledRejection', (reason) => {
+    // MEGA timeout – silent
     if (reason instanceof Error && reason.cause?.code === 'UND_ERR_CONNECT_TIMEOUT' && reason.message.includes('fetch failed')) {
         return;
+    }
+    // Supabase 522 / HTML errors – clean
+    if (reason instanceof Error) {
+        const msg = reason.message;
+        if (msg.includes('<title>supabase.co | 522: Connection timed out</title>') || msg.includes('<!DOCTYPE html>')) {
+            console.error('Unhandled rejection: Supabase connection timed out (522).');
+            return;
+        }
     }
     console.error(reason);
 });
