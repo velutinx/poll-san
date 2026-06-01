@@ -1,6 +1,6 @@
 // events/messageCreate.js
 const { MessageFlags } = require('discord.js');
-const supabase = require('../services/supabase');
+const db = require('../services/database');
 const h = require('../utils/helpers');
 
 const {
@@ -21,37 +21,40 @@ function isWordleWin(message) {
 
 async function awardTicket(userId, username) {
     try {
-        const { data: userData, error: fetchError } = await supabase
-            .from(h.tables.GAMES_WORDLE)
-            .select('last_win_at')
-            .eq('discord_id', userId)
-            .maybeSingle();
-
-        if (fetchError) throw fetchError;
-
         const now = new Date();
-        let canAward = true;
 
-        if (userData?.last_win_at) {
-            const lastWin = new Date(userData.last_win_at);
+        // 1. Check cooldown
+        const row = await db.query(
+            `SELECT last_win_at FROM ${h.tables.GAMES_WORDLE} WHERE discord_id = ?`,
+            [userId],
+            true
+        );
+
+        if (row?.last_win_at) {
+            const lastWin = new Date(row.last_win_at);
             const hoursSince = (now - lastWin) / (1000 * 60 * 60);
             if (hoursSince < COOLDOWN_HOURS) {
-                canAward = false;
+                return { awarded: false, reason: 'cooldown' };
             }
         }
 
-        if (!canAward) {
-            return { awarded: false, reason: 'cooldown' };
-        }
+        // 2. Atomically insert / increment ticket
+        await db.query(
+            `INSERT INTO ${h.tables.GAMES_WORDLE} (discord_id, ticket_count, last_win_at)
+             VALUES (?, 1, ?)
+             ON CONFLICT(discord_id) DO UPDATE SET
+                ticket_count = ticket_count + 1,
+                last_win_at = excluded.last_win_at`,
+            [userId, now.toISOString()]
+        );
 
-        const { data: newCount, error: rpcError } = await supabase
-            .rpc('increment_wordle_ticket', {
-                user_id: userId,
-                user_name: username
-            });
-
-        if (rpcError) throw rpcError;
-
+        // 3. Read the new count
+        const updated = await db.query(
+            `SELECT ticket_count FROM ${h.tables.GAMES_WORDLE} WHERE discord_id = ?`,
+            [userId],
+            true
+        );
+        const newCount = updated?.ticket_count ?? 1;
         return { awarded: true, newCount };
     } catch (error) {
         console.error('Ticket award error:', error);
