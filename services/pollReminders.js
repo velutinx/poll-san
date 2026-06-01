@@ -1,5 +1,5 @@
 // services/pollReminders.js
-const supabase = require('./supabase');
+const db = require('./database');
 const h = require('../utils/helpers');
 
 const ADMIN_ID = h.ids.users.Velutinx;
@@ -26,15 +26,18 @@ async function startPollReminders(channel, pollEndTime) {
       avatarURL: h.urls.LOGO_URL
     });
 
-    // Store message ID in poll_auto_resume
-    await supabase.from(h.tables.POLL_AUTO_RESUME).upsert({
-      key: 'suggestion_reminder_1',
-      value: {
-        messageId: msg1.id,
-        channelId: channel.id,
-        pollEndTime: pollEndTime.toISOString()
-      }
-    }, { onConflict: 'key' });
+    // Store message ID in poll_auto_resume (key-value)
+    const value = JSON.stringify({
+      messageId: msg1.id,
+      channelId: channel.id,
+      pollEndTime: pollEndTime.toISOString()
+    });
+    await db.query(
+      `INSERT INTO ${h.tables.POLL_AUTO_RESUME} (key, value)
+       VALUES ('suggestion_reminder_1', ?)
+       ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+      [value]
+    );
 
     // Calculate delays
     const now = Date.now();
@@ -46,12 +49,11 @@ async function startPollReminders(channel, pollEndTime) {
       await handleThursday(channel.client);
     }, msToThursday);
 
-    // Schedule Friday cleanup (in case Thursday step works, this will delete the second message)
+    // Schedule Friday cleanup
     safeTimeout(async () => {
       await handleFridayCleanup(channel.client);
     }, msToFriday);
 
-//    console.log(`[PollReminders] First suggestion reminder posted (ID: ${msg1.id}), Thursday & Friday timers set.`);
   } catch (err) {
     console.error('[PollReminders] Error posting first reminder:', err);
   }
@@ -64,15 +66,16 @@ async function startPollReminders(channel, pollEndTime) {
 async function handleThursday(client) {
   try {
     // Fetch stored first reminder
-    const { data, error } = await supabase
-      .from(h.tables.POLL_AUTO_RESUME)
-      .select('value')
-      .eq('key', 'suggestion_reminder_1')
-      .single();
+    const row = await db.query(
+      `SELECT value FROM ${h.tables.POLL_AUTO_RESUME} WHERE key = 'suggestion_reminder_1'`,
+      [],
+      true   // single row
+    );
 
-    if (error || !data) return console.warn('[PollReminders] No first reminder found for Thursday transition.');
+    if (!row) return console.warn('[PollReminders] No first reminder found for Thursday transition.');
 
-    const { messageId, channelId } = data.value;
+    const data = JSON.parse(row.value);
+    const { messageId, channelId } = data;
 
     // Delete the first message
     const channel = await client.channels.fetch(channelId).catch(() => null);
@@ -93,17 +96,19 @@ async function handleThursday(client) {
       avatarURL: h.urls.LOGO_URL
     });
 
-    // Store second reminder ID (overwrite or insert)
-    await supabase.from(h.tables.POLL_AUTO_RESUME).upsert({
-      key: 'suggestion_reminder_2',
-      value: {
-        messageId: msg2.id,
-        channelId: channelId,
-        postedAt: new Date().toISOString()
-      }
-    }, { onConflict: 'key' });
+    // Store second reminder ID
+    const value2 = JSON.stringify({
+      messageId: msg2.id,
+      channelId: channelId,
+      postedAt: new Date().toISOString()
+    });
+    await db.query(
+      `INSERT INTO ${h.tables.POLL_AUTO_RESUME} (key, value)
+       VALUES ('suggestion_reminder_2', ?)
+       ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+      [value2]
+    );
 
- //   console.log(`[PollReminders] Last-day reminder posted (ID: ${msg2.id}), first one deleted.`);
   } catch (err) {
     console.error('[PollReminders] Thursday handler error:', err);
   }
@@ -114,22 +119,24 @@ async function handleThursday(client) {
  */
 async function handleFridayCleanup(client) {
   try {
-    const { data, error } = await supabase
-      .from(h.tables.POLL_AUTO_RESUME)
-      .select('value')
-      .eq('key', 'suggestion_reminder_2')
-      .single();
+    const row = await db.query(
+      `SELECT value FROM ${h.tables.POLL_AUTO_RESUME} WHERE key = 'suggestion_reminder_2'`,
+      [],
+      true
+    );
 
-    if (error || !data) return; // nothing to delete
+    if (!row) return; // nothing to delete
 
-    const { messageId, channelId } = data.value;
+    const data = JSON.parse(row.value);
+    const { messageId, channelId } = data;
     const channel = await client.channels.fetch(channelId).catch(() => null);
     if (channel) {
       await channel.messages.delete(messageId).catch(() => {});
     }
 
-    await supabase.from(h.tables.POLL_AUTO_RESUME).delete().eq('key', 'suggestion_reminder_2');
-//    console.log(`[PollReminders] Friday cleanup done.`);
+    await db.query(
+      `DELETE FROM ${h.tables.POLL_AUTO_RESUME} WHERE key = 'suggestion_reminder_2'`
+    );
   } catch (err) {
     console.error('[PollReminders] Friday cleanup error:', err);
   }
@@ -148,7 +155,7 @@ async function getOrCreateWebhook(channel, name) {
   return webhook;
 }
 
-// ----- Safe timeout (supports >24.8 days, same as giveaway) -----
+// ----- Safe timeout (supports >24.8 days) -----
 const MAX_TIMEOUT = 2147483647;
 function safeTimeout(callback, delayMs) {
   if (delayMs <= MAX_TIMEOUT) {
@@ -157,64 +164,60 @@ function safeTimeout(callback, delayMs) {
   return setTimeout(() => safeTimeout(callback, delayMs - MAX_TIMEOUT), MAX_TIMEOUT);
 }
 
-// ----- Restoration on bot start (optional) -----
+// ----- Restoration on bot start -----
 async function restorePollReminders(client) {
   try {
-    // Check if we have a first reminder that hasn't transitioned yet
-    const { data: d1 } = await supabase
-      .from(h.tables.POLL_AUTO_RESUME)
-      .select('value')
-      .eq('key', 'suggestion_reminder_1')
-      .single();
+    // Check first reminder
+    const d1 = await db.query(
+      `SELECT value FROM ${h.tables.POLL_AUTO_RESUME} WHERE key = 'suggestion_reminder_1'`,
+      [],
+      true
+    );
 
     if (d1) {
-      const { pollEndTime } = d1.value;
+      const data = JSON.parse(d1.value);
+      const { pollEndTime } = data;
       const end = new Date(pollEndTime).getTime();
       const now = Date.now();
       const timeSinceEnd = now - end;
 
-      // If Thursday hasn't passed yet, reschedule
       const thursdayDelay = 5 * 24 * 60 * 60 * 1000 - timeSinceEnd;
       if (thursdayDelay > 0) {
         safeTimeout(() => handleThursday(client), thursdayDelay);
-  //      console.log(`[PollReminders] Restored Thursday timer (in ${Math.floor(thursdayDelay/3600000)}h).`);
       } else {
-        // Thursday already passed, maybe run immediately? But we also need to check if second reminder exists
         const fridayDelay = 6 * 24 * 60 * 60 * 1000 - timeSinceEnd;
         if (fridayDelay > 0) {
-          // Friday hasn't passed yet, so the Thursday transition should have happened but didn't. Do it now.
+          // Thursday already passed, do it now
           await handleThursday(client);
         } else {
-          // Everything expired, just clean up DB entries
-          await supabase.from(h.tables.POLL_AUTO_RESUME).delete().eq('key', 'suggestion_reminder_1');
-          await supabase.from(h.tables.POLL_AUTO_RESUME).delete().eq('key', 'suggestion_reminder_2');
+          // Everything expired, clean up DB entries
+          await db.query(`DELETE FROM ${h.tables.POLL_AUTO_RESUME} WHERE key IN ('suggestion_reminder_1','suggestion_reminder_2')`);
         }
       }
     }
 
-    // Check for second reminder (if still needs deletion)
-    const { data: d2 } = await supabase
-      .from(h.tables.POLL_AUTO_RESUME)
-      .select('value')
-      .eq('key', 'suggestion_reminder_2')
-      .single();
+    // Check second reminder
+    const d2 = await db.query(
+      `SELECT value FROM ${h.tables.POLL_AUTO_RESUME} WHERE key = 'suggestion_reminder_2'`,
+      [],
+      true
+    );
 
     if (d2) {
-      const { postedAt, channelId, messageId } = d2.value;
+      const data = JSON.parse(d2.value);
+      const { postedAt, channelId, messageId } = data;
       const postTime = new Date(postedAt).getTime();
-      // Should be deleted on Friday (1 day after posting). If that time passed, delete now.
       const deleteTime = postTime + 24 * 60 * 60 * 1000;
       const now = Date.now();
       if (now >= deleteTime) {
         const channel = await client.channels.fetch(channelId).catch(() => null);
         if (channel) await channel.messages.delete(messageId).catch(() => {});
-        await supabase.from(h.tables.POLL_AUTO_RESUME).delete().eq('key', 'suggestion_reminder_2');
+        await db.query(`DELETE FROM ${h.tables.POLL_AUTO_RESUME} WHERE key = 'suggestion_reminder_2'`);
       } else {
-        // Reschedule deletion
         safeTimeout(async () => {
           const channel = await client.channels.fetch(channelId).catch(() => null);
           if (channel) await channel.messages.delete(messageId).catch(() => {});
-          await supabase.from(h.tables.POLL_AUTO_RESUME).delete().eq('key', 'suggestion_reminder_2');
+          await db.query(`DELETE FROM ${h.tables.POLL_AUTO_RESUME} WHERE key = 'suggestion_reminder_2'`);
         }, deleteTime - now);
       }
     }
