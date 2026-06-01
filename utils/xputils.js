@@ -4,14 +4,16 @@ require('dotenv').config({ quiet: true });
 const { MessageFlags } = require('discord.js');
 const { weights, releaseEmojis } = require('./helpers');
 const h = require('./helpers');
+const db = require('../services/database');   // D1 client
+
 const XP_MIN_CHARS = 5;
+
 const LEVEL_THRESHOLDS = Array.from({ length: 26 }, (_, index) =>
   index <= 1 ? 0 : (index - 1) * 50
 );
 
-const SUPABASE_URL = process.env.SUPABASE_URL?.replace(/\/$/, '') || '';
-const SUPABASE_KEY = process.env.SUPABASE_KEY || '';
 const XP_CHANNEL_ID = h.ids.channels.xp_channel;
+
 const XPLib = {
   getLevel(messages) {
     for (let i = LEVEL_THRESHOLDS.length - 1; i > 0; i--) {
@@ -24,40 +26,29 @@ const XPLib = {
     if (message.author.bot || !message.guild || message.content.length < XP_MIN_CHARS) return;
 
     try {
-      const url = `${SUPABASE_URL}/rest/v1/user_xp?user_id=eq.${message.author.id}&guild_id=eq.${message.guild.id}`;
+      // Fetch current XP row
+      const current = await db.query(
+        `SELECT total_messages, level FROM ${h.tables.USER_XP} WHERE user_id = ? AND guild_id = ?`,
+        [message.author.id, message.guild.id],
+        true
+      );
 
-      const res = await fetch(url, {
-        headers: {
-          apikey: SUPABASE_KEY,
-          Authorization: `Bearer ${SUPABASE_KEY}`
-        }
-      });
-
-      if (!res.ok) throw new Error(`Fetch failed: ${res.status}`);
-      
-      const rows = await res.json();
-      const current = rows[0] || { total_messages: 0, level: 0 };
-      const total = current.total_messages + 1;
-      const oldLevel = current.level;
+      const total = (current?.total_messages ?? 0) + 1;
+      const oldLevel = current?.level ?? 0;
       const newLevel = this.getLevel(total);
 
-      await fetch(`${SUPABASE_URL}/rest/v1/user_xp`, {
-        method: 'POST',
-        headers: {
-          apikey: SUPABASE_KEY,
-          Authorization: `Bearer ${SUPABASE_KEY}`,
-          'Content-Type': 'application/json',
-          'Prefer': 'resolution=merge-duplicates'
-        },
-        body: JSON.stringify({
-          user_id: message.author.id,
-          guild_id: message.guild.id,
-          total_messages: total,
-          level: newLevel,
-          discord_username: message.author.username
-        })
-      });
+      // Upsert the XP data
+      await db.query(
+        `INSERT INTO ${h.tables.USER_XP} (user_id, guild_id, total_messages, level, discord_username)
+         VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT(user_id, guild_id) DO UPDATE SET
+           total_messages = excluded.total_messages,
+           level = excluded.level,
+           discord_username = excluded.discord_username`,
+        [message.author.id, message.guild.id, total, newLevel, message.author.username]
+      );
 
+      // Level‑up notification via webhook
       if (newLevel > oldLevel) {
         const totalBonus = (newLevel * weights.xpFactor).toFixed(2);
         const s = releaseEmojis.SPARKLES;
@@ -88,7 +79,6 @@ const XPLib = {
           console.error('Level‑up webhook error:', webhookErr);
         }
       }
-
     } catch (err) {
       console.error('[XP Update Error]', err.message);
     }
@@ -96,22 +86,22 @@ const XPLib = {
 
   async getUserStats(userId, guildId) {
     try {
-      const url = `${SUPABASE_URL}/rest/v1/user_xp?user_id=eq.${userId}&guild_id=eq.${guildId}`;
-      const res = await fetch(url, {
-        headers: {
-          apikey: SUPABASE_KEY,
-          Authorization: `Bearer ${SUPABASE_KEY}`
-        }
-      });
-      const rows = await res.json();
-      const data = rows[0] || { level: 0, total_messages: 0 };
+      const row = await db.query(
+        `SELECT level, total_messages FROM ${h.tables.USER_XP} WHERE user_id = ? AND guild_id = ?`,
+        [userId, guildId],
+        true
+      );
+
+      const level = row?.level ?? 0;
+      const messages = row?.total_messages ?? 0;
 
       return {
-        level: data.level ?? 0,
-        messages: data.total_messages ?? 0,
-        bonus: (data.level * weights.xpFactor).toFixed(2)
+        level,
+        messages,
+        bonus: (level * weights.xpFactor).toFixed(2)
       };
     } catch (err) {
+      console.error('[XP Get Stats Error]', err.message);
       return { level: 0, messages: 0, bonus: '0.00' };
     }
   }
