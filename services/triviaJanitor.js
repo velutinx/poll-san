@@ -1,7 +1,6 @@
 // services/triviaJanitor.js
-const supabase = require('./supabase');
+const db = require('./database');
 const h = require('../utils/helpers');
-const { guardQuery } = require('../utils/supabaseCircuitBreaker');
 
 const TRIVIA_CONFIG = h.games?.trivia || {};
 const TRIVIA_BOT_ID = TRIVIA_CONFIG.botId || h.ids?.bots?.rinbot || '429656936435286016';
@@ -39,37 +38,44 @@ async function processEndOfDayAwards(client) {
     const dateStr = yesterday.toISOString().split('T')[0];
 
     try {
-        const { data: records, error } = await guardQuery(() =>
-            supabase
-                .from(h.tables.GAMES_TRIVIA_DAILY)
-                .select('discord_id, discord_username, highest_score')
-                .eq('date', dateStr)
-                .is('tickets_awarded', null)
+        // Fetch records that haven't been awarded yet
+        const records = await db.query(
+            `SELECT discord_id, discord_username, highest_score
+             FROM ${h.tables.GAMES_TRIVIA_DAILY}
+             WHERE date = ? AND tickets_awarded IS NULL`,
+            [dateStr]
         );
 
-        if (error || !records) return;
+        if (!records || records.length === 0) return;
 
         for (const record of records) {
             const userId = record.discord_id;
-            const username = record.discord_username;
             const highScore = record.highest_score || 0;
             const ticketsToAward = Math.min(highScore, (TRIVIA_CONFIG.dailyTicketCap || 10));
 
             if (ticketsToAward > 0) {
-                await supabase.rpc('add_tickets', { user_id: userId, amount: ticketsToAward });
-                await supabase
-                    .from(h.tables.GAMES_TRIVIA_DAILY)
-                    .update({ tickets_awarded: ticketsToAward })
-                    .eq('discord_id', userId)
-                    .eq('date', dateStr);
+                // Atomically add tickets: insert user if not exists, else increment
+                await db.query(
+                    `INSERT INTO ${h.tables.GAMES_USER_DATA} (user_id, tickets, discord_username, updated_at)
+                     VALUES (?, ?, ?, datetime('now'))
+                     ON CONFLICT(user_id) DO UPDATE SET
+                         tickets = tickets + excluded.tickets,
+                         discord_username = excluded.discord_username,
+                         updated_at = excluded.updated_at`,
+                    [userId, ticketsToAward, record.discord_username]
+                );
+
+                // Mark as awarded for this date
+                await db.query(
+                    `UPDATE ${h.tables.GAMES_TRIVIA_DAILY}
+                     SET tickets_awarded = ?
+                     WHERE discord_id = ? AND date = ?`,
+                    [ticketsToAward, userId, dateStr]
+                );
             }
         }
     } catch (err) {
-        if (err.message === 'Supabase circuit breaker active – skipping query') {
-            console.warn('[TriviaJanitor] Circuit breaker active, skipping end-of-day awards.');
-        } else {
-            h.logSupabaseError('TriviaJanitor', err);
-        }
+        console.error('[TriviaJanitor] processEndOfDayAwards error:', err.message);
     }
 }
 
