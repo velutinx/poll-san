@@ -8,7 +8,7 @@ const {
     TextInputBuilder,
     TextInputStyle
 } = require('discord.js');
-const supabase = require('./supabase');
+const db = require('./database');
 const helpers = require('../utils/helpers');
 const { consolidateExistingClaims } = require('./seriesConsolidator');
 
@@ -53,12 +53,18 @@ async function handleRedeemStart(interaction) {
     await interaction.deferReply({ flags: 64, withResponse: true });
     await consolidateExistingClaims();
 
-    const { data: userData } = await supabase
-        .from(helpers.tables.GAMES_USER_DATA)
-        .select('tickets')
-        .eq('user_id', userId)
-        .maybeSingle();
-    const balance = userData?.tickets || 0;
+    let balance = 0;
+    try {
+        const userRow = await db.query(
+            `SELECT tickets FROM ${helpers.tables.GAMES_USER_DATA} WHERE user_id = ?`,
+            [userId],
+            true
+        );
+        balance = userRow?.tickets || 0;
+    } catch (err) {
+        console.error('Redeem start fetch error:', err);
+        return interaction.editReply(`${helpers.releaseEmojis.BATSU} Database error.`);
+    }
 
     if (balance < cost) {
         return interaction.editReply(
@@ -66,10 +72,16 @@ async function handleRedeemStart(interaction) {
         );
     }
 
-    const { data: claims } = await supabase
-        .from(helpers.tables.GAMES_MUDAE_CLAIMS)
-        .select('series')
-        .eq('user_id', userId);
+    let claims;
+    try {
+        claims = await db.query(
+            `SELECT series FROM ${helpers.tables.GAMES_MUDAE_CLAIMS} WHERE user_id = ?`,
+            [userId]
+        );
+    } catch (err) {
+        console.error('Claims fetch error:', err);
+        return interaction.editReply(`${helpers.releaseEmojis.BATSU} Database error.`);
+    }
 
     if (!claims || claims.length === 0) {
         return interaction.editReply(
@@ -135,12 +147,18 @@ async function handleRedeemSeries(interaction, index) {
     }
 
     const selectedSeries = seriesList[index];
-    const { data: userData } = await supabase
-        .from(helpers.tables.GAMES_USER_DATA)
-        .select('tickets')
-        .eq('user_id', userId)
-        .maybeSingle();
-    const balance = userData?.tickets || 0;
+    let balance = 0;
+    try {
+        const userRow = await db.query(
+            `SELECT tickets FROM ${helpers.tables.GAMES_USER_DATA} WHERE user_id = ?`,
+            [userId],
+            true
+        );
+        balance = userRow?.tickets || 0;
+    } catch (err) {
+        console.error('Redeem series fetch error:', err);
+        return interaction.editReply(`${helpers.releaseEmojis.BATSU} Database error.`);
+    }
 
     if (balance < cost) {
         await interaction.editReply(
@@ -151,32 +169,31 @@ async function handleRedeemSeries(interaction, index) {
     }
 
     const newBalance = balance - cost;
-    const { error: updateError } = await supabase
-        .from(helpers.tables.GAMES_USER_DATA)
-        .update({ tickets: newBalance })
-        .eq('user_id', userId);
-    if (updateError) {
-        console.error('Redeem deduction error:', updateError);
-        await interaction.editReply(
-            `${helpers.releaseEmojis.BATSU} Database error. Tickets not deducted.`
+    try {
+        await db.query(
+            `UPDATE ${helpers.tables.GAMES_USER_DATA} SET tickets = ? WHERE user_id = ?`,
+            [newBalance, userId]
         );
+    } catch (err) {
+        console.error('Redeem deduction error:', err);
+        await interaction.editReply(`${helpers.releaseEmojis.BATSU} Database error. Tickets not deducted.`);
         activeSessions.delete(userId);
         return;
     }
 
-    const { error: insertError } = await supabase
-        .from('games_character_requests')
-        .insert({
-            user_id: userId,
-            username: interaction.user.tag,
-            series: selectedSeries
-        });
-    if (insertError) {
-        console.error('Request insert error:', insertError);
-        await supabase
-            .from(helpers.tables.GAMES_USER_DATA)
-            .update({ tickets: balance })
-            .eq('user_id', userId);
+    try {
+        await db.query(
+            `INSERT INTO games_character_requests (user_id, username, series)
+             VALUES (?, ?, ?)`,
+            [userId, interaction.user.tag, selectedSeries]
+        );
+    } catch (err) {
+        console.error('Request insert error:', err);
+        // Refund
+        await db.query(
+            `UPDATE ${helpers.tables.GAMES_USER_DATA} SET tickets = ? WHERE user_id = ?`,
+            [balance, userId]
+        ).catch(() => {});
         await interaction.editReply(
             `${helpers.releaseEmojis.BATSU} Failed to record your request. Tickets have been refunded.`
         );
@@ -208,12 +225,18 @@ async function handleRedeemVoteBoost(interaction) {
     await interaction.deferReply({ flags: 64, withResponse: true });
 
     // 1. Check balance
-    const { data: userData } = await supabase
-        .from(helpers.tables.GAMES_USER_DATA)
-        .select('tickets')
-        .eq('user_id', userId)
-        .maybeSingle();
-    const balance = userData?.tickets || 0;
+    let balance = 0;
+    try {
+        const userRow = await db.query(
+            `SELECT tickets FROM ${helpers.tables.GAMES_USER_DATA} WHERE user_id = ?`,
+            [userId],
+            true
+        );
+        balance = userRow?.tickets || 0;
+    } catch (err) {
+        console.error('Vote boost fetch error:', err);
+        return interaction.editReply(`${helpers.releaseEmojis.BATSU} Database error.`);
+    }
 
     if (balance < cost) {
         return interaction.editReply(
@@ -223,48 +246,52 @@ async function handleRedeemVoteBoost(interaction) {
 
     // 2. Deduct tickets
     const newBalance = balance - cost;
-    const { error: updateError } = await supabase
-        .from(helpers.tables.GAMES_USER_DATA)
-        .update({ tickets: newBalance })
-        .eq('user_id', userId);
-    if (updateError) {
-        console.error('Vote boost deduction error:', updateError);
-        return interaction.editReply(
-            `${helpers.releaseEmojis.BATSU} Database error. Please try again.`
+    try {
+        await db.query(
+            `UPDATE ${helpers.tables.GAMES_USER_DATA} SET tickets = ? WHERE user_id = ?`,
+            [newBalance, userId]
         );
+    } catch (err) {
+        console.error('Vote boost deduction error:', err);
+        return interaction.editReply(`${helpers.releaseEmojis.BATSU} Database error. Please try again.`);
     }
 
     // 3. Upsert the vote boost (extend existing, or create new)
     const now = new Date();
-    const { data: existingBoost } = await supabase
-        .from('games_vote_boosts')
-        .select('id, expires_at')
-        .eq('user_id', userId)
-        .gt('expires_at', now.toISOString())
-        .maybeSingle();
-
     let newExpiresAt;
-    if (existingBoost) {
-        const currentExpiry = new Date(existingBoost.expires_at);
-        currentExpiry.setDate(currentExpiry.getDate() + helpers.redeem.voteBoostDurationDays);
-        newExpiresAt = currentExpiry.toISOString();
+    try {
+        const existing = await db.query(
+            `SELECT id, expires_at FROM games_vote_boosts
+             WHERE user_id = ? AND expires_at > ?`,
+            [userId, now.toISOString()],
+            true
+        );
 
-        await supabase
-            .from('games_vote_boosts')
-            .update({ expires_at: newExpiresAt, username: interaction.user.tag })
-            .eq('id', existingBoost.id);
-    } else {
-        newExpiresAt = new Date(
-            now.getTime() + helpers.redeem.voteBoostDurationDays * 24 * 60 * 60 * 1000
-        ).toISOString();
-
-        await supabase
-            .from('games_vote_boosts')
-            .insert({
-                user_id: userId,
-                username: interaction.user.tag,
-                expires_at: newExpiresAt
-            });
+        if (existing) {
+            const currentExpiry = new Date(existing.expires_at);
+            currentExpiry.setDate(currentExpiry.getDate() + helpers.redeem.voteBoostDurationDays);
+            newExpiresAt = currentExpiry.toISOString();
+            await db.query(
+                `UPDATE games_vote_boosts SET expires_at = ?, username = ? WHERE id = ?`,
+                [newExpiresAt, interaction.user.tag, existing.id]
+            );
+        } else {
+            newExpiresAt = new Date(
+                now.getTime() + helpers.redeem.voteBoostDurationDays * 24 * 60 * 60 * 1000
+            ).toISOString();
+            await db.query(
+                `INSERT INTO games_vote_boosts (user_id, username, expires_at) VALUES (?, ?, ?)`,
+                [userId, interaction.user.tag, newExpiresAt]
+            );
+        }
+    } catch (err) {
+        console.error('Vote boost upsert error:', err);
+        // Refund if something fails
+        await db.query(
+            `UPDATE ${helpers.tables.GAMES_USER_DATA} SET tickets = ? WHERE user_id = ?`,
+            [balance, userId]
+        ).catch(() => {});
+        return interaction.editReply(`${helpers.releaseEmojis.BATSU} Failed to record your boost. Tickets have been refunded.`);
     }
 
     // 4. Reply to the user (no admin notification)
@@ -272,7 +299,6 @@ async function handleRedeemVoteBoost(interaction) {
         `${helpers.releaseEmojis.getRandomVerify()} **Vote Boost activated!** Your poll votes will count double until **<t:${Math.floor(new Date(newExpiresAt).getTime() / 1000)}:R>**. ` +
         `\nNew balance: **${newBalance}** tickets.`
     );
-    // Admin notification intentionally removed
 }
 
 // ============ SUGGEST CHARACTER ============
@@ -317,12 +343,18 @@ async function handleSuggestModalSubmit(interaction) {
         );
     }
 
-    const { data: userData } = await supabase
-        .from(helpers.tables.GAMES_USER_DATA)
-        .select('tickets')
-        .eq('user_id', userId)
-        .maybeSingle();
-    const balance = userData?.tickets || 0;
+    let balance = 0;
+    try {
+        const userRow = await db.query(
+            `SELECT tickets FROM ${helpers.tables.GAMES_USER_DATA} WHERE user_id = ?`,
+            [userId],
+            true
+        );
+        balance = userRow?.tickets || 0;
+    } catch (err) {
+        console.error('Suggest fetch error:', err);
+        return interaction.editReply(`${helpers.releaseEmojis.BATSU} Database error.`);
+    }
 
     if (balance < cost) {
         return interaction.editReply(
@@ -331,16 +363,31 @@ async function handleSuggestModalSubmit(interaction) {
     }
 
     const newBalance = balance - cost;
-    await supabase
-        .from(helpers.tables.GAMES_USER_DATA)
-        .update({ tickets: newBalance })
-        .eq('user_id', userId);
-    await supabase.from('games_character_suggestions').insert({
-        user_id: userId,
-        username: interaction.user.tag,
-        character_name: characterName,
-        series: series
-    });
+    try {
+        await db.query(
+            `UPDATE ${helpers.tables.GAMES_USER_DATA} SET tickets = ? WHERE user_id = ?`,
+            [newBalance, userId]
+        );
+    } catch (err) {
+        console.error('Suggest deduction error:', err);
+        return interaction.editReply(`${helpers.releaseEmojis.BATSU} Database error.`);
+    }
+
+    try {
+        await db.query(
+            `INSERT INTO games_character_suggestions (user_id, username, character_name, series)
+             VALUES (?, ?, ?, ?)`,
+            [userId, interaction.user.tag, characterName, series]
+        );
+    } catch (err) {
+        console.error('Suggestion insert error:', err);
+        // Refund
+        await db.query(
+            `UPDATE ${helpers.tables.GAMES_USER_DATA} SET tickets = ? WHERE user_id = ?`,
+            [balance, userId]
+        ).catch(() => {});
+        return interaction.editReply(`${helpers.releaseEmojis.BATSU} Failed to record your suggestion. Tickets have been refunded.`);
+    }
 
     await interaction.editReply(
         `${helpers.releaseEmojis.getRandomVerify()} Suggestion recorded: **${characterName}**${series !== 'Not provided' ? ` (${series})` : ''}.\nNew balance: **${newBalance}** tickets.`
