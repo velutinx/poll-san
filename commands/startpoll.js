@@ -2,7 +2,7 @@
 const h = require('../utils/helpers');
 const { chunkArray, emojis, reactIds, ids, releaseEmojis } = h;
 const { generateMessageContent, runPollInterval } = require('../services/pollService');
-const supabase = require('../services/supabase');
+const db = require('../services/database');
 
 async function getPollWebhook(channel) {
   const name = 'Poll';
@@ -51,15 +51,15 @@ module.exports = async (interaction) => {
     });
 
     try {
-        await supabase.from(h.tables.POLL_AUTO_RESUME).upsert({
-            message_id: pollMessage.id,
-            channel_id: channel.id,
-            ends_at: new Date(endTime).toISOString(),
-            poll_list: listRaw
-        });
-        console.log(`✅ Supabase: Recorded poll ${pollMessage.id} for auto-resume.`);
+        await db.query(
+            `INSERT OR REPLACE INTO ${h.tables.POLL_AUTO_RESUME}
+             (message_id, channel_id, ends_at, poll_list, status, created_at)
+             VALUES (?, ?, ?, ?, 'active', datetime('now'))`,
+            [pollMessage.id, channel.id, new Date(endTime).toISOString(), listRaw]
+        );
+        console.log(`✅ D1: Recorded poll ${pollMessage.id} for auto-resume.`);
     } catch (dbError) {
-        console.error("❌ Supabase Error:", dbError.message);
+        console.error("❌ D1 Error:", dbError.message);
     }
 
     const { startPollReminders } = require('../services/pollReminders');
