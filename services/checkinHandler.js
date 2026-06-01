@@ -1,5 +1,5 @@
 // services/checkinHandler.js
-const supabase = require('./supabase');
+const db = require('./database');
 const helpers = require('../utils/helpers');
 
 const checkinSessions = new Map();
@@ -29,13 +29,18 @@ async function handleCheckinClaim(interaction) {
     }
 
     let finalContent = '';
-    let { data: userData, error } = await supabase
-        .from(helpers.tables.GAMES_USER_DATA)
-        .select('*')
-        .eq('user_id', userId)
-        .maybeSingle();
+    let userData = null;
 
-    if (error) console.error('Fetch error:', error);
+    // Fetch user data from D1
+    try {
+        userData = await db.query(
+            `SELECT * FROM ${helpers.tables.GAMES_USER_DATA} WHERE user_id = ?`,
+            [userId],
+            true   // single row
+        );
+    } catch (err) {
+        console.error('Fetch error:', err.message);
+    }
 
     const now = new Date();
     let canClaim = true;
@@ -60,44 +65,54 @@ async function handleCheckinClaim(interaction) {
         const discordUsername = interaction.user.tag;
         const displayName = interaction.member?.displayName || interaction.user.globalName || interaction.user.username;
 
-        const updatePayload = {
-            tickets: newBalance,
-            last_checkin: nowIso,
-            wordle_last_played: null,
-            hangman_last_played: null,
-            trivia_last_played: null,
-            updated_at: nowIso,
-            discord_username: discordUsername,
-            display_name: displayName,
-            reminder_sent: false
-        };
-
         if (userData) {
-            const { error: updateError } = await supabase
-                .from(helpers.tables.GAMES_USER_DATA)
-                .update(updatePayload)
-                .eq('user_id', userId);
-            if (updateError) console.error('Update error:', updateError);
-            else finalContent = buildSuccessMessage(ticketAmount, newBalance);
+            // Update existing row
+            try {
+                await db.query(
+                    `UPDATE ${helpers.tables.GAMES_USER_DATA}
+                     SET tickets = ?,
+                         last_checkin = ?,
+                         wordle_last_played = NULL,
+                         hangman_last_played = NULL,
+                         trivia_last_played = NULL,
+                         updated_at = ?,
+                         discord_username = ?,
+                         display_name = ?,
+                         reminder_sent = 0
+                     WHERE user_id = ?`,
+                    [newBalance, nowIso, nowIso, discordUsername, displayName, userId]
+                );
+                finalContent = buildSuccessMessage(ticketAmount, newBalance);
+            } catch (err) {
+                console.error('Update error:', err.message);
+                finalContent = `${helpers.releaseEmojis?.BATSU || '❌'} Database error.`;
+            }
         } else {
-            const { error: insertError } = await supabase
-                .from(helpers.tables.GAMES_USER_DATA)
-                .insert({ user_id: userId, ...updatePayload });
-            if (insertError) console.error('Insert error:', insertError);
-            else finalContent = buildSuccessMessage(ticketAmount, newBalance);
+            // Insert new row
+            try {
+                await db.query(
+                    `INSERT INTO ${helpers.tables.GAMES_USER_DATA}
+                     (user_id, tickets, last_checkin, wordle_last_played, hangman_last_played, trivia_last_played, updated_at, discord_username, display_name, reminder_sent)
+                     VALUES (?, ?, ?, NULL, NULL, NULL, ?, ?, ?, 0)`,
+                    [userId, newBalance, nowIso, nowIso, discordUsername, displayName]
+                );
+                finalContent = buildSuccessMessage(ticketAmount, newBalance);
+            } catch (err) {
+                console.error('Insert error:', err.message);
+                finalContent = `${helpers.releaseEmojis?.BATSU || '❌'} Database error.`;
+            }
         }
 
-        if (finalContent === '') {
-            finalContent = `${helpers.releaseEmojis?.BATSU || '❌'} Database error.`;
-        } else {
+        // Delete hangman cooldown
+        if (finalContent && !finalContent.includes('Database error')) {
             try {
-                await supabase
-                    .from(helpers.tables.GAMES_COOLDOWNS)
-                    .delete()
-                    .eq('discord_id', userId)
-                    .eq('game_type', 'hangman');
+                await db.query(
+                    `DELETE FROM ${helpers.tables.GAMES_COOLDOWNS}
+                     WHERE discord_id = ? AND game_type = ?`,
+                    [userId, 'hangman']
+                );
             } catch (err) {
-                console.error('Cooldown delete error:', err);
+                console.error('Cooldown delete error:', err.message);
             }
         }
     }
