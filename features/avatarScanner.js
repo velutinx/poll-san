@@ -19,6 +19,15 @@ const MONTHLY_CREDITS = 2000;
 const PROMPT_HOURS = [14, 16, 18];
 const NSFW_TIMEOUT_MS = 15000;
 
+// Safe timeout helper (avoids 32‑bit overflow)
+const MAX_TIMEOUT = 2147483647;
+function safeTimeout(callback, delayMs) {
+    if (delayMs <= MAX_TIMEOUT) {
+        return setTimeout(callback, delayMs);
+    }
+    return setTimeout(() => safeTimeout(callback, delayMs - MAX_TIMEOUT), MAX_TIMEOUT);
+}
+
 // ==================== API CALLS ====================
 async function scanWithSightengine(url) {
     const formData = new URLSearchParams();
@@ -732,18 +741,18 @@ function startMonthlyCheck(client) {
         checkMonthlyScanPrompt(client).catch(() => {});
     }, 900000);
 
-const scheduleMonthReset = () => {
-    const now = new Date();
-    const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
-    const msUntilNext = nextMonth - now;
-    safeTimeout(async () => {
-        await setSetting('monthly_scan_accepted', 'false');
-        await setSetting('monthly_scan_prompt_day', '');
-        await setSetting('monthly_scan_last_prompt_hour', '');
-        scheduleMonthReset();
-    }, msUntilNext);
-};
-scheduleMonthReset();
+    const scheduleMonthReset = () => {
+        const now = new Date();
+        const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+        const msUntilNext = nextMonth - now;
+        safeTimeout(async () => {
+            await setSetting('monthly_scan_accepted', 'false');
+            await setSetting('monthly_scan_prompt_day', '');
+            await setSetting('monthly_scan_last_prompt_hour', '');
+            scheduleMonthReset();
+        }, msUntilNext);
+    };
+    scheduleMonthReset();
 }
 
 function init(client) {
