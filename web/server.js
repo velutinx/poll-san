@@ -4,15 +4,10 @@ const path = require('path');
 const { ChannelType } = require('discord.js');
 const multer = require('multer');
 const cors = require('cors');
-const supabase = require('../services/supabase');
-const { supabaseRetry } = require('../utils/db');
 const queueService = require('../services/queueService');
 const greetingsRouter = require('./routes/greetings');
 const helpers = require('../utils/helpers');
-
-// Use the shared MEGA session module
 const { getMegaStorage } = require('../services/megaSession');
-
 const verifyRouter = require('./routes/verifyCallback');
 
 module.exports = (client) => {
@@ -49,7 +44,6 @@ module.exports = (client) => {
     app.use(express.json());
 
     // ====================== MEGA LINK PROXY ENDPOINT ======================
-    // Recursive file search helper
     function findFile(node, name) {
         if (!node.children) return null;
         for (const child of node.children) {
@@ -131,11 +125,11 @@ module.exports = (client) => {
     const pollClients = new Set();
     function broadcastPollUpdate() {
         const data = JSON.stringify({ type: 'pollUpdate', timestamp: Date.now() });
-        pollClients.forEach(client => {
+        pollClients.forEach(c => {
             try {
-                client.write(`data: ${data}\n\n`);
+                c.write(`data: ${data}\n\n`);
             } catch (e) {
-                pollClients.delete(client);
+                pollClients.delete(c);
             }
         });
     }
@@ -180,18 +174,16 @@ module.exports = (client) => {
     const setupGiveawayRoutes = require('./routes/giveaway');
     const reminderRouter = require('./routes/reminder');
 
-    // Mount additional routers
     app.use(reminderRouter);
     app.use(greetingsRouter);
 
-    // Setup all feature routes
-    setupGiveawayRoutes(app, client, supabase, supabaseRetry, getGuildMembers);
+    setupGiveawayRoutes(app, client, getGuildMembers);
     setupQueueRoutes(app, client, queueService);
-    setupPollRoutes(app, client, supabase, supabaseRetry);
-    setupMembershipsRoute(app, client, supabase, supabaseRetry);
-    setupSendMessageRoute(app, client, supabase, supabaseRetry);
+    setupPollRoutes(app, client);
+    setupMembershipsRoute(app, client);
+    setupSendMessageRoute(app, client);
     setupReleasesRoutes(app, client, upload, FORUM_ID, SUPPORTER_FORUM_ID);
-    setupMonitoringRoutes(app, client, supabase, supabaseRetry, getGuildMembers);
+    setupMonitoringRoutes(app, client, getGuildMembers);
 
     // Start server
     app.listen(PORT, () => {
