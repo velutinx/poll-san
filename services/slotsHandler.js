@@ -1,7 +1,7 @@
 // services/slotsHandler.js
 const { EmbedBuilder, MessageFlags } = require('discord.js');
 const helpers = require('../utils/helpers');
-const supabase = require('./supabase');
+const db = require('./database');
 
 const activeGames = new Map();
 
@@ -49,13 +49,16 @@ async function handleSlotsBet(interaction, betAmount) {
         return;
     }
 
-    const { data: userData, error } = await supabase
-        .from(helpers.tables.GAMES_USER_DATA)
-        .select('tickets')
-        .eq('user_id', userId)
-        .maybeSingle();
-
-    if (error) {
+    // Fetch current tickets
+    let currentTickets = 0;
+    try {
+        const row = await db.query(
+            `SELECT tickets FROM ${helpers.tables.GAMES_USER_DATA} WHERE user_id = ?`,
+            [userId],
+            true
+        );
+        currentTickets = row?.tickets || 0;
+    } catch (error) {
         console.error('Slots fetch error:', error);
         return interaction.followUp({ 
             content: `${helpers.releaseEmojis?.BATSU || '❌'} Database error. Please try again later.`, 
@@ -63,7 +66,6 @@ async function handleSlotsBet(interaction, betAmount) {
         });
     }
 
-    const currentTickets = userData?.tickets || 0;
     if (currentTickets < betAmount) {
         return interaction.followUp({
             content: `${helpers.releaseEmojis?.BATSU || '❌'} You need ${betAmount} tickets, but you have only ${currentTickets}.`,
@@ -71,13 +73,14 @@ async function handleSlotsBet(interaction, betAmount) {
         });
     }
 
+    // Deduct bet amount
     let newBalance = currentTickets - betAmount;
-    const { error: updateError } = await supabase
-        .from(helpers.tables.GAMES_USER_DATA)
-        .update({ tickets: newBalance })
-        .eq('user_id', userId);
-        
-    if (updateError) {
+    try {
+        await db.query(
+            `UPDATE ${helpers.tables.GAMES_USER_DATA} SET tickets = ? WHERE user_id = ?`,
+            [newBalance, userId]
+        );
+    } catch (updateError) {
         console.error('Slots deduct error:', updateError);
         return interaction.followUp({ 
             content: `${helpers.releaseEmojis?.BATSU || '❌'} Database error. Please try again later.`, 
@@ -92,10 +95,15 @@ async function handleSlotsBet(interaction, betAmount) {
 
     if (winAmount > 0) {
         finalBalance = newBalance + winAmount;
-        await supabase
-            .from(helpers.tables.GAMES_USER_DATA)
-            .update({ tickets: finalBalance })
-            .eq('user_id', userId);
+        try {
+            await db.query(
+                `UPDATE ${helpers.tables.GAMES_USER_DATA} SET tickets = ? WHERE user_id = ?`,
+                [finalBalance, userId]
+            );
+        } catch (err) {
+            console.error('Slots win update error:', err);
+            // Continue with the displayed balance anyway
+        }
         winMessage = winAmount >= betAmount
             ? `**You won ${winAmount} tickets!** ${helpers.releaseEmojis?.CONFETTI || '🎉'}`
             : `**You got a small win of ${winAmount} tickets!** ${helpers.releaseEmojis?.DICE || '🎲'}`;
