@@ -1,5 +1,6 @@
 // web/routes/giveaway.js
 const h = require('../../utils/helpers');
+const db = require('../../services/database');
 const { EmbedBuilder } = require('discord.js');
 
 function parseCharacterList(pollList) {
@@ -20,24 +21,25 @@ async function getGiveawayWebhook(channel) {
     return webhook;
 }
 
-module.exports = function setupGiveawayRoutes(app, client, supabase, supabaseRetry, getGuildMembers) {
-    
+module.exports = function setupGiveawayRoutes(app, client, getGuildMembers) {
+
     // ────────────────────────────────────────────────
     // GET active giveaway and entrants with full details
     // ────────────────────────────────────────────────
     app.get('/api/giveaway/active', async (req, res) => {
         try {
             const now = new Date().toISOString();
-            const { data: giveaway, error } = await supabaseRetry(() =>
-                supabase.from(h.tables.GIVEAWAYS)
-                    .select('*')
-                    .eq('ended', false)
-                    .gt('end_time', now)
-                    .order('end_time', { ascending: true })
-                    .limit(1)
-                    .maybeSingle()   // ✅ safe – returns null if no active giveaway
+            // Fetch active giveaway
+            const giveaway = await db.query(
+                `SELECT * FROM ${h.tables.GIVEAWAYS}
+                 WHERE ended = 0 AND end_time > ?
+                 ORDER BY end_time ASC
+                 LIMIT 1`,
+                [now],
+                true   // single row
             );
-            if (error || !giveaway) {
+
+            if (!giveaway) {
                 return res.json({ active: false });
             }
 
@@ -56,13 +58,11 @@ module.exports = function setupGiveawayRoutes(app, client, supabase, supabaseRet
                         username: 'Giveaway',
                         avatarURL: h.urls.LOGO_URL
                     });
-                    await supabaseRetry(() =>
-                        supabase.from(h.tables.GIVEAWAYS)
-                            .update({ 
-                                reminder_sent: true,
-                                reminder_message_id: reminderMsg.id
-                            })
-                            .eq('message_id', giveaway.message_id)
+                    await db.query(
+                        `UPDATE ${h.tables.GIVEAWAYS}
+                         SET reminder_sent = 1, reminder_message_id = ?
+                         WHERE message_id = ?`,
+                        [reminderMsg.id, giveaway.message_id]
                     );
                     console.log(`✅ Reminder sent for giveaway ${giveaway.message_id}`);
                 } catch (reminderErr) {
@@ -72,27 +72,27 @@ module.exports = function setupGiveawayRoutes(app, client, supabase, supabaseRet
             // ------------------------------------------------------------
 
             const guild = await client.guilds.fetch(process.env.GUILD_ID);
-            const entrants = giveaway.entrants || [];
+            const entrants = JSON.parse(giveaway.entrants || '[]');
             const entrantsDetails = [];
 
-            // Get active poll data for vote info (using poll_auto_resume)
-            const { data: activePoll } = await supabaseRetry(() =>
-                supabase.from(h.tables.POLL_AUTO_RESUME)
-                    .select('poll_list')
-                    .order('id', { ascending: false })
-                    .limit(1)
-                    .maybeSingle()   // ✅ safe – may not exist
+            // Get active poll data for vote info
+            const activePoll = await db.query(
+                `SELECT poll_list FROM ${h.tables.POLL_AUTO_RESUME}
+                 ORDER BY id DESC
+                 LIMIT 1`,
+                [],
+                true
             );
             let characterList = [];
             if (activePoll && activePoll.poll_list) {
                 characterList = parseCharacterList(activePoll.poll_list);
             }
 
-            // Get votes for current poll (using poll_voting_discord)
-            const { data: votes, error: voteError } = await supabaseRetry(() =>
-                supabase.from(h.tables.POLL_VOTING_DISCORD)
-                    .select('user_id, option_id')
-                    .eq('poll_id', 'character_poll_new')
+            // Get votes for current poll
+            const votes = await db.query(
+                `SELECT user_id, option_id FROM ${h.tables.POLL_VOTING_DISCORD}
+                 WHERE poll_id = ?`,
+                ['character_poll_new']
             );
             const voteMap = {};
             if (votes) {
@@ -169,16 +169,15 @@ module.exports = function setupGiveawayRoutes(app, client, supabase, supabaseRet
 
         try {
             const now = new Date().toISOString();
-            const { data: giveaway, error } = await supabaseRetry(() =>
-                supabase.from(h.tables.GIVEAWAYS)
-                    .select('*')
-                    .eq('ended', false)
-                    .gt('end_time', now)
-                    .order('end_time', { ascending: true })
-                    .limit(1)
-                    .maybeSingle()   // ✅ safe
+            const giveaway = await db.query(
+                `SELECT * FROM ${h.tables.GIVEAWAYS}
+                 WHERE ended = 0 AND end_time > ?
+                 ORDER BY end_time ASC
+                 LIMIT 1`,
+                [now],
+                true
             );
-            if (error || !giveaway) {
+            if (!giveaway) {
                 return res.status(404).json({ error: 'No active giveaway found' });
             }
 
@@ -186,12 +185,10 @@ module.exports = function setupGiveawayRoutes(app, client, supabase, supabaseRet
             const newEnd = new Date(oldEnd.getTime() + hours * 60 * 60 * 1000);
             const newEndISO = newEnd.toISOString();
 
-            const { error: updateError } = await supabaseRetry(() =>
-                supabase.from(h.tables.GIVEAWAYS)
-                    .update({ end_time: newEndISO })
-                    .eq('message_id', giveaway.message_id)
+            await db.query(
+                `UPDATE ${h.tables.GIVEAWAYS} SET end_time = ? WHERE message_id = ?`,
+                [newEndISO, giveaway.message_id]
             );
-            if (updateError) throw updateError;
 
             const channel = await client.channels.fetch(giveaway.channel_id);
             const webhook = await getGiveawayWebhook(channel);
@@ -218,38 +215,34 @@ module.exports = function setupGiveawayRoutes(app, client, supabase, supabaseRet
 
         try {
             const now = new Date().toISOString();
-            const { data: giveaway, error } = await supabaseRetry(() =>
-                supabase.from(h.tables.GIVEAWAYS)
-                    .select('*')
-                    .eq('ended', false)
-                    .gt('end_time', now)
-                    .order('end_time', { ascending: true })
-                    .limit(1)
-                    .maybeSingle()   // ✅ safe
+            const giveaway = await db.query(
+                `SELECT * FROM ${h.tables.GIVEAWAYS}
+                 WHERE ended = 0 AND end_time > ?
+                 ORDER BY end_time ASC
+                 LIMIT 1`,
+                [now],
+                true
             );
-            if (error || !giveaway) {
+            if (!giveaway) {
                 return res.status(404).json({ error: 'No active giveaway found' });
             }
 
-            let entrants = giveaway.entrants || [];
+            let entrants = JSON.parse(giveaway.entrants || '[]');
             if (!entrants.includes(userId)) {
                 return res.status(400).json({ error: 'User is not in this giveaway' });
             }
 
             entrants = entrants.filter(id => id !== userId);
-            const { error: updateError } = await supabaseRetry(() =>
-                supabase.from(h.tables.GIVEAWAYS)
-                    .update({ entrants })
-                    .eq('message_id', giveaway.message_id)
+            await db.query(
+                `UPDATE ${h.tables.GIVEAWAYS} SET entrants = ? WHERE message_id = ?`,
+                [JSON.stringify(entrants), giveaway.message_id]
             );
-            if (updateError) throw updateError;
 
             // Remove poll vote – safe, does nothing if no vote exists
-            await supabaseRetry(() =>
-                supabase.from(h.tables.POLL_VOTING_DISCORD)
-                    .delete()
-                    .eq('user_id', userId)
-                    .eq('poll_id', 'character_poll_new')
+            await db.query(
+                `DELETE FROM ${h.tables.POLL_VOTING_DISCORD}
+                 WHERE user_id = ? AND poll_id = ?`,
+                [userId, 'character_poll_new']
             );
 
             res.json({ success: true, message: `Removed ${userId} from giveaway and deleted their poll votes` });
