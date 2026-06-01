@@ -15,7 +15,7 @@ async function query(sql, params = [], single = false) {
         throw new Error('CLOUDFLARE_D1_WORKER is not configured. Set it in helpers.js urls.');
     }
 
-    const res = await fetch(WORKER_URL, {
+    const res = await fetch(`${WORKER_URL}/query`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ sql, params })
