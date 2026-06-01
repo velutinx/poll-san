@@ -4,7 +4,7 @@ const path = require('path');
 const fs = require('fs').promises;
 const { colors, releaseEmojis } = require('../utils/helpers');
 const h = require('../utils/helpers');
-const { guardQuery } = require('../utils/supabaseCircuitBreaker');
+const db = require('../services/database');
 
 const activeGiveaways = new Map();
 const giveawaySessions = new Map();
@@ -12,18 +12,15 @@ const giveawaySessions = new Map();
 const GIVEAWAY_IMAGE_URL = process.env.GIVEAWAY_IMAGE_URL;
 const USE_HOSTED_IMAGE = !!GIVEAWAY_IMAGE_URL;
 
-let supabase;
-let supabasePromise;
+const MAX_TIMEOUT = 2147483647;
 
-async function getSupabase() {
-    if (supabase) return supabase;
-    if (!supabasePromise) {
-        supabasePromise = import('../services/supabase.js').then(module => {
-            supabase = module.default;
-            return supabase;
-        });
+function safeTimeout(callback, delayMs) {
+    if (delayMs <= MAX_TIMEOUT) {
+        return setTimeout(callback, delayMs);
     }
-    return supabasePromise;
+    return setTimeout(() => {
+        safeTimeout(callback, delayMs - MAX_TIMEOUT);
+    }, MAX_TIMEOUT);
 }
 
 async function getGiveawayWebhook(channel) {
@@ -35,16 +32,6 @@ async function getGiveawayWebhook(channel) {
         });
     }
     return webhook;
-}
-const MAX_TIMEOUT = 2147483647;
-
-function safeTimeout(callback, delayMs) {
-    if (delayMs <= MAX_TIMEOUT) {
-        return setTimeout(callback, delayMs);
-    }
-    return setTimeout(() => {
-        safeTimeout(callback, delayMs - MAX_TIMEOUT);
-    }, MAX_TIMEOUT);
 }
 
 module.exports = {
@@ -107,7 +94,6 @@ module.exports = {
 
         const giveawayId = Date.now();
 
-        // Build active title with two different gift boxes
         const { left: leftBox, right: rightBox } = h.getTwoRandomPresents();
         const activeTitle = `${leftBox} ${prize} Giveaway ${rightBox}`;
 
@@ -147,7 +133,6 @@ module.exports = {
             avatar: h.urls.LOGO_URL
         });
 
-        // Ghost ping with confetti
         try {
             const pingMessage = await webhook.send({
                 content: `${releaseEmojis?.CONFETTI || '🎉'} New giveaway! <@&1472273843665113139>`,
@@ -163,21 +148,14 @@ module.exports = {
 
         console.log(`Starting giveaway ID: ${giveawayId} - ${prize} for ${durationStr}`);
 
-        const supabaseClient = await getSupabase();
-        const { error } = await supabaseClient
-            .from(h.tables.GIVEAWAYS)
-            .insert({
-                message_id: giveawayMessage.id,
-                channel_id: channel.id,
-                host_id: interaction.user.id,
-                prize: prize,
-                winners_count: winnersCount,
-                end_time: endTime.toISOString(),
-                entrants: [],
-                ended: false
-            });
-
-        if (error) {
+        // Insert into D1 (SQLite)
+        try {
+            await db.query(
+                `INSERT INTO ${h.tables.GIVEAWAYS} (message_id, channel_id, host_id, prize, winners_count, end_time, entrants, ended)
+                 VALUES (?, ?, ?, ?, ?, ?, '[]', 0)`,
+                [giveawayMessage.id, channel.id, interaction.user.id, prize, winnersCount, endTime.toISOString()]
+            );
+        } catch (error) {
             console.error('Failed to save giveaway to database:', error);
             await webhook.send({
                 content: `${releaseEmojis?.ALERT || '⚠'} Giveaway created but failed to save to database. It may not persist after restart.`,
@@ -250,18 +228,17 @@ async function handleGiveawayButton(interaction) {
     let giveaway = activeGiveaways.get(messageId);
     
     if (!giveaway) {
-        const supabaseClient = await getSupabase();
-        const { data, error } = await supabaseClient
-            .from(h.tables.GIVEAWAYS)
-            .select('*')
-            .eq('message_id', messageId)
-            .eq('ended', false)
-            .single();
+        // Fetch from D1
+        const row = await db.query(
+            `SELECT * FROM ${h.tables.GIVEAWAYS} WHERE message_id = ? AND ended = 0`,
+            [messageId],
+            true
+        );
 
-        if (error || !data) {
+        if (!row) {
             responseContent = 'This giveaway has already ended or does not exist.';
         } else {
-            const endTime = new Date(data.end_time).getTime();
+            const endTime = new Date(row.end_time).getTime();
             const timeLeft = endTime - Date.now();
             let timeoutId = null;
             if (timeLeft > 0) {
@@ -273,14 +250,14 @@ async function handleGiveawayButton(interaction) {
 
             if (!responseContent) {
                 giveaway = {
-                    messageId: data.message_id,
-                    channelId: data.channel_id,
-                    hostId: data.host_id,
-                    hostMention: `<@${data.host_id}>`,
+                    messageId: row.message_id,
+                    channelId: row.channel_id,
+                    hostId: row.host_id,
+                    hostMention: `<@${row.host_id}>`,
                     endTime,
-                    winnersCount: data.winners_count,
-                    prize: data.prize,
-                    entrants: new Set(data.entrants || []),
+                    winnersCount: row.winners_count,
+                    prize: row.prize,
+                    entrants: new Set(JSON.parse(row.entrants || '[]')),
                     ended: false,
                     timeoutId
                 };
@@ -297,17 +274,19 @@ async function handleGiveawayButton(interaction) {
         } else {
             giveaway.entrants.add(userId);
 
-            const supabaseClient = await getSupabase();
-            const { error } = await supabaseClient
-                .from(h.tables.GIVEAWAYS)
-                .update({ entrants: Array.from(giveaway.entrants) })
-                .eq('message_id', messageId);
-
-            if (error) {
+            // Update entrants in D1
+            const entrantsJson = JSON.stringify(Array.from(giveaway.entrants));
+            try {
+                await db.query(
+                    `UPDATE ${h.tables.GIVEAWAYS} SET entrants = ? WHERE message_id = ?`,
+                    [entrantsJson, messageId]
+                );
+            } catch (error) {
                 console.error('Failed to update entrants:', error);
                 giveaway.entrants.delete(userId);
                 responseContent = 'Failed to enter giveaway due to a database error.';
-            } else {
+            }
+            if (!responseContent) {
                 responseContent = `${releaseEmojis?.getRandomVerify?.() || '✅'} You entered the giveaway!`;
             }
         }
@@ -334,30 +313,29 @@ async function endGiveaway(messageId, client) {
     activeGiveaways.delete(messageId);
 
     try {
-        const supabaseClient = await getSupabase();
-        const { data: dbGiveaway, error: fetchError } = await supabaseClient
-            .from(h.tables.GIVEAWAYS)
-            .select('*')
-            .eq('message_id', messageId)
-            .single();
+        const row = await db.query(
+            `SELECT * FROM ${h.tables.GIVEAWAYS} WHERE message_id = ?`,
+            [messageId],
+            true
+        );
 
-        if (fetchError || !dbGiveaway) {
+        if (!row) {
             console.error('Giveaway not found in database at end time:', messageId);
             return;
         }
 
-        const channel = await client.channels.fetch(dbGiveaway.channel_id);
+        const channel = await client.channels.fetch(row.channel_id);
         const webhook = await getGiveawayWebhook(channel);
         const message = await channel.messages.fetch(messageId);
 
-        if (dbGiveaway.reminder_message_id) {
+        if (row.reminder_message_id) {
             try {
-                const reminderMsg = await channel.messages.fetch(dbGiveaway.reminder_message_id).catch(() => null);
+                const reminderMsg = await channel.messages.fetch(row.reminder_message_id).catch(() => null);
                 if (reminderMsg) await reminderMsg.delete();
             } catch (err) {}
         }
 
-        const entrantsArray = dbGiveaway.entrants || [];
+        const entrantsArray = JSON.parse(row.entrants || '[]');
         const totalEntries = entrantsArray.length;
 
         if (totalEntries === 0) {
@@ -369,29 +347,29 @@ async function endGiveaway(messageId, client) {
         } else {
             const winners = [];
             const shuffled = [...entrantsArray];
-            for (let i = 0; i < Math.min(dbGiveaway.winners_count, shuffled.length); i++) {
+            for (let i = 0; i < Math.min(row.winners_count, shuffled.length); i++) {
                 const randomIndex = Math.floor(Math.random() * shuffled.length);
                 winners.push(shuffled.splice(randomIndex, 1)[0]);
             }
             const winnerMentions = winners.map(id => `<@${id}>`).join(', ');
             const { left, right } = h.getTwoRandomPresents();
             await webhook.send({
-                content: `${releaseEmojis?.CONFETTI || '🎉'} Congratulations to ${winnerMentions} for winning ${left} **${dbGiveaway.prize}** ${right}!`,
+                content: `${releaseEmojis?.CONFETTI || '🎉'} Congratulations to ${winnerMentions} for winning ${left} **${row.prize}** ${right}!`,
                 username: 'Giveaway',
                 avatar: h.urls.LOGO_URL
             });
         }
 
         const oldEmbed = message.embeds[0];
-        const endedTitle = `${dbGiveaway.prize} Giveaway Ended ${releaseEmojis?.CONFETTI || '🎉'}`;
+        const endedTitle = `${row.prize} Giveaway Ended ${releaseEmojis?.CONFETTI || '🎉'}`;
         const newEmbed = EmbedBuilder.from(oldEmbed)
             .setTitle(endedTitle)
             .setDescription(null)
             .setColor(colors.ended)
             .setFooter({ text: 'Ended' })
             .setFields(
-                { name: 'Hosts', value: `<@${dbGiveaway.host_id}>`, inline: true },
-                { name: 'Winners', value: `${dbGiveaway.winners_count}`, inline: true },
+                { name: 'Hosts', value: `<@${row.host_id}>`, inline: true },
+                { name: 'Winners', value: `${row.winners_count}`, inline: true },
                 { name: 'Total Entries', value: `${totalEntries}`, inline: true }
             );
 
@@ -399,61 +377,54 @@ async function endGiveaway(messageId, client) {
         else newEmbed.setImage(null);
 
         await webhook.editMessage(message.id, { embeds: [newEmbed], components: [] });
-        await supabaseClient.from(h.tables.GIVEAWAYS).delete().eq('message_id', messageId);
+        await db.query(`DELETE FROM ${h.tables.GIVEAWAYS} WHERE message_id = ?`, [messageId]);
     } catch (err) {
         console.error('Error ending giveaway:', err);
     }
 }
 
 async function restoreGiveaways(client) {
-    const supabaseClient = await getSupabase();
-    const now = new Date().toISOString();
+    try {
+        const now = new Date().toISOString();
+        const rows = await db.query(
+            `SELECT * FROM ${h.tables.GIVEAWAYS} WHERE ended = 0 AND end_time > ?`,
+            [now]
+        );
 
-    const { data, error } = await guardQuery(() =>
-        supabaseClient
-            .from(h.tables.GIVEAWAYS)
-            .select('*')
-            .eq('ended', false)
-            .gt('end_time', now)
-    );
+        if (!rows || rows.length === 0) return;
 
-    if (error) {
-        h.logSupabaseError('GiveawayRestore', error);
-        return;
-    }
+        for (const g of rows) {
+            const endTime = new Date(g.end_time).getTime();
+            const timeLeft = endTime - Date.now();
 
-    if (!data || data.length === 0) return;
-
-    for (const g of data) {
-        const endTime = new Date(g.end_time).getTime();
-        const timeLeft = endTime - Date.now();
-
-        if (timeLeft <= 0) {
-            console.log(`Giveaway ${g.message_id} - ${g.prize} already ended, processing now.`);
-            await endGiveawayFromDB(g, client);
-        } else {
-            const timeoutId = safeTimeout(() => endGiveaway(g.message_id, client), timeLeft);
-            activeGiveaways.set(g.message_id, {
-                messageId: g.message_id,
-                channelId: g.channel_id,
-                hostId: g.host_id,
-                hostMention: `<@${g.host_id}>`,
-                endTime,
-                winnersCount: g.winners_count,
-                prize: g.prize,
-                entrants: new Set(g.entrants || []),
-                ended: false,
-                timeoutId,
-                imageUrl: USE_HOSTED_IMAGE ? GIVEAWAY_IMAGE_URL : null
-            });
-            console.log(`Restoring giveaway ${g.message_id} - ${g.prize}`);
+            if (timeLeft <= 0) {
+                console.log(`Giveaway ${g.message_id} - ${g.prize} already ended, processing now.`);
+                await endGiveawayFromDB(g, client);
+            } else {
+                const timeoutId = safeTimeout(() => endGiveaway(g.message_id, client), timeLeft);
+                activeGiveaways.set(g.message_id, {
+                    messageId: g.message_id,
+                    channelId: g.channel_id,
+                    hostId: g.host_id,
+                    hostMention: `<@${g.host_id}>`,
+                    endTime,
+                    winnersCount: g.winners_count,
+                    prize: g.prize,
+                    entrants: new Set(JSON.parse(g.entrants || '[]')),
+                    ended: false,
+                    timeoutId,
+                    imageUrl: USE_HOSTED_IMAGE ? GIVEAWAY_IMAGE_URL : null
+                });
+                console.log(`Restoring giveaway ${g.message_id} - ${g.prize}`);
+            }
         }
+    } catch (err) {
+        console.error('Failed to restore giveaways:', err);
     }
 }
 
 async function endGiveawayFromDB(g, client) {
     try {
-        const supabaseClient = await getSupabase();
         const channel = await client.channels.fetch(g.channel_id);
         const webhook = await getGiveawayWebhook(channel);
         const message = await channel.messages.fetch(g.message_id);
@@ -465,7 +436,7 @@ async function endGiveawayFromDB(g, client) {
             } catch (err) {}
         }
 
-        const entrantsArray = g.entrants || [];
+        const entrantsArray = JSON.parse(g.entrants || '[]');
         const totalEntries = entrantsArray.length;
 
         if (totalEntries === 0) {
@@ -507,7 +478,7 @@ async function endGiveawayFromDB(g, client) {
         else newEmbed.setImage(null);
 
         await webhook.editMessage(message.id, { embeds: [newEmbed], components: [] });
-        await supabaseClient.from(h.tables.GIVEAWAYS).delete().eq('message_id', g.message_id);
+        await db.query(`DELETE FROM ${h.tables.GIVEAWAYS} WHERE message_id = ?`, [g.message_id]);
     } catch (err) {
         console.error(`Error ending giveaway from DB ${g.message_id}:`, err);
     }
