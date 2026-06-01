@@ -1,7 +1,7 @@
 // events/guildMemberAdd.js
 
 const { MessageFlags } = require('discord.js');
-const supabase = require('../services/supabase');
+const db = require('../services/database');
 const { parseMessage } = require('../services/parserService');
 const h = require('../utils/helpers');
 const { processMember, NUDITY_THRESHOLD } = require('../features/avatarScanner');
@@ -37,11 +37,13 @@ module.exports = async (member) => {
 
         // ----- WELCOME MESSAGE -----
         try {
-            const { data: settings } = await supabase
-                .from(h.tables.SERVER_SETTINGS)
-                .select('welcome_channel_id, welcome_message')
-                .eq('guild_id', member.guild.id)
-                .single();
+            const settings = await db.query(
+                `SELECT welcome_channel_id, welcome_message
+                 FROM ${h.tables.SERVER_SETTINGS}
+                 WHERE guild_id = ?`,
+                [member.guild.id],
+                true
+            );
 
             if (settings && settings.welcome_channel_id && settings.welcome_message) {
                 const channel = await member.guild.channels.fetch(settings.welcome_channel_id);
