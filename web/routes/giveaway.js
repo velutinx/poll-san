@@ -30,14 +30,14 @@ module.exports = function setupGiveawayRoutes(app, client, getGuildMembers) {
         try {
             const now = new Date().toISOString();
             // Fetch active giveaway
-            const giveaway = await db.query(
-                `SELECT * FROM ${h.tables.GIVEAWAYS}
-                 WHERE ended = 0 AND end_time > ?
-                 ORDER BY end_time ASC
-                 LIMIT 1`,
-                [now],
-                true   // single row
-            );
+const giveaway = await db.query(
+    `SELECT * FROM ${h.tables.GIVEAWAYS}
+     WHERE ended = 0 AND julianday(end_time) > julianday('now')
+     ORDER BY julianday(end_time) ASC
+     LIMIT 1`,
+    [],
+    true
+);
 
             if (!giveaway) {
                 return res.json({ active: false });
