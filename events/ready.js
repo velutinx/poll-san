@@ -11,14 +11,11 @@ const initChannelCleaner = require('../handlers/channelCleaner');
 const initMudaeMessageHandler = require('../handlers/mudaeMessageHandler');
 
 const {
-  Client,
-  GatewayIntentBits,
   REST,
   Routes,
   SlashCommandBuilder,
   ContextMenuCommandBuilder,
   ApplicationCommandType,
-  Partials,
   Events
 } = require('discord.js');
 
@@ -37,7 +34,6 @@ module.exports = async (c) => {
     new SlashCommandBuilder().setName('level').setDescription('Shows your current XP/level').toJSON(),
     new ContextMenuCommandBuilder().setName('View Level').setType(ApplicationCommandType.User).toJSON(),
     giveawayCommand.data.toJSON(),
-    rollCommand.data.toJSON(),  // ← ADD THIS
     require('../commands/admin/post-slots-ui').data.toJSON(),
     require('../commands/admin/post-hangman-ui').data.toJSON(),
     require('../commands/admin/post-verify-ui').data.toJSON(),
@@ -45,7 +41,6 @@ module.exports = async (c) => {
     require('../commands/admin/post-cointoss-ui').data.toJSON(),
     require('../commands/admin/post-redeem-ui').data.toJSON()
   ];
-
 
   require('../services/roleAuditHandler')(c);
 
@@ -55,6 +50,7 @@ module.exports = async (c) => {
       Routes.applicationGuildCommands(process.env.CLIENT_ID, process.env.GUILD_ID),
       { body: commandsData }
     );
+    console.log('✅ Slash commands registered');
   } catch (err) {
     console.error('❌ Failed to sync commands:', err);
   }
