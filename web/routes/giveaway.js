@@ -171,50 +171,50 @@ if (!giveaway) {
     // ────────────────────────────────────────────────
     // POST – Adjust giveaway end time by hours (+/-)
     // ────────────────────────────────────────────────
-    app.post('/api/giveaway/adjust-time', async (req, res) => {
-        const { hours } = req.body;
-        if (typeof hours !== 'number' || isNaN(hours)) {
-            return res.status(400).json({ error: 'Invalid hours value' });
+app.post('/api/giveaway/adjust-time', async (req, res) => {
+    const { hours } = req.body;
+    if (typeof hours !== 'number' || isNaN(hours)) {
+        return res.status(400).json({ error: 'Invalid hours value' });
+    }
+
+    try {
+        const giveaway = await db.query(
+            `SELECT * FROM ${h.tables.GIVEAWAYS}
+             WHERE ended = 0
+             ORDER BY julianday(end_time) ASC
+             LIMIT 1`,
+            [],
+            true
+        );
+        
+        if (!giveaway) {
+            return res.status(404).json({ error: 'No active giveaway found' });
         }
 
-        try {
-            const now = new Date().toISOString();
-            const giveaway = await db.query(
-                `SELECT * FROM ${h.tables.GIVEAWAYS}
-                 WHERE ended = 0 AND end_time > ?
-                 ORDER BY end_time ASC
-                 LIMIT 1`,
-                [now],
-                true
-            );
-            if (!giveaway) {
-                return res.status(404).json({ error: 'No active giveaway found' });
-            }
+        const oldEnd = new Date(giveaway.end_time);
+        const newEnd = new Date(oldEnd.getTime() + hours * 60 * 60 * 1000);
+        const newEndISO = newEnd.toISOString();
 
-            const oldEnd = new Date(giveaway.end_time);
-            const newEnd = new Date(oldEnd.getTime() + hours * 60 * 60 * 1000);
-            const newEndISO = newEnd.toISOString();
+        await db.query(
+            `UPDATE ${h.tables.GIVEAWAYS} SET end_time = ? WHERE message_id = ?`,
+            [newEndISO, giveaway.message_id]
+        );
 
-            await db.query(
-                `UPDATE ${h.tables.GIVEAWAYS} SET end_time = ? WHERE message_id = ?`,
-                [newEndISO, giveaway.message_id]
-            );
+        const channel = await client.channels.fetch(giveaway.channel_id);
+        const webhook = await getGiveawayWebhook(channel);
+        const message = await channel.messages.fetch(giveaway.message_id);
+        const oldEmbed = message.embeds[0];
+        const newEmbed = new EmbedBuilder(oldEmbed.data)
+            .spliceFields(0, 1, { name: 'Ends', value: `<t:${Math.floor(newEnd.getTime() / 1000)}:R>`, inline: true });
 
-            const channel = await client.channels.fetch(giveaway.channel_id);
-            const webhook = await getGiveawayWebhook(channel);
-            const message = await channel.messages.fetch(giveaway.message_id);
-            const oldEmbed = message.embeds[0];
-            const newEmbed = new EmbedBuilder(oldEmbed.data)
-                .spliceFields(0, 1, { name: 'Ends', value: `<t:${Math.floor(newEnd.getTime() / 1000)}:R>`, inline: true });
+        await webhook.editMessage(message.id, { embeds: [newEmbed] });
 
-            await webhook.editMessage(message.id, { embeds: [newEmbed] });
-
-            res.json({ success: true, newEndTime: newEndISO });
-        } catch (err) {
-            console.error('Giveaway time adjust error:', err);
-            res.status(500).json({ error: err.message });
-        }
-    });
+        res.json({ success: true, newEndTime: newEndISO });
+    } catch (err) {
+        console.error('Giveaway time adjust error:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
 
     // ────────────────────────────────────────────────
     // POST – Remove a user from the active giveaway
