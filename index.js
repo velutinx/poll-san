@@ -1,4 +1,4 @@
-// index.js (FULL – all listener exports fixed)
+// index.js (FULL – fixed line 61: interactionHandler export)
 const path = require('path');
 require('dotenv').config({ path: path.resolve(__dirname, '.env'), quiet: true });
 
@@ -21,30 +21,27 @@ const { syncMembershipRoles } = require('./services/membershipSync');
 const giveawayCommand = require('./commands/giveaway');
 const { checkAndNotifyCooldowns } = require('./services/cooldownNotifier');
 const { handleTriviaMessage, processEndOfDayAwards } = require('./services/triviaJanitor');
-const handleInteraction = require('./handlers/interactionHandler');
 const verification = require('./events/verification');
 const initMudaeMessageHandler = require('./handlers/mudaeMessageHandler');
 const h = require('./utils/helpers');
 const initChannelCleaner = require('./handlers/channelCleaner');
-const roleConsistency = require('./events/roleConsistency');
-const roleUpdateRecalc = require('./events/roleUpdateRecalc');
 
-// ── Helper: extract a callable function from any export style ──
-function getListener(mod) {
+// ── Safe require helper ──
+function getFn(mod, name) {
     if (typeof mod === 'function') return mod;
     if (mod && typeof mod.default === 'function') return mod.default;
     if (mod && typeof mod.execute === 'function') return mod.execute;
-    throw new Error('Module does not export a function: ' + String(mod));
+    throw new Error(`${name || 'Module'} does not export a function.`);
 }
 
-const messageCreateEvent = getListener(require('./events/messageCreate'));
-const guildMemberAddEvent = getListener(require('./events/guildMemberAdd'));
-const reactionsAddEvent = getListener(require('./events/reactions'));
-const reactionsRemoveEvent = getListener(require('./events/reactions')); // same module, but we need separate functions? We'll handle differently.
-// Actually reactions.js might export an object with 'add' and 'remove'? The original code used a single module and passed 'add'/'remove' as second argument.
-// So we keep original way for reactions: client.on(Events.MessageReactionAdd, (reaction, user) => require('./events/reactions')(reaction, user, 'add'));
-// That is fine because the module is expected to be a function that takes (reaction, user, action). We'll leave that as is.
-// But we need to ensure it's a function. We can just use getListener for it too.
+// ── Require all event handlers safely ──
+const messageCreateEvent      = getFn(require('./events/messageCreate'), 'messageCreate');
+const guildMemberAddEvent     = getFn(require('./events/guildMemberAdd'), 'guildMemberAdd');
+const reactionsModule         = getFn(require('./events/reactions'), 'reactions');
+const guildMemberRemoveEvent  = getFn(require('./events/guildMemberPollRemove'), 'guildMemberPollRemove');
+const roleConsistencyEvent    = getFn(require('./events/roleConsistency'), 'roleConsistency');
+const roleUpdateRecalcEvent   = getFn(require('./events/roleUpdateRecalc'), 'roleUpdateRecalc');
+const handleInteraction       = getFn(require('./handlers/interactionHandler'), 'interactionHandler');
 
 const client = new Client({
     intents: [
@@ -58,32 +55,23 @@ const client = new Client({
 });
 
 client.once(Events.ClientReady, (c) => require('./events/ready')(c));
+
+// ✅ This line (61) is now safe – handleInteraction is guaranteed to be a function
 client.on(Events.InteractionCreate, handleInteraction);
 
-// These are fine because we call getListener at require time
-client.on(Events.GuildMemberAdd, getListener(require('./events/guildMemberAdd')));
-client.on(Events.GuildMemberAdd, verification.execute); // separate verification handler
+client.on(Events.GuildMemberAdd, guildMemberAddEvent);
+client.on(Events.GuildMemberAdd, verification.execute);
 
-client.on(Events.MessageReactionAdd, (reaction, user) => {
-    const fn = getListener(require('./events/reactions'));
-    fn(reaction, user, 'add');
-});
-client.on(Events.MessageReactionRemove, (reaction, user) => {
-    const fn = getListener(require('./events/reactions'));
-    fn(reaction, user, 'remove');
-});
+client.on(Events.MessageReactionAdd, (reaction, user) => reactionsModule(reaction, user, 'add'));
+client.on(Events.MessageReactionRemove, (reaction, user) => reactionsModule(reaction, user, 'remove'));
 
-client.on('guildMemberRemove', (member) => {
-    const handler = require('./events/guildMemberPollRemove');
-    if (typeof handler === 'function') handler(member);
-});
+client.on(Events.GuildMemberRemove, guildMemberRemoveEvent);
 
-client.on('messageCreate', messageCreateEvent);
+client.on(Events.MessageCreate, messageCreateEvent);
+client.on(Events.GuildMemberUpdate, roleConsistencyEvent);
+client.on(Events.GuildMemberUpdate, roleUpdateRecalcEvent);
 
-client.on(Events.GuildMemberUpdate, getListener(roleConsistency));
-client.on(Events.GuildMemberUpdate, getListener(roleUpdateRecalc));
-
-client.on('messageCreate', (message) => {
+client.on(Events.MessageCreate, (message) => {
     handleTriviaMessage(message).catch(err => console.error('Trivia handler error:', err));
 });
 client.on(Events.MessageCreate, async (message) => {
