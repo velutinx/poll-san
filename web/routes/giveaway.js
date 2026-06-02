@@ -32,12 +32,19 @@ module.exports = function setupGiveawayRoutes(app, client, getGuildMembers) {
             // Fetch active giveaway
 const giveaway = await db.query(
     `SELECT * FROM ${h.tables.GIVEAWAYS}
-     WHERE ended = 0 AND julianday(end_time) > julianday('now')
+     WHERE ended = 0
      ORDER BY julianday(end_time) ASC
      LIMIT 1`,
     [],
     true
 );
+
+// Then filter in JavaScript:
+if (giveaway && new Date(giveaway.end_time) <= new Date()) {
+    // It's expired, process end
+    await endGiveaway(giveaway.message_id, client);
+    return res.json({ active: false });
+}
 
             if (!giveaway) {
                 return res.json({ active: false });
