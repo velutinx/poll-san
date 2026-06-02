@@ -50,7 +50,7 @@ module.exports = async (c) => {
       Routes.applicationGuildCommands(process.env.CLIENT_ID, process.env.GUILD_ID),
       { body: commandsData }
     );
-    console.log('✅ Slash commands registered');
+ //   console.log('✅ Slash commands registered');
   } catch (err) {
     console.error('❌ Failed to sync commands:', err);
   }
