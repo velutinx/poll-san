@@ -46,7 +46,10 @@ client.on(Events.GuildMemberAdd, (member) => require('./events/guildMemberAdd')(
 client.on(Events.GuildMemberAdd, verification.execute);
 client.on(Events.MessageReactionAdd, (reaction, user) => require('./events/reactions')(reaction, user, 'add'));
 client.on(Events.MessageReactionRemove, (reaction, user) => require('./events/reactions')(reaction, user, 'remove'));
-client.on('guildMemberRemove', require('./events/guildMemberPollRemove'));
+client.on('guildMemberRemove', (member) => {
+    const handler = require('./events/guildMemberPollRemove');
+    if (typeof handler === 'function') handler(member);
+});
 client.on('messageCreate', messageCreateEvent);
 client.on(Events.GuildMemberUpdate, roleConsistency);
 client.on(Events.GuildMemberUpdate, roleUpdateRecalc);
@@ -59,11 +62,9 @@ client.on(Events.MessageCreate, async (message) => {
 
 client.on('error', console.error);
 process.on('unhandledRejection', (reason) => {
-    // MEGA timeout – silent
     if (reason instanceof Error && reason.cause?.code === 'UND_ERR_CONNECT_TIMEOUT' && reason.message.includes('fetch failed')) {
         return;
     }
-    // All other errors are logged normally
     console.error(reason);
 });
 
