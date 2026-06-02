@@ -56,15 +56,6 @@ button:disabled { opacity: 0.6; cursor: not-allowed; }
 #preview-container, #sup-preview-container { display: grid; grid-template-columns: repeat(auto-fill, minmax(80px, 1fr)); gap: 12px; width: 100%; margin-top: 10px; }
 .preview-img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 6px; border: 2px solid #334155; }
 
-/* ---------------- QUEUE ---------------- */
-#draggable-queue { min-height: 200px !important; height: auto !important; display: flex !important; flex-direction: column !important; gap: 8px; padding: 10px; border: 1px solid #334155; background: #0f172a; box-sizing: border-box; overflow-y: auto; }
-.queue-item { min-height: 48px !important; height: auto !important; display: flex !important; align-items: center; padding: 12px 15px; background: #0f172a; border: 1px solid #334155; border-radius: 6px; cursor: grab; box-sizing: border-box; }
-.queue-item:active { cursor: grabbing; }
-.drag-handle { color: #475569; margin-right: 15px; font-size: 1.2rem; }
-.queue-ghost { opacity: 0.4; background: var(--accent) !important; }
-.queue-input-group { display: flex; gap: 10px; margin-bottom: 20px; }
-.remove-btn { background: transparent; color: #ef4444; padding: 5px; cursor: pointer; }
-
 /* ---------------- WINNER GRID ---------------- */
 .winner-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 10px; margin-top: 15px; }
 .winner-btn { background: #334155; font-size: 0.85rem; text-align: left; padding: 10px; border-radius: 6px; color: white; border: 1px solid transparent; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
