@@ -4,7 +4,6 @@ const { runPollInterval } = require('../services/pollService');
 const { cleanRoles } = require('../services/roleCleaner');
 const { syncMembershipRoles } = require('../services/membershipSync');
 const giveawayCommand = require('../commands/giveaway');
-const rollCommand = require('../commands/roll');  // ← ADD THIS
 const { checkAndNotifyCooldowns } = require('../services/cooldownNotifier');
 const { processEndOfDayAwards } = require('../services/triviaJanitor');
 const h = require('../utils/helpers');
