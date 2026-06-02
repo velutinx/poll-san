@@ -1,78 +1,94 @@
-// handlers/interactionHandler.js
+// index.js (FULL – fixed line 61: interactionHandler export)
+const path = require('path');
+require('dotenv').config({ path: path.resolve(__dirname, '.env'), quiet: true });
 
-const helpers = require('../utils/helpers');
-const giveawayCommand = require('../commands/giveaway');
-const { handleSlotsBet } = require('../services/slotsHandler');
-const { startHangmanGame } = require('../services/hangmanGame');
-const { handleCoinTossBet } = require('../services/coinTossHandler');
-const { handleShopSelect, handleShopPurchase } = require('../services/shopHandler');
 const {
-    handleRedeemStart,
-    handleRedeemSeries,
-    handleRedeemCancel,
-    handleRedeemVoteBoost,
-    handleRedeemSuggestCharacter,
-    handleSuggestModalSubmit
-} = require('../services/redeemHandler');
-const { handleVerifyStart } = require('../services/verifyHandler');
-const { handleCheckinClaim } = require('../services/checkinHandler');
+    Client,
+    GatewayIntentBits,
+    REST,
+    Routes,
+    SlashCommandBuilder,
+    ContextMenuCommandBuilder,
+    ApplicationCommandType,
+    Partials,
+    Events
+} = require('discord.js');
 
-module.exports = async function handleInteraction(interaction) {
-    try {
-        if (interaction.isChatInputCommand()) {
-            switch (interaction.commandName) {
-                case 'level': require('../commands/level')(interaction); break;
-                case 'giveaway': await giveawayCommand.execute(interaction); break;
-                case 'post_slots_ui': await require('../commands/admin/post-slots-ui').execute(interaction); break;
-                case 'post_hangman_ui': await require('../commands/admin/post-hangman-ui').execute(interaction); break;
-                case 'post_verify_ui': await require('../commands/admin/post-verify-ui').execute(interaction); break;
-                case 'post_checkin_ui': await require('../commands/admin/post-checkin-ui').execute(interaction); break;
-                case 'post_cointoss_ui': await require('../commands/admin/post-cointoss-ui').execute(interaction); break;
-                case 'post_redeem_ui': await require('../commands/admin/post-redeem-ui').execute(interaction); break;
-                default: break;
-            }
-        }
-        else if (interaction.isUserContextMenuCommand() && interaction.commandName === 'View Level') {
-            require('../commands/level')(interaction);
-        }
-        else if (interaction.isButton()) {
-            switch (interaction.customId) {
-                case 'shop_buy_confirm': await handleShopPurchase(interaction); break;
-                case 'slots_bet_1': await handleSlotsBet(interaction, 1); break;
-                case 'slots_bet_5': await handleSlotsBet(interaction, 5); break;
-                case 'slots_bet_25': await handleSlotsBet(interaction, 25); break;
-                case 'hangman_start_button': await startHangmanGame(interaction); break;
-                case 'verify_start': await handleVerifyStart(interaction); break;
-                case 'checkin_claim': await handleCheckinClaim(interaction); break;
-                case 'cointoss_bet_1': await handleCoinTossBet(interaction, 1); break;
-                case 'cointoss_bet_5': await handleCoinTossBet(interaction, 5); break;
-                case 'cointoss_bet_25': await handleCoinTossBet(interaction, 25); break;
-                case 'redeem_start': await handleRedeemStart(interaction); break;
-                case 'redeem_vote_power': await handleRedeemVoteBoost(interaction); break;
-                case 'redeem_suggest_character': await handleRedeemSuggestCharacter(interaction); break;
-                case 'redeem_cancel': await handleRedeemCancel(interaction); break;
-                default: {
-                    if (interaction.customId.startsWith('redeem_series_')) {
-                        const index = parseInt(interaction.customId.split('_')[2]);
-                        await handleRedeemSeries(interaction, index);
-                    } else {
-                        await giveawayCommand.handleGiveawayButton(interaction);
-                    }
-                }
-            }
-        }
-        else if (interaction.isModalSubmit()) {
-            if (interaction.customId === 'redeem_suggest_modal') {
-                await handleSuggestModalSubmit(interaction);
-            }
-        }
-        else if (interaction.isStringSelectMenu() && interaction.customId === 'shop_select') {
-            await handleShopSelect(interaction);
-        }
-    } catch (err) {
-        console.error('Interaction Error:', err);
-        if (!interaction.replied && !interaction.deferred) {
-            await interaction.reply({ content: 'An error occurred.', flags: 64 }).catch(() => {});
-        }
+const { runPollInterval } = require('./services/pollService');
+const { cleanRoles } = require('./services/roleCleaner');
+const XPLib = require('./utils/xputils');
+const { syncMembershipRoles } = require('./services/membershipSync');
+const giveawayCommand = require('./commands/giveaway');
+const { checkAndNotifyCooldowns } = require('./services/cooldownNotifier');
+const { handleTriviaMessage, processEndOfDayAwards } = require('./services/triviaJanitor');
+const verification = require('./events/verification');
+const initMudaeMessageHandler = require('./handlers/mudaeMessageHandler');
+const h = require('./utils/helpers');
+const initChannelCleaner = require('./handlers/channelCleaner');
+
+// ── Safe require helper ──
+function getFn(mod, name) {
+    if (typeof mod === 'function') return mod;
+    if (mod && typeof mod.default === 'function') return mod.default;
+    if (mod && typeof mod.execute === 'function') return mod.execute;
+    throw new Error(`${name || 'Module'} does not export a function.`);
+}
+
+// ── Require all event handlers safely ──
+const messageCreateEvent      = getFn(require('./events/messageCreate'), 'messageCreate');
+const guildMemberAddEvent     = getFn(require('./events/guildMemberAdd'), 'guildMemberAdd');
+const reactionsModule         = getFn(require('./events/reactions'), 'reactions');
+const guildMemberRemoveEvent  = getFn(require('./events/guildMemberPollRemove'), 'guildMemberPollRemove');
+const roleConsistencyEvent    = getFn(require('./events/roleConsistency'), 'roleConsistency');
+const roleUpdateRecalcEvent   = getFn(require('./events/roleUpdateRecalc'), 'roleUpdateRecalc');
+const handleInteraction       = getFn(require('./handlers/interactionHandler'), 'interactionHandler');
+
+const client = new Client({
+    intents: [
+        GatewayIntentBits.Guilds,
+        GatewayIntentBits.GuildMessages,
+        GatewayIntentBits.MessageContent,
+        GatewayIntentBits.GuildMessageReactions,
+        GatewayIntentBits.GuildMembers
+    ],
+    partials: [Partials.Message, Partials.Reaction, Partials.User]
+});
+
+client.once(Events.ClientReady, (c) => require('./events/ready')(c));
+
+// ✅ This line (61) is now safe – handleInteraction is guaranteed to be a function
+client.on(Events.InteractionCreate, handleInteraction);
+
+client.on(Events.GuildMemberAdd, guildMemberAddEvent);
+client.on(Events.GuildMemberAdd, verification.execute);
+
+client.on(Events.MessageReactionAdd, (reaction, user) => reactionsModule(reaction, user, 'add'));
+client.on(Events.MessageReactionRemove, (reaction, user) => reactionsModule(reaction, user, 'remove'));
+
+client.on(Events.GuildMemberRemove, guildMemberRemoveEvent);
+
+client.on(Events.MessageCreate, messageCreateEvent);
+client.on(Events.GuildMemberUpdate, roleConsistencyEvent);
+client.on(Events.GuildMemberUpdate, roleUpdateRecalcEvent);
+
+client.on(Events.MessageCreate, (message) => {
+    handleTriviaMessage(message).catch(err => console.error('Trivia handler error:', err));
+});
+client.on(Events.MessageCreate, async (message) => {
+    await XPLib.updateXP(message);
+});
+
+client.on('error', console.error);
+process.on('unhandledRejection', (reason) => {
+    if (reason instanceof Error && reason.cause?.code === 'UND_ERR_CONNECT_TIMEOUT' && reason.message.includes('fetch failed')) {
+        return;
     }
-};
+    console.error(reason);
+});
+
+const { startCleanup } = require('./services/redeemHandler');
+startCleanup();
+
+require('./features/avatarScanner').init(client);
+
+client.login(process.env.DISCORD_TOKEN);
