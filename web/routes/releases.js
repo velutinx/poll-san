@@ -1,4 +1,3 @@
-// web/routes/releases.js
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
@@ -74,6 +73,9 @@ module.exports = function setupReleasesRoutes(app, client, upload, FORUM_ID, SUP
   const PREVIEW_RELEASE_HEADER = `${h.releaseEmojis.NEW1}${h.releaseEmojis.NEW2} RELEASE`;
   const SUPPORTER_RELEASE_HEADER = `${h.releaseEmojis.EIGHTEENPLUS} ${h.releaseEmojis.NEW1}${h.releaseEmojis.NEW2} SUPPORTER RELEASE`;
   
+  // Heart emoji with fallback
+  const heartEmoji = h.releaseEmojis?.HEART || '💖';
+  
   // ────────────────────────────────────────────────
   // 8. RELEASE PREVIEW
   // ────────────────────────────────────────────────
@@ -104,7 +106,8 @@ module.exports = function setupReleasesRoutes(app, client, upload, FORUM_ID, SUP
       const suffixStr = suffix ? ` — ${suffix}` : '';
       const threadTitle = `[${series.toUpperCase()}] ${charName} — Pack #${pack}${suffixStr}`;
 
-      const messageBody = `${PREVIEW_RELEASE_HEADER}${isSoon ? ' -- SOON' : ''}
+      // ✨ Added heart emoji at the beginning
+      const messageBody = `${heartEmoji} ${PREVIEW_RELEASE_HEADER}${isSoon ? ' -- SOON' : ''}
 ━━━━━━━━━━━━━━
 Character: ${charName}
 Series: ${series}
@@ -273,7 +276,8 @@ ${getRandomArrow()} See <#${SUPPORTER_FORUM_ID}>`;
       const suffixStr = suffix ? ` — ${suffix}` : '';
       const threadTitle = `[${series.toUpperCase()}] ${charName} — Pack #${pack}${suffixStr}`;
       
-      const messageBody = `${SUPPORTER_RELEASE_HEADER}
+      // ✨ Added heart emoji at the beginning
+      const messageBody = `${heartEmoji} ${SUPPORTER_RELEASE_HEADER}
 ${roleMention || ''}
 ━━━━━━━━━━━━━━
 Character: ${charName}
