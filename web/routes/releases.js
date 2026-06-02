@@ -1,3 +1,5 @@
+  //     poll-san/web/routes/releases.js
+
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
@@ -73,9 +75,6 @@ module.exports = function setupReleasesRoutes(app, client, upload, FORUM_ID, SUP
   const PREVIEW_RELEASE_HEADER = `${h.releaseEmojis.NEW1}${h.releaseEmojis.NEW2} RELEASE`;
   const SUPPORTER_RELEASE_HEADER = `${h.releaseEmojis.EIGHTEENPLUS} ${h.releaseEmojis.NEW1}${h.releaseEmojis.NEW2} SUPPORTER RELEASE`;
   
-  // Heart emoji with fallback
-  const heartEmoji = h.releaseEmojis?.HEART || '💖';
-  
   // ────────────────────────────────────────────────
   // 8. RELEASE PREVIEW
   // ────────────────────────────────────────────────
@@ -106,8 +105,7 @@ module.exports = function setupReleasesRoutes(app, client, upload, FORUM_ID, SUP
       const suffixStr = suffix ? ` — ${suffix}` : '';
       const threadTitle = `[${series.toUpperCase()}] ${charName} — Pack #${pack}${suffixStr}`;
 
-      // ✨ Added heart emoji at the beginning
-      const messageBody = `${heartEmoji} ${PREVIEW_RELEASE_HEADER}${isSoon ? ' -- SOON' : ''}
+      const messageBody = `${PREVIEW_RELEASE_HEADER}${isSoon ? ' -- SOON' : ''}
 ━━━━━━━━━━━━━━
 Character: ${charName}
 Series: ${series}
@@ -121,7 +119,7 @@ ${getRandomArrow()} See <#${SUPPORTER_FORUM_ID}>`;
       const attachments = files.map(f => ({ attachment: f.buffer, name: f.originalname }));
 
       const webhook = await getWebhook(forumChannel, 'Preview');
-      await webhook.send({
+      const sentMessage = await webhook.send({
         content: messageBody,
         files: attachments,
         threadName: threadTitle,
@@ -129,6 +127,14 @@ ${getRandomArrow()} See <#${SUPPORTER_FORUM_ID}>`;
         username: 'Preview',
         avatarURL: LOGO_URL,
       });
+
+      // Add heart reaction
+      const heartEmoji = h.releaseEmojis?.HEART || '💖';
+      try {
+        await sentMessage.react(heartEmoji);
+      } catch (reactErr) {
+        console.warn('Could not add heart reaction:', reactErr.message);
+      }
 
       res.json({ success: true });
     } catch (err) {
@@ -276,8 +282,7 @@ ${getRandomArrow()} See <#${SUPPORTER_FORUM_ID}>`;
       const suffixStr = suffix ? ` — ${suffix}` : '';
       const threadTitle = `[${series.toUpperCase()}] ${charName} — Pack #${pack}${suffixStr}`;
       
-      // ✨ Added heart emoji at the beginning
-      const messageBody = `${heartEmoji} ${SUPPORTER_RELEASE_HEADER}
+      const messageBody = `${SUPPORTER_RELEASE_HEADER}
 ${roleMention || ''}
 ━━━━━━━━━━━━━━
 Character: ${charName}
@@ -311,7 +316,7 @@ ${h.releaseEmojis.LINK} [megaLink](${download || 'https://mega.nz'})`;
       } else {
         // Create new thread
         const webhook = await getWebhook(forumChannel, 'Release');
-        await webhook.send({
+        const sentMessage = await webhook.send({
           content: messageBody,
           files: files.map(f => ({ attachment: f.buffer, name: f.originalname })),
           threadName: threadTitle,
@@ -320,6 +325,15 @@ ${h.releaseEmojis.LINK} [megaLink](${download || 'https://mega.nz'})`;
           avatarURL: LOGO_URL,
           flags: ["SuppressEmbeds"],
         });
+
+        // Add heart reaction
+        const heartEmoji = h.releaseEmojis?.HEART || '💖';
+        try {
+          await sentMessage.react(heartEmoji);
+        } catch (reactErr) {
+          console.warn('Could not add heart reaction:', reactErr.message);
+        }
+
         supporterResult = { created: true };
       }
 
