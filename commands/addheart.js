@@ -118,15 +118,6 @@ module.exports = {
             });
         }
 
-        // Verify custom emoji exists
-        const emojiId = CUSTOM_HEART.match(/\d+/)?.[0];
-        if (!emojiId || !interaction.guild.emojis.cache.has(emojiId)) {
-            return interaction.reply({
-                content: '❌ Custom animated heart emoji not found in this server. Please add it first.',
-                flags: [MessageFlags.Ephemeral]
-            });
-        }
-
         await interaction.reply({ content: '🔄 Starting – unarchiving threads, adding animated hearts...', flags: [MessageFlags.Ephemeral] });
 
         try {
