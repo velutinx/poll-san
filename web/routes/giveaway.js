@@ -39,13 +39,16 @@ const giveaway = await db.query(
     true
 );
 
-// Then filter in JavaScript:
-if (giveaway && new Date(giveaway.end_time) <= new Date()) {
-    // It's expired, process end
-    await endGiveaway(giveaway.message_id, client);
+// Don't try to end the giveaway here - the bot handles that
+if (!giveaway) {
     return res.json({ active: false });
 }
 
+// Then filter in JavaScript - commented out because endGiveaway isn't defined here
+// if (giveaway && new Date(giveaway.end_time) <= new Date()) {
+//     // It's expired, process end - this would happen automatically via the bot's timer
+//     return res.json({ active: false });
+// }
             if (!giveaway) {
                 return res.json({ active: false });
             }
