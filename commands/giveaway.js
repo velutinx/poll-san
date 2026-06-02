@@ -148,12 +148,15 @@ module.exports = {
 
         console.log(`Starting giveaway ID: ${giveawayId} - ${prize} for ${durationStr}`);
 
-        // Insert into D1 (SQLite)
+        // Format end_time for SQLite: 'YYYY-MM-DD HH:MM:SS'
+        const sqliteEndTime = endTime.toISOString().slice(0, 19).replace('T', ' ');
+
         try {
             await db.query(
-                `INSERT INTO ${h.tables.GIVEAWAYS} (message_id, channel_id, host_id, prize, winners_count, end_time, entrants, ended)
-                 VALUES (?, ?, ?, ?, ?, ?, '[]', 0)`,
-                [giveawayMessage.id, channel.id, interaction.user.id, prize, winnersCount, endTime.toISOString()]
+                `INSERT INTO ${h.tables.GIVEAWAYS} 
+                 (message_id, channel_id, host_id, prize, winners_count, end_time, entrants, ended, reminder_sent) 
+                 VALUES (?, ?, ?, ?, ?, ?, '[]', 0, 0)`,
+                [giveawayMessage.id, channel.id, interaction.user.id, prize, winnersCount, sqliteEndTime]
             );
         } catch (error) {
             console.error('Failed to save giveaway to database:', error);
@@ -228,7 +231,6 @@ async function handleGiveawayButton(interaction) {
     let giveaway = activeGiveaways.get(messageId);
     
     if (!giveaway) {
-        // Fetch from D1
         const row = await db.query(
             `SELECT * FROM ${h.tables.GIVEAWAYS} WHERE message_id = ? AND ended = 0`,
             [messageId],
@@ -274,7 +276,6 @@ async function handleGiveawayButton(interaction) {
         } else {
             giveaway.entrants.add(userId);
 
-            // Update entrants in D1
             const entrantsJson = JSON.stringify(Array.from(giveaway.entrants));
             try {
                 await db.query(
@@ -324,7 +325,7 @@ async function endGiveaway(messageId, client) {
             return;
         }
 
-        // Mark as ended in database first
+        // Mark as ended in database
         await db.query(
             `UPDATE ${h.tables.GIVEAWAYS} SET ended = 1 WHERE message_id = ?`,
             [messageId]
@@ -390,10 +391,11 @@ async function endGiveaway(messageId, client) {
 
 async function restoreGiveaways(client) {
     try {
-        const now = new Date().toISOString();
+        // Use julianday for reliable comparison with SQLite date format
         const rows = await db.query(
-            `SELECT * FROM ${h.tables.GIVEAWAYS} WHERE ended = 0 AND end_time > ?`,
-            [now]
+            `SELECT * FROM ${h.tables.GIVEAWAYS} 
+             WHERE ended = 0 AND julianday(end_time) > julianday('now')`,
+            []
         );
 
         if (!rows || rows.length === 0) return;
@@ -404,7 +406,7 @@ async function restoreGiveaways(client) {
 
             if (timeLeft <= 0) {
                 console.log(`Giveaway ${g.message_id} - ${g.prize} already ended, processing now.`);
-                await endGiveawayFromDB(g, client);
+                await endGiveaway(g.message_id, client);
             } else {
                 const timeoutId = safeTimeout(() => endGiveaway(g.message_id, client), timeLeft);
                 activeGiveaways.set(g.message_id, {
@@ -425,67 +427,6 @@ async function restoreGiveaways(client) {
         }
     } catch (err) {
         console.error('Failed to restore giveaways:', err);
-    }
-}
-
-async function endGiveawayFromDB(g, client) {
-    try {
-        const channel = await client.channels.fetch(g.channel_id);
-        const webhook = await getGiveawayWebhook(channel);
-        const message = await channel.messages.fetch(g.message_id);
-
-        if (g.reminder_message_id) {
-            try {
-                const reminderMsg = await channel.messages.fetch(g.reminder_message_id).catch(() => null);
-                if (reminderMsg) await reminderMsg.delete();
-            } catch (err) {}
-        }
-
-        const entrantsArray = JSON.parse(g.entrants || '[]');
-        const totalEntries = entrantsArray.length;
-
-        if (totalEntries === 0) {
-            await webhook.send({
-                content: 'No one entered the giveaway. 😢',
-                username: 'Giveaway',
-                avatar: h.urls.LOGO_URL
-            });
-        } else {
-            const winners = [];
-            const shuffled = [...entrantsArray];
-            for (let i = 0; i < Math.min(g.winners_count, shuffled.length); i++) {
-                const randomIndex = Math.floor(Math.random() * shuffled.length);
-                winners.push(shuffled.splice(randomIndex, 1)[0]);
-            }
-            const winnerMentions = winners.map(id => `<@${id}>`).join(', ');
-            const { left, right } = h.getTwoRandomPresents();
-            await webhook.send({
-                content: `${releaseEmojis?.CONFETTI || '🎉'} Congratulations to ${winnerMentions} for winning ${left} **${g.prize}** ${right}!`,
-                username: 'Giveaway',
-                avatar: h.urls.LOGO_URL
-            });
-        }
-
-        const oldEmbed = message.embeds[0];
-        const endedTitle = `${g.prize} Giveaway Ended ${releaseEmojis?.CONFETTI || '🎉'}`;
-        const newEmbed = EmbedBuilder.from(oldEmbed)
-            .setTitle(endedTitle)
-            .setDescription(null)
-            .setColor(colors.ended)
-            .setFooter({ text: 'Ended' })
-            .setFields(
-                { name: 'Hosts', value: `<@${g.host_id}>`, inline: true },
-                { name: 'Winners', value: `${g.winners_count}`, inline: true },
-                { name: 'Total Entries', value: `${totalEntries}`, inline: true }
-            );
-
-        if (USE_HOSTED_IMAGE) newEmbed.setImage(GIVEAWAY_IMAGE_URL);
-        else newEmbed.setImage(null);
-
-        await webhook.editMessage(message.id, { embeds: [newEmbed], components: [] });
-        await db.query(`DELETE FROM ${h.tables.GIVEAWAYS} WHERE message_id = ?`, [g.message_id]);
-    } catch (err) {
-        console.error(`Error ending giveaway from DB ${g.message_id}:`, err);
     }
 }
 
