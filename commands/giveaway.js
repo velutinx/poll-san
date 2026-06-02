@@ -117,7 +117,7 @@ module.exports = {
         const row = new ActionRowBuilder()
             .addComponents(
                 new ButtonBuilder()
-                    .setCustomId('enter_giveaway')
+                    .setCustomId(`giveaway_enter_${giveawayId}`)
                     .setLabel('Enter Giveaway')
                     .setStyle(ButtonStyle.Primary)
                     .setEmoji(emojiData)
