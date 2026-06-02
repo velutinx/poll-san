@@ -4,7 +4,6 @@ const path = require('path');
 const { ChannelType } = require('discord.js');
 const multer = require('multer');
 const cors = require('cors');
-const queueService = require('../services/queueService');
 const greetingsRouter = require('./routes/greetings');
 const helpers = require('../utils/helpers');
 const { getMegaStorage } = require('../services/megaSession');
@@ -165,7 +164,6 @@ module.exports = (client) => {
     });
 
     // ====================== EXTERNAL ROUTES ======================
-    const setupQueueRoutes = require('./routes/queue');
     const setupPollRoutes = require('./routes/poll');
     const setupMembershipsRoute = require('./routes/memberships');
     const setupSendMessageRoute = require('./routes/sendMessage');
