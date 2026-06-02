@@ -13,14 +13,14 @@ module.exports = (client) => {
     const app = express();
     const PORT = process.env.PORT || 8080;
 
-    // CORS (add the Cloudflare Worker origin)
+    // CORS
     app.use(cors({
         origin: ['https://velutinx.com', 'https://d.velutinx.com', 'http://localhost:8080', 'https://i2-uploader.velutinx.workers.dev'],
         methods: ['GET', 'POST', 'OPTIONS'],
         allowedHeaders: ['Content-Type', 'Authorization']
     }));
 
-    // Quick probe blocker
+    // Quick probe blocker (unchanged)
     app.use((req, res, next) => {
         const url = req.url.toLowerCase();
         const probePatterns = [
@@ -42,7 +42,7 @@ module.exports = (client) => {
     app.use(express.static(path.join(__dirname, 'public')));
     app.use(express.json());
 
-    // ====================== MEGA LINK PROXY ENDPOINT ======================
+    // MEGA link proxy
     function findFile(node, name) {
         if (!node.children) return null;
         for (const child of node.children) {
@@ -59,12 +59,10 @@ module.exports = (client) => {
     app.get('/api/mega-link', async (req, res) => {
         const filename = req.query.filename;
         if (!filename) return res.status(400).json({ error: 'Missing filename' });
-
         try {
             const storage = await getMegaStorage();
             const file = findFile(storage.root, filename);
             if (!file) return res.status(404).json({ error: 'File not found' });
-
             const link = await file.link();
             res.json({ url: link });
         } catch (err) {
@@ -73,7 +71,7 @@ module.exports = (client) => {
         }
     });
 
-    // ====================== CONFIG ENDPOINT (frontend IDs) ======================
+    // Config endpoint
     app.get('/api/config', (req, res) => {
         res.json({
             forumIds: {
@@ -89,7 +87,6 @@ module.exports = (client) => {
         });
     });
 
-    // Verification webhook route
     app.use(verifyRouter);
     app.set('client', client);
 
@@ -97,7 +94,7 @@ module.exports = (client) => {
     const FORUM_ID = helpers.ids.channels.preview_forum || '1465938599378812980';
     const SUPPORTER_FORUM_ID = helpers.ids.channels.supporter_forum || '1465937644394512516';
 
-    // ====================== MEMBER CACHE ======================
+    // Member cache
     let cachedMembers = null;
     let lastMemberFetch = 0;
     const MEMBER_CACHE_TTL = 15 * 60 * 1000;
@@ -120,16 +117,12 @@ module.exports = (client) => {
         return memberFetchPromise;
     }
 
-    // ====================== LIVE POLL UPDATES (SSE) ======================
+    // Live poll updates (SSE)
     const pollClients = new Set();
     function broadcastPollUpdate() {
         const data = JSON.stringify({ type: 'pollUpdate', timestamp: Date.now() });
         pollClients.forEach(c => {
-            try {
-                c.write(`data: ${data}\n\n`);
-            } catch (e) {
-                pollClients.delete(c);
-            }
+            try { c.write(`data: ${data}\n\n`); } catch (e) { pollClients.delete(c); }
         });
     }
     global.refreshPollDashboard = broadcastPollUpdate;
@@ -144,7 +137,7 @@ module.exports = (client) => {
         req.on('close', () => pollClients.delete(res));
     });
 
-    // ====================== CHANNELS ROUTE ======================
+    // Channels route
     app.get('/api/channels', async (req, res) => {
         try {
             const guild = client.guilds.cache.get(process.env.GUILD_ID);
@@ -158,12 +151,12 @@ module.exports = (client) => {
         }
     });
 
-    // ====================== STATIC DASHBOARD PAGE ======================
+    // Static dashboard page
     app.get('/poll-san', (req, res) => {
         res.sendFile(path.join(__dirname, 'public', 'index.html'));
     });
 
-    // ====================== EXTERNAL ROUTES ======================
+    // External routes (queue removed)
     const setupPollRoutes = require('./routes/poll');
     const setupMembershipsRoute = require('./routes/memberships');
     const setupSendMessageRoute = require('./routes/sendMessage');
@@ -176,7 +169,6 @@ module.exports = (client) => {
     app.use(greetingsRouter);
 
     setupGiveawayRoutes(app, client, getGuildMembers);
-    setupQueueRoutes(app, client, queueService);
     setupPollRoutes(app, client);
     setupMembershipsRoute(app, client);
     setupSendMessageRoute(app, client);
