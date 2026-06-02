@@ -14,7 +14,6 @@
     <nav>
         <h2>Poll-san</h2>
         <div class="nav-item active" onclick="switchTab('poll-mgmt')">📊 Polls</div>
-        <div class="nav-item" onclick="switchTab('queue-mgmt')">📋 Queue</div>
         <div class="nav-item" onclick="switchTab('releases-mgmt')">🚀 Releases</div>
         <div class="nav-item" onclick="switchTab('greetings')">👋 Greetings</div>
         <div class="nav-item" onclick="switchTab('member-mgmt')">💵 Membership</div>
@@ -305,19 +304,6 @@
                         </div>
                     </div>
                 </div>
-            </div>
-        </div>
-
-        <!-- Queue Management -->
-        <div id="queue-mgmt" class="tab-content">
-            <h1>Queue Management</h1>
-            <div class="card" style="max-width: 600px;">
-                <div class="queue-input-group">
-                    <input type="text" id="queue_input" placeholder=":female_sign: Isane Kotetsu">
-                    <button style="background: var(--accent)" onclick="addToQueue()">Add</button>
-                </div>
-                <div id="draggable-queue"></div>
-                <div id="queue-status" class="status"></div>
             </div>
         </div>
 
