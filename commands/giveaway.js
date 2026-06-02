@@ -324,6 +324,12 @@ async function endGiveaway(messageId, client) {
             return;
         }
 
+        // Mark as ended in database first
+        await db.query(
+            `UPDATE ${h.tables.GIVEAWAYS} SET ended = 1 WHERE message_id = ?`,
+            [messageId]
+        );
+
         const channel = await client.channels.fetch(row.channel_id);
         const webhook = await getGiveawayWebhook(channel);
         const message = await channel.messages.fetch(messageId);
@@ -377,7 +383,6 @@ async function endGiveaway(messageId, client) {
         else newEmbed.setImage(null);
 
         await webhook.editMessage(message.id, { embeds: [newEmbed], components: [] });
-        await db.query(`DELETE FROM ${h.tables.GIVEAWAYS} WHERE message_id = ?`, [messageId]);
     } catch (err) {
         console.error('Error ending giveaway:', err);
     }
