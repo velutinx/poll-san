@@ -1,3 +1,4 @@
+// index.js (FULL – corrected)
 const path = require('path');
 require('dotenv').config({ path: path.resolve(__dirname, '.env'), quiet: true });
 
@@ -18,7 +19,11 @@ const { cleanRoles } = require('./services/roleCleaner');
 const XPLib = require('./utils/xputils');
 const { syncMembershipRoles } = require('./services/membershipSync');
 const giveawayCommand = require('./commands/giveaway');
-const messageCreateEvent = require('./events/messageCreate');
+// ✅ Fixed: extract the actual listener function, whether module.exports is a function or an object
+const messageCreateModule = require('./events/messageCreate');
+const messageCreateEvent = (typeof messageCreateModule === 'function') 
+    ? messageCreateModule 
+    : (messageCreateModule.default || messageCreateModule.execute);
 const { checkAndNotifyCooldowns } = require('./services/cooldownNotifier');
 const { handleTriviaMessage, processEndOfDayAwards } = require('./services/triviaJanitor');
 const handleInteraction = require('./handlers/interactionHandler');
@@ -50,6 +55,7 @@ client.on('guildMemberRemove', (member) => {
     const handler = require('./events/guildMemberPollRemove');
     if (typeof handler === 'function') handler(member);
 });
+// ✅ Fixed line 44 – now safe
 client.on('messageCreate', messageCreateEvent);
 client.on(Events.GuildMemberUpdate, roleConsistency);
 client.on(Events.GuildMemberUpdate, roleUpdateRecalc);
