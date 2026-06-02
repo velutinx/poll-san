@@ -3,13 +3,11 @@ const { SlashCommandBuilder, PermissionsBitField, MessageFlags } = require('disc
 
 const PREVIEW_FORUM_ID = '1465938599378812980';
 const SUPPORTER_FORUM_ID = '1465937644394512516';
-const CUSTOM_HEART_EMOJI = '<a:heart:1511391137825558628>';
-const DEFAULT_HEART = '❤️';
-const FALLBACK_EMOJI = '❤️'; // if custom not found
+const CUSTOM_HEART = '<a:heart:1511391137825558628>';
 
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 
-async function processThread(thread, client, customEmoji) {
+async function processThread(thread, client) {
     let unarchived = false;
     try {
         if (thread.archived) {
@@ -20,51 +18,50 @@ async function processThread(thread, client, customEmoji) {
         }
 
         const starter = await thread.fetchStarterMessage().catch(() => null);
-        if (!starter) return { added: false, skipped: true };
+        if (!starter) return { added: false, reason: 'no_starter' };
 
-        // Fetch full message to get reactions
         const fullMessage = await starter.fetch();
-        const botReactions = fullMessage.reactions.cache.filter(r => 
-            r.users.cache.has(client.user.id)
-        );
+        
+        // Check if the bot already reacted with the custom heart
+        const customReaction = fullMessage.reactions.cache.find(r => r.emoji.toString() === CUSTOM_HEART);
+        if (customReaction && customReaction.users.cache.has(client.user.id)) {
+            console.log(`✅ Already has custom heart: ${thread.name}`);
+            return { added: false, reason: 'already_has_custom' };
+        }
 
-        // Check if bot already reacted with default heart
-        const defaultHeartReaction = botReactions.find(r => r.emoji.name === DEFAULT_HEART || r.emoji.name === 'heart');
-        if (defaultHeartReaction) {
-            // Remove the default heart reaction
-            await defaultHeartReaction.users.remove(client.user.id);
-            console.log(`🗑️ Removed default heart from ${thread.name}`);
+        // Remove any bot reactions (including default heart)
+        const botReactions = fullMessage.reactions.cache.filter(r => r.users.cache.has(client.user.id));
+        for (const reaction of botReactions.values()) {
+            await reaction.users.remove(client.user.id);
+            console.log(`🗑️ Removed bot reaction (${reaction.emoji.name}) from ${thread.name}`);
             await delay(300);
         }
 
-        // Now check if there are any reactions left (excluding bot's custom heart maybe)
-        const remainingReactions = fullMessage.reactions.cache.filter(r => 
-            !(r.users.cache.has(client.user.id) && r.emoji.toString() === customEmoji)
-        );
-        if (remainingReactions.size === 0) {
-            // No other reactions → add custom heart
-            await fullMessage.react(customEmoji);
+        // After removal, check if there are any other reactions (from users or other bots)
+        const remaining = fullMessage.reactions.cache.filter(r => r.users.cache.size > 0);
+        if (remaining.size === 0) {
+            await fullMessage.react(CUSTOM_HEART);
             console.log(`❤️ Added custom heart to ${thread.name}`);
-            return { added: true, skipped: false };
+            return { added: true, reason: 'added' };
         } else {
-            console.log(`⏩ Skipped (has ${remainingReactions.size} other reactions): ${thread.name}`);
-            return { added: false, skipped: true };
+            console.log(`⏩ Skipped (has ${remaining.size} other reactions): ${thread.name}`);
+            return { added: false, reason: 'has_other_reactions' };
         }
     } catch (err) {
         console.warn(`Error processing ${thread.name}:`, err.message);
-        return { added: false, skipped: false };
+        return { added: false, reason: 'error' };
     } finally {
         if (unarchived) {
             try {
                 await thread.setArchived(true);
                 console.log(`📦 Re‑archived: ${thread.name}`);
-            } catch (e) { /* ignore */ }
+            } catch (e) {}
             await delay(300);
         }
     }
 }
 
-async function processForum(guild, channelId, channelName, client, customEmoji) {
+async function processForum(guild, channelId, channelName, client) {
     const channel = await guild.channels.fetch(channelId);
     if (!channel?.isThreadOnly()) {
         console.error(`❌ ${channelName} not a forum`);
@@ -77,13 +74,13 @@ async function processForum(guild, channelId, channelName, client, customEmoji) 
     const active = await channel.threads.fetchActive();
     for (const thread of active.threads.values()) {
         total++;
-        const res = await processThread(thread, client, customEmoji);
+        const res = await processThread(thread, client);
         if (res.added) added++;
-        else if (res.skipped) skipped++;
+        else skipped++;
         await delay(500);
     }
 
-    // Archived threads (paginated)
+    // Archived threads
     let before = null;
     let hasMore = true;
     while (hasMore) {
@@ -92,9 +89,9 @@ async function processForum(guild, channelId, channelName, client, customEmoji) 
         const archived = await channel.threads.fetchArchived(options);
         for (const thread of archived.threads.values()) {
             total++;
-            const res = await processThread(thread, client, customEmoji);
+            const res = await processThread(thread, client);
             if (res.added) added++;
-            else if (res.skipped) skipped++;
+            else skipped++;
             await delay(500);
         }
         hasMore = archived.hasMore;
@@ -110,7 +107,7 @@ async function processForum(guild, channelId, channelName, client, customEmoji) 
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('addheart')
-        .setDescription('[ONE‑TIME] Replace default heart with animated heart on all forum posts'),
+        .setDescription('[ONE-TIME] Add animated heart to forum posts without any reactions'),
 
     async execute(interaction) {
         if (!interaction.memberPermissions.has(PermissionsBitField.Flags.Administrator) &&
@@ -121,27 +118,26 @@ module.exports = {
             });
         }
 
-        await interaction.reply({ content: '🔄 Starting – unarchiving threads, replacing hearts...', flags: [MessageFlags.Ephemeral] });
-
-        // Determine custom emoji availability
-        let customEmoji = FALLBACK_EMOJI;
-        const emojiId = CUSTOM_HEART_EMOJI.match(/\d+/)?.[0];
-        if (emojiId) {
-            const emoji = interaction.guild.emojis.cache.get(emojiId);
-            if (emoji) customEmoji = CUSTOM_HEART_EMOJI;
-            else console.warn('Custom heart not found, using default ❤️');
+        // Verify custom emoji exists
+        const emojiId = CUSTOM_HEART.match(/\d+/)?.[0];
+        if (!emojiId || !interaction.guild.emojis.cache.has(emojiId)) {
+            return interaction.reply({
+                content: '❌ Custom animated heart emoji not found in this server. Please add it first.',
+                flags: [MessageFlags.Ephemeral]
+            });
         }
+
+        await interaction.reply({ content: '🔄 Starting – unarchiving threads, adding animated hearts...', flags: [MessageFlags.Ephemeral] });
 
         try {
             const guild = interaction.guild;
-            const preview = await processForum(guild, PREVIEW_FORUM_ID, 'Preview Forum', interaction.client, customEmoji);
-            const supporter = await processForum(guild, SUPPORTER_FORUM_ID, 'Supporter Forum', interaction.client, customEmoji);
+            const preview = await processForum(guild, PREVIEW_FORUM_ID, 'Preview Forum', interaction.client);
+            const supporter = await processForum(guild, SUPPORTER_FORUM_ID, 'Supporter Forum', interaction.client);
 
             await interaction.editReply(
                 `✅ **Done!**\n` +
-                `Preview: ${preview.added} hearts added, ${preview.skipped} already had other reactions. (${preview.total} threads)\n` +
-                `Supporter: ${supporter.added} hearts added, ${supporter.skipped} already had other reactions. (${supporter.total} threads)\n\n` +
-                `Replaced default heart with animated heart where applicable.`
+                `Preview: ${preview.added} hearts added, ${preview.skipped} skipped. (${preview.total} threads)\n` +
+                `Supporter: ${supporter.added} hearts added, ${supporter.skipped} skipped. (${supporter.total} threads)`
             );
         } catch (err) {
             console.error(err);
