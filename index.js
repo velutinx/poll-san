@@ -55,22 +55,16 @@ const client = new Client({
 });
 
 client.once(Events.ClientReady, (c) => require('./events/ready')(c));
-
-// ✅ This line (61) is now safe – handleInteraction is guaranteed to be a function
 client.on(Events.InteractionCreate, handleInteraction);
-
 client.on(Events.GuildMemberAdd, guildMemberAddEvent);
 client.on(Events.GuildMemberAdd, verification.execute);
-
 client.on(Events.MessageReactionAdd, (reaction, user) => reactionsModule(reaction, user, 'add'));
 client.on(Events.MessageReactionRemove, (reaction, user) => reactionsModule(reaction, user, 'remove'));
-
 client.on(Events.GuildMemberRemove, guildMemberRemoveEvent);
-
 client.on(Events.MessageCreate, messageCreateEvent);
+client.on(Events.MessageCreate, require('./events/boostReaction'));
 client.on(Events.GuildMemberUpdate, roleConsistencyEvent);
 client.on(Events.GuildMemberUpdate, roleUpdateRecalcEvent);
-
 client.on(Events.MessageCreate, (message) => {
     handleTriviaMessage(message).catch(err => console.error('Trivia handler error:', err));
 });
