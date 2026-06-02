@@ -1,4 +1,3 @@
-// index.js
 const path = require('path');
 require('dotenv').config({ path: path.resolve(__dirname, '.env'), quiet: true });
 
@@ -51,12 +50,6 @@ client.on('guildMemberRemove', require('./events/guildMemberPollRemove'));
 client.on('messageCreate', messageCreateEvent);
 client.on(Events.GuildMemberUpdate, roleConsistency);
 client.on(Events.GuildMemberUpdate, roleUpdateRecalc);
-client.on('messageCreate', (message) => {
-    const boostReaction = require('./events/boostReaction');
-    if (typeof boostReaction === 'function') {
-        boostReaction(message);
-    }
-});
 client.on('messageCreate', (message) => {
     handleTriviaMessage(message).catch(err => console.error('Trivia handler error:', err));
 });
