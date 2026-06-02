@@ -28,7 +28,7 @@ module.exports = function setupGiveawayRoutes(app, client, getGuildMembers) {
     // ────────────────────────────────────────────────
     app.get('/api/giveaway/active', async (req, res) => {
         try {
-            const now = new Date().toISOString();
+            const now = new Date().toUTCString();
             // Fetch active giveaway
 const giveaway = await db.query(
     `SELECT * FROM ${h.tables.GIVEAWAYS}
