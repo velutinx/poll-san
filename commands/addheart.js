@@ -8,8 +8,30 @@ const CUSTOM_HEART = '<a:heart:1511391137825558628>';
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 async function processThread(thread, client) {
-    let unarchived = false;
     try {
+        // Fetch starter message (works even if archived)
+        const starter = await thread.fetchStarterMessage().catch(() => null);
+        if (!starter) return { added: false, reason: 'no_starter' };
+
+        const fullMessage = await starter.fetch();
+        
+        // Check if bot already has custom heart reaction
+        const customReaction = fullMessage.reactions.cache.find(r => r.emoji.toString() === CUSTOM_HEART);
+        if (customReaction && customReaction.users.cache.has(client.user.id)) {
+            console.log(`✅ Already has custom heart: ${thread.name}`);
+            return { added: false, reason: 'already_has_custom' };
+        }
+
+        // Check if there are any other reactions (excluding bot's own reactions)
+        const otherReactions = fullMessage.reactions.cache.filter(r => !r.users.cache.has(client.user.id));
+        if (otherReactions.size > 0) {
+            console.log(`⏩ Skipped (has ${otherReactions.size} other reactions): ${thread.name}`);
+            return { added: false, reason: 'has_other_reactions' };
+        }
+
+        // If we reach here, the post has no reactions (or only bot's default heart which we will remove)
+        // Need to unarchive temporarily to modify reactions
+        let unarchived = false;
         if (thread.archived) {
             await thread.setArchived(false);
             unarchived = true;
@@ -17,19 +39,7 @@ async function processThread(thread, client) {
             await delay(500);
         }
 
-        const starter = await thread.fetchStarterMessage().catch(() => null);
-        if (!starter) return { added: false, reason: 'no_starter' };
-
-        const fullMessage = await starter.fetch();
-        
-        // Check if the bot already reacted with the custom heart
-        const customReaction = fullMessage.reactions.cache.find(r => r.emoji.toString() === CUSTOM_HEART);
-        if (customReaction && customReaction.users.cache.has(client.user.id)) {
-            console.log(`✅ Already has custom heart: ${thread.name}`);
-            return { added: false, reason: 'already_has_custom' };
-        }
-
-        // Remove any bot reactions (including default heart)
+        // Remove any bot reactions (like default heart)
         const botReactions = fullMessage.reactions.cache.filter(r => r.users.cache.has(client.user.id));
         for (const reaction of botReactions.values()) {
             await reaction.users.remove(client.user.id);
@@ -37,27 +47,21 @@ async function processThread(thread, client) {
             await delay(300);
         }
 
-        // After removal, check if there are any other reactions (from users or other bots)
-        const remaining = fullMessage.reactions.cache.filter(r => r.users.cache.size > 0);
-        if (remaining.size === 0) {
-            await fullMessage.react(CUSTOM_HEART);
-            console.log(`❤️ Added custom heart to ${thread.name}`);
-            return { added: true, reason: 'added' };
-        } else {
-            console.log(`⏩ Skipped (has ${remaining.size} other reactions): ${thread.name}`);
-            return { added: false, reason: 'has_other_reactions' };
+        // Add custom heart
+        await fullMessage.react(CUSTOM_HEART);
+        console.log(`❤️ Added custom heart to ${thread.name}`);
+
+        // Re-archive if we unarchived
+        if (unarchived) {
+            await thread.setArchived(true);
+            console.log(`📦 Re‑archived: ${thread.name}`);
+            await delay(300);
         }
+
+        return { added: true, reason: 'added' };
     } catch (err) {
         console.warn(`Error processing ${thread.name}:`, err.message);
         return { added: false, reason: 'error' };
-    } finally {
-        if (unarchived) {
-            try {
-                await thread.setArchived(true);
-                console.log(`📦 Re‑archived: ${thread.name}`);
-            } catch (e) {}
-            await delay(300);
-        }
     }
 }
 
@@ -70,14 +74,14 @@ async function processForum(guild, channelId, channelName, client) {
     console.log(`\n📁 Processing ${channelName}...`);
     let added = 0, skipped = 0, total = 0;
 
-    // Active threads
+    // Active threads (not archived)
     const active = await channel.threads.fetchActive();
     for (const thread of active.threads.values()) {
         total++;
         const res = await processThread(thread, client);
         if (res.added) added++;
         else skipped++;
-        await delay(500);
+        await delay(300);
     }
 
     // Archived threads
@@ -92,7 +96,7 @@ async function processForum(guild, channelId, channelName, client) {
             const res = await processThread(thread, client);
             if (res.added) added++;
             else skipped++;
-            await delay(500);
+            await delay(300);
         }
         hasMore = archived.hasMore;
         if (hasMore && archived.threads.size) {
@@ -118,7 +122,7 @@ module.exports = {
             });
         }
 
-        await interaction.reply({ content: '🔄 Starting – unarchiving threads, adding animated hearts...', flags: [MessageFlags.Ephemeral] });
+        await interaction.reply({ content: '🔄 Starting – scanning threads...', flags: [MessageFlags.Ephemeral] });
 
         try {
             const guild = interaction.guild;
