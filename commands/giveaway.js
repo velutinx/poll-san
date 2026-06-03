@@ -191,7 +191,7 @@ module.exports = {
             content: `Giveaway created in ${channel}!`,
             flags: [MessageFlags.Ephemeral]
         });
-    }
+    } 
 };
 
 function parseDuration(str) {
@@ -204,6 +204,13 @@ function parseDuration(str) {
 }
 
 async function handleGiveawayButton(interaction) {
+    console.log(
+        '[GIVEAWAY CLICK]',
+        interaction.user.tag,
+        interaction.message.id,
+        interaction.customId
+    );
+
     if (!interaction.isButton() || interaction.customId !== 'enter_giveaway') return;
 
     const userId = interaction.user.id;
