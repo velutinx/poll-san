@@ -227,7 +227,7 @@ async function handleGiveawayButton(interaction) {
         try {
             await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
         } catch (err) {
-            return;
+            console.error('Interaction defer error:', err);
         }
     }
 
