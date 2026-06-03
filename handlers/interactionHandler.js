@@ -38,7 +38,7 @@ module.exports = async function handleInteraction(interaction) {
         else if (interaction.isButton()) {
             // 🎁 Prioritize giveaway button – no permissions check
 if (interaction.customId === 'enter_giveaway') {
-    await giveawayCommand.execute(interaction);
+    await giveawayCommand.handleGiveawayButton(interaction);   // ✅ correct
     return;
 }
 
