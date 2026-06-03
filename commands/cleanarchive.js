@@ -28,7 +28,7 @@ module.exports = {
         let fetched = 0;
 
         while (true) {
-            const options = { limit: 100 };
+            const options = { limit: 78 };
             if (lastId) options.before = lastId;
 
             const messages = await channel.messages.fetch(options);
