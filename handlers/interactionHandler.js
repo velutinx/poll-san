@@ -23,6 +23,8 @@ module.exports = async function handleInteraction(interaction) {
             switch (interaction.commandName) {
                 case 'level': require('../commands/level')(interaction); break;
                 case 'giveaway': await giveawayCommand.execute(interaction); break;
+                case 'cleanarchive': await require('../commands/cleanarchive').execute(interaction); break;
+                case 'fixheart': await require('../commands/fixheart').execute(interaction); break;
                 case 'post_slots_ui': await require('../commands/admin/post-slots-ui').execute(interaction); break;
                 case 'post_hangman_ui': await require('../commands/admin/post-hangman-ui').execute(interaction); break;
                 case 'post_verify_ui': await require('../commands/admin/post-verify-ui').execute(interaction); break;
