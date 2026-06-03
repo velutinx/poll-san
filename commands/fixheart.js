@@ -7,8 +7,16 @@ const CUSTOM_HEART = '<a:heart:1511391137825558628>';
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 async function processThread(thread, client) {
+    let unarchived = false;
     try {
-        // Fetch starter message (works even if archived)
+        // Check if thread is archived – we need to unarchive to modify reactions
+        if (thread.archived) {
+            await thread.setArchived(false);
+            unarchived = true;
+            console.log(`📂 Unarchived: ${thread.name}`);
+            await delay(500);
+        }
+
         const starter = await thread.fetchStarterMessage().catch(() => null);
         if (!starter) return { removed: false, reason: 'no_starter' };
 
@@ -31,12 +39,22 @@ async function processThread(thread, client) {
         
         // Remove the bot's heart reaction
         await heartReaction.users.remove(client.user.id);
-        console.log(`🗑️ Removed heart from ${thread.name} (has other reactions)`);
+        console.log(`🗑️ Removed heart from ${thread.name} (has ${otherReactions.size} other reactions)`);
         return { removed: true, reason: 'removed_other_reactions' };
         
     } catch (err) {
         console.warn(`Error processing ${thread.name}:`, err.message);
         return { removed: false, reason: 'error' };
+    } finally {
+        if (unarchived) {
+            try {
+                await thread.setArchived(true);
+                console.log(`📦 Re‑archived: ${thread.name}`);
+            } catch (e) {
+                console.warn(`Could not re‑archive ${thread.name}:`, e.message);
+            }
+            await delay(300);
+        }
     }
 }
 
@@ -49,7 +67,7 @@ async function processForum(guild, channelId, channelName, client) {
     console.log(`\n📁 Processing ${channelName}...`);
     let removed = 0, total = 0;
 
-    // Active threads
+    // Active threads (not archived)
     const active = await channel.threads.fetchActive();
     for (const thread of active.threads.values()) {
         total++;
