@@ -1,15 +1,17 @@
 // commands/giveaway.js
-
 const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, PermissionsBitField, AttachmentBuilder, MessageFlags } = require('discord.js');
 const path = require('path');
 const fs = require('fs').promises;
 const { colors, releaseEmojis } = require('../utils/helpers');
 const h = require('../utils/helpers');
 const db = require('../services/database');
+
 const activeGiveaways = new Map();
 const giveawaySessions = new Map();
+
 const GIVEAWAY_IMAGE_URL = process.env.GIVEAWAY_IMAGE_URL;
 const USE_HOSTED_IMAGE = !!GIVEAWAY_IMAGE_URL;
+
 const MAX_TIMEOUT = 2147483647;
 
 function safeTimeout(callback, delayMs) {
@@ -36,7 +38,6 @@ module.exports = {
     data: new SlashCommandBuilder()
         .setName('giveaway')
         .setDescription('Create a giveaway')
-        // Hide the command from users without ManageGuild in the Discord UI
         .setDefaultMemberPermissions(PermissionsBitField.Flags.ManageGuild)
         .addStringOption(option =>
             option.setName('duration')
@@ -56,12 +57,11 @@ module.exports = {
                 .setRequired(true)),
 
     async execute(interaction) {
-        // Intercept button clicks that your event handler mistakenly routed here
+        // Intercept button clicks that might be routed here
         if (interaction.isButton() && interaction.customId === 'enter_giveaway') {
             return handleGiveawayButton(interaction);
         }
 
-        // Safe permission check (handles DMs where memberPermissions is null)
         if (!interaction.memberPermissions || !interaction.memberPermissions.has(PermissionsBitField.Flags.ManageGuild)) {
             return interaction.reply({
                 content: 'You need `Manage Server` permission to create giveaways.',
@@ -191,7 +191,7 @@ module.exports = {
             content: `Giveaway created in ${channel}!`,
             flags: [MessageFlags.Ephemeral]
         });
-    } 
+    }
 };
 
 function parseDuration(str) {
@@ -206,7 +206,6 @@ function parseDuration(str) {
 async function handleGiveawayButton(interaction) {
     if (!interaction.isButton() || interaction.customId !== 'enter_giveaway') return;
 
-    // Always defer ephemeral reply first
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
     const userId = interaction.user.id;
@@ -271,20 +270,6 @@ async function handleGiveawayButton(interaction) {
         console.error('Failed to update entrants:', error);
         giveaway.entrants.delete(userId);
         return interaction.editReply('Failed to enter giveaway due to a database error.');
-    }
-}
-
-    // Safely edit the interaction reply instead of the webhook message
-    if (messageUpdated) {
-        try {
-            await existingSession.interaction.editReply({ content: responseContent });
-        } catch (err) {
-            await interaction.followUp({ content: responseContent, flags: [MessageFlags.Ephemeral] }).catch(() => {});
-            giveawaySessions.set(sessionKey, { interaction, timestamp: Date.now() });
-        }
-    } else {
-        await interaction.editReply({ content: responseContent }).catch(() => {});
-        giveawaySessions.set(sessionKey, { interaction, timestamp: Date.now() });
     }
 }
 
