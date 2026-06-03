@@ -46,7 +46,7 @@ module.exports = {
             for (const msg of toDelete.values()) {
                 await msg.delete().catch(e => console.warn(`Failed to delete ${msg.id}:`, e.message));
                 deletedCount++;
-                await new Promise(r => setTimeout(r, 200)); // rate limit delay
+                await new Promise(r => setTimeout(r, 78)); // rate limit delay
             }
 
             fetched += messages.size;
