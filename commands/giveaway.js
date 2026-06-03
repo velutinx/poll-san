@@ -204,41 +204,13 @@ function parseDuration(str) {
 }
 
 async function handleGiveawayButton(interaction) {
-    console.log(
-        '[GIVEAWAY CLICK]',
-        interaction.user.tag,
-        interaction.message.id,
-        interaction.customId
-    );
-
     if (!interaction.isButton() || interaction.customId !== 'enter_giveaway') return;
+
+    // Always defer ephemeral reply first
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
     const userId = interaction.user.id;
     const messageId = interaction.message.id;
-    const sessionKey = `${userId}-${messageId}`;
-
-    let existingSession = giveawaySessions.get(sessionKey);
-    let messageUpdated = false;
-
-    if (existingSession && (Date.now() - existingSession.timestamp < 14 * 60 * 1000)) {
-        try {
-            await interaction.deferUpdate();
-            messageUpdated = true;
-        } catch (err) {
-            giveawaySessions.delete(sessionKey);
-            return;
-        }
-    }
-
-    if (!messageUpdated) {
-        try {
-            await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
-        } catch (err) {
-            console.error('Interaction defer error:', err);
-        }
-    }
-
-    let responseContent = '';
 
     let giveaway = activeGiveaways.get(messageId);
     
@@ -250,60 +222,57 @@ async function handleGiveawayButton(interaction) {
         );
 
         if (!row) {
-            responseContent = 'This giveaway has already ended or does not exist.';
-        } else {
-            const endTime = new Date(row.end_time).getTime();
-            const timeLeft = endTime - Date.now();
-            let timeoutId = null;
-            if (timeLeft > 0) {
-                timeoutId = safeTimeout(() => endGiveaway(messageId, interaction.client), timeLeft);
-            } else {
-                await endGiveaway(messageId, interaction.client);
-                responseContent = 'This giveaway has already ended.';
-            }
-
-            if (!responseContent) {
-                giveaway = {
-                    messageId: row.message_id,
-                    channelId: row.channel_id,
-                    hostId: row.host_id,
-                    hostMention: `<@${row.host_id}>`,
-                    endTime,
-                    winnersCount: row.winners_count,
-                    prize: row.prize,
-                    entrants: new Set(JSON.parse(row.entrants || '[]')),
-                    ended: false,
-                    timeoutId
-                };
-                activeGiveaways.set(messageId, giveaway);
-            }
+            return interaction.editReply('This giveaway has already ended or does not exist.');
         }
+
+        const endTime = new Date(row.end_time).getTime();
+        const timeLeft = endTime - Date.now();
+        let timeoutId = null;
+        if (timeLeft > 0) {
+            timeoutId = safeTimeout(() => endGiveaway(messageId, interaction.client), timeLeft);
+        } else {
+            await endGiveaway(messageId, interaction.client);
+            return interaction.editReply('This giveaway has already ended.');
+        }
+
+        giveaway = {
+            messageId: row.message_id,
+            channelId: row.channel_id,
+            hostId: row.host_id,
+            hostMention: `<@${row.host_id}>`,
+            endTime,
+            winnersCount: row.winners_count,
+            prize: row.prize,
+            entrants: new Set(JSON.parse(row.entrants || '[]')),
+            ended: false,
+            timeoutId
+        };
+        activeGiveaways.set(messageId, giveaway);
     }
 
-    if (!responseContent) {
-        if (giveaway.ended) {
-            responseContent = 'This giveaway has already ended.';
-        } else if (giveaway.entrants.has(userId)) {
-            responseContent = 'You have already entered!';
-        } else {
-            giveaway.entrants.add(userId);
-
-            const entrantsJson = JSON.stringify(Array.from(giveaway.entrants));
-            try {
-                await db.query(
-                    `UPDATE ${h.tables.GIVEAWAYS} SET entrants = ? WHERE message_id = ?`,
-                    [entrantsJson, messageId]
-                );
-            } catch (error) {
-                console.error('Failed to update entrants:', error);
-                giveaway.entrants.delete(userId);
-                responseContent = 'Failed to enter giveaway due to a database error.';
-            }
-            if (!responseContent) {
-                responseContent = `${releaseEmojis?.getRandomVerify?.() || '✅'} You entered the giveaway!`;
-            }
-        }
+    if (giveaway.ended) {
+        return interaction.editReply('This giveaway has already ended.');
     }
+
+    if (giveaway.entrants.has(userId)) {
+        return interaction.editReply('You have already entered!');
+    }
+
+    giveaway.entrants.add(userId);
+    const entrantsJson = JSON.stringify(Array.from(giveaway.entrants));
+
+    try {
+        await db.query(
+            `UPDATE ${h.tables.GIVEAWAYS} SET entrants = ? WHERE message_id = ?`,
+            [entrantsJson, messageId]
+        );
+        return interaction.editReply(`${releaseEmojis?.getRandomVerify?.() || '✅'} You entered the giveaway!`);
+    } catch (error) {
+        console.error('Failed to update entrants:', error);
+        giveaway.entrants.delete(userId);
+        return interaction.editReply('Failed to enter giveaway due to a database error.');
+    }
+}
 
     // Safely edit the interaction reply instead of the webhook message
     if (messageUpdated) {
