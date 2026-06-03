@@ -1,7 +1,5 @@
 // handlers/interactionHandler.js
 
-// handlers/interactionHandler.js
-
 const helpers = require('../utils/helpers');
 const giveawayCommand = require('../commands/giveaway');
 const { handleSlotsBet } = require('../services/slotsHandler');
@@ -25,7 +23,6 @@ module.exports = async function handleInteraction(interaction) {
             switch (interaction.commandName) {
                 case 'level': require('../commands/level')(interaction); break;
                 case 'giveaway': await giveawayCommand.execute(interaction); break;
-                case 'addheart': await require('../commands/addheart').execute(interaction); break;
                 case 'post_slots_ui': await require('../commands/admin/post-slots-ui').execute(interaction); break;
                 case 'post_hangman_ui': await require('../commands/admin/post-hangman-ui').execute(interaction); break;
                 case 'post_verify_ui': await require('../commands/admin/post-verify-ui').execute(interaction); break;
