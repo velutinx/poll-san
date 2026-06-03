@@ -762,21 +762,30 @@ function startMonthlyCheck(client) {
 
 function init(client) {
     client.on('messageCreate', handleScanCommand);
+client.on(Events.InteractionCreate, async interaction => {
+    if (!interaction.isButton()) return;
 
-    client.on(Events.InteractionCreate, async interaction => {
-        if (!interaction.isButton()) return;
+    const avatarScannerButtons = [
+        'monthly_scan_accept',
+        'warn_avatar_',
+        'ignore_avatar_',
+        'accept_avatar_'
+    ];
 
-        if (interaction.customId.startsWith('monthly_scan_accept')) {
-            await handleMonthlyScanAccept(interaction);
-            return;
-        }
+    if (
+        !avatarScannerButtons.some(id =>
+            interaction.customId.startsWith(id)
+        )
+    ) {
+        return;
+    }
 
-        if (interaction.user.id !== ids.users.Velutinx) {
-            return interaction.reply({
-                content: 'Only the server owner can use these buttons.',
-                flags: MessageFlags.Ephemeral
-            }).catch(() => {});
-        }
+    if (interaction.user.id !== ids.users.Velutinx) {
+        return interaction.reply({
+            content: 'Only the server owner can use these buttons.',
+            flags: MessageFlags.Ephemeral
+        });
+    }
 
         if (interaction.customId.startsWith('warn_avatar_')) {
             await handleWarnButton(interaction);
