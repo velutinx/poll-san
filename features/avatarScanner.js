@@ -765,6 +765,9 @@ function init(client) {
 client.on(Events.InteractionCreate, async interaction => {
     if (!interaction.isButton()) return;
 
+    // 👇 Skip giveaway button (handled elsewhere)
+    if (interaction.customId === 'enter_giveaway') return;
+
     const avatarScannerButtons = [
         'monthly_scan_accept',
         'warn_avatar_',
