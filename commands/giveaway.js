@@ -114,14 +114,14 @@ module.exports = {
         const match = presentEmojiStr.match(/^<a?:(\w+):(\d+)>$/);
         const emojiData = match ? { name: match[1], id: match[2] } : { name: '🎁' };
 
-        const row = new ActionRowBuilder()
-            .addComponents(
-                new ButtonBuilder()
-                    .setCustomId(`giveaway_enter_${giveawayId}`)
-                    .setLabel('Enter Giveaway')
-                    .setStyle(ButtonStyle.Primary)
-                    .setEmoji(emojiData)
-            );
+const row = new ActionRowBuilder()
+    .addComponents(
+        new ButtonBuilder()
+            .setCustomId('enter_giveaway')
+            .setLabel('Enter Giveaway')
+            .setStyle(ButtonStyle.Primary)
+            .setEmoji(emojiData)
+    );
 
         const messageOptions = { embeds: [embed], components: [row] };
         if (imageAttachment) messageOptions.files = [imageAttachment];
