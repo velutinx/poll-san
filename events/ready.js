@@ -1,10 +1,10 @@
 // events/ready.js
+
 const db = require('../services/database');
 const { runPollInterval } = require('../services/pollService');
 const { cleanRoles } = require('../services/roleCleaner');
 const { syncMembershipRoles } = require('../services/membershipSync');
 const giveawayCommand = require('../commands/giveaway');
-const addHeartCommand = require('../commands/addheart');   // ← add this line
 const { checkAndNotifyCooldowns } = require('../services/cooldownNotifier');
 const { processEndOfDayAwards } = require('../services/triviaJanitor');
 const h = require('../utils/helpers');
@@ -35,7 +35,6 @@ module.exports = async (c) => {
     new SlashCommandBuilder().setName('level').setDescription('Shows your current XP/level').toJSON(),
     new ContextMenuCommandBuilder().setName('View Level').setType(ApplicationCommandType.User).toJSON(),
     giveawayCommand.data.toJSON(),
-    addHeartCommand.data.toJSON(),                     // ← add this line
     require('../commands/admin/post-slots-ui').data.toJSON(),
     require('../commands/admin/post-hangman-ui').data.toJSON(),
     require('../commands/admin/post-verify-ui').data.toJSON(),
