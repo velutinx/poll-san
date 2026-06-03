@@ -37,10 +37,10 @@ module.exports = async function handleInteraction(interaction) {
         }
         else if (interaction.isButton()) {
             // 🎁 Prioritize giveaway button – no permissions check
-            if (interaction.customId === 'enter_giveaway') {
-                await giveawayCommand.handleGiveawayButton(interaction);
-                return;
-            }
+if (interaction.customId === 'enter_giveaway') {
+    await giveawayCommand.execute(interaction);
+    return;
+}
 
             // All other buttons
             switch (interaction.customId) {
