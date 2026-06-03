@@ -1,17 +1,15 @@
 // commands/giveaway.js
+
 const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, PermissionsBitField, AttachmentBuilder, MessageFlags } = require('discord.js');
 const path = require('path');
 const fs = require('fs').promises;
 const { colors, releaseEmojis } = require('../utils/helpers');
 const h = require('../utils/helpers');
 const db = require('../services/database');
-
 const activeGiveaways = new Map();
 const giveawaySessions = new Map();
-
 const GIVEAWAY_IMAGE_URL = process.env.GIVEAWAY_IMAGE_URL;
 const USE_HOSTED_IMAGE = !!GIVEAWAY_IMAGE_URL;
-
 const MAX_TIMEOUT = 2147483647;
 
 function safeTimeout(callback, delayMs) {
@@ -38,6 +36,8 @@ module.exports = {
     data: new SlashCommandBuilder()
         .setName('giveaway')
         .setDescription('Create a giveaway')
+        // Hide the command from users without ManageGuild in the Discord UI
+        .setDefaultMemberPermissions(PermissionsBitField.Flags.ManageGuild)
         .addStringOption(option =>
             option.setName('duration')
                 .setDescription('Duration (e.g., 7d, 12h, 30m)')
@@ -56,7 +56,13 @@ module.exports = {
                 .setRequired(true)),
 
     async execute(interaction) {
-        if (!interaction.memberPermissions.has(PermissionsBitField.Flags.ManageGuild)) {
+        // Intercept button clicks that your event handler mistakenly routed here
+        if (interaction.isButton() && interaction.customId === 'enter_giveaway') {
+            return handleGiveawayButton(interaction);
+        }
+
+        // Safe permission check (handles DMs where memberPermissions is null)
+        if (!interaction.memberPermissions || !interaction.memberPermissions.has(PermissionsBitField.Flags.ManageGuild)) {
             return interaction.reply({
                 content: 'You need `Manage Server` permission to create giveaways.',
                 flags: [MessageFlags.Ephemeral]
@@ -114,14 +120,14 @@ module.exports = {
         const match = presentEmojiStr.match(/^<a?:(\w+):(\d+)>$/);
         const emojiData = match ? { name: match[1], id: match[2] } : { name: '🎁' };
 
-const row = new ActionRowBuilder()
-    .addComponents(
-        new ButtonBuilder()
-            .setCustomId('enter_giveaway')
-            .setLabel('Enter Giveaway')
-            .setStyle(ButtonStyle.Primary)
-            .setEmoji(emojiData)
-    );
+        const row = new ActionRowBuilder()
+            .addComponents(
+                new ButtonBuilder()
+                    .setCustomId('enter_giveaway')
+                    .setLabel('Enter Giveaway')
+                    .setStyle(ButtonStyle.Primary)
+                    .setEmoji(emojiData)
+            );
 
         const messageOptions = { embeds: [embed], components: [row] };
         if (imageAttachment) messageOptions.files = [imageAttachment];
@@ -148,7 +154,6 @@ const row = new ActionRowBuilder()
 
         console.log(`Starting giveaway ID: ${giveawayId} - ${prize} for ${durationStr}`);
 
-        // Format end_time for SQLite: 'YYYY-MM-DD HH:MM:SS'
         const sqliteEndTime = endTime.toISOString().slice(0, 19).replace('T', ' ');
 
         try {
@@ -293,16 +298,17 @@ async function handleGiveawayButton(interaction) {
         }
     }
 
+    // Safely edit the interaction reply instead of the webhook message
     if (messageUpdated) {
         try {
-            await existingSession.interaction.webhook.editMessage(existingSession.messageId, { content: responseContent });
+            await existingSession.interaction.editReply({ content: responseContent });
         } catch (err) {
-            await interaction.followUp({ content: responseContent, flags: [MessageFlags.Ephemeral], fetchReply: true }).catch(() => {});
-            giveawaySessions.set(sessionKey, { interaction, messageId: null, timestamp: Date.now() });
+            await interaction.followUp({ content: responseContent, flags: [MessageFlags.Ephemeral] }).catch(() => {});
+            giveawaySessions.set(sessionKey, { interaction, timestamp: Date.now() });
         }
     } else {
         await interaction.editReply({ content: responseContent }).catch(() => {});
-        giveawaySessions.set(sessionKey, { interaction, messageId: null, timestamp: Date.now() });
+        giveawaySessions.set(sessionKey, { interaction, timestamp: Date.now() });
     }
 }
 
@@ -325,7 +331,6 @@ async function endGiveaway(messageId, client) {
             return;
         }
 
-        // Mark as ended in database
         await db.query(
             `UPDATE ${h.tables.GIVEAWAYS} SET ended = 1 WHERE message_id = ?`,
             [messageId]
@@ -391,7 +396,6 @@ async function endGiveaway(messageId, client) {
 
 async function restoreGiveaways(client) {
     try {
-        // Use julianday for reliable comparison with SQLite date format
         const rows = await db.query(
             `SELECT * FROM ${h.tables.GIVEAWAYS} 
              WHERE ended = 0 AND julianday(end_time) > julianday('now')`,
