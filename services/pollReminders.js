@@ -1,11 +1,9 @@
-// services/pollReminders.js
 const db = require('./database');
 const h = require('../utils/helpers');
 
 const GIVEAWAY_ROLE_ID = h.ids.roles.giveaway_notify_role;
 const REMINDER_CHECK_INTERVAL = 60 * 60 * 1000; // 1 hour
 
-// Store active intervals per poll
 const activeIntervals = new Map();
 
 async function getOrCreateWebhook(channel, name) {
@@ -17,15 +15,15 @@ async function getOrCreateWebhook(channel, name) {
   return webhook;
 }
 
-// Core logic: post or delete the reminder based on remaining time
 async function managePollReminders(channel, pollMessageId, endTimeISO, client) {
   const now = Date.now();
   const endTime = new Date(endTimeISO).getTime();
   const remainingHours = (endTime - now) / (1000 * 60 * 60);
 
-  // Fetch current poll record
   const poll = await db.query(
-    `SELECT reminder_message_id, reminder_48h_sent FROM ${h.tables.POLL_AUTO_RESUME} WHERE message_id = ?`,
+    `SELECT reminder_message_id, reminder_48h_sent, initial_reminder_id
+     FROM ${h.tables.POLL_AUTO_RESUME}
+     WHERE message_id = ?`,
     [pollMessageId],
     true
   );
@@ -33,14 +31,24 @@ async function managePollReminders(channel, pollMessageId, endTimeISO, client) {
 
   const reminderMsgId = poll.reminder_message_id;
   const reminderSent = poll.reminder_48h_sent === 1;
+  const initialReminderId = poll.initial_reminder_id;
 
-  // ---- Post reminder when 48h <= remaining <= 48h+1h (avoid flapping) ----
+  // ---- Post last‑day reminder when 48h <= remaining <= 48h+1h ----
   if (remainingHours <= 48 && remainingHours > 24 && !reminderSent) {
     // Delete any stale reminder first
     if (reminderMsgId) {
       try {
         const old = await channel.messages.fetch(reminderMsgId).catch(() => null);
         if (old) await old.delete();
+      } catch (e) {}
+    }
+
+    // Delete the initial reminder (posted right after poll creation)
+    if (initialReminderId) {
+      try {
+        const initialMsg = await channel.messages.fetch(initialReminderId).catch(() => null);
+        if (initialMsg) await initialMsg.delete();
+        console.log(`[PollReminders] Deleted initial reminder ${initialReminderId} for poll ${pollMessageId}`);
       } catch (e) {}
     }
 
@@ -58,22 +66,26 @@ async function managePollReminders(channel, pollMessageId, endTimeISO, client) {
     });
 
     await db.query(
-      `UPDATE ${h.tables.POLL_AUTO_RESUME} SET reminder_message_id = ?, reminder_48h_sent = 1 WHERE message_id = ?`,
+      `UPDATE ${h.tables.POLL_AUTO_RESUME}
+       SET reminder_message_id = ?, reminder_48h_sent = 1
+       WHERE message_id = ?`,
       [sent.id, pollMessageId]
     );
     console.log(`[PollReminders] Posted 48h reminder for poll ${pollMessageId}`);
   }
-  // ---- Delete reminder when remaining <= 24h OR poll ended ----
+  // ---- Delete last‑day reminder when remaining <= 24h OR poll ended ----
   else if ((remainingHours <= 24 || remainingHours <= 0) && reminderMsgId) {
     try {
       const msg = await channel.messages.fetch(reminderMsgId).catch(() => null);
       if (msg) await msg.delete();
     } catch (e) {}
     await db.query(
-      `UPDATE ${h.tables.POLL_AUTO_RESUME} SET reminder_message_id = NULL, reminder_48h_sent = 0 WHERE message_id = ?`,
+      `UPDATE ${h.tables.POLL_AUTO_RESUME}
+       SET reminder_message_id = NULL, reminder_48h_sent = 0
+       WHERE message_id = ?`,
       [pollMessageId]
     );
-    console.log(`[PollReminders] Deleted reminder for poll ${pollMessageId}`);
+    console.log(`[PollReminders] Deleted last‑day reminder for poll ${pollMessageId}`);
   }
   // ---- If time was extended past 48h, reset the reminder flag ----
   else if (remainingHours > 48 && reminderSent) {
@@ -85,18 +97,14 @@ async function managePollReminders(channel, pollMessageId, endTimeISO, client) {
   }
 }
 
-// Main function called from startpoll.js
 async function startPollReminders(channel, pollMessageId, endTimeISO, client) {
-  // Stop any existing interval for this poll
   if (activeIntervals.has(pollMessageId)) {
     clearInterval(activeIntervals.get(pollMessageId));
     activeIntervals.delete(pollMessageId);
   }
 
-  // Run immediately
   await managePollReminders(channel, pollMessageId, endTimeISO, client);
 
-  // Then run every hour
   const interval = setInterval(async () => {
     const poll = await db.query(
       `SELECT ends_at FROM ${h.tables.POLL_AUTO_RESUME} WHERE message_id = ?`,
@@ -114,7 +122,6 @@ async function startPollReminders(channel, pollMessageId, endTimeISO, client) {
   activeIntervals.set(pollMessageId, interval);
 }
 
-// Restore reminders on bot startup
 async function restorePollReminders(client) {
   const activePolls = await db.query(
     `SELECT * FROM ${h.tables.POLL_AUTO_RESUME} WHERE ends_at > datetime('now')`
