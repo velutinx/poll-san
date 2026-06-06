@@ -111,7 +111,6 @@ function forceStopPoll() {
     if (activePollTimer) {
         clearInterval(activePollTimer);
         activePollTimer = null;
-        console.log("Poll interval cleared.");
     }
 }
 
