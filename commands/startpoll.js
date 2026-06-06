@@ -1,3 +1,5 @@
+// commands/startpoll.js
+
 const h = require('../utils/helpers');
 const { chunkArray, emojis, reactIds, ids, releaseEmojis } = h;
 const { generateMessageContent, runPollInterval } = require('../services/pollService');
@@ -57,8 +59,9 @@ module.exports = async (interaction) => {
         if (!wh) wh = await channel.createWebhook({ name: 'Poll Reminder', avatar: h.urls.LOGO_URL });
         return wh;
     })();
+    const speechEmoji = h.releaseEmojis?.SPEECH || '💬';
     const initialReminderMsg = await initialWebhook.send({
-        content: `${h.releaseEmojis.SPEECH} Remember to message **[DM Velutinx](https://discord.com/users/${h.ids.users.Velutinx})** with suggestions for next week's poll! All suggestions must be sent before **Friday**.`,
+        content: `${speechEmoji} Remember to message **[DM Velutinx](https://discord.com/users/${h.ids.users.Velutinx})** with suggestions for next week's poll! All suggestions must be sent before **Friday**.`,
         username: 'Poll Reminder',
         avatarURL: h.urls.LOGO_URL,
         flags: [1 << 12]
@@ -113,8 +116,8 @@ module.exports = async (interaction) => {
         }).catch(e => console.error("Thread Image Error:", e.message));
     }
 
-    const upArrows = releaseEmojis.UP_ARROWS;
-    const randomUpArrow = upArrows[Math.floor(Math.random() * upArrows.length)];
+    const upArrows = releaseEmojis.UP_ARROWS || [];
+    const randomUpArrow = upArrows.length ? upArrows[Math.floor(Math.random() * upArrows.length)] : '⬆️';
 
     await webhook.send({
         content: `${randomUpArrow} Character images for the poll above!`,
@@ -125,7 +128,8 @@ module.exports = async (interaction) => {
     });
 
     if (interaction.editReply) {
-        await interaction.editReply({ content: `${h.releaseEmojis?.getRandomVerify?.() || '✅'} Poll Live!` }).catch(() => {});
+        const verifyEmoji = h.releaseEmojis?.getRandomVerify?.() || '✅';
+        await interaction.editReply({ content: `${verifyEmoji} Poll Live!` }).catch(() => {});
     }
 
     runPollInterval(pollMessage, endTime, characters);
