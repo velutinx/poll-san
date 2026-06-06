@@ -60,25 +60,33 @@ module.exports = async (interaction) => {
         return wh;
     })();
     const speechEmoji = '💬';
-    // Wrap the user URL in < > to prevent Discord from embedding a profile card
     const dmLink = `<https://discord.com/users/${h.ids.users.Velutinx}>`;
     const initialReminderMsg = await initialWebhook.send({
-        content: `${speechEmoji} Remember to message **[DM Velutinx]( ${dmLink} )** with suggestions for next week's poll! All suggestions must be sent before **Friday**.`,
-
-      
+        content: `${speechEmoji} Remember to message **[DM Velutinx](${dmLink})** with suggestions for next week's poll! All suggestions must be sent before **Friday**.`,
         username: 'Poll Reminder',
         avatarURL: h.urls.LOGO_URL,
-        flags: [1 << 12]      // SuppressEmbeds
+        flags: [1 << 12]
+    });
+
+    // ───── Send the up‑arrow message and store its ID ─────
+    const upArrows = releaseEmojis.UP_ARROWS || [];
+    const randomUpArrow = upArrows.length ? upArrows[Math.floor(Math.random() * upArrows.length)] : '⬆️';
+    const arrowMsg = await webhook.send({
+        content: `${randomUpArrow} Character images for the poll above!`,
+        threadId: thread.id,
+        username: 'Poll',
+        avatarURL: h.urls.LOGO_URL,
+        flags: [1 << 12]
     });
 
     try {
         await db.query(
             `INSERT OR REPLACE INTO ${h.tables.POLL_AUTO_RESUME}
-             (message_id, channel_id, ends_at, poll_list, status, created_at, initial_reminder_id)
-             VALUES (?, ?, ?, ?, 'active', datetime('now'), ?)`,
-            [pollMessage.id, channel.id, endTimeISO, listRaw, initialReminderMsg.id]
+             (message_id, channel_id, ends_at, poll_list, status, created_at, initial_reminder_id, arrow_message_id)
+             VALUES (?, ?, ?, ?, 'active', datetime('now'), ?, ?)`,
+            [pollMessage.id, channel.id, endTimeISO, listRaw, initialReminderMsg.id, arrowMsg.id]
         );
-        console.log(`✅ D1: Recorded poll ${pollMessage.id} for auto-resume, initial reminder stored.`);
+        console.log(`✅ D1: Recorded poll ${pollMessage.id} for auto-resume, initial reminder and arrow message stored.`);
     } catch (dbError) {
         console.error("❌ D1 Error:", dbError.message);
     }
@@ -122,17 +130,6 @@ module.exports = async (interaction) => {
             flags: [1 << 12]
         }).catch(e => console.error("Thread Image Error:", e.message));
     }
-
-    const upArrows = releaseEmojis.UP_ARROWS || [];
-    const randomUpArrow = upArrows.length ? upArrows[Math.floor(Math.random() * upArrows.length)] : '⬆️';
-
-    await webhook.send({
-        content: `${randomUpArrow} Character images for the poll above!`,
-        threadId: thread.id,
-        username: 'Poll',
-        avatarURL: h.urls.LOGO_URL,
-        flags: [1 << 12]
-    });
 
     if (interaction.editReply) {
         const verifyEmoji = h.releaseEmojis?.getRandomVerify?.() || '✅';
