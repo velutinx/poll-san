@@ -21,21 +21,30 @@ module.exports = async (reaction, user, action = 'add') => {
     );
     if (!activePoll) return;
 
-    // 2. Map emoji to option ID
+    // 2. Map reaction emoji to option ID using reactIds (order must match poll emojis)
     const emojiKey = reaction.emoji.id || reaction.emoji.name;
     const optionId = reactIds.indexOf(emojiKey) + 1;
     if (optionId < 1) return;
 
+    // Parse character list from poll_list (same order as reactIds)
+    const characters = activePoll.poll_list
+        .split(/(?=:female_sign:|:male_sign:|♀️|♂️)/)
+        .map(s => s.trim())
+        .filter(s => s.length > 0);
+    if (optionId > characters.length) return;
+    const characterNameRaw = characters[optionId - 1];
+    const cleanName = characterNameRaw.replace(/:female_sign:|:male_sign:|♀️|♂️/g, '').trim();
+
     try {
         if (action === 'remove') {
-            // Delete vote
             await db.query(
                 `DELETE FROM ${helpers.tables.POLL_VOTING_DISCORD}
                  WHERE user_id = ? AND poll_id = ? AND option_id = ?`,
                 [user.id, 'character_poll_new', optionId]
             );
+            console.log(`🗳️ Vote Removed: ${user.username} from Option ${optionId} (${cleanName})`);
         } else {
-            // --- ADD VOTE (with weight calculation) ---
+            // --- ADD VOTE with weight calculation ---
             const member = await message.guild.members.fetch(user.id).catch(() => null);
             let weight = 1.0;
             let baseWeight = 1.0;
@@ -66,15 +75,6 @@ module.exports = async (reaction, user, action = 'add') => {
                 if (xpData?.level) weight += (xpData.level * weights.xpFactor);
             }
 
-            // Fetch character name for the option
-            const charData = await db.query(
-                `SELECT character_name FROM ${helpers.tables.POLL_VOTES_FINAL}
-                 WHERE poll_id = ? AND option_id = ?`,
-                ['character_poll_new', optionId],
-                true
-            );
-            const characterName = charData?.character_name || null;
-
             await db.query(
                 `INSERT OR REPLACE INTO ${helpers.tables.POLL_VOTING_DISCORD}
                  (user_id, poll_id, option_id, weight, discord_username, time_voted, character_name)
@@ -86,27 +86,29 @@ module.exports = async (reaction, user, action = 'add') => {
                     parseFloat(weight.toFixed(2)),
                     user.username,
                     new Date().toISOString(),
-                    characterName
+                    cleanName
                 ]
             );
-
-            console.log(`🗳️ Vote Recorded: ${user.username} for Option ${optionId} (Weight: ${weight.toFixed(2)}) - Character: ${characterName || 'unknown'}`);
+            console.log(`🗳️ Vote Recorded: ${user.username} for Option ${optionId} (Weight: ${weight.toFixed(2)}) - Character: ${cleanName}`);
         }
 
-        const characters = activePoll.poll_list
-            .split(/(?=:female_sign:|:male_sign:|♀️|♂️|\n)/)
+        // Refresh the poll message to show updated scores
+        const charactersList = activePoll.poll_list
+            .split(/(?=:female_sign:|:male_sign:|♀️|♂️)/)
             .map(s => s.trim())
-            .filter(s => s.length > 1);
-
+            .filter(s => s.length > 0);
         const endTimeMs = new Date(activePoll.ends_at).getTime();
-        await pollService.refreshPollMessage(message, characters, endTimeMs);
+        await pollService.refreshPollMessage(message, charactersList, endTimeMs);
 
+        // Remove other reactions from the same user (keep only one vote)
         if (action !== 'remove') {
             const otherReactions = message.reactions.cache.filter(r => {
                 const rId = r.emoji.id || r.emoji.name;
                 return rId !== emojiKey;
             });
-            otherReactions.forEach(r => r.users.remove(user.id).catch(() => {}));
+            for (const other of otherReactions.values()) {
+                await other.users.remove(user.id).catch(() => {});
+            }
         }
     } catch (err) {
         console.error("Error in reaction handling:", err);
