@@ -1,3 +1,5 @@
+// services/pollReminders.js
+
 const db = require('./database');
 const h = require('../utils/helpers');
 
@@ -54,7 +56,8 @@ async function managePollReminders(channel, pollMessageId, endTimeISO, client) {
 
     const webhook = await getOrCreateWebhook(channel, 'Poll Reminder');
     const roleMention = `<@&${GIVEAWAY_ROLE_ID}>`;
-    const reminderContent = `${h.releaseEmojis.ALERT} **Last day for poll suggestions!** ${roleMention}\n` +
+    const alertEmoji = h.releaseEmojis?.ALERT || '⚠️';
+    const reminderContent = `${alertEmoji} **Last day for poll suggestions!** ${roleMention}\n` +
       `Please send your character suggestions for next week's poll via DM to <@${h.ids.users.Velutinx}> before Friday.`;
 
     const sent = await webhook.send({
