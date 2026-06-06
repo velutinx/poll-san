@@ -52,14 +52,15 @@ module.exports = async (interaction) => {
         autoArchiveDuration: 1440
     });
 
-    // ───── Send initial reminder (right away) ─────
+    // ───── Send initial reminder (right away) – use Unicode emoji directly ─────
     const initialWebhook = await (async () => {
         const hooks = await channel.fetchWebhooks();
         let wh = hooks.find(w => w.name === 'Poll Reminder');
         if (!wh) wh = await channel.createWebhook({ name: 'Poll Reminder', avatar: h.urls.LOGO_URL });
         return wh;
     })();
-    const speechEmoji = h.releaseEmojis?.SPEECH || '💬';
+    // Speech emoji: use Unicode 💬 (always works)
+    const speechEmoji = '💬';
     const initialReminderMsg = await initialWebhook.send({
         content: `${speechEmoji} Remember to message **[DM Velutinx](https://discord.com/users/${h.ids.users.Velutinx})** with suggestions for next week's poll! All suggestions must be sent before **Friday**.`,
         username: 'Poll Reminder',
