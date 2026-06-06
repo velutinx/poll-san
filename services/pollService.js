@@ -1,5 +1,4 @@
 // services/pollService.js
-
 const db = require('./database');
 const h = require('../utils/helpers');
 
@@ -119,7 +118,7 @@ async function getFinalPollMessageContent(pollList) {
     return `🛑 **Poll has ended.**\n\n${resultsString}\n\n${e.DISCORD} Discord weighted vote + ${e.LINK} **[Website poll results](<https://velutinx.com/poll>)**\n\n${randomDownArrow} Click the thread below for images & discussion!`;
 }
 
-// Helper to update the "Character images" arrow message in the thread
+// Helper to update the "Character images" arrow message in the thread using the webhook
 async function updateArrowMessage(pollMessage) {
     const pollRecord = await db.query(
         `SELECT arrow_message_id FROM ${h.tables.POLL_AUTO_RESUME} WHERE message_id = ?`,
@@ -132,10 +131,21 @@ async function updateArrowMessage(pollMessage) {
     if (!thread) return;
 
     try {
-        const arrowMsg = await thread.messages.fetch(pollRecord.arrow_message_id);
+        // Get the original webhook that sent the poll message (named 'Poll')
+        const channel = pollMessage.channel;
+        const webhooks = await channel.fetchWebhooks();
+        const pollWebhook = webhooks.find(w => w.name === 'Poll');
+        if (!pollWebhook) {
+            console.warn("Could not find Poll webhook to edit arrow message");
+            return;
+        }
+        // Edit the arrow message using the webhook
         const upArrows = h.releaseEmojis.UP_ARROWS || [];
         const randomUpArrow = upArrows.length ? upArrows[Math.floor(Math.random() * upArrows.length)] : '⬆️';
-        await arrowMsg.edit(`${randomUpArrow} Character images for the poll above!`);
+        await pollWebhook.editMessage(pollRecord.arrow_message_id, {
+            content: `${randomUpArrow} Character images for the poll above!`,
+            threadId: thread.id
+        });
     } catch (e) {
         console.warn("Failed to update arrow message:", e.message);
     }
