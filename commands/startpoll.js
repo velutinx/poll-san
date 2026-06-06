@@ -50,19 +50,33 @@ module.exports = async (interaction) => {
         autoArchiveDuration: 1440
     });
 
+    // ───── Send initial reminder (right away) ─────
+    const initialWebhook = await (async () => {
+        const hooks = await channel.fetchWebhooks();
+        let wh = hooks.find(w => w.name === 'Poll Reminder');
+        if (!wh) wh = await channel.createWebhook({ name: 'Poll Reminder', avatar: h.urls.LOGO_URL });
+        return wh;
+    })();
+    const initialReminderMsg = await initialWebhook.send({
+        content: `${h.releaseEmojis.SPEECH} Remember to message **[DM Velutinx](https://discord.com/users/${h.ids.users.Velutinx})** with suggestions for next week's poll! All suggestions must be sent before **Friday**.`,
+        username: 'Poll Reminder',
+        avatarURL: h.urls.LOGO_URL,
+        flags: [1 << 12]
+    });
+
     try {
         await db.query(
             `INSERT OR REPLACE INTO ${h.tables.POLL_AUTO_RESUME}
-             (message_id, channel_id, ends_at, poll_list, status, created_at)
-             VALUES (?, ?, ?, ?, 'active', datetime('now'))`,
-            [pollMessage.id, channel.id, endTimeISO, listRaw]
+             (message_id, channel_id, ends_at, poll_list, status, created_at, initial_reminder_id)
+             VALUES (?, ?, ?, ?, 'active', datetime('now'), ?)`,
+            [pollMessage.id, channel.id, endTimeISO, listRaw, initialReminderMsg.id]
         );
-        console.log(`✅ D1: Recorded poll ${pollMessage.id} for auto-resume.`);
+        console.log(`✅ D1: Recorded poll ${pollMessage.id} for auto-resume, initial reminder stored.`);
     } catch (dbError) {
         console.error("❌ D1 Error:", dbError.message);
     }
 
-    // Start the dynamic reminder system (requires message ID, end time, and client)
+    // Start the dynamic reminder system (handles last‑day reminder and deletes initial one)
     const { startPollReminders } = require('../services/pollReminders');
     await startPollReminders(channel, pollMessage.id, endTimeISO, interaction.client);
 
