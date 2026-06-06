@@ -63,7 +63,7 @@ module.exports = async (interaction) => {
     // Wrap the user URL in < > to prevent Discord from embedding a profile card
     const dmLink = `<https://discord.com/users/${h.ids.users.Velutinx}>`;
     const initialReminderMsg = await initialWebhook.send({
-        content: `${speechEmoji} Remember to message **[DM me privately]( ${dmLink} )** with suggestions for next week's poll! All suggestions must be sent before **Friday**.`,
+        content: `${speechEmoji} Remember to message **[DM Velutinx]( ${dmLink} )** with suggestions for next week's poll! All suggestions must be sent before **Friday**.`,
 
       
         username: 'Poll Reminder',
