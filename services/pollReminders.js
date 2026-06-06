@@ -137,4 +137,4 @@ async function restorePollReminders(client) {
   }
 }
 
-module.exports = { startPollReminders, restorePollReminders };
+module.exports = { startPollReminders, restorePollReminders, managePollReminders };
