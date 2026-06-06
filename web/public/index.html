@@ -22,43 +22,49 @@
     </nav>
 
     <main>
-        <!-- Polls tab -->
-        <div id="poll-mgmt" class="tab-content active">
-            <div class="mgmt-container">
-                <div class="mgmt-column">
-                    <h1>Launch New Poll</h1>
-                    <div class="card">
-                        <div class="form-group">
-                            <label>Target Channel</label>
-                            <select id="poll_channel"></select>
-                        </div>
-                        <div class="form-group">
-                            <label>Duration (Days)</label>
-                            <input type="number" id="poll_days" value="7">
-                        </div>
-                        <div class="form-group">
-                            <label>Character List (Paste with Emojis)</label>
-                            <textarea id="poll_list" placeholder=":female_sign: Himari Akeboshi..."></textarea>
-                        </div>
-                        <div class="btn-row">
-                            <button id="launch-btn" onclick="triggerPoll()">Launch Poll</button>
-                            <button id="stop-btn" onclick="stopPoll()" style="background: var(--disabled-gray); flex:1;" disabled>Stop Poll</button>
-                        </div>
-                        <div id="poll-timer" class="timer-display"></div>
-                        <div id="poll-status" class="status"></div>
-                    </div>
+<!-- Polls tab -->
+<div id="poll-mgmt" class="tab-content active">
+    <div class="mgmt-container">
+        <div class="mgmt-column">
+            <h1>Launch New Poll</h1>
+            <div class="card">
+                <div class="form-group">
+                    <label>Target Channel</label>
+                    <select id="poll_channel"></select>
                 </div>
-                <div class="mgmt-column">
-                    <h1>Select Winner</h1>
-                    <div class="card">
-                        <div id="winner-list" class="winner-grid">
-                            <p>Loading active data...</p>
-                        </div>
-                        <div id="winner-status" class="status"></div>
-                    </div>
+                <div class="form-group">
+                    <label>Duration (Days)</label>
+                    <input type="number" id="poll_days" value="7">
                 </div>
+                <div class="form-group">
+                    <label>Character List (Paste with Emojis)</label>
+                    <textarea id="poll_list" placeholder=":female_sign: Himari Akeboshi..."></textarea>
+                </div>
+                <div class="btn-row">
+                    <button id="launch-btn" onclick="triggerPoll()">Launch Poll</button>
+                    <button id="stop-btn" onclick="stopPoll()" style="background: var(--disabled-gray); flex:1;" disabled>Stop Poll</button>
+                </div>
+                <div id="poll-timer" class="timer-display"></div>
+                <!-- NEW: Adjust time controls -->
+                <div style="margin-top: 12px; display: flex; gap: 10px; align-items: center; justify-content: center;">
+                    <label style="font-size:0.9rem;">Adjust time (hours): </label>
+                    <input type="number" id="poll-adjust-hours" step="1" value="0" style="width:80px; background:#1e293b; border:1px solid #475569; color:white; border-radius:4px; padding:4px;">
+                    <button onclick="adjustPollTime()" style="background:#10b981; padding:4px 12px;">Apply</button>
+                </div>
+                <div id="poll-status" class="status"></div>
             </div>
         </div>
+        <div class="mgmt-column">
+            <h1>Select Winner</h1>
+            <div class="card">
+                <div id="winner-list" class="winner-grid">
+                    <p>Loading active data...</p>
+                </div>
+                <div id="winner-status" class="status"></div>
+            </div>
+        </div>
+    </div>
+</div>
 
         <!-- Releases tab -->
         <div id="releases-mgmt" class="tab-content">
