@@ -57,7 +57,6 @@ async function loadActivePoll() {
         const res = await fetch('/api/poll-results-data');
         const data = await res.json();
 
-        // Accept both old flat array and new { results, endTime } object
         let resultsArray, endTime;
         if (Array.isArray(data)) {
             resultsArray = data;
@@ -67,14 +66,12 @@ async function loadActivePoll() {
             endTime = data.endTime || null;
         }
 
-        // Manage the countdown timer
         if (endTime) {
             startPollTimer(endTime);
         } else {
             stopPollTimer();
         }
 
-        // No active poll
         if (!resultsArray || resultsArray.length === 0) {
             listArea.innerHTML = '<p>No active poll.</p>';
             document.getElementById('launch-btn').disabled = false;
@@ -82,7 +79,6 @@ async function loadActivePoll() {
             return;
         }
 
-        // Active poll exists
         document.getElementById('launch-btn').disabled = true;
         document.getElementById('stop-btn').disabled = false;
         listArea.innerHTML = '';
@@ -108,7 +104,6 @@ async function loadActivePoll() {
             }
         });
 
-        // Highlight the current leader(s)
         if (highestScore > -Infinity) {
             buttons.forEach(btn => {
                 if (!btn.classList.contains('selected') && parseFloat(btn.getAttribute('data-score')) === highestScore) {
@@ -167,11 +162,39 @@ async function markWinner(name) {
     }
 }
 
+// ------- Adjust poll time (add/subtract hours) -------
+async function adjustPollTime() {
+    const hoursInput = document.getElementById('poll-adjust-hours');
+    let hours = parseInt(hoursInput.value, 10);
+    if (isNaN(hours)) hours = 0;
+
+    const statusDiv = document.getElementById('poll-status');
+    statusDiv.innerHTML = 'Updating...';
+    try {
+        const res = await fetch('/api/poll/adjust-time', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ hours })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Adjustment failed');
+        statusDiv.innerHTML = `<span style="color:#4ade80;">✅ Poll end time updated by ${hours} hour(s).</span>`;
+        if (data.newEndTime) {
+            startPollTimer(data.newEndTime);
+        }
+        loadActivePoll(); // refresh winner list & timer
+    } catch (err) {
+        statusDiv.innerHTML = `<span style="color:#f87171;">❌ ${err.message}</span>`;
+        console.error(err);
+    }
+}
+
 // Expose functions globally
 window.loadActivePoll = loadActivePoll;
 window.triggerPoll = triggerPoll;
 window.stopPoll = stopPoll;
 window.markWinner = markWinner;
+window.adjustPollTime = adjustPollTime;
 
 // Auto-load on page ready
 document.addEventListener('DOMContentLoaded', loadActivePoll);
