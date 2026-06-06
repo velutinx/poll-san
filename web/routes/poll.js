@@ -5,11 +5,7 @@ const { EmbedBuilder } = require('discord.js');
 module.exports = function setupPollRoutes(app, client) {
     const h = require('../../utils/helpers');
     const pollService = require('../../services/pollService');
-    const db = require('../../services/database');   // D1 client
-
-    let cachedPollResultsData = null;
-    let cachedPollResultsTime = 0;
-    const POLL_CACHE_TTL = 60000;
+    const db = require('../../services/database');
 
     // START POLL
     app.post('/api/trigger-poll', async (req, res) => {
@@ -54,13 +50,9 @@ module.exports = function setupPollRoutes(app, client) {
         }
     });
 
-    // POLL RESULTS DATA
+    // POLL RESULTS DATA (no caching – always fresh)
     app.get('/api/poll-results-data', async (req, res) => {
         try {
-            if (cachedPollResultsData && (Date.now() - cachedPollResultsTime) < POLL_CACHE_TTL) {
-                return res.json(cachedPollResultsData);
-            }
-
             const data = await db.query(
                 `SELECT character_name, score, selected_at
                  FROM ${h.tables.POLL_VOTES_FINAL}
@@ -77,16 +69,13 @@ module.exports = function setupPollRoutes(app, client) {
             );
             const endTime = activePoll?.ends_at ? new Date(activePoll.ends_at).toISOString() : null;
 
-            const responseData = {
+            res.json({
                 results: data || [],
                 endTime: endTime
-            };
-            cachedPollResultsData = responseData;
-            cachedPollResultsTime = Date.now();
-            res.json(responseData);
+            });
         } catch (e) {
             console.error('Poll results error:', e);
-            res.json(cachedPollResultsData || { results: [], endTime: null });
+            res.json({ results: [], endTime: null });
         }
     });
 
@@ -130,8 +119,6 @@ module.exports = function setupPollRoutes(app, client) {
             await db.query(`DELETE FROM ${h.tables.POLL_VOTING_WEBSITE} WHERE poll_id = 'character_poll_new'`);
             await db.query(`DELETE FROM ${h.tables.POLL_VOTES_FINAL} WHERE poll_id = 'character_poll_new'`);
 
-            cachedPollResultsData = null;
-            cachedPollResultsTime = 0;
             res.json({ success: true });
         } catch (err) {
             console.error('Stop poll error:', err);
@@ -237,9 +224,7 @@ module.exports = function setupPollRoutes(app, client) {
         }
     });
 
-    // ────────────────────────────────────────────────
     // ADJUST POLL TIME (add or subtract hours)
-    // ────────────────────────────────────────────────
     app.post('/api/poll/adjust-time', async (req, res) => {
         const { hours } = req.body;
         if (typeof hours !== 'number' || isNaN(hours)) {
@@ -282,9 +267,9 @@ module.exports = function setupPollRoutes(app, client) {
             await refreshPollMessage(pollMessage, characters, newEnd.getTime());
             runPollInterval(pollMessage, newEnd.getTime(), characters);
 
-            // Handle reminders (post/delete based on new time)
-            const { managePollReminders } = require('../../services/pollReminders');
-            await managePollReminders(channel, poll.message_id, newEndISO, client);
+            // Handle reminders
+            const { startPollReminders } = require('../../services/pollReminders');
+            await startPollReminders(channel, poll.message_id, newEndISO, client);
 
             res.json({ success: true, newEndTime: newEndISO });
         } catch (err) {
