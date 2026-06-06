@@ -1,6 +1,5 @@
 // services/pollService.js
 
-// services/pollService.js
 const db = require('./database');
 const h = require('../utils/helpers');
 
@@ -104,7 +103,6 @@ function forceStopPoll() {
     if (activePollTimer) {
         clearInterval(activePollTimer);
         activePollTimer = null;
-        // console.log("Poll interval cleared."); // silenced
     }
 }
 
@@ -119,6 +117,28 @@ async function getFinalPollMessageContent(pollList) {
     const randomDownArrow = e.DOWN_ARROWS[Math.floor(Math.random() * e.DOWN_ARROWS.length)];
 
     return `🛑 **Poll has ended.**\n\n${resultsString}\n\n${e.DISCORD} Discord weighted vote + ${e.LINK} **[Website poll results](<https://velutinx.com/poll>)**\n\n${randomDownArrow} Click the thread below for images & discussion!`;
+}
+
+// Helper to update the "Character images" arrow message in the thread
+async function updateArrowMessage(pollMessage) {
+    const pollRecord = await db.query(
+        `SELECT arrow_message_id FROM ${h.tables.POLL_AUTO_RESUME} WHERE message_id = ?`,
+        [pollMessage.id],
+        true
+    );
+    if (!pollRecord?.arrow_message_id) return;
+
+    const thread = pollMessage.thread;
+    if (!thread) return;
+
+    try {
+        const arrowMsg = await thread.messages.fetch(pollRecord.arrow_message_id);
+        const upArrows = h.releaseEmojis.UP_ARROWS || [];
+        const randomUpArrow = upArrows.length ? upArrows[Math.floor(Math.random() * upArrows.length)] : '⬆️';
+        await arrowMsg.edit(`${randomUpArrow} Character images for the poll above!`);
+    } catch (e) {
+        console.warn("Failed to update arrow message:", e.message);
+    }
 }
 
 function runPollInterval(pollMessage, endTime, characters) {
@@ -140,6 +160,9 @@ function runPollInterval(pollMessage, endTime, characters) {
             } else {
                 await pollMessage.edit({ content }).catch(() => {});
             }
+
+            // Also update the arrow message in the thread
+            await updateArrowMessage(pollMessage);
 
             if (isFinished) {
                 forceStopPoll();
@@ -174,6 +197,9 @@ async function refreshPollMessage(pollMessage, characters, endTime) {
     } else {
         await pollMessage.edit({ content }).catch(() => {});
     }
+
+    // Also update the arrow message in the thread
+    await updateArrowMessage(pollMessage);
 }
 
 module.exports = {
