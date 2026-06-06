@@ -6,19 +6,11 @@ const h = require('../utils/helpers');
 const CURRENT_POLL_ID = 'character_poll_new';
 const UPDATE_INTERVAL = h.POLL_UPDATE_INTERVAL_MS || 10000;
 
-let cachedPollResults = null;
-let cachedPollTimestamp = 0;
-const CACHE_TTL = UPDATE_INTERVAL;
-
 let activePollTimer = null;
 
 async function getPollResults(message, characters) {
-    if (cachedPollResults && (Date.now() - cachedPollTimestamp) < CACHE_TTL) {
-        return cachedPollResults;
-    }
-
+    // Always fetch fresh data – no caching
     try {
-        // Fetch all data from D1
         const discordVotes = await db.query(
             `SELECT option_id, weight FROM ${h.tables.POLL_VOTING_DISCORD} WHERE poll_id = ?`,
             [CURRENT_POLL_ID]
@@ -62,29 +54,29 @@ async function getPollResults(message, characters) {
                 poll_id: CURRENT_POLL_ID,
                 option_id: optionId,
                 character_name: rawName,
-                score: totalScore
+                score: totalScore,
+                selected_at: winnerMap[optionId] ? new Date().toISOString() : null
             });
         }
 
         // Upsert the final scores into D1
         for (const row of rawDataForDB) {
             await db.query(
-                `INSERT INTO ${h.tables.POLL_VOTES_FINAL} (poll_id, option_id, character_name, score)
-                 VALUES (?, ?, ?, ?)
+                `INSERT INTO ${h.tables.POLL_VOTES_FINAL} (poll_id, option_id, character_name, score, selected_at)
+                 VALUES (?, ?, ?, ?, ?)
                  ON CONFLICT(poll_id, option_id) DO UPDATE SET
                     character_name = excluded.character_name,
-                    score = excluded.score`,
-                [row.poll_id, row.option_id, row.character_name, row.score]
+                    score = excluded.score,
+                    selected_at = excluded.selected_at`,
+                [row.poll_id, row.option_id, row.character_name, row.score, row.selected_at]
             );
         }
 
         const resultString = displayResults.join('');
-        cachedPollResults = resultString;
-        cachedPollTimestamp = Date.now();
         return resultString;
     } catch (err) {
         console.error("Error calculating poll results:", err);
-        return cachedPollResults || "Error loading results...";
+        return "Error loading results...";
     }
 }
 
@@ -101,7 +93,7 @@ async function generateMessageContent(endTime, resultsText, characters, isEnded 
         return `${h.emojis[i]} \` 0.00 ${name.padEnd(30)} \` \n`;
     }).join('');
 
-    const footer = `\n${e.DISCORD} Discord weighted vote + ${e.LINK} **[Website poll results](https://velutinx.com/poll)**\n\n` +
+    const footer = `\n${e.DISCORD} Discord weighted vote + ${e.LINK} **[Website poll results](<https://velutinx.com/poll>)**\n\n` +
                    `${randomDownArrow} Click the thread below for images & discussion!`;
 
     return header + body + footer;
@@ -111,6 +103,7 @@ function forceStopPoll() {
     if (activePollTimer) {
         clearInterval(activePollTimer);
         activePollTimer = null;
+        // console.log("Poll interval cleared."); // silenced
     }
 }
 
@@ -124,7 +117,7 @@ async function getFinalPollMessageContent(pollList) {
     const e = h.releaseEmojis;
     const randomDownArrow = e.DOWN_ARROWS[Math.floor(Math.random() * e.DOWN_ARROWS.length)];
 
-    return `🛑 **Poll has ended.**\n\n${resultsString}\n\n${e.DISCORD} Discord weighted vote + ${e.LINK} **[Website poll results](https://velutinx.com/poll)**\n\n${randomDownArrow} Click the thread below for images & discussion!`;
+    return `🛑 **Poll has ended.**\n\n${resultsString}\n\n${e.DISCORD} Discord weighted vote + ${e.LINK} **[Website poll results](<https://velutinx.com/poll>)**\n\n${randomDownArrow} Click the thread below for images & discussion!`;
 }
 
 function runPollInterval(pollMessage, endTime, characters) {
@@ -169,9 +162,9 @@ function runPollInterval(pollMessage, endTime, characters) {
 }
 
 async function refreshPollMessage(pollMessage, characters, endTime) {
+    // This function is called immediately after a vote or time adjustment
     const results = await getPollResults(pollMessage, characters);
     const content = await generateMessageContent(endTime, results, characters, false);
-
     const channel = pollMessage.channel;
     const webhooks = await channel.fetchWebhooks();
     const pollWebhook = webhooks.find(w => w.name === 'Poll');
