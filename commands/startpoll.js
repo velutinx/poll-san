@@ -52,20 +52,21 @@ module.exports = async (interaction) => {
         autoArchiveDuration: 1440
     });
 
-    // ───── Send initial reminder (right away) – use Unicode emoji directly ─────
+    // ───── Send initial reminder (right away) – no embed from Discord link ─────
     const initialWebhook = await (async () => {
         const hooks = await channel.fetchWebhooks();
         let wh = hooks.find(w => w.name === 'Poll Reminder');
         if (!wh) wh = await channel.createWebhook({ name: 'Poll Reminder', avatar: h.urls.LOGO_URL });
         return wh;
     })();
-    // Speech emoji: use Unicode 💬 (always works)
     const speechEmoji = '💬';
+    // Wrap the user URL in < > to prevent Discord from embedding a profile card
+    const dmLink = `<https://discord.com/users/${h.ids.users.Velutinx}>`;
     const initialReminderMsg = await initialWebhook.send({
-        content: `${speechEmoji} Remember to message **[DM Velutinx](https://discord.com/users/${h.ids.users.Velutinx})** with suggestions for next week's poll! All suggestions must be sent before **Friday**.`,
+        content: `${speechEmoji} Remember to message **DM Velutinx** ${dmLink} with suggestions for next week's poll! All suggestions must be sent before **Friday**.`,
         username: 'Poll Reminder',
         avatarURL: h.urls.LOGO_URL,
-        flags: [1 << 12]
+        flags: [1 << 12]      // SuppressEmbeds
     });
 
     try {
