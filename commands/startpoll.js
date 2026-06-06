@@ -1,4 +1,3 @@
-// commands/startpoll.js
 const h = require('../utils/helpers');
 const { chunkArray, emojis, reactIds, ids, releaseEmojis } = h;
 const { generateMessageContent, runPollInterval } = require('../services/pollService');
@@ -37,6 +36,7 @@ module.exports = async (interaction) => {
     const lines = listRaw.split(/\r?\n/).filter(line => line.trim().length > 0);
     const characters = lines.map(line => line.trim());
     const endTime = Date.now() + (days * 24 * 60 * 60 * 1000);
+    const endTimeISO = new Date(endTime).toISOString();
     const channel = interaction.channel;
     const webhook = await getPollWebhook(channel);
     const pollMessage = await webhook.send({
@@ -55,15 +55,16 @@ module.exports = async (interaction) => {
             `INSERT OR REPLACE INTO ${h.tables.POLL_AUTO_RESUME}
              (message_id, channel_id, ends_at, poll_list, status, created_at)
              VALUES (?, ?, ?, ?, 'active', datetime('now'))`,
-            [pollMessage.id, channel.id, new Date(endTime).toISOString(), listRaw]
+            [pollMessage.id, channel.id, endTimeISO, listRaw]
         );
         console.log(`✅ D1: Recorded poll ${pollMessage.id} for auto-resume.`);
     } catch (dbError) {
         console.error("❌ D1 Error:", dbError.message);
     }
 
+    // Start the dynamic reminder system (requires message ID, end time, and client)
     const { startPollReminders } = require('../services/pollReminders');
-    await startPollReminders(channel, new Date());
+    await startPollReminders(channel, pollMessage.id, endTimeISO, interaction.client);
 
     await Promise.all(reactIds.map(id =>
         pollMessage.react(id).catch(e => console.error(`Reaction Error (${id}):`, e.message))
