@@ -2,7 +2,7 @@
 
 const h = require('../utils/helpers');
 const { chunkArray, emojis, reactIds, ids, releaseEmojis } = h;
-const { generateMessageContent, runPollInterval } = require('../services/pollService');
+const { generateMessageContent, runPollInterval, getPollResults } = require('../services/pollService');
 const db = require('../services/database');
 
 async function getPollWebhook(channel) {
@@ -78,6 +78,9 @@ module.exports = async (interaction) => {
     } catch (dbError) {
         console.error("❌ D1 Error:", dbError.message);
     }
+
+    // Populate final scores table immediately so dashboard shows characters
+    await getPollResults(pollMessage, characters);
 
     // Start the dynamic reminder system (handles last‑day reminder and deletes initial one)
     const { startPollReminders } = require('../services/pollReminders');
