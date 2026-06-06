@@ -1,12 +1,10 @@
-// web/routes/poll.js
-
 const { EmbedBuilder } = require('discord.js');
 
 module.exports = function setupPollRoutes(app, client) {
     const h = require('../../utils/helpers');
     const pollService = require('../../services/pollService');
     const db = require('../../services/database');   // D1 client
-    
+
     let cachedPollResultsData = null;
     let cachedPollResultsTime = 0;
     const POLL_CACHE_TTL = 60000;
@@ -17,7 +15,7 @@ module.exports = function setupPollRoutes(app, client) {
         try {
             const channel = await client.channels.fetch(channel_id);
             const startPollLogic = require('../../commands/startpoll.js');
-            
+
             const mockInteraction = {
                 channel,
                 guild: channel.guild,
@@ -61,21 +59,19 @@ module.exports = function setupPollRoutes(app, client) {
                 return res.json(cachedPollResultsData);
             }
 
-            // Fetch final vote scores
             const data = await db.query(
                 `SELECT character_name, score, selected_at
                  FROM ${h.tables.POLL_VOTES_FINAL}
                  ORDER BY option_id ASC`
             );
 
-            // Fetch active poll end time
             const activePoll = await db.query(
                 `SELECT ends_at FROM ${h.tables.POLL_AUTO_RESUME}
                  WHERE ends_at > ?
                  ORDER BY id DESC
                  LIMIT 1`,
                 [new Date().toISOString()],
-                true   // single row
+                true
             );
             const endTime = activePoll?.ends_at ? new Date(activePoll.ends_at).toISOString() : null;
 
@@ -102,7 +98,7 @@ module.exports = function setupPollRoutes(app, client) {
                  ORDER BY id DESC
                  LIMIT 1`,
                 [],
-                true   // single row
+                true
             );
 
             if (poll) {
@@ -114,7 +110,7 @@ module.exports = function setupPollRoutes(app, client) {
                     .filter(s => s.length > 1);
                 const results = await pollService.getPollResults(pollMessage, characters);
                 const content = await pollService.generateMessageContent(0, results, characters, true);
-                
+
                 const webhooks = await channel.fetchWebhooks();
                 const pollWebhook = webhooks.find(w => w.name === 'Poll');
                 if (pollWebhook) {
@@ -124,7 +120,10 @@ module.exports = function setupPollRoutes(app, client) {
                 }
             }
 
-            // Truncate poll tables (replaces the old RPC)
+            // Delete poll record from auto_resume
+            await db.query(`DELETE FROM ${h.tables.POLL_AUTO_RESUME} WHERE ends_at > datetime('now')`);
+
+            // Truncate poll tables
             await db.query(`DELETE FROM ${h.tables.POLL_VOTING_DISCORD} WHERE poll_id = 'character_poll_new'`);
             await db.query(`DELETE FROM ${h.tables.POLL_VOTING_WEBSITE} WHERE poll_id = 'character_poll_new'`);
             await db.query(`DELETE FROM ${h.tables.POLL_VOTES_FINAL} WHERE poll_id = 'character_poll_new'`);
@@ -138,7 +137,7 @@ module.exports = function setupPollRoutes(app, client) {
         }
     });
 
-    // MARK WINNER (combined message)
+    // MARK WINNER
     app.post('/api/mark-winner', async (req, res) => {
         const { winner_name } = req.body;
         const e = h.releaseEmojis;
@@ -149,20 +148,18 @@ module.exports = function setupPollRoutes(app, client) {
                  ORDER BY id DESC
                  LIMIT 1`,
                 [],
-                true   // single row
+                true
             );
             if (!poll) return res.status(404).json({ error: "No active poll found." });
 
-            // Find the winner's option ID
             const winnerRow = await db.query(
                 `SELECT option_id FROM ${h.tables.POLL_VOTES_FINAL}
                  WHERE LOWER(character_name) LIKE LOWER(?) AND poll_id = ?`,
                 [`%${winner_name}%`, 'character_poll_new'],
-                true   // single row
+                true
             );
             const winnerOptionId = winnerRow?.option_id;
 
-            // Mark winner with timestamp
             await db.query(
                 `UPDATE ${h.tables.POLL_VOTES_FINAL}
                  SET selected_at = ?
@@ -170,7 +167,6 @@ module.exports = function setupPollRoutes(app, client) {
                 [new Date().toISOString(), `%${winner_name}%`]
             );
 
-            // Fetch updated vote data
             const voteData = await db.query(
                 `SELECT character_name, score, selected_at, option_id
                  FROM ${h.tables.POLL_VOTES_FINAL}
@@ -235,6 +231,62 @@ module.exports = function setupPollRoutes(app, client) {
             res.json({ success: true });
         } catch (err) {
             console.error('Mark winner error:', err);
+            res.status(500).json({ error: err.message });
+        }
+    });
+
+    // ────────────────────────────────────────────────
+    // ADJUST POLL TIME (add or subtract hours)
+    // ────────────────────────────────────────────────
+    app.post('/api/poll/adjust-time', async (req, res) => {
+        const { hours } = req.body;
+        if (typeof hours !== 'number' || isNaN(hours)) {
+            return res.status(400).json({ error: 'Invalid hours value' });
+        }
+
+        try {
+            const poll = await db.query(
+                `SELECT * FROM ${h.tables.POLL_AUTO_RESUME}
+                 WHERE ends_at > datetime('now')
+                 ORDER BY id DESC
+                 LIMIT 1`,
+                [],
+                true
+            );
+
+            if (!poll) {
+                return res.status(404).json({ error: 'No active poll found' });
+            }
+
+            const oldEnd = new Date(poll.ends_at);
+            const newEnd = new Date(oldEnd.getTime() + hours * 60 * 60 * 1000);
+            const newEndISO = newEnd.toISOString();
+
+            await db.query(
+                `UPDATE ${h.tables.POLL_AUTO_RESUME} SET ends_at = ? WHERE message_id = ?`,
+                [newEndISO, poll.message_id]
+            );
+
+            // Update the live poll message
+            const channel = await client.channels.fetch(poll.channel_id);
+            const pollMessage = await channel.messages.fetch(poll.message_id);
+            const characters = poll.poll_list
+                .split(/(?=:female_sign:|:male_sign:|♀️|♂️)/)
+                .map(s => s.trim())
+                .filter(s => s.length > 0);
+
+            const { forceStopPoll, runPollInterval, refreshPollMessage } = require('../../services/pollService');
+            forceStopPoll();
+            await refreshPollMessage(pollMessage, characters, newEnd.getTime());
+            runPollInterval(pollMessage, newEnd.getTime(), characters);
+
+            // Handle reminders (post/delete based on new time)
+            const { managePollReminders } = require('../../services/pollReminders');
+            await managePollReminders(channel, poll.message_id, newEndISO, client);
+
+            res.json({ success: true, newEndTime: newEndISO });
+        } catch (err) {
+            console.error('Poll time adjust error:', err);
             res.status(500).json({ error: err.message });
         }
     });
