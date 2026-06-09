@@ -12,22 +12,8 @@ module.exports = async function handleRoleUpdate(oldMember, newMember) {
     if (newMember.user.bot) return;
     if (newMember.roles.cache.has(CREATOR_ROLE)) return;
 
-    // Skip users with an active website membership – they are handled by the sync
-    try {
-        const activeMember = await db.query(
-            `SELECT id FROM ${h.tables.MEMBERSHIPS}
-             WHERE discord_id = ? AND expires_at > ?
-             LIMIT 1`,
-            [newMember.id, new Date().toISOString()],
-            true   // single row
-        );
-
-        if (activeMember) {
-            return;
-        }
-    } catch (err) {
-        console.error(`[RoleConsistency] Database check failed for ${newMember.user.tag}:`, err.message);
-    }
+    // Removed the early return that skipped all logic for users with active memberships
+    // Now role consistency rules apply to everyone (including Patreon/website members)
 
     const member = await newMember.fetch();
     const oldRoles = oldMember.roles.cache;
