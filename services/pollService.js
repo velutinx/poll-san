@@ -8,7 +8,6 @@ const UPDATE_INTERVAL = h.POLL_UPDATE_INTERVAL_MS || 10000;
 let activePollTimer = null;
 
 async function getPollResults(message, characters) {
-    // Always fetch fresh data – no caching
     try {
         const discordVotes = await db.query(
             `SELECT option_id, weight FROM ${h.tables.POLL_VOTING_DISCORD} WHERE poll_id = ?`,
@@ -58,7 +57,6 @@ async function getPollResults(message, characters) {
             });
         }
 
-        // Upsert the final scores into D1
         for (const row of rawDataForDB) {
             await db.query(
                 `INSERT INTO ${h.tables.POLL_VOTES_FINAL} (poll_id, option_id, character_name, score, selected_at)
@@ -118,7 +116,6 @@ async function getFinalPollMessageContent(pollList) {
     return `🛑 **Poll has ended.**\n\n${resultsString}\n\n${e.DISCORD} Discord weighted vote + ${e.LINK} **[Website poll results](<https://velutinx.com/poll>)**\n\n${randomDownArrow} Click the thread below for images & discussion!`;
 }
 
-// Helper to update the "Character images" arrow message in the thread using the webhook
 async function updateArrowMessage(pollMessage) {
     const pollRecord = await db.query(
         `SELECT arrow_message_id FROM ${h.tables.POLL_AUTO_RESUME} WHERE message_id = ?`,
@@ -131,7 +128,6 @@ async function updateArrowMessage(pollMessage) {
     if (!thread) return;
 
     try {
-        // Get the original webhook that sent the poll message (named 'Poll')
         const channel = pollMessage.channel;
         const webhooks = await channel.fetchWebhooks();
         const pollWebhook = webhooks.find(w => w.name === 'Poll');
@@ -139,7 +135,6 @@ async function updateArrowMessage(pollMessage) {
             console.warn("Could not find Poll webhook to edit arrow message");
             return;
         }
-        // Edit the arrow message using the webhook
         const upArrows = h.releaseEmojis.UP_ARROWS || [];
         const randomUpArrow = upArrows.length ? upArrows[Math.floor(Math.random() * upArrows.length)] : '⬆️';
         await pollWebhook.editMessage(pollRecord.arrow_message_id, {
@@ -171,7 +166,6 @@ function runPollInterval(pollMessage, endTime, characters) {
                 await pollMessage.edit({ content }).catch(() => {});
             }
 
-            // Also update the arrow message in the thread
             await updateArrowMessage(pollMessage);
 
             if (isFinished) {
@@ -196,7 +190,6 @@ function runPollInterval(pollMessage, endTime, characters) {
 }
 
 async function refreshPollMessage(pollMessage, characters, endTime) {
-    // This function is called immediately after a vote or time adjustment
     const results = await getPollResults(pollMessage, characters);
     const content = await generateMessageContent(endTime, results, characters, false);
     const channel = pollMessage.channel;
@@ -207,8 +200,6 @@ async function refreshPollMessage(pollMessage, characters, endTime) {
     } else {
         await pollMessage.edit({ content }).catch(() => {});
     }
-
-    // Also update the arrow message in the thread
     await updateArrowMessage(pollMessage);
 }
 
