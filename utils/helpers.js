@@ -70,6 +70,7 @@ module.exports = {
         SPEECH: '<a:speech:1506709601758744828>',
         DICE: '<a:dice:1491669867441426542>',
         PIXELSKY: '<a:pixelsky:1507262649878974584>',
+        CHARTUP: '<a:chartup:1514048129870073937>',
         HEART: '<a:heart:1511391137825558628>',
         CATCOIN: '<a:catcoin:1506632039749910598>',
         YOSHICOIN: '<:yoshicoin:1506632090165313586>',
