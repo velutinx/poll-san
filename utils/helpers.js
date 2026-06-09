@@ -76,6 +76,7 @@ module.exports = {
         SKULL: '<:skull:1506692152313512046>',
         TICKET: '<a:ticket:1506633750300327949>',
         WAVE: '<a:wave:1492326023080185987>',
+        MONEYBAG: '<a:moneybag:1514041718989918388>',
         waveId: '1492326023080185987',
         
         VERIFY_EMOJIS: [
