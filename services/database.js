@@ -4,7 +4,7 @@ const h = require('../utils/helpers');
 const WORKER_URL = h.urls.CLOUDFLARE_D1_WORKER;
 const MAX_RETRIES = 3;
 const RETRY_DELAY_MS = 1000;
-const REQUEST_TIMEOUT_MS = 15000; // 15 seconds
+const REQUEST_TIMEOUT_MS = 30000; // 15 seconds
 
 /**
  * Execute a SQL query against Cloudflare D1 with automatic retries.
