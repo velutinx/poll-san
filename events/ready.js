@@ -1,5 +1,4 @@
 // events/ready.js
-
 const db = require('../services/database');
 const { runPollInterval } = require('../services/pollService');
 const { cleanRoles } = require('../services/roleCleaner');
@@ -10,6 +9,7 @@ const { processEndOfDayAwards } = require('../services/triviaJanitor');
 const h = require('../utils/helpers');
 const initChannelCleaner = require('../handlers/channelCleaner');
 const initMudaeMessageHandler = require('../handlers/mudaeMessageHandler');
+const { cleanupExpiredMemberships } = require('../services/membershipCleanup');
 
 const {
   REST,
@@ -111,12 +111,14 @@ module.exports = async (c) => {
     console.error('Failed to fetch active polls:', err);
   }
 
-  // Restore giveaways and poll reminders
   const { restoreGiveaways } = require('../commands/giveaway');
   await restoreGiveaways(c).catch(console.error);
   const { restorePollReminders } = require('../services/pollReminders');
   await restorePollReminders(c).catch(console.error);
+  await cleanupExpiredMemberships(c).catch(err => console.error('Initial membership cleanup failed:', err));
+  setInterval(() => {
+    cleanupExpiredMemberships(c).catch(err => console.error('Scheduled membership cleanup failed:', err));
+  }, 24 * 60 * 60 * 1000);
 
-  // Start Mudae message handler
   initMudaeMessageHandler(c);
 };
