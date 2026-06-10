@@ -51,11 +51,11 @@ module.exports = {
         NEW1: '<a:NEW1:1491321234015911977>',
         NEW2: '<a:NEW2:1491321257780580414>',
         DISCORD: '<a:discord:1503836514986102875>',
-        VERIFY: '<a:Verify:1491669023245729924>',
-        VERIFY_BLUE: '<a:Verifyblue:1501010309790437467>',
-        VERIFY_PINK: '<a:Verifypink:1501010311279542312>',
-        VERIFY_RED: '<a:Verifyred:1501010312583712778>',
-        VERIFY_YELLOW: '<a:Verifyyellow:1501010314077012150>',
+        VERIFY: '<a:Verify:1514060315216707585>',
+        VERIFY_BLUE: '<a:Verifyblue:1514060562198433862>',
+        VERIFY_PINK: '<a:Verifypink:1514060663889068202>',
+        VERIFY_RED: '<a:Verifyred:1514060765013741638>',
+        VERIFY_YELLOW: '<a:Verifyyellow:1514060893791584266>',
         EIGHTEEN: '<a:18:1491670036799029288>',
         EIGHTEENPLUS: '<a:18plus:1501639943443709952>',
         LINK: '<a:Link:1491670128562274475>',
@@ -81,11 +81,11 @@ module.exports = {
         waveId: '1492326023080185987',
         
         VERIFY_EMOJIS: [
-            '<a:Verify:1491669023245729924>',
-            '<a:Verifyblue:1501010309790437467>',
-            '<a:Verifypink:1501010311279542312>',
-            '<a:Verifyred:1501010312583712778>',
-            '<a:Verifyyellow:1501010314077012150>'
+            '<a:Verify:1514060315216707585>',
+            '<a:Verifyblue:1514060562198433862>',
+            '<a:Verifypink:1514060663889068202>',
+            '<a:Verifyred:1514060765013741638>',
+            '<a:Verifyyellow:1514060893791584266>'
         ],
 
         getRandomVerify: function() {
