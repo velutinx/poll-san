@@ -536,11 +536,51 @@ New challenger unlocked: {user(proper)}.
         }
 
         // ======================================================
+        // DYNAMIC POLL REFRESH
+        // ======================================================
+        let pollRefreshTimeout = null;
+        let activePollInterval = 30000;   // will be fetched from server
+        let inactivePollInterval = 60000; // double when no poll
+
+        async function fetchPollInterval() {
+            try {
+                const res = await fetch('/api/poll-interval');
+                const data = await res.json();
+                activePollInterval = data.interval || 30000;
+                inactivePollInterval = activePollInterval * 2;
+            } catch (e) {
+                console.warn("Could not fetch poll interval, using defaults", e);
+            }
+        }
+
+        async function refreshPollDataAndReschedule() {
+            if (typeof loadActivePoll === 'function') {
+                await loadActivePoll();
+            }
+            // Determine if a poll is active by checking the poll-timer element
+            const timerEl = document.getElementById('poll-timer');
+            let isActive = false;
+            if (timerEl && timerEl.textContent) {
+                const txt = timerEl.textContent.trim();
+                // If text is not empty and does not contain "ended" or "Poll ended" – assume active
+                if (txt && !txt.includes('ended') && txt !== 'Poll ended') {
+                    isActive = true;
+                }
+            }
+            const nextDelay = isActive ? activePollInterval : inactivePollInterval;
+            if (pollRefreshTimeout) clearTimeout(pollRefreshTimeout);
+            pollRefreshTimeout = setTimeout(() => {
+                refreshPollDataAndReschedule();
+            }, nextDelay);
+        }
+
+        // ======================================================
         // PAGE LOAD
         // ======================================================
-        window.onload = () => {
+        window.onload = async () => {
+            await fetchPollInterval();
+            await refreshPollDataAndReschedule();
             switchTab('poll-mgmt');
-            if (typeof loadActivePoll === 'function') setInterval(loadActivePoll, 10000);
             if (typeof initReleases === 'function') initReleases();
             loadMembershipData();
         };
