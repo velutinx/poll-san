@@ -1,42 +1,53 @@
 // services/pollService.js
+
 const db = require('./database');
 const h = require('../utils/helpers');
 
 const CURRENT_POLL_ID = 'character_poll_new';
-const UPDATE_INTERVAL = h.POLL_UPDATE_INTERVAL_MS || 10000;
+const UPDATE_INTERVAL = h.POLL_UPDATE_INTERVAL_MS || 30000; // changed default to 30s
 
 let activePollTimer = null;
 
 async function getPollResults(message, characters) {
     try {
-        const discordVotes = await db.query(
-            `SELECT option_id, weight FROM ${h.tables.POLL_VOTING_DISCORD} WHERE poll_id = ?`,
-            [CURRENT_POLL_ID]
-        );
-        const websiteVotes = await db.query(
-            `SELECT option_id FROM ${h.tables.POLL_VOTING_WEBSITE} WHERE poll_id = ?`,
-            [CURRENT_POLL_ID]
-        );
-        const winnerData = await db.query(
-            `SELECT option_id, selected_at FROM ${h.tables.POLL_VOTES_FINAL} WHERE poll_id = ?`,
-            [CURRENT_POLL_ID]
-        );
+        // One batched query to fetch all data
+        const batch = await db.query(`
+            SELECT 'discord' as source, option_id, weight, NULL as selected_at
+            FROM ${h.tables.POLL_VOTING_DISCORD}
+            WHERE poll_id = ?
+            UNION ALL
+            SELECT 'website' as source, option_id, 1 as weight, NULL as selected_at
+            FROM ${h.tables.POLL_VOTING_WEBSITE}
+            WHERE poll_id = ?
+            UNION ALL
+            SELECT 'winner' as source, option_id, NULL as weight, selected_at
+            FROM ${h.tables.POLL_VOTES_FINAL}
+            WHERE poll_id = ? AND selected_at IS NOT NULL
+        `, [CURRENT_POLL_ID, CURRENT_POLL_ID, CURRENT_POLL_ID]);
 
+        const discordVotes = [];
+        const websiteVotes = [];
         const winnerMap = {};
-        (winnerData || []).forEach(row => {
-            if (row.selected_at) winnerMap[row.option_id] = true;
-        });
+
+        for (const row of batch) {
+            if (row.source === 'discord') {
+                discordVotes.push({ option_id: row.option_id, weight: row.weight });
+            } else if (row.source === 'website') {
+                websiteVotes.push({ option_id: row.option_id });
+            } else if (row.source === 'winner') {
+                winnerMap[row.option_id] = true;
+            }
+        }
 
         const displayResults = [];
         const rawDataForDB = [];
 
         for (let i = 0; i < characters.length; i++) {
             const optionId = i + 1;
-            const discordScore = (discordVotes || [])
+            const discordScore = discordVotes
                 .filter(v => v.option_id === optionId)
                 .reduce((sum, v) => sum + parseFloat(v.weight || 0), 0);
-
-            const websiteScore = (websiteVotes || []).filter(v => v.option_id === optionId).length;
+            const websiteScore = websiteVotes.filter(v => v.option_id === optionId).length;
             const totalScore = discordScore + websiteScore;
 
             const rawName = characters[i].replace(/:female_sign:|:male_sign:/g, m =>
@@ -53,10 +64,11 @@ async function getPollResults(message, characters) {
                 option_id: optionId,
                 character_name: rawName,
                 score: totalScore,
-                selected_at: winnerMap[optionId] ? new Date().toISOString() : null
+                selected_at: isWinner ? new Date().toISOString() : null
             });
         }
 
+        // Upsert final scores (separate queries per option – can be further optimized, but fine)
         for (const row of rawDataForDB) {
             await db.query(
                 `INSERT INTO ${h.tables.POLL_VOTES_FINAL} (poll_id, option_id, character_name, score, selected_at)
@@ -69,8 +81,7 @@ async function getPollResults(message, characters) {
             );
         }
 
-        const resultString = displayResults.join('');
-        return resultString;
+        return displayResults.join('');
     } catch (err) {
         console.error("Error calculating poll results:", err);
         return "Error loading results...";
