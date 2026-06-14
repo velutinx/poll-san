@@ -5,7 +5,7 @@ const h = require('../utils/helpers');
 
 const CURRENT_POLL_ID = 'character_poll_new';
 const UPDATE_INTERVAL = h.POLL_UPDATE_INTERVAL_MS || 30000; // changed default to 30s
-
+console.log(`🔁 Poll interval set to ${UPDATE_INTERVAL} ms`);
 let activePollTimer = null;
 
 async function getPollResults(message, characters) {
