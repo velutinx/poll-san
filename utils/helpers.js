@@ -1,7 +1,7 @@
 // This is poll-san/utils/helpers.js
 
 module.exports = {
-    POLL_UPDATE_INTERVAL_MS: 30000,
+    POLL_UPDATE_INTERVAL_MS: 30000, 
 
     formatTime: (ms) => {
         if (ms <= 0) return "0d 0h 0m 0s";
