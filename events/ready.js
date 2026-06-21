@@ -51,41 +51,28 @@ module.exports = async (c) => {
       Routes.applicationGuildCommands(process.env.CLIENT_ID, process.env.GUILD_ID),
       { body: commandsData }
     );
- //   console.log('✅ Slash commands registered');
+    // console.log('✅ Slash commands registered');
   } catch (err) {
     console.error('❌ Failed to sync commands:', err);
   }
 
-  // Clean roles periodically
+  // ─── Clean roles periodically (offloaded) ───
   const guild = c.guilds.cache.get(process.env.GUILD_ID);
-  if (guild) cleanRoles(guild);
+  if (guild) {    setImmediate(() => cleanRoles(guild).catch(err => console.error('Initial cleanRoles error:', err)));  }
   setInterval(() => {
     const activeGuild = c.guilds.cache.get(process.env.GUILD_ID);
-    if (activeGuild) cleanRoles(activeGuild);
-  }, 3600000);
+    if (activeGuild) {      setImmediate(() => cleanRoles(activeGuild).catch(err => console.error('cleanRoles interval error:', err)));    }  }, 3600000);
 
-  // Membership sync
-  try { await syncMembershipRoles(c); } catch (err) { console.error('[MembershipSync] Initial sync failed:', err); }
-  setInterval(() => {
-    syncMembershipRoles(c).catch(err => console.error('[MembershipSync] Sync error:', err.message || err));
-  }, 300000);
+  // ─── Membership sync (offloaded) ───
+  setImmediate(() => {    syncMembershipRoles(c).catch(err => console.error('[MembershipSync] Initial sync failed:', err));  });
+  setInterval(() => {    setImmediate(() => {      syncMembershipRoles(c).catch(err => console.error('[MembershipSync] Sync error:', err.message || err));    });  }, 300000);
+  setInterval(() => {    setImmediate(() => {      checkAndNotifyCooldowns(c).catch(err => console.error('Cooldown notifier error:', err));    });  }, 300000);
+  setInterval(() => {    setImmediate(() => {      processEndOfDayAwards(c).catch(err => console.error('Trivia end-of-day awards error:', err));    });  }, 3600000);
 
-  // Cooldown notifier
-  setInterval(() => {
-    checkAndNotifyCooldowns(c).catch(err => console.error('Cooldown notifier error:', err));
-  }, 300000);
-
-  // Trivia end-of-day awards
-  setInterval(() => {
-    processEndOfDayAwards(c).catch(err => console.error('Trivia end-of-day awards error:', err));
-  }, 3600000);
-
-  // Channel cleaner for hangman
   const hangmanChannelId = h.games.hangman.channelId;
   const hangmanWhitelist = h.whitelistedMessages[hangmanChannelId] || [];
   initChannelCleaner(c, hangmanChannelId, hangmanWhitelist);
 
-  // Resume active polls
   try {
     const now = new Date().toISOString();
     const activePolls = await db.query(
@@ -112,13 +99,11 @@ module.exports = async (c) => {
   }
 
   const { restoreGiveaways } = require('../commands/giveaway');
-  await restoreGiveaways(c).catch(console.error);
+  setImmediate(() => {    restoreGiveaways(c).catch(console.error);  });
   const { restorePollReminders } = require('../services/pollReminders');
-  await restorePollReminders(c).catch(console.error);
-  await cleanupExpiredMemberships(c).catch(err => console.error('Initial membership cleanup failed:', err));
-  setInterval(() => {
-    cleanupExpiredMemberships(c).catch(err => console.error('Scheduled membership cleanup failed:', err));
-  }, 24 * 60 * 60 * 1000);
+  setImmediate(() => {    restorePollReminders(c).catch(console.error);  });
+  setImmediate(() => {    cleanupExpiredMemberships(c).catch(err => console.error('Initial membership cleanup failed:', err));  });
+  setInterval(() => {    setImmediate(() => {      cleanupExpiredMemberships(c).catch(err => console.error('Scheduled membership cleanup failed:', err));    });  }, 24 * 60 * 60 * 1000);
 
   initMudaeMessageHandler(c);
 };
