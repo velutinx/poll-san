@@ -9,18 +9,22 @@ const helpers = require('../utils/helpers');
 const { getMegaStorage } = require('../services/megaSession');
 const verifyRouter = require('./routes/verifyCallback');
 
+// ─── Timeout configuration ───
+const API_TIMEOUT_MS = 60000;
+const SERVER_TIMEOUT_MS = 120000;
+
 module.exports = (client) => {
     const app = express();
     const PORT = process.env.PORT || 8080;
 
-    // CORS
+    // ─── CORS ───
     app.use(cors({
         origin: ['https://velutinx.com', 'https://d.velutinx.com', 'http://localhost:8080', 'https://i2-uploader.velutinx.workers.dev'],
         methods: ['GET', 'POST', 'OPTIONS'],
         allowedHeaders: ['Content-Type', 'Authorization']
     }));
 
-    // Quick probe blocker (unchanged)
+    // ─── Probe blocker (unchanged) ───
     app.use((req, res, next) => {
         const url = req.url.toLowerCase();
         const probePatterns = [
@@ -42,7 +46,28 @@ module.exports = (client) => {
     app.use(express.static(path.join(__dirname, 'public')));
     app.use(express.json());
 
-    // MEGA link proxy
+    // ─── API Timeout Middleware (excludes SSE endpoint) ───
+    app.use('/api', (req, res, next) => {
+        if (req.path === '/poll/live') {
+            return next();
+        }
+
+        let timedOut = false;
+        const timeout = setTimeout(() => {
+            timedOut = true;
+            if (!res.headersSent) {
+                res.status(408).json({ error: 'Request timeout' });
+            }
+            req.destroy();
+        }, API_TIMEOUT_MS);
+
+        res.on('finish', () => clearTimeout(timeout));
+        res.on('close', () => clearTimeout(timeout));
+
+        next();
+    });
+
+    // ─── MEGA link proxy ───
     function findFile(node, name) {
         if (!node.children) return null;
         for (const child of node.children) {
@@ -71,7 +96,7 @@ module.exports = (client) => {
         }
     });
 
-    // Config endpoint
+    // ─── Config endpoint ───
     app.get('/api/config', (req, res) => {
         res.json({
             forumIds: {
@@ -94,7 +119,7 @@ module.exports = (client) => {
     const FORUM_ID = helpers.ids.channels.preview_forum || '1465938599378812980';
     const SUPPORTER_FORUM_ID = helpers.ids.channels.supporter_forum || '1465937644394512516';
 
-    // Member cache
+    // ─── Member cache ───
     let cachedMembers = null;
     let lastMemberFetch = 0;
     const MEMBER_CACHE_TTL = 15 * 60 * 1000;
@@ -117,7 +142,7 @@ module.exports = (client) => {
         return memberFetchPromise;
     }
 
-    // Live poll updates (SSE)
+    // ─── Live poll updates (SSE) ───
     const pollClients = new Set();
     function broadcastPollUpdate() {
         const data = JSON.stringify({ type: 'pollUpdate', timestamp: Date.now() });
@@ -137,7 +162,7 @@ module.exports = (client) => {
         req.on('close', () => pollClients.delete(res));
     });
 
-    // Channels route
+    // ─── Channels route ───
     app.get('/api/channels', async (req, res) => {
         try {
             const guild = client.guilds.cache.get(process.env.GUILD_ID);
@@ -151,12 +176,12 @@ module.exports = (client) => {
         }
     });
 
-    // Static dashboard page
+    // ─── Static dashboard page ───
     app.get('/poll-san', (req, res) => {
         res.sendFile(path.join(__dirname, 'public', 'index.html'));
     });
 
-    // External routes (queue removed)
+    // ─── External routes ───
     const setupPollRoutes = require('./routes/poll');
     const setupMembershipsRoute = require('./routes/memberships');
     const setupSendMessageRoute = require('./routes/sendMessage');
@@ -175,8 +200,14 @@ module.exports = (client) => {
     setupReleasesRoutes(app, client, upload, FORUM_ID, SUPPORTER_FORUM_ID);
     setupMonitoringRoutes(app, client, getGuildMembers);
 
-    // Start server
-    app.listen(PORT, () => {
+    // ─── Start server with custom timeout ───
+    const server = app.listen(PORT, () => {
         console.log(`🌐 Dashboard running at http://localhost:${PORT}/poll-san`);
     });
+
+    // Increase the server socket timeout to 2 minutes
+    server.timeout = SERVER_TIMEOUT_MS;
+    // Also set keep-alive timeout (optional, but helps with idle connections)
+    server.keepAliveTimeout = 65000; // 65 seconds
+    server.headersTimeout = 66000;   // slightly more than keepAliveTimeout
 };
