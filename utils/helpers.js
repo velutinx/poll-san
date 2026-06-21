@@ -1,4 +1,4 @@
-// This is poll-san/utils/helpers.js  
+// This is poll-san/utils/helpers.js 
 
 module.exports = {
     POLL_UPDATE_INTERVAL_MS: 30000, 
