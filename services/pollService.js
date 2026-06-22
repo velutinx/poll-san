@@ -1,16 +1,16 @@
-// services/pollService.js
+// services/pollService.js – Optimized to reduce D1 writes
 
 const db = require('./database');
 const h = require('../utils/helpers');
 
 const CURRENT_POLL_ID = 'character_poll_new';
-const UPDATE_INTERVAL = h.POLL_UPDATE_INTERVAL_MS || 30000; // changed default to 30s
+const UPDATE_INTERVAL = h.POLL_UPDATE_INTERVAL_MS || 30000;
 
 let activePollTimer = null;
 
 async function getPollResults(message, characters) {
     try {
-        // One batched query to fetch all data
+        // ── 1. Fetch raw votes from all sources ──
         const batch = await db.query(`
             SELECT 'discord' as source, option_id, weight, NULL as selected_at
             FROM ${h.tables.POLL_VOTING_DISCORD}
@@ -39,6 +39,7 @@ async function getPollResults(message, characters) {
             }
         }
 
+        // ── 2. Calculate new scores ──
         const displayResults = [];
         const rawDataForDB = [];
 
@@ -68,17 +69,43 @@ async function getPollResults(message, characters) {
             });
         }
 
-        // Upsert final scores (separate queries per option – can be further optimized, but fine)
-        for (const row of rawDataForDB) {
+        // ── 3. Check if scores have changed ──
+        const currentRows = await db.query(
+            `SELECT option_id, score FROM ${h.tables.POLL_VOTES_FINAL} WHERE poll_id = ?`,
+            [CURRENT_POLL_ID]
+        );
+        const currentScores = {};
+        for (const row of currentRows) {
+            currentScores[row.option_id] = row.score;
+        }
+
+        let changed = false;
+        if (Object.keys(currentScores).length !== rawDataForDB.length) {
+            changed = true;
+        } else {
+            for (const row of rawDataForDB) {
+                if (currentScores[row.option_id] === undefined || currentScores[row.option_id] !== row.score) {
+                    changed = true;
+                    break;
+                }
+            }
+        }
+
+        // ── 4. Only write if scores changed ──
+        if (changed) {
+            // Delete all existing rows for this poll
             await db.query(
-                `INSERT INTO ${h.tables.POLL_VOTES_FINAL} (poll_id, option_id, character_name, score, selected_at)
-                 VALUES (?, ?, ?, ?, ?)
-                 ON CONFLICT(poll_id, option_id) DO UPDATE SET
-                    character_name = excluded.character_name,
-                    score = excluded.score,
-                    selected_at = excluded.selected_at`,
-                [row.poll_id, row.option_id, row.character_name, row.score, row.selected_at]
+                `DELETE FROM ${h.tables.POLL_VOTES_FINAL} WHERE poll_id = ?`,
+                [CURRENT_POLL_ID]
             );
+            // Insert all rows with new scores
+            for (const row of rawDataForDB) {
+                await db.query(
+                    `INSERT INTO ${h.tables.POLL_VOTES_FINAL} (poll_id, option_id, character_name, score, selected_at)
+                     VALUES (?, ?, ?, ?, ?)`,
+                    [row.poll_id, row.option_id, row.character_name, row.score, row.selected_at]
+                );
+            }
         }
 
         return displayResults.join('');
@@ -87,6 +114,8 @@ async function getPollResults(message, characters) {
         return "Error loading results...";
     }
 }
+
+// ── The rest of the file stays unchanged ──
 
 async function generateMessageContent(endTime, resultsText, characters, isEnded = false) {
     const e = h.releaseEmojis;
