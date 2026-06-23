@@ -229,7 +229,7 @@ async function syncMembershipRoles(client) {
           const member = await guild.members.fetch(discordId).catch(() => null);
           const tier = userBestMembership.get(discordId).tier;
           const tag = member ? member.user.tag : 'Unknown';
-          console.log(`${h.releaseEmojis.CONFETTI} [MembershipSync] NEW ACTIVE MEMBER: ${tag} (${discordId}) - Tier ${tier}`);
+          console.log(`[MembershipSync] NEW ACTIVE MEMBER: ${tag} (${discordId}) - Tier ${tier}`);
         } catch (err) {}
       }
     }
