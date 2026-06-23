@@ -808,7 +808,7 @@ client.on(Events.InteractionCreate, async interaction => {
             try {
                 if (await shouldRunMassScanToday()) {
                     await markMassScanDoneToday();
-                    console.log('[MassScan] Daily free mass scan marked for today. Starting scan...');
+                   // console.log('[MassScan] Daily free mass scan marked for today. Starting scan...');
                     await scanAllMembersWithFreeAPI(client);
                 }
             } catch (err) {
