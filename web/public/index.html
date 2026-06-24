@@ -18,53 +18,54 @@
         <div class="nav-item" onclick="switchTab('greetings')">👋 Greetings</div>
         <div class="nav-item" onclick="switchTab('member-mgmt')">💵 Membership</div>
         <div class="nav-item" onclick="switchTab('monitoring')">👮 Monitoring</div>
+        <div class="nav-item" onclick="switchTab('queue-mgmt')">📋 Queue</div>
         <div class="nav-item" onclick="switchTab('giveaway-mgmt')">🎁 Giveaway</div>
     </nav>
 
     <main>
-<!-- Polls tab -->
-<div id="poll-mgmt" class="tab-content active">
-    <div class="mgmt-container">
-        <div class="mgmt-column">
-            <h1>Launch New Poll</h1>
-            <div class="card">
-                <div class="form-group">
-                    <label>Target Channel</label>
-                    <select id="poll_channel"></select>
+        <!-- Polls tab -->
+        <div id="poll-mgmt" class="tab-content active">
+            <div class="mgmt-container">
+                <div class="mgmt-column">
+                    <h1>Launch New Poll</h1>
+                    <div class="card">
+                        <div class="form-group">
+                            <label>Target Channel</label>
+                            <select id="poll_channel"></select>
+                        </div>
+                        <div class="form-group">
+                            <label>Duration (Days)</label>
+                            <input type="number" id="poll_days" value="7">
+                        </div>
+                        <div class="form-group">
+                            <label>Character List (Paste with Emojis)</label>
+                            <textarea id="poll_list" placeholder=":female_sign: Himari Akeboshi..."></textarea>
+                        </div>
+                        <div class="btn-row">
+                            <button id="launch-btn" onclick="triggerPoll()">Launch Poll</button>
+                            <button id="stop-btn" onclick="stopPoll()" style="background: var(--disabled-gray); flex:1;" disabled>Stop Poll</button>
+                        </div>
+                        <div id="poll-timer" class="timer-display"></div>
+                        <!-- NEW: Adjust time controls -->
+                        <div style="margin-top: 12px; display: flex; gap: 10px; align-items: center; justify-content: center;">
+                            <label style="font-size:0.9rem;">Adjust time (hours): </label>
+                            <input type="number" id="poll-adjust-hours" step="1" value="0" style="width:80px; background:#1e293b; border:1px solid #475569; color:white; border-radius:4px; padding:4px;">
+                            <button onclick="adjustPollTime()" style="background:#10b981; padding:4px 12px;">Apply</button>
+                        </div>
+                        <div id="poll-status" class="status"></div>
+                    </div>
                 </div>
-                <div class="form-group">
-                    <label>Duration (Days)</label>
-                    <input type="number" id="poll_days" value="7">
+                <div class="mgmt-column">
+                    <h1>Select Winner</h1>
+                    <div class="card">
+                        <div id="winner-list" class="winner-grid">
+                            <p>Loading active data...</p>
+                        </div>
+                        <div id="winner-status" class="status"></div>
+                    </div>
                 </div>
-                <div class="form-group">
-                    <label>Character List (Paste with Emojis)</label>
-                    <textarea id="poll_list" placeholder=":female_sign: Himari Akeboshi..."></textarea>
-                </div>
-                <div class="btn-row">
-                    <button id="launch-btn" onclick="triggerPoll()">Launch Poll</button>
-                    <button id="stop-btn" onclick="stopPoll()" style="background: var(--disabled-gray); flex:1;" disabled>Stop Poll</button>
-                </div>
-                <div id="poll-timer" class="timer-display"></div>
-                <!-- NEW: Adjust time controls -->
-                <div style="margin-top: 12px; display: flex; gap: 10px; align-items: center; justify-content: center;">
-                    <label style="font-size:0.9rem;">Adjust time (hours): </label>
-                    <input type="number" id="poll-adjust-hours" step="1" value="0" style="width:80px; background:#1e293b; border:1px solid #475569; color:white; border-radius:4px; padding:4px;">
-                    <button onclick="adjustPollTime()" style="background:#10b981; padding:4px 12px;">Apply</button>
-                </div>
-                <div id="poll-status" class="status"></div>
             </div>
         </div>
-        <div class="mgmt-column">
-            <h1>Select Winner</h1>
-            <div class="card">
-                <div id="winner-list" class="winner-grid">
-                    <p>Loading active data...</p>
-                </div>
-                <div id="winner-status" class="status"></div>
-            </div>
-        </div>
-    </div>
-</div>
 
         <!-- Releases tab -->
         <div id="releases-mgmt" class="tab-content">
@@ -357,7 +358,7 @@ New challenger unlocked: {user(proper)}.
                             </tr>
                         </thead>
                         <tbody id="membership-list-body">
-                            <tr><td colspan="5" style="padding: 30px; text-align: center; color: #64748b;">Loading membership data...<\/td><\/tr>
+                            <tr><td colspan="5" style="padding: 30px; text-align: center; color: #64748b;">Loading membership data...</td></tr>
                         </tbody>
                     </table>
                 </div>
@@ -392,11 +393,30 @@ New challenger unlocked: {user(proper)}.
                             </tr>
                         </thead>
                         <tbody id="monitoring-table-body">
-                            <tr><td colspan="9" style="text-align: center; padding: 20px;">Click Refresh to load members<\/td><\/tr>
+                            <tr><td colspan="9" style="text-align: center; padding: 20px;">Click Refresh to load members</td></tr>
                         </tbody>
                     </table>
                 </div>
                 <div id="monitoring-status" class="status" style="margin-top: 12px;"></div>
+            </div>
+        </div>
+
+        <!-- Queue tab -->
+        <div id="queue-mgmt" class="tab-content">
+            <h1>Queue Manager</h1>
+            <div class="card">
+                <div class="form-group" style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="queue-toggle" checked>
+                        <span class="toggle-slider"></span>
+                    </label>
+                    <span id="queue-gender-label">♀️ Female</span>
+                    <input type="text" id="queue-input" placeholder="Character name..." style="flex: 1; min-width: 200px;">
+                    <button onclick="addQueueItem()" style="background: var(--success-green); padding: 10px 24px;">➕ Add to Queue</button>
+                </div>
+                <div id="queue-list" style="margin-top: 20px; min-height: 100px;">
+                    <div class="status">Loading queue...</div>
+                </div>
             </div>
         </div>
 
@@ -421,7 +441,7 @@ New challenger unlocked: {user(proper)}.
                             </tr>
                         </thead>
                         <tbody id="giveaway-table-body">
-                            <tr><td colspan="5" style="text-align:center;">No active giveaway or loading...<\/td><\/tr>
+                            <tr><td colspan="5" style="text-align:center;">No active giveaway or loading...</td></tr>
                         </tbody>
                     </table>
                 </div>
@@ -440,9 +460,9 @@ New challenger unlocked: {user(proper)}.
     <script src="/js/giveaway.js" defer></script>
     <script src="/js/monitoring.js" defer></script>
     <script src="/js/membership.js" defer></script>
+    <script src="/js/queue.js" defer></script>
 
-
-<script>
+    <script>
         // ======================================================
         // GLOBAL STATE
         // ======================================================
@@ -475,7 +495,9 @@ New challenger unlocked: {user(proper)}.
                 await loadChannels();
                 if (typeof loadActivePoll === 'function') loadActivePoll();
             }
-            if (tabId === 'queue-mgmt' && typeof loadQueueData === 'function') loadQueueData();
+            if (tabId === 'queue-mgmt') {
+                if (typeof loadQueue === 'function') loadQueue();
+            }
             if (tabId === 'releases-mgmt') {
                 switchSubTab('preview');
                 if (typeof fetchForumPosts === 'function') fetchForumPosts();
@@ -534,6 +556,19 @@ New challenger unlocked: {user(proper)}.
                 });
             }
         }
+
+        // ======================================================
+        // QUEUE TOGGLE LABEL
+        // ======================================================
+        document.addEventListener('DOMContentLoaded', function() {
+            const toggle = document.getElementById('queue-toggle');
+            if (toggle) {
+                toggle.addEventListener('change', function() {
+                    const label = document.getElementById('queue-gender-label');
+                    label.textContent = this.checked ? '♀️ Female' : '♂️ Femboy';
+                });
+            }
+        });
 
         // ======================================================
         // DYNAMIC POLL REFRESH
