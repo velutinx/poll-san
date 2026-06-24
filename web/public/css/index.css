@@ -1,4 +1,4 @@
-/* // this is poll-san/web/public/css/index.css */
+/* this is poll-san/web/public/css/index.css */
 
 :root { --bg: #0f172a; --card: #1e293b; --text: #f8fafc; --accent: #ef4444; --accent-hover: #dc2626; --winner-red: #991b1b; --success-green: #22c55e; --disabled-gray: #475569; --blue: #3b82f6; --warning-orange: #f59e0b; --toggle-on: #10b981; --toggle-off: #334155; }
 
@@ -86,3 +86,18 @@ button:disabled { opacity: 0.6; cursor: not-allowed; }
 .sortable-ghost { opacity: 0.6; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5); }
 
 .timer-display { font-size: 1.4rem; font-weight: bold; text-align: center; margin: 15px 0; padding: 10px; background: #0f172a; border-radius: 8px; border: 1px solid #334155; color: var(--text); font-variant-numeric: tabular-nums; }
+
+/* ---------------- QUEUE STYLES ---------------- */
+.queue-drag-list { list-style: none; padding: 0; margin: 0; }
+.queue-item { display: flex; align-items: center; padding: 10px 14px; background: #1e293b; border-radius: 8px; margin-bottom: 8px; border: 1px solid #334155; gap: 12px; transition: background 0.2s; }
+.queue-item:hover { background: #2a3a4a; }
+.queue-item .drag-handle { cursor: grab; color: #94a3b8; font-size: 1.2rem; user-select: none; padding: 4px 6px; }
+.queue-item .drag-handle:active { cursor: grabbing; }
+.queue-item .queue-text { flex: 1; font-weight: 500; color: var(--text); word-break: break-word; }
+.queue-item .queue-remove { background: #ef4444; border: none; color: white; border-radius: 30px; width: 28px; height: 28px; cursor: pointer; font-size: 0.9rem; display: flex; align-items: center; justify-content: center; transition: background 0.2s; flex-shrink: 0; }
+.queue-item .queue-remove:hover { background: #dc2626; }
+.sortable-ghost { opacity: 0.4; background: #1a2a3a; }
+#queue-input { background: #0f172a; border: 1px solid #334155; border-radius: 6px; padding: 10px 14px; color: white; font-size: 1rem; min-width: 200px; }
+#queue-input:focus { outline: none; border-color: var(--blue); box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2); }
+#queue-gender-label { font-weight: 600; color: #e2e8f0; min-width: 80px; }
+#queue-list .status { padding: 20px; color: #94a3b8; font-style: italic; }
