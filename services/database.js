@@ -114,6 +114,22 @@ async function query(sql, params = [], single = false) {
     throw lastError;
 }
 
+/**
+ * Upsert (insert or replace) a row into a table that has a PRIMARY KEY or UNIQUE constraint.
+ * This builds an INSERT OR REPLACE statement automatically.
+ * @param {string} table - Table name
+ * @param {string[]} columns - Array of column names
+ * @param {any[]} values - Array of values in the same order as columns
+ * @param {boolean} single - Return single result?
+ * @returns {Promise<any>}
+ */
+async function upsert(table, columns, values, single = false) {
+    const placeholders = columns.map(() => '?').join(', ');
+    const sql = `INSERT OR REPLACE INTO ${table} (${columns.join(', ')}) VALUES (${placeholders})`;
+    return query(sql, values, single);
+}
+
 module.exports = {
     query,
+    upsert,  // <-- new export
 };
