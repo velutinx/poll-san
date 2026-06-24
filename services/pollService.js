@@ -91,17 +91,13 @@ async function getPollResults(message, characters) {
             }
         }
 
-        // ── 4. Only write if scores changed ──
+        // ── 4. Only write if scores changed (using INSERT OR REPLACE) ──
         if (changed) {
-            // Delete all existing rows for this poll
-            await db.query(
-                `DELETE FROM ${h.tables.POLL_VOTES_FINAL} WHERE poll_id = ?`,
-                [CURRENT_POLL_ID]
-            );
-            // Insert all rows with new scores
+            // Use INSERT OR REPLACE for each row – avoids UNIQUE constraint errors
             for (const row of rawDataForDB) {
                 await db.query(
-                    `INSERT INTO ${h.tables.POLL_VOTES_FINAL} (poll_id, option_id, character_name, score, selected_at)
+                    `INSERT OR REPLACE INTO ${h.tables.POLL_VOTES_FINAL} 
+                     (poll_id, option_id, character_name, score, selected_at)
                      VALUES (?, ?, ?, ?, ?)`,
                     [row.poll_id, row.option_id, row.character_name, row.score, row.selected_at]
                 );
