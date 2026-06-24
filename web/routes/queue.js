@@ -118,7 +118,29 @@ async function updateDiscordQueue(client) {
     }
   } catch (err) {
     console.error('updateDiscordQueue error:', err);
-    throw err; // rethrow so the route can handle it
+    throw err;
+  }
+}
+
+// Helper to add an entry to the queue (used by poll)
+async function addEntryToQueue(entry, client) {
+  try {
+    const row = await db.query(
+      `SELECT queue FROM ${h.tables.MAIN_QUEUE} WHERE id = 1`,
+      [],
+      true
+    );
+    const queue = row ? JSON.parse(row.queue || '[]') : [];
+    queue.push(entry.trim());
+    await db.query(
+      `UPDATE ${h.tables.MAIN_QUEUE} SET queue = ?, updated_at = datetime('now') WHERE id = 1`,
+      [JSON.stringify(queue)]
+    );
+    await updateDiscordQueue(client);
+    return true;
+  } catch (err) {
+    console.error('addEntryToQueue error:', err);
+    throw err;
   }
 }
 
@@ -220,3 +242,7 @@ module.exports = function setupQueueRoutes(app, client) {
     }
   });
 };
+
+// Export helpers for use in other routes
+module.exports.updateDiscordQueue = updateDiscordQueue;
+module.exports.addEntryToQueue = addEntryToQueue;
