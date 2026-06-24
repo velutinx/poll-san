@@ -188,6 +188,7 @@ module.exports = (client) => {
     const setupReleasesRoutes = require('./routes/releases');
     const setupMonitoringRoutes = require('./routes/monitoring');
     const setupGiveawayRoutes = require('./routes/giveaway');
+    const setupQueueRoutes = require('./routes/queue');
     const reminderRouter = require('./routes/reminder');
 
     app.use(reminderRouter);
@@ -199,6 +200,7 @@ module.exports = (client) => {
     setupSendMessageRoute(app, client);
     setupReleasesRoutes(app, client, upload, FORUM_ID, SUPPORTER_FORUM_ID);
     setupMonitoringRoutes(app, client, getGuildMembers);
+    setupQueueRoutes(app, client); // <-- added Queue routes
 
     // ─── Start server with custom timeout ───
     const server = app.listen(PORT, () => {
