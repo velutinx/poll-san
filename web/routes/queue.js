@@ -8,7 +8,7 @@ const DISCORD_API = 'https://discord.com/api/v10';
 
 // Helper: get or create the "Queue" webhook
 async function getQueueWebhook(channel) {
-  const token = process.env.DISCORD_BOT_TOKEN;
+  const token = process.env.DISCORD_TOKEN;
   if (!token) throw new Error('DISCORD_BOT_TOKEN not set');
 
   const channelUrl = `${DISCORD_API}/channels/${channel.id}`;
