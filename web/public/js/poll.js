@@ -1,5 +1,5 @@
 // ======================================================
-// POLL FUNCTIONS
+//     poll-san/web/public/js/poll.js
 // ======================================================
 
 let pollEndTime = null;          // timestamp in ms
