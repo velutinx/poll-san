@@ -1,6 +1,6 @@
 // poll-san/web/routes/poll.js
 
-const { EmbedBuilder } = require('discord.js');
+const { EmbedBuilder, AttachmentBuilder } = require('discord.js');
 const { addEntryToQueue } = require('./queue');
 
 module.exports = function setupPollRoutes(app, client) {
@@ -166,6 +166,24 @@ module.exports = function setupPollRoutes(app, client) {
                 // Don't fail the whole request if queue fails
             }
 
+            // ── FETCH WINNER IMAGE AND ATTACH ──
+            let attachment = null;
+            if (winnerOptionId) {
+                const imageUrl = `https://www.velutinx.com/images/poll/${winnerOptionId}.jpg`;
+                try {
+                    const response = await fetch(imageUrl);
+                    if (response.ok) {
+                        const buffer = await response.arrayBuffer();
+                        const fileName = `winner-${winnerOptionId}-${Date.now()}.jpg`;
+                        attachment = new AttachmentBuilder(Buffer.from(buffer), { name: fileName });
+                    } else {
+                        console.warn(`Failed to fetch winner image (${response.status}) – skipping attachment`);
+                    }
+                } catch (fetchErr) {
+                    console.error('Error fetching winner image:', fetchErr.message);
+                }
+            }
+
             // ── REST OF MARK WINNER LOGIC ──
             const voteData = await db.query(
                 `SELECT character_name, score, selected_at, option_id FROM ${h.tables.POLL_VOTES_FINAL} ORDER BY option_id ASC`
@@ -201,27 +219,31 @@ module.exports = function setupPollRoutes(app, client) {
 
             const webhooks = await channel.fetchWebhooks();
             const pollWebhook = webhooks.find(w => w.name === 'Poll');
+
+            // Build payload – no embed, use attachment
             const payload = {
                 content: scoreboard,
                 threadId: thread.id,
                 username: 'Poll',
                 avatarURL: h.urls.LOGO_URL,
-                embeds: []
+                embeds: []   // no embed
             };
-            if (winnerOptionId) {
-                const imageUrl = `https://www.velutinx.com/images/poll/${winnerOptionId}.jpg`;
-                const embed = new EmbedBuilder().setImage(imageUrl).setColor(0x00FF00);
-                payload.embeds.push(embed);
+
+            if (attachment) {
+                payload.files = [attachment];
             }
+
             if (pollWebhook) {
                 await pollWebhook.send(payload);
             } else {
-                if (payload.embeds.length > 0) {
-                    await thread.send({ content: payload.content, embeds: payload.embeds });
-                } else {
-                    await thread.send(payload.content);
-                }
+                // Fallback to thread send
+                await thread.send({
+                    content: payload.content,
+                    files: payload.files,
+                    embeds: payload.embeds
+                });
             }
+
             res.json({ success: true });
         } catch (err) {
             console.error('Mark winner error:', err);
