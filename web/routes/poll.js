@@ -1,4 +1,7 @@
+// poll-san/web/routes/poll.js
+
 const { EmbedBuilder } = require('discord.js');
+const { addEntryToQueue } = require('./queue');
 
 module.exports = function setupPollRoutes(app, client) {
     const h = require('../../utils/helpers');
@@ -130,6 +133,40 @@ module.exports = function setupPollRoutes(app, client) {
                 [new Date().toISOString(), `%${winner_name}%`]
             );
 
+            // ── ADD WINNER TO QUEUE ──
+            // Parse poll_list to find gender
+            const characterLines = poll.poll_list
+                .split(/(?=:female_sign:|:male_sign:|♀️|♂️)/)
+                .map(s => s.trim())
+                .filter(s => s.length > 0);
+
+            let genderEmoji = '♂️'; // fallback
+            let queueEntry = winner_name;
+
+            for (const line of characterLines) {
+                const cleanLine = line.replace(/:female_sign:|:male_sign:|♀️|♂️/g, '').trim();
+                if (cleanLine.toLowerCase() === winner_name.toLowerCase()) {
+                    // Extract gender
+                    if (line.includes(':female_sign:') || line.includes('♀️')) {
+                        genderEmoji = '♀️';
+                    } else if (line.includes(':male_sign:') || line.includes('♂️')) {
+                        genderEmoji = '♂️';
+                    }
+                    queueEntry = `${genderEmoji} ${winner_name}`;
+                    break;
+                }
+            }
+
+            // Add to queue
+            try {
+                await addEntryToQueue(queueEntry, client);
+                console.log(`📋 Added winner to queue: ${queueEntry}`);
+            } catch (queueErr) {
+                console.error('Failed to add winner to queue:', queueErr);
+                // Don't fail the whole request if queue fails
+            }
+
+            // ── REST OF MARK WINNER LOGIC ──
             const voteData = await db.query(
                 `SELECT character_name, score, selected_at, option_id FROM ${h.tables.POLL_VOTES_FINAL} ORDER BY option_id ASC`
             );
