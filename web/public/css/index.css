@@ -101,3 +101,4 @@ button:disabled { opacity: 0.6; cursor: not-allowed; }
 #queue-input:focus { outline: none; border-color: var(--blue); box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2); }
 #queue-gender-label { font-weight: 600; color: #e2e8f0; min-width: 80px; }
 #queue-list .status { padding: 20px; color: #94a3b8; font-style: italic; }
+.queue-checkbox { width: 18px; height: 18px; cursor: pointer; accent-color: var(--accent); flex-shrink: 0; margin: 0 6px 0 0; }
