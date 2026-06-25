@@ -27,18 +27,42 @@ function renderQueue() {
   ul.className = 'queue-drag-list';
   ul.id = 'queueDragList';
   queueItems.forEach((item, index) => {
+    const text = item.text || item; // fallback for old format
+    const checked = item.checked || false;
     const li = document.createElement('li');
     li.className = 'queue-item';
     li.dataset.index = index;
-    li.innerHTML = `
-      <span class="drag-handle">⠿</span>
-      <span class="queue-text">${item}</span>
-      <button class="queue-remove" data-index="${index}">✕</button>
-    `;
-    li.querySelector('.queue-remove').addEventListener('click', (e) => {
-      const idx = parseInt(e.target.dataset.index);
-      removeQueueItem(idx);
+
+    // Checkbox
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.checked = checked;
+    checkbox.className = 'queue-checkbox';
+    checkbox.addEventListener('change', (e) => {
+      e.stopPropagation();
+      toggleChecked(index);
     });
+
+    const dragHandle = document.createElement('span');
+    dragHandle.className = 'drag-handle';
+    dragHandle.textContent = '⠿';
+
+    const textSpan = document.createElement('span');
+    textSpan.className = 'queue-text';
+    textSpan.textContent = text;
+
+    const removeBtn = document.createElement('button');
+    removeBtn.className = 'queue-remove';
+    removeBtn.textContent = '✕';
+    removeBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      removeQueueItem(index);
+    });
+
+    li.appendChild(checkbox);
+    li.appendChild(dragHandle);
+    li.appendChild(textSpan);
+    li.appendChild(removeBtn);
     ul.appendChild(li);
   });
   container.appendChild(ul);
@@ -51,13 +75,35 @@ function renderQueue() {
     onEnd: function() {
       const newOrder = [];
       document.querySelectorAll('#queueDragList .queue-item').forEach(li => {
-        const text = li.querySelector('.queue-text').textContent;
-        newOrder.push(text);
+        const idx = parseInt(li.dataset.index);
+        const originalItem = queueItems[idx];
+        // Keep the checked state from the original item
+        newOrder.push(originalItem);
       });
       queueItems = newOrder;
       saveReorder();
     }
   });
+}
+
+async function toggleChecked(index) {
+  try {
+    const res = await fetch('/api/queue/toggle', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ index })
+    });
+    const data = await res.json();
+    if (data.success) {
+      queueItems = data.queue;
+      renderQueue();
+    } else {
+      showToast(data.error || 'Failed to toggle.', 'error');
+    }
+  } catch (err) {
+    console.error(err);
+    showToast('Network error.', 'error');
+  }
 }
 
 async function addQueueItem() {
