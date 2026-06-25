@@ -69,7 +69,7 @@ async function updateDiscordQueue(client) {
         const text = item.text || item;
         const checked = item.checked || false;
         if (checked) {
-          return `**• ${diamondEmoji} ${text}**`;
+          return `•** ${diamondEmoji} ${text}**`;
         } else {
           // Use blank emoji to keep alignment with checked items
           return `• ${blankEmoji} ${text}`;
