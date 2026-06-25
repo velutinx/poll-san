@@ -59,25 +59,25 @@ async function updateDiscordQueue(client) {
     const webhookUrl = await getQueueWebhook(channel);
     const progressEmoji = h.releaseEmojis.PROGRESS || '<a:progress:1491670111923212308>';
     const diamondEmoji = h.releaseEmojis.DIAMOND || ':gem:';
+    const blankEmoji = h.releaseEmojis.BLANK || '';
 
     let content = `${progressEmoji} **Current queue** (general idea, subject to change):\n\n`;
     if (queue.length === 0) {
       content += '*Queue is empty.*';
     } else {
-      // Build each line: if checked, bold and add diamond
       const lines = queue.map(item => {
-        const text = item.text || item; // fallback for old format
+        const text = item.text || item;
         const checked = item.checked || false;
         if (checked) {
           return `**• ${diamondEmoji} ${text}**`;
         } else {
-          return `• ${text}`;
+          // Use blank emoji to keep alignment with checked items
+          return `• ${blankEmoji} ${text}`;
         }
       });
       content += lines.join('\n');
     }
 
-    // If we have a stored message ID, edit it; otherwise send new
     if (row.message_id) {
       try {
         await fetch(`${webhookUrl}/messages/${row.message_id}`, {
@@ -90,7 +90,6 @@ async function updateDiscordQueue(client) {
           }),
         });
       } catch (err) {
-        // Message might have been deleted – fallback to send new
         console.warn('Could not edit queue message, sending new:', err.message);
         const msgRes = await fetch(`${webhookUrl}?wait=true`, {
           method: 'POST',
@@ -142,7 +141,6 @@ async function addEntryToQueue(entry, client) {
       true
     );
     const queue = row ? JSON.parse(row.queue || '[]') : [];
-    // If entry is a string, convert to object; if it's already an object, use it
     const newItem = typeof entry === 'string' ? { text: entry.trim(), checked: false } : entry;
     queue.push(newItem);
     await db.query(
@@ -158,7 +156,7 @@ async function addEntryToQueue(entry, client) {
 }
 
 module.exports = function setupQueueRoutes(app, client) {
-  // GET /api/queue – fetch current queue
+  // GET /api/queue
   app.get('/api/queue', async (req, res) => {
     try {
       const row = await db.query(
@@ -174,7 +172,7 @@ module.exports = function setupQueueRoutes(app, client) {
     }
   });
 
-  // POST /api/queue/add – add a new entry
+  // POST /api/queue/add
   app.post('/api/queue/add', async (req, res) => {
     const { entry } = req.body;
     if (!entry || typeof entry !== 'string' || !entry.trim()) {
@@ -193,7 +191,6 @@ module.exports = function setupQueueRoutes(app, client) {
         `UPDATE ${h.tables.MAIN_QUEUE} SET queue = ?, updated_at = datetime('now') WHERE id = 1`,
         [JSON.stringify(queue)]
       );
-
       await updateDiscordQueue(client);
 
       res.json({ success: true, queue });
@@ -203,7 +200,7 @@ module.exports = function setupQueueRoutes(app, client) {
     }
   });
 
-  // POST /api/queue/toggle – toggle checked state of an item
+  // POST /api/queue/toggle
   app.post('/api/queue/toggle', async (req, res) => {
     const { index } = req.body;
     if (typeof index !== 'number' || index < 0) {
@@ -220,7 +217,6 @@ module.exports = function setupQueueRoutes(app, client) {
       if (index >= queue.length) {
         return res.status(400).json({ error: 'Index out of bounds' });
       }
-      // Toggle checked
       queue[index].checked = !queue[index].checked;
 
       await db.query(
@@ -235,7 +231,7 @@ module.exports = function setupQueueRoutes(app, client) {
     }
   });
 
-  // POST /api/queue/reorder – update entire queue order
+  // POST /api/queue/reorder
   app.post('/api/queue/reorder', async (req, res) => {
     const { queue } = req.body;
     if (!Array.isArray(queue)) {
@@ -254,7 +250,7 @@ module.exports = function setupQueueRoutes(app, client) {
     }
   });
 
-  // POST /api/queue/remove – remove entry at given index
+  // POST /api/queue/remove
   app.post('/api/queue/remove', async (req, res) => {
     const { index } = req.body;
     if (typeof index !== 'number' || index < 0) {
@@ -285,6 +281,5 @@ module.exports = function setupQueueRoutes(app, client) {
   });
 };
 
-// Export helpers for use in other routes
 module.exports.updateDiscordQueue = updateDiscordQueue;
 module.exports.addEntryToQueue = addEntryToQueue;
