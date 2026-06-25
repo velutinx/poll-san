@@ -58,12 +58,23 @@ async function updateDiscordQueue(client) {
 
     const webhookUrl = await getQueueWebhook(channel);
     const progressEmoji = h.releaseEmojis.PROGRESS || '<a:progress:1491670111923212308>';
+    const diamondEmoji = h.releaseEmojis.DIAMOND || ':gem:';
 
     let content = `${progressEmoji} **Current queue** (general idea, subject to change):\n\n`;
     if (queue.length === 0) {
       content += '*Queue is empty.*';
     } else {
-      content += queue.map(item => `• ${item}`).join('\n');
+      // Build each line: if checked, bold and add diamond
+      const lines = queue.map(item => {
+        const text = item.text || item; // fallback for old format
+        const checked = item.checked || false;
+        if (checked) {
+          return `**• ${diamondEmoji} ${text}**`;
+        } else {
+          return `• ${text}`;
+        }
+      });
+      content += lines.join('\n');
     }
 
     // If we have a stored message ID, edit it; otherwise send new
@@ -131,7 +142,9 @@ async function addEntryToQueue(entry, client) {
       true
     );
     const queue = row ? JSON.parse(row.queue || '[]') : [];
-    queue.push(entry.trim());
+    // If entry is a string, convert to object; if it's already an object, use it
+    const newItem = typeof entry === 'string' ? { text: entry.trim(), checked: false } : entry;
+    queue.push(newItem);
     await db.query(
       `UPDATE ${h.tables.MAIN_QUEUE} SET queue = ?, updated_at = datetime('now') WHERE id = 1`,
       [JSON.stringify(queue)]
@@ -168,27 +181,56 @@ module.exports = function setupQueueRoutes(app, client) {
       return res.status(400).json({ error: 'Missing or invalid entry' });
     }
     try {
-      // Fetch current queue
       const row = await db.query(
         `SELECT queue FROM ${h.tables.MAIN_QUEUE} WHERE id = 1`,
         [],
         true
       );
       const queue = row ? JSON.parse(row.queue || '[]') : [];
-      queue.push(entry.trim());
+      queue.push({ text: entry.trim(), checked: false });
 
-      // Update DB
       await db.query(
         `UPDATE ${h.tables.MAIN_QUEUE} SET queue = ?, updated_at = datetime('now') WHERE id = 1`,
         [JSON.stringify(queue)]
       );
 
-      // Update Discord message
       await updateDiscordQueue(client);
 
       res.json({ success: true, queue });
     } catch (err) {
       console.error('POST /api/queue/add error:', err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // POST /api/queue/toggle – toggle checked state of an item
+  app.post('/api/queue/toggle', async (req, res) => {
+    const { index } = req.body;
+    if (typeof index !== 'number' || index < 0) {
+      return res.status(400).json({ error: 'Invalid index' });
+    }
+    try {
+      const row = await db.query(
+        `SELECT queue FROM ${h.tables.MAIN_QUEUE} WHERE id = 1`,
+        [],
+        true
+      );
+      if (!row) return res.status(404).json({ error: 'Queue not found' });
+      const queue = JSON.parse(row.queue || '[]');
+      if (index >= queue.length) {
+        return res.status(400).json({ error: 'Index out of bounds' });
+      }
+      // Toggle checked
+      queue[index].checked = !queue[index].checked;
+
+      await db.query(
+        `UPDATE ${h.tables.MAIN_QUEUE} SET queue = ?, updated_at = datetime('now') WHERE id = 1`,
+        [JSON.stringify(queue)]
+      );
+      await updateDiscordQueue(client);
+      res.json({ success: true, queue });
+    } catch (err) {
+      console.error('POST /api/queue/toggle error:', err);
       res.status(500).json({ error: err.message });
     }
   });
