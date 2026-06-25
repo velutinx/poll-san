@@ -74,6 +74,7 @@ module.exports = {
         HEART: '<a:heart:1511391137825558628>',
         CATCOIN: '<a:catcoin:1506632039749910598>',
         YOSHICOIN: '<:yoshicoin:1506632090165313586>',
+        BLANK: '<:blank:1519689572525674496>',
         SKULL: '<:skull:1506692152313512046>',
         TICKET: '<a:ticket:1506633750300327949>',
         WAVE: '<a:wave:1492326023080185987>',
