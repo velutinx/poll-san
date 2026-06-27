@@ -1,4 +1,4 @@
-// services/pollService.js – Optimized with aggregated SQL query
+// services/pollService.js – Optimized: separate queries, no heavy CTE
 
 const db = require('./database');
 const h = require('../utils/helpers');
@@ -8,65 +8,57 @@ const UPDATE_INTERVAL = h.POLL_UPDATE_INTERVAL_MS || 30000;
 
 let activePollTimer = null;
 
+// ──────────────────────────────────────────────────────────────
+// getPollResults – simplified with separate queries
+// ──────────────────────────────────────────────────────────────
 async function getPollResults(message, characters) {
     try {
-        // ── 1. Aggregated query – returns one row per option ──
-        const aggregated = await db.query(`
-            WITH all_options AS (
-              SELECT option_id FROM ${h.tables.POLL_VOTING_DISCORD} WHERE poll_id = ?
-              UNION
-              SELECT option_id FROM ${h.tables.POLL_VOTING_WEBSITE} WHERE poll_id = ?
-              UNION
-              SELECT option_id FROM ${h.tables.POLL_VOTES_FINAL} WHERE poll_id = ? AND selected_at IS NOT NULL
-            ),
-            discord_scores AS (
-              SELECT option_id, COALESCE(SUM(weight), 0) as score
-              FROM ${h.tables.POLL_VOTING_DISCORD}
-              WHERE poll_id = ?
-              GROUP BY option_id
-            ),
-            website_counts AS (
-              SELECT option_id, COUNT(*) as count
-              FROM ${h.tables.POLL_VOTING_WEBSITE}
-              WHERE poll_id = ?
-              GROUP BY option_id
-            ),
-            winner_flags AS (
-              SELECT option_id, 1 as is_winner
-              FROM ${h.tables.POLL_VOTES_FINAL}
-              WHERE poll_id = ? AND selected_at IS NOT NULL
-            )
-            SELECT 
-              ao.option_id,
-              COALESCE(ds.score, 0) + COALESCE(wc.count, 0) as total_score,
-              CASE WHEN wf.is_winner IS NOT NULL THEN 1 ELSE 0 END as is_winner,
-              (SELECT character_name FROM ${h.tables.POLL_VOTES_FINAL} WHERE poll_id = ? AND option_id = ao.option_id LIMIT 1) as character_name
-            FROM all_options ao
-            LEFT JOIN discord_scores ds ON ao.option_id = ds.option_id
-            LEFT JOIN website_counts wc ON ao.option_id = wc.option_id
-            LEFT JOIN winner_flags wf ON ao.option_id = wf.option_id
-            ORDER BY ao.option_id
-        `, [CURRENT_POLL_ID, CURRENT_POLL_ID, CURRENT_POLL_ID, CURRENT_POLL_ID, CURRENT_POLL_ID, CURRENT_POLL_ID, CURRENT_POLL_ID]);
+        // 1. Fetch Discord scores (weighted sum)
+        const discordRows = await db.query(
+            `SELECT option_id, COALESCE(SUM(weight), 0) as score
+             FROM ${h.tables.POLL_VOTING_DISCORD}
+             WHERE poll_id = ?
+             GROUP BY option_id`,
+            [CURRENT_POLL_ID]
+        );
 
-        // ── 2. Build display results and prepare data for DB ──
+        // 2. Fetch website vote counts
+        const websiteRows = await db.query(
+            `SELECT option_id, COUNT(*) as count
+             FROM ${h.tables.POLL_VOTING_WEBSITE}
+             WHERE poll_id = ?
+             GROUP BY option_id`,
+            [CURRENT_POLL_ID]
+        );
+
+        // 3. Fetch winners (already selected)
+        const winnerRows = await db.query(
+            `SELECT option_id
+             FROM ${h.tables.POLL_VOTES_FINAL}
+             WHERE poll_id = ? AND selected_at IS NOT NULL`,
+            [CURRENT_POLL_ID]
+        );
+
+        // Build maps for quick lookup
+        const discordMap = {};
+        discordRows.forEach(r => { discordMap[r.option_id] = parseFloat(r.score) || 0; });
+
+        const websiteMap = {};
+        websiteRows.forEach(r => { websiteMap[r.option_id] = parseInt(r.count, 10) || 0; });
+
+        const winnerSet = new Set(winnerRows.map(r => r.option_id));
+
+        // Prepare display results and data for DB
         const displayResults = [];
         const rawDataForDB = [];
 
-        // Build a map for quick lookup
-        const scoreMap = {};
-        for (const row of aggregated) {
-            scoreMap[row.option_id] = {
-                total_score: parseFloat(row.total_score) || 0,
-                is_winner: row.is_winner === 1,
-                character_name: row.character_name || null
-            };
-        }
-
         for (let i = 0; i < characters.length; i++) {
             const optionId = i + 1;
-            const data = scoreMap[optionId] || { total_score: 0, is_winner: false, character_name: null };
-            const totalScore = data.total_score;
-            const isWinner = data.is_winner;
+            const discordScore = discordMap[optionId] || 0;
+            const websiteCount = websiteMap[optionId] || 0;
+            const totalScore = discordScore + websiteCount;
+            const isWinner = winnerSet.has(optionId);
+
             const rawName = characters[i].replace(/:female_sign:|:male_sign:/g, m =>
                 m === ':female_sign:' ? '♀️' : '♂️'
             );
@@ -84,15 +76,13 @@ async function getPollResults(message, characters) {
             });
         }
 
-        // ── 3. Check if scores have changed ──
+        // ── Only write to poll_votes_final if scores have changed ──
         const currentRows = await db.query(
             `SELECT option_id, score FROM ${h.tables.POLL_VOTES_FINAL} WHERE poll_id = ?`,
             [CURRENT_POLL_ID]
         );
         const currentScores = {};
-        for (const row of currentRows) {
-            currentScores[row.option_id] = row.score;
-        }
+        currentRows.forEach(r => { currentScores[r.option_id] = r.score; });
 
         let changed = false;
         if (Object.keys(currentScores).length !== rawDataForDB.length) {
@@ -106,8 +96,8 @@ async function getPollResults(message, characters) {
             }
         }
 
-        // ── 4. Only write if scores changed (using INSERT OR REPLACE) ──
         if (changed) {
+            // Use INSERT OR REPLACE for each row (or batch if D1 supported it)
             for (const row of rawDataForDB) {
                 await db.query(
                     `INSERT OR REPLACE INTO ${h.tables.POLL_VOTES_FINAL} 
@@ -119,13 +109,16 @@ async function getPollResults(message, characters) {
         }
 
         return displayResults.join('');
+
     } catch (err) {
         console.error("Error calculating poll results:", err);
         return "Error loading results...";
     }
 }
 
-// ── The rest of the file stays unchanged ──
+// ──────────────────────────────────────────────────────────────
+// Other functions (unchanged except for minor improvements)
+// ──────────────────────────────────────────────────────────────
 
 async function generateMessageContent(endTime, resultsText, characters, isEnded = false) {
     const e = h.releaseEmojis;
