@@ -1,4 +1,4 @@
-// web/routes/queue.js
+// web/routes/queue.js – updated with expiry cleanup and strikethrough
 
 const h = require('../../utils/helpers');
 const db = require('../../services/database');
@@ -22,7 +22,6 @@ async function getQueueWebhook(channel) {
     const existing = webhooks.find(w => w.name === 'Queue');
     if (existing) {
       webhookUrl = `${DISCORD_API}/webhooks/${existing.id}/${existing.token}`;
-      // Update avatar if needed
       await fetch(webhookUrl, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', Authorization: `Bot ${token}` },
@@ -43,21 +42,20 @@ async function getQueueWebhook(channel) {
   return webhookUrl;
 }
 
-// ─── Helper: clean expired checked items (older than 7 days) ───
+// Clean expired checked items (older than 7 days)
 function cleanExpiredQueue(queue) {
   const now = Date.now();
   const sevenDays = 7 * 24 * 60 * 60 * 1000;
-  const filtered = queue.filter(item => {
+  return queue.filter(item => {
     if (item.checked && item.completedAt) {
       const age = now - new Date(item.completedAt).getTime();
       if (age >= sevenDays) return false; // remove
     }
     return true;
   });
-  return filtered;
 }
 
-// ─── Update Discord message with strikethrough for checked items ───
+// Update Discord queue message with strikethrough
 async function updateDiscordQueue(client) {
   try {
     const row = await db.query(
@@ -93,10 +91,8 @@ async function updateDiscordQueue(client) {
       const lines = queue.map(item => {
         const text = item.text || item;
         const checked = item.checked || false;
-        // Build the line – if checked, wrap entire text in strikethrough
         const displayText = checked ? `~~${text}~~` : text;
         const bullet = checked ? `•` : `•`;
-        // Keep the emoji outside strikethrough
         const emoji = checked ? diamondEmoji : blankEmoji;
         return `${bullet} ${emoji} ${displayText}`;
       });
@@ -157,29 +153,7 @@ async function updateDiscordQueue(client) {
   }
 }
 
-// ─── Helper to add an entry to the queue ───
-async function addEntryToQueue(entry, client) {
-  try {
-    const row = await db.query(
-      `SELECT queue FROM ${h.tables.MAIN_QUEUE} WHERE id = 1`,
-      [],
-      true
-    );
-    const queue = row ? JSON.parse(row.queue || '[]') : [];
-    const newItem = typeof entry === 'string' ? { text: entry.trim(), checked: false } : entry;
-    queue.push(newItem);
-    await db.query(
-      `UPDATE ${h.tables.MAIN_QUEUE} SET queue = ?, updated_at = datetime('now') WHERE id = 1`,
-      [JSON.stringify(queue)]
-    );
-    await updateDiscordQueue(client);
-    return true;
-  } catch (err) {
-    console.error('addEntryToQueue error:', err);
-    throw err;
-  }
-}
-
+// ─── Routes ───
 module.exports = function setupQueueRoutes(app, client) {
   // GET /api/queue – returns cleaned queue
   app.get('/api/queue', async (req, res) => {
@@ -190,7 +164,6 @@ module.exports = function setupQueueRoutes(app, client) {
         true
       );
       let queue = row ? JSON.parse(row.queue || '[]') : [];
-      // Clean expired checked items
       const cleaned = cleanExpiredQueue(queue);
       if (cleaned.length !== queue.length) {
         queue = cleaned;
@@ -198,7 +171,6 @@ module.exports = function setupQueueRoutes(app, client) {
           `UPDATE ${h.tables.MAIN_QUEUE} SET queue = ?, updated_at = datetime('now') WHERE id = 1`,
           [JSON.stringify(queue)]
         );
-        // Update Discord message to reflect removal
         await updateDiscordQueue(client);
       }
       res.json({ queue });
@@ -222,13 +194,11 @@ module.exports = function setupQueueRoutes(app, client) {
       );
       const queue = row ? JSON.parse(row.queue || '[]') : [];
       queue.push({ text: entry.trim(), checked: false });
-
       await db.query(
         `UPDATE ${h.tables.MAIN_QUEUE} SET queue = ?, updated_at = datetime('now') WHERE id = 1`,
         [JSON.stringify(queue)]
       );
       await updateDiscordQueue(client);
-
       res.json({ success: true, queue });
     } catch (err) {
       console.error('POST /api/queue/add error:', err);
@@ -328,4 +298,3 @@ module.exports = function setupQueueRoutes(app, client) {
 };
 
 module.exports.updateDiscordQueue = updateDiscordQueue;
-module.exports.addEntryToQueue = addEntryToQueue;
