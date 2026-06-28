@@ -1,4 +1,4 @@
-// web/routes/queue.js – with debug logging and in‑memory cache fallback
+// web/routes/queue.js – separate premium & finished actions
 const h = require('../../utils/helpers');
 const db = require('../../services/database');
 
@@ -6,34 +6,36 @@ const QUEUE_CHANNEL_ID = h.ids.channels.QUEUE;
 const LOGO_URL = h.urls.LOGO_URL;
 const DISCORD_API = 'https://discord.com/api/v10';
 
-// ─── NORMALIZE ────────────────────────────────────────────────
+// ─── HELPERS ────────────────────────────────────────────────
+
 function normalizeQueue(queue) {
   if (!Array.isArray(queue)) return [];
   return queue.map(item => {
     if (typeof item === 'string') {
-      return { text: item, checked: false, completedAt: null };
+      return { text: item, checked: false, slashed: false, slashedAt: null };
     }
     return {
       text: item.text || item,
       checked: !!item.checked,
-      completedAt: item.completedAt || null
+      slashed: !!item.slashed,
+      slashedAt: item.slashedAt || null
     };
   });
 }
 
-function cleanExpired(queue) {
+// Remove items that have been slashed for >7 days
+function cleanExpiredQueue(queue) {
   const now = Date.now();
   const sevenDays = 7 * 24 * 60 * 60 * 1000;
   return queue.filter(item => {
-    if (item.checked && item.completedAt) {
-      const age = now - new Date(item.completedAt).getTime();
+    if (item.slashed && item.slashedAt) {
+      const age = now - new Date(item.slashedAt).getTime();
       if (age >= sevenDays) return false;
     }
     return true;
   });
 }
 
-// ─── GET QUEUE FROM DB ──────────────────────────────────────
 async function getQueue() {
   const row = await db.query(
     `SELECT queue FROM ${h.tables.MAIN_QUEUE} WHERE id = 1`,
@@ -42,7 +44,7 @@ async function getQueue() {
   );
   let raw = row ? JSON.parse(row.queue || '[]') : [];
   let queue = normalizeQueue(raw);
-  const cleaned = cleanExpired(queue);
+  const cleaned = cleanExpiredQueue(queue);
   if (cleaned.length !== queue.length) {
     queue = cleaned;
     await db.query(
@@ -53,7 +55,6 @@ async function getQueue() {
   return queue;
 }
 
-// ─── UPDATE DISCORD (non‑blocking) ──────────────────────────
 async function updateDiscordQueue(client) {
   try {
     const queue = await getQueue();
@@ -63,7 +64,7 @@ async function updateDiscordQueue(client) {
     const token = process.env.DISCORD_TOKEN;
     if (!token) throw new Error('DISCORD_TOKEN missing');
 
-    // Get webhook
+    // Webhook handling (same as before)
     const channelUrl = `${DISCORD_API}/channels/${channel.id}`;
     const whListResp = await fetch(`${channelUrl}/webhooks`, {
       headers: { Authorization: `Bot ${token}` },
@@ -102,17 +103,23 @@ async function updateDiscordQueue(client) {
       content += '*Queue is empty.*';
     } else {
       const lines = queue.map(item => {
-        const text = item.text;
-        const checked = !!item.checked;
-        const displayText = checked ? `~~${text}~~` : text;
-        const bullet = checked ? `•` : `•`;
-        const emoji = checked ? diamondEmoji : blankEmoji;
-        return `${bullet} ${emoji} ${displayText}`;
+        let text = item.text;
+        let prefix = '•';
+        let emoji = blankEmoji;
+
+        if (item.checked) {
+          emoji = diamondEmoji;
+          text = `**${text}**`;  // bold for premium
+        }
+        if (item.slashed) {
+          text = `~~${text}~~`;  // strikethrough for finished
+        }
+        return `${prefix} ${emoji} ${text}`;
       });
       content += lines.join('\n');
     }
 
-    // Get stored message_id
+    // Update existing message or send new
     const row = await db.query(
       `SELECT message_id FROM ${h.tables.MAIN_QUEUE} WHERE id = 1`,
       [],
@@ -127,7 +134,6 @@ async function updateDiscordQueue(client) {
         body: JSON.stringify({ content, username: 'Queue', avatar_url: LOGO_URL }),
       });
       if (!resp.ok) throw new Error(`Edit failed: ${resp.status}`);
-      console.log('✅ Queue Discord message updated');
     } else {
       const msgRes = await fetch(`${webhookUrl}?wait=true`, {
         method: 'POST',
@@ -140,11 +146,10 @@ async function updateDiscordQueue(client) {
           `UPDATE ${h.tables.MAIN_QUEUE} SET message_id = ? WHERE id = 1`,
           [msg.id]
         );
-        console.log('✅ Queue Discord message created');
       }
     }
   } catch (err) {
-    console.error('❌ updateDiscordQueue error (non‑fatal):', err.message);
+    console.error('updateDiscordQueue error (non‑fatal):', err.message);
   }
 }
 
@@ -157,7 +162,7 @@ module.exports = function setupQueueRoutes(app, client) {
       const queue = await getQueue();
       res.json({ queue });
     } catch (err) {
-      console.error('GET /api/queue error:', err);
+      console.error(err);
       res.status(500).json({ error: err.message });
     }
   });
@@ -170,58 +175,72 @@ module.exports = function setupQueueRoutes(app, client) {
     }
     try {
       let queue = await getQueue();
-      queue.push({ text: entry.trim(), checked: false, completedAt: null });
+      queue.push({ text: entry.trim(), checked: false, slashed: false, slashedAt: null });
       await db.query(
         `UPDATE ${h.tables.MAIN_QUEUE} SET queue = ?, updated_at = datetime('now') WHERE id = 1`,
         [JSON.stringify(queue)]
       );
-      // Update Discord in the background
       updateDiscordQueue(client);
       res.json({ success: true, queue });
     } catch (err) {
-      console.error('POST /api/queue/add error:', err);
+      console.error(err);
       res.status(500).json({ error: err.message });
     }
   });
 
-  // POST /api/queue/toggle – DEBUG: logs the index and old state
+  // POST /api/queue/toggle – premium (checkbox)
   app.post('/api/queue/toggle', async (req, res) => {
     const { index } = req.body;
-    console.log(`🔁 Toggle request: index=${index}`);
     if (typeof index !== 'number' || index < 0) {
       return res.status(400).json({ error: 'Invalid index' });
     }
     try {
       let queue = await getQueue();
-      console.log(`📦 Current queue length: ${queue.length}`);
       if (index >= queue.length) {
         return res.status(400).json({ error: 'Index out of bounds' });
       }
-
       const item = queue[index];
-      console.log(`🔄 Before toggle:`, JSON.stringify(item));
-      if (item.checked) {
-        item.checked = false;
-        item.completedAt = null;
-        console.log(`⬅️ Unchecked: ${item.text}`);
-      } else {
-        item.checked = true;
-        item.completedAt = new Date().toISOString();
-        console.log(`➡️ Checked: ${item.text}`);
-      }
-
-      // Write to DB
+      item.checked = !item.checked;
       await db.query(
         `UPDATE ${h.tables.MAIN_QUEUE} SET queue = ?, updated_at = datetime('now') WHERE id = 1`,
         [JSON.stringify(queue)]
       );
-
-      // Update Discord (non‑blocking)
       updateDiscordQueue(client);
-
       res.json({ success: true, queue });
     } catch (err) {
-      console.error('❌ POST /api/queue/toggle error:', err);
+      console.error(err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // POST /api/queue/slash – finish/delete (strikethrough + 7d expiry)
+  app.post('/api/queue/slash', async (req, res) => {
+    const { index } = req.body;
+    if (typeof index !== 'number' || index < 0) {
+      return res.status(400).json({ error: 'Invalid index' });
+    }
+    try {
+      let queue = await getQueue();
+      if (index >= queue.length) {
+        return res.status(400).json({ error: 'Index out of bounds' });
+      }
+      const item = queue[index];
+      if (item.slashed) {
+        // Un‑slash (if you want to allow undo)
+        item.slashed = false;
+        item.slashedAt = null;
+      } else {
+        item.slashed = true;
+        item.slashedAt = new Date().toISOString();
+      }
+      await db.query(
+        `UPDATE ${h.tables.MAIN_QUEUE} SET queue = ?, updated_at = datetime('now') WHERE id = 1`,
+        [JSON.stringify(queue)]
+      );
+      updateDiscordQueue(client);
+      res.json({ success: true, queue });
+    } catch (err) {
+      console.error(err);
       res.status(500).json({ error: err.message });
     }
   });
@@ -241,12 +260,12 @@ module.exports = function setupQueueRoutes(app, client) {
       updateDiscordQueue(client);
       res.json({ success: true });
     } catch (err) {
-      console.error('POST /api/queue/reorder error:', err);
+      console.error(err);
       res.status(500).json({ error: err.message });
     }
   });
 
-  // POST /api/queue/remove – permanent delete
+  // POST /api/queue/remove – permanent delete (use sparingly)
   app.post('/api/queue/remove', async (req, res) => {
     const { index } = req.body;
     if (typeof index !== 'number' || index < 0) {
@@ -258,32 +277,6 @@ module.exports = function setupQueueRoutes(app, client) {
         return res.status(400).json({ error: 'Index out of bounds' });
       }
       queue.splice(index, 1);
-      await db.query(
-        `UPDATE ${h.tables.MAIN_QUEUE} SET queue = ?, updated_at = datetime('now') WHERE id = 1`,
-        [JSON.stringify(queue)]
-      );
-      updateDiscordQueue(client);
-      res.json({ success: true, queue });
-    } catch (err) {
-      console.error('POST /api/queue/remove error:', err);
-      res.status(500).json({ error: err.message });
-    }
-  });
-
-  // ─── DEBUG: GET /api/queue/debug-toggle?index=2 (for testing) ───
-  app.get('/api/queue/debug-toggle', async (req, res) => {
-    const index = parseInt(req.query.index);
-    if (isNaN(index) || index < 0) {
-      return res.status(400).json({ error: 'Provide ?index=N' });
-    }
-    try {
-      let queue = await getQueue();
-      if (index >= queue.length) {
-        return res.status(400).json({ error: 'Index out of bounds' });
-      }
-      const item = queue[index];
-      item.checked = !item.checked;
-      item.completedAt = item.checked ? new Date().toISOString() : null;
       await db.query(
         `UPDATE ${h.tables.MAIN_QUEUE} SET queue = ?, updated_at = datetime('now') WHERE id = 1`,
         [JSON.stringify(queue)]
