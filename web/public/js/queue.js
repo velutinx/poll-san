@@ -79,25 +79,29 @@ function renderQueue() {
   });
   container.appendChild(ul);
 
-  if (sortableInstance) sortableInstance.destroy();
-  sortableInstance = new Sortable(document.getElementById('queueDragList'), {
-    handle: '.drag-handle',
-    animation: 150,
-    onEnd: function() {
-      // Rebuild the array by placing the active dragged items first
-      const newActiveOrder = [];
-      document.querySelectorAll('#queueDragList .queue-item').forEach(li => {
-        const idx = parseInt(li.dataset.index);
-        newActiveOrder.push(queueItems[idx]);
-      });
+if (sortableInstance) sortableInstance.destroy();
+sortableInstance = new Sortable(document.getElementById('queueDragList'), {
+  handle: '.drag-handle',
+  animation: 150,
+  onEnd: function() {
+    // 1. Get the new visual order of active items from the DOM
+    const activeItemsInOrder = [];
+    document.querySelectorAll('#queueDragList .queue-item').forEach(li => {
+      const originalIndex = parseInt(li.dataset.index);
+      activeItemsInOrder.push(queueItems[originalIndex]);
+    });
 
-      // Keep hidden completed items appended to the end to prevent data loss
-      const completedItems = queueItems.filter(item => item.isCompleted);
-      
-      queueItems = [...newActiveOrder, ...completedItems];
-      saveReorder();
-    }
-  });
+    // 2. Identify all currently "slashed" (completed) items
+    const completedItems = queueItems.filter(item => item.isCompleted);
+
+    // 3. Reconstruct the queue: Active items first (in new order), then Slashed items
+    // This preserves all data in the database while updating the order
+    queueItems = [...activeItemsInOrder, ...completedItems];
+    
+    // 4. Send the ENTIRE array to the server
+    saveReorder();
+  }
+});
 }
 
 async function togglePremium(index) {
