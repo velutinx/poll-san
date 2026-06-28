@@ -1,4 +1,4 @@
-// web/public/js/queue.js – FRONTEND with correct toggle
+// web/public/js/queue.js – checkbox = premium, remove button = slash
 let queueItems = [];
 let sortableInstance = null;
 
@@ -29,18 +29,19 @@ function renderQueue() {
   queueItems.forEach((item, index) => {
     const text = item.text || item;
     const checked = item.checked || false;
+    const slashed = item.slashed || false;
     const li = document.createElement('li');
     li.className = 'queue-item';
     li.dataset.index = index;
 
-    // Checkbox
+    // Checkbox (premium)
     const checkbox = document.createElement('input');
     checkbox.type = 'checkbox';
     checkbox.checked = checked;
     checkbox.className = 'queue-checkbox';
     checkbox.addEventListener('change', (e) => {
       e.stopPropagation();
-      toggleChecked(index);
+      togglePremium(index);
     });
 
     const dragHandle = document.createElement('span');
@@ -51,22 +52,28 @@ function renderQueue() {
     textSpan.className = 'queue-text';
     textSpan.textContent = text;
     if (checked) {
+      textSpan.style.fontWeight = 'bold';
+      textSpan.style.color = '#f1c40f';
+    }
+    if (slashed) {
       textSpan.style.textDecoration = 'line-through';
       textSpan.style.opacity = '0.6';
     }
 
-    const removeBtn = document.createElement('button');
-    removeBtn.className = 'queue-remove';
-    removeBtn.textContent = '✕';
-    removeBtn.addEventListener('click', (e) => {
+    // Remove button -> now toggles slash
+    const slashBtn = document.createElement('button');
+    slashBtn.className = 'queue-remove';
+    slashBtn.textContent = '✕';
+    slashBtn.title = 'Finish (strikethrough, disappears after 7 days)';
+    slashBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      removeQueueItem(index);
+      toggleSlash(index);
     });
 
     li.appendChild(checkbox);
     li.appendChild(dragHandle);
     li.appendChild(textSpan);
-    li.appendChild(removeBtn);
+    li.appendChild(slashBtn);
     ul.appendChild(li);
   });
   container.appendChild(ul);
@@ -88,7 +95,8 @@ function renderQueue() {
   });
 }
 
-async function toggleChecked(index) {
+// ─── Premium toggle (checkbox) ─────────────────────────────
+async function togglePremium(index) {
   try {
     const res = await fetch('/api/queue/toggle', {
       method: 'POST',
@@ -99,9 +107,9 @@ async function toggleChecked(index) {
     if (data.success) {
       queueItems = data.queue;
       renderQueue();
-      showToast('Toggled successfully', 'success');
+      showToast('Premium toggled', 'success');
     } else {
-      showToast(data.error || 'Failed to toggle.', 'error');
+      showToast(data.error || 'Failed.', 'error');
     }
   } catch (err) {
     console.error(err);
@@ -109,6 +117,31 @@ async function toggleChecked(index) {
   }
 }
 
+// ─── Slash toggle (remove button) ──────────────────────────
+async function toggleSlash(index) {
+  try {
+    const res = await fetch('/api/queue/slash', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ index })
+    });
+    const data = await res.json();
+    if (data.success) {
+      queueItems = data.queue;
+      renderQueue();
+      const item = queueItems[index];
+      const msg = item.slashed ? 'Item finished (slashed, will expire in 7 days)' : 'Un‑finished';
+      showToast(msg, 'info');
+    } else {
+      showToast(data.error || 'Failed.', 'error');
+    }
+  } catch (err) {
+    console.error(err);
+    showToast('Network error.', 'error');
+  }
+}
+
+// ─── Add, reorder, remove (permanent) ──────────────────────
 async function addQueueItem() {
   const toggle = document.getElementById('queue-toggle');
   const input = document.getElementById('queue-input');
@@ -140,6 +173,7 @@ async function addQueueItem() {
   }
 }
 
+// Remove permanently (rare use) – we keep it but not bound to UI by default
 async function removeQueueItem(index) {
   try {
     const res = await fetch('/api/queue/remove', {
@@ -151,9 +185,9 @@ async function removeQueueItem(index) {
     if (data.success) {
       queueItems = data.queue;
       renderQueue();
-      showToast('Removed from queue.', 'info');
+      showToast('Permanently removed.', 'info');
     } else {
-      showToast(data.error || 'Failed to remove.', 'error');
+      showToast(data.error || 'Failed.', 'error');
     }
   } catch (err) {
     console.error(err);
@@ -178,6 +212,9 @@ async function saveReorder() {
   }
 }
 
+// ─── Expose ──────────────────────────────────────────────────
 window.loadQueue = loadQueue;
 window.addQueueItem = addQueueItem;
-window.removeQueueItem = removeQueueItem;
+window.removeQueueItem = removeQueueItem;   // still available but not used
+window.togglePremium = togglePremium;
+window.toggleSlash = toggleSlash;
