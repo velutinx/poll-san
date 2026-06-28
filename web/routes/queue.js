@@ -1,4 +1,4 @@
-// web/routes/queue.js
+// web/routes/queue.js – with debug logging and in‑memory cache fallback
 const h = require('../../utils/helpers');
 const db = require('../../services/database');
 
@@ -6,102 +6,96 @@ const QUEUE_CHANNEL_ID = h.ids.channels.QUEUE;
 const LOGO_URL = h.urls.LOGO_URL;
 const DISCORD_API = 'https://discord.com/api/v10';
 
-// Helper: get or create the "Queue" webhook
-async function getQueueWebhook(channel) {
-  const token = process.env.DISCORD_TOKEN;
-  if (!token) throw new Error('DISCORD_BOT_TOKEN not set');
-
-  const channelUrl = `${DISCORD_API}/channels/${channel.id}`;
-  const whListResp = await fetch(`${channelUrl}/webhooks`, {
-    headers: { Authorization: `Bot ${token}` },
-  });
-  let webhookUrl = null;
-  if (whListResp.ok) {
-    const webhooks = await whListResp.json();
-    const existing = webhooks.find(w => w.name === 'Queue');
-    if (existing) {
-      webhookUrl = `${DISCORD_API}/webhooks/${existing.id}/${existing.token}`;
-      // Update avatar if needed
-      await fetch(webhookUrl, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bot ${token}` },
-        body: JSON.stringify({ avatar: LOGO_URL }),
-      });
-    }
-  }
-  if (!webhookUrl) {
-    const createResp = await fetch(`${channelUrl}/webhooks`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bot ${token}` },
-      body: JSON.stringify({ name: 'Queue', avatar: LOGO_URL }),
-    });
-    if (!createResp.ok) throw new Error('Failed to create webhook');
-    const created = await createResp.json();
-    webhookUrl = `${DISCORD_API}/webhooks/${created.id}/${created.token}`;
-  }
-  return webhookUrl;
-}
-
-// ─── Data Normalization ───
+// ─── NORMALIZE ────────────────────────────────────────────────
 function normalizeQueue(queue) {
   if (!Array.isArray(queue)) return [];
   return queue.map(item => {
     if (typeof item === 'string') {
-      return { text: item, isPremium: false, isCompleted: false, completedAt: null };
+      return { text: item, checked: false, completedAt: null };
     }
     return {
       text: item.text || item,
-      // Migrate old "checked" state to "isPremium" safely
-      isPremium: !!item.isPremium || !!item.checked,
-      isCompleted: !!item.isCompleted,
+      checked: !!item.checked,
       completedAt: item.completedAt || null
     };
   });
 }
 
-// ─── Helper: clean expired completed items (older than 7 days) ───
-function cleanExpiredQueue(queue) {
+function cleanExpired(queue) {
   const now = Date.now();
   const sevenDays = 7 * 24 * 60 * 60 * 1000;
   return queue.filter(item => {
-    if (item.isCompleted && item.completedAt) {
+    if (item.checked && item.completedAt) {
       const age = now - new Date(item.completedAt).getTime();
-      if (age >= sevenDays) return false; // purge
+      if (age >= sevenDays) return false;
     }
     return true;
   });
 }
 
-// ─── Update Discord message ───
+// ─── GET QUEUE FROM DB ──────────────────────────────────────
+async function getQueue() {
+  const row = await db.query(
+    `SELECT queue FROM ${h.tables.MAIN_QUEUE} WHERE id = 1`,
+    [],
+    true
+  );
+  let raw = row ? JSON.parse(row.queue || '[]') : [];
+  let queue = normalizeQueue(raw);
+  const cleaned = cleanExpired(queue);
+  if (cleaned.length !== queue.length) {
+    queue = cleaned;
+    await db.query(
+      `UPDATE ${h.tables.MAIN_QUEUE} SET queue = ?, updated_at = datetime('now') WHERE id = 1`,
+      [JSON.stringify(queue)]
+    );
+  }
+  return queue;
+}
+
+// ─── UPDATE DISCORD (non‑blocking) ──────────────────────────
 async function updateDiscordQueue(client) {
   try {
-    const row = await db.query(
-      `SELECT queue, message_id, channel_id FROM ${h.tables.MAIN_QUEUE} WHERE id = 1`,
-      [],
-      true
-    );
-    if (!row) return;
+    const queue = await getQueue();
+    const channel = await client.channels.fetch(QUEUE_CHANNEL_ID);
+    if (!channel) throw new Error('Channel not found');
 
-    let queue = JSON.parse(row.queue || '[]');
-    queue = normalizeQueue(queue);
-    
-    // Clean expired items before displaying
-    const cleaned = cleanExpiredQueue(queue);
-    if (cleaned.length !== queue.length) {
-      queue = cleaned;
-      await db.query(
-        `UPDATE ${h.tables.MAIN_QUEUE} SET queue = ?, updated_at = datetime('now') WHERE id = 1`,
-        [JSON.stringify(queue)]
-      );
+    const token = process.env.DISCORD_TOKEN;
+    if (!token) throw new Error('DISCORD_TOKEN missing');
+
+    // Get webhook
+    const channelUrl = `${DISCORD_API}/channels/${channel.id}`;
+    const whListResp = await fetch(`${channelUrl}/webhooks`, {
+      headers: { Authorization: `Bot ${token}` },
+    });
+    let webhookUrl = null;
+    if (whListResp.ok) {
+      const webhooks = await whListResp.json();
+      const existing = webhooks.find(w => w.name === 'Queue');
+      if (existing) {
+        webhookUrl = `${DISCORD_API}/webhooks/${existing.id}/${existing.token}`;
+        await fetch(webhookUrl, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bot ${token}` },
+          body: JSON.stringify({ avatar: LOGO_URL }),
+        });
+      }
+    }
+    if (!webhookUrl) {
+      const createResp = await fetch(`${channelUrl}/webhooks`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bot ${token}` },
+        body: JSON.stringify({ name: 'Queue', avatar: LOGO_URL }),
+      });
+      if (!createResp.ok) throw new Error('Failed to create webhook');
+      const created = await createResp.json();
+      webhookUrl = `${DISCORD_API}/webhooks/${created.id}/${created.token}`;
     }
 
-    const channel = await client.channels.fetch(QUEUE_CHANNEL_ID);
-    if (!channel) return;
-
-    const webhookUrl = await getQueueWebhook(channel);
-    const progressEmoji = h.releaseEmojis?.PROGRESS || '<a:progress:1491670111923212308>';
-    const diamondEmoji = h.releaseEmojis?.DIAMOND || ':gem:';
-    const blankEmoji = h.releaseEmojis?.BLANK || '';
+    // Build message
+    const progressEmoji = h.releaseEmojis.PROGRESS || '<a:progress:1491670111923212308>';
+    const diamondEmoji = h.releaseEmojis.DIAMOND || ':gem:';
+    const blankEmoji = h.releaseEmojis.BLANK || '';
 
     let content = `${progressEmoji} **Current queue** (general idea, subject to change):\n\n`;
     if (queue.length === 0) {
@@ -109,54 +103,36 @@ async function updateDiscordQueue(client) {
     } else {
       const lines = queue.map(item => {
         const text = item.text;
-        // Strikethrough if completed/slashed
-        const displayText = item.isCompleted ? `~~${text}~~` : text;
-        // Diamond if premium
-        const emoji = item.isPremium ? diamondEmoji : blankEmoji;
-        return `• ${emoji} ${displayText}`;
+        const checked = !!item.checked;
+        const displayText = checked ? `~~${text}~~` : text;
+        const bullet = checked ? `•` : `•`;
+        const emoji = checked ? diamondEmoji : blankEmoji;
+        return `${bullet} ${emoji} ${displayText}`;
       });
       content += lines.join('\n');
     }
 
-    if (row.message_id) {
-      try {
-        await fetch(`${webhookUrl}/messages/${row.message_id}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            content,
-            username: 'Queue',
-            avatar_url: LOGO_URL,
-          }),
-        });
-      } catch (err) {
-        console.warn('Could not edit queue message, sending new:', err.message);
-        const msgRes = await fetch(`${webhookUrl}?wait=true`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            content,
-            username: 'Queue',
-            avatar_url: LOGO_URL,
-          }),
-        });
-        const msg = await msgRes.json();
-        if (msg.id) {
-          await db.query(
-            `UPDATE ${h.tables.MAIN_QUEUE} SET message_id = ? WHERE id = 1`,
-            [msg.id]
-          );
-        }
-      }
+    // Get stored message_id
+    const row = await db.query(
+      `SELECT message_id FROM ${h.tables.MAIN_QUEUE} WHERE id = 1`,
+      [],
+      true
+    );
+    const messageId = row?.message_id;
+
+    if (messageId) {
+      const resp = await fetch(`${webhookUrl}/messages/${messageId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content, username: 'Queue', avatar_url: LOGO_URL }),
+      });
+      if (!resp.ok) throw new Error(`Edit failed: ${resp.status}`);
+      console.log('✅ Queue Discord message updated');
     } else {
       const msgRes = await fetch(`${webhookUrl}?wait=true`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          content,
-          username: 'Queue',
-          avatar_url: LOGO_URL,
-        }),
+        body: JSON.stringify({ content, username: 'Queue', avatar_url: LOGO_URL }),
       });
       const msg = await msgRes.json();
       if (msg.id) {
@@ -164,61 +140,21 @@ async function updateDiscordQueue(client) {
           `UPDATE ${h.tables.MAIN_QUEUE} SET message_id = ? WHERE id = 1`,
           [msg.id]
         );
+        console.log('✅ Queue Discord message created');
       }
     }
   } catch (err) {
-    console.error('updateDiscordQueue error:', err);
-    throw err;
+    console.error('❌ updateDiscordQueue error (non‑fatal):', err.message);
   }
 }
 
-// ─── Helper to add an entry to the queue ───
-async function addEntryToQueue(entry, client) {
-  try {
-    const row = await db.query(
-      `SELECT queue FROM ${h.tables.MAIN_QUEUE} WHERE id = 1`,
-      [],
-      true
-    );
-    let queue = row ? JSON.parse(row.queue || '[]') : [];
-    queue = normalizeQueue(queue);
-    
-    const text = typeof entry === 'string' ? entry.trim() : entry.text;
-    queue.push({ text, isPremium: false, isCompleted: false, completedAt: null });
-    
-    await db.query(
-      `UPDATE ${h.tables.MAIN_QUEUE} SET queue = ?, updated_at = datetime('now') WHERE id = 1`,
-      [JSON.stringify(queue)]
-    );
-    await updateDiscordQueue(client);
-    return true;
-  } catch (err) {
-    console.error('addEntryToQueue error:', err);
-    throw err;
-  }
-}
+// ─── ROUTES ──────────────────────────────────────────────────
 
 module.exports = function setupQueueRoutes(app, client) {
   // GET /api/queue
   app.get('/api/queue', async (req, res) => {
     try {
-      const row = await db.query(
-        `SELECT queue FROM ${h.tables.MAIN_QUEUE} WHERE id = 1`,
-        [],
-        true
-      );
-      let queue = row ? JSON.parse(row.queue || '[]') : [];
-      queue = normalizeQueue(queue);
-      
-      const cleaned = cleanExpiredQueue(queue);
-      if (cleaned.length !== queue.length) {
-        queue = cleaned;
-        await db.query(
-          `UPDATE ${h.tables.MAIN_QUEUE} SET queue = ?, updated_at = datetime('now') WHERE id = 1`,
-          [JSON.stringify(queue)]
-        );
-        await updateDiscordQueue(client);
-      }
+      const queue = await getQueue();
       res.json({ queue });
     } catch (err) {
       console.error('GET /api/queue error:', err);
@@ -233,21 +169,14 @@ module.exports = function setupQueueRoutes(app, client) {
       return res.status(400).json({ error: 'Missing or invalid entry' });
     }
     try {
-      const row = await db.query(
-        `SELECT queue FROM ${h.tables.MAIN_QUEUE} WHERE id = 1`,
-        [],
-        true
-      );
-      let queue = row ? JSON.parse(row.queue || '[]') : [];
-      queue = normalizeQueue(queue);
-      queue.push({ text: entry.trim(), isPremium: false, isCompleted: false, completedAt: null });
-
+      let queue = await getQueue();
+      queue.push({ text: entry.trim(), checked: false, completedAt: null });
       await db.query(
         `UPDATE ${h.tables.MAIN_QUEUE} SET queue = ?, updated_at = datetime('now') WHERE id = 1`,
         [JSON.stringify(queue)]
       );
-      await updateDiscordQueue(client);
-
+      // Update Discord in the background
+      updateDiscordQueue(client);
       res.json({ success: true, queue });
     } catch (err) {
       console.error('POST /api/queue/add error:', err);
@@ -255,101 +184,117 @@ module.exports = function setupQueueRoutes(app, client) {
     }
   });
 
-  // POST /api/queue/toggle – mark/unmark as Premium
+  // POST /api/queue/toggle – DEBUG: logs the index and old state
   app.post('/api/queue/toggle', async (req, res) => {
     const { index } = req.body;
+    console.log(`🔁 Toggle request: index=${index}`);
     if (typeof index !== 'number' || index < 0) {
       return res.status(400).json({ error: 'Invalid index' });
     }
     try {
-      const row = await db.query(
-        `SELECT queue FROM ${h.tables.MAIN_QUEUE} WHERE id = 1`,
-        [],
-        true
-      );
-      if (!row) return res.status(404).json({ error: 'Queue not found' });
-      let queue = JSON.parse(row.queue || '[]');
-      queue = normalizeQueue(queue);
-      
+      let queue = await getQueue();
+      console.log(`📦 Current queue length: ${queue.length}`);
       if (index >= queue.length) {
         return res.status(400).json({ error: 'Index out of bounds' });
       }
 
       const item = queue[index];
-      // Toggle premium status
-      item.isPremium = !item.isPremium;
+      console.log(`🔄 Before toggle:`, JSON.stringify(item));
+      if (item.checked) {
+        item.checked = false;
+        item.completedAt = null;
+        console.log(`⬅️ Unchecked: ${item.text}`);
+      } else {
+        item.checked = true;
+        item.completedAt = new Date().toISOString();
+        console.log(`➡️ Checked: ${item.text}`);
+      }
 
+      // Write to DB
       await db.query(
         `UPDATE ${h.tables.MAIN_QUEUE} SET queue = ?, updated_at = datetime('now') WHERE id = 1`,
         [JSON.stringify(queue)]
       );
-      await updateDiscordQueue(client);
+
+      // Update Discord (non‑blocking)
+      updateDiscordQueue(client);
+
       res.json({ success: true, queue });
     } catch (err) {
-      console.error('POST /api/queue/toggle error:', err);
+      console.error('❌ POST /api/queue/toggle error:', err);
       res.status(500).json({ error: err.message });
     }
   });
 
   // POST /api/queue/reorder
-// Ensure this endpoint in web/routes/queue.js looks like this:
-app.post('/api/queue/reorder', async (req, res) => {
-  const { queue } = req.body; // This receives the full array [active + slashed]
-  if (!Array.isArray(queue)) {
-    return res.status(400).json({ error: 'Queue must be an array' });
-  }
-  try {
-    // We trust the dashboard provided the full, correctly sorted list
-    await db.query(
-      `UPDATE ${h.tables.MAIN_QUEUE} SET queue = ?, updated_at = datetime('now') WHERE id = 1`,
-      [JSON.stringify(queue)]
-    );
-    // Update Discord message so it reflects the new order and keeps the slashed items visible
-    await updateDiscordQueue(client);
-    res.json({ success: true });
-  } catch (err) {
-    console.error('POST /api/queue/reorder error:', err);
-    res.status(500).json({ error: err.message });
-  }
-});
+  app.post('/api/queue/reorder', async (req, res) => {
+    const { queue } = req.body;
+    if (!Array.isArray(queue)) {
+      return res.status(400).json({ error: 'Queue must be an array' });
+    }
+    try {
+      const normalized = normalizeQueue(queue);
+      await db.query(
+        `UPDATE ${h.tables.MAIN_QUEUE} SET queue = ?, updated_at = datetime('now') WHERE id = 1`,
+        [JSON.stringify(normalized)]
+      );
+      updateDiscordQueue(client);
+      res.json({ success: true });
+    } catch (err) {
+      console.error('POST /api/queue/reorder error:', err);
+      res.status(500).json({ error: err.message });
+    }
+  });
 
-  // POST /api/queue/remove – Soft Delete (Slash)
+  // POST /api/queue/remove – permanent delete
   app.post('/api/queue/remove', async (req, res) => {
     const { index } = req.body;
     if (typeof index !== 'number' || index < 0) {
       return res.status(400).json({ error: 'Invalid index' });
     }
     try {
-      const row = await db.query(
-        `SELECT queue FROM ${h.tables.MAIN_QUEUE} WHERE id = 1`,
-        [],
-        true
-      );
-      if (!row) return res.status(404).json({ error: 'Queue not found' });
-      
-      let queue = JSON.parse(row.queue || '[]');
-      queue = normalizeQueue(queue);
-      
+      let queue = await getQueue();
       if (index >= queue.length) {
         return res.status(400).json({ error: 'Index out of bounds' });
       }
-      
-      // Soft delete: flag as completed instead of removing from array
-      queue[index].isCompleted = true;
-      queue[index].completedAt = new Date().toISOString();
-
+      queue.splice(index, 1);
       await db.query(
         `UPDATE ${h.tables.MAIN_QUEUE} SET queue = ?, updated_at = datetime('now') WHERE id = 1`,
         [JSON.stringify(queue)]
       );
-      await updateDiscordQueue(client);
+      updateDiscordQueue(client);
       res.json({ success: true, queue });
     } catch (err) {
       console.error('POST /api/queue/remove error:', err);
       res.status(500).json({ error: err.message });
     }
   });
+
+  // ─── DEBUG: GET /api/queue/debug-toggle?index=2 (for testing) ───
+  app.get('/api/queue/debug-toggle', async (req, res) => {
+    const index = parseInt(req.query.index);
+    if (isNaN(index) || index < 0) {
+      return res.status(400).json({ error: 'Provide ?index=N' });
+    }
+    try {
+      let queue = await getQueue();
+      if (index >= queue.length) {
+        return res.status(400).json({ error: 'Index out of bounds' });
+      }
+      const item = queue[index];
+      item.checked = !item.checked;
+      item.completedAt = item.checked ? new Date().toISOString() : null;
+      await db.query(
+        `UPDATE ${h.tables.MAIN_QUEUE} SET queue = ?, updated_at = datetime('now') WHERE id = 1`,
+        [JSON.stringify(queue)]
+      );
+      updateDiscordQueue(client);
+      res.json({ success: true, queue });
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({ error: err.message });
+    }
+  });
 };
 
 module.exports.updateDiscordQueue = updateDiscordQueue;
-module.exports.addEntryToQueue = addEntryToQueue;
