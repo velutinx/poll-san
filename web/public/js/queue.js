@@ -1,4 +1,4 @@
-// web/public/js/queue.js – FRONTEND with correct toggle
+// web/public/js/queue.js
 let queueItems = [];
 let sortableInstance = null;
 
@@ -19,28 +19,37 @@ async function loadQueue() {
 function renderQueue() {
   const container = document.getElementById('queue-list');
   container.innerHTML = '';
-  if (queueItems.length === 0) {
+
+  const activeItems = queueItems.filter(item => !item.isCompleted);
+
+  if (activeItems.length === 0) {
     container.innerHTML = '<div class="status">Queue is empty.</div>';
     return;
   }
+
   const ul = document.createElement('ul');
   ul.className = 'queue-drag-list';
   ul.id = 'queueDragList';
+
   queueItems.forEach((item, index) => {
+    // Hide completed items from the dashboard
+    if (item.isCompleted) return;
+
     const text = item.text || item;
-    const checked = item.checked || false;
+    const isPremium = item.isPremium || item.checked || false;
+
     const li = document.createElement('li');
     li.className = 'queue-item';
-    li.dataset.index = index;
+    li.dataset.index = index; // Maps exactly to backend array
 
-    // Checkbox
+    // Checkbox mapping to Premium status
     const checkbox = document.createElement('input');
     checkbox.type = 'checkbox';
-    checkbox.checked = checked;
+    checkbox.checked = isPremium;
     checkbox.className = 'queue-checkbox';
     checkbox.addEventListener('change', (e) => {
       e.stopPropagation();
-      toggleChecked(index);
+      togglePremium(index);
     });
 
     const dragHandle = document.createElement('span');
@@ -49,11 +58,7 @@ function renderQueue() {
 
     const textSpan = document.createElement('span');
     textSpan.className = 'queue-text';
-    textSpan.textContent = text;
-    if (checked) {
-      textSpan.style.textDecoration = 'line-through';
-      textSpan.style.opacity = '0.6';
-    }
+    textSpan.textContent = isPremium ? `👑 ${text}` : text; // Add visual crown if premium
 
     const removeBtn = document.createElement('button');
     removeBtn.className = 'queue-remove';
@@ -76,21 +81,25 @@ function renderQueue() {
     handle: '.drag-handle',
     animation: 150,
     onEnd: function() {
-      const newOrder = [];
+      // Isolate active items in the DOM
+      const newActiveOrder = [];
       document.querySelectorAll('#queueDragList .queue-item').forEach(li => {
         const idx = parseInt(li.dataset.index);
-        const originalItem = queueItems[idx];
-        newOrder.push(originalItem);
+        newActiveOrder.push(queueItems[idx]);
       });
-      queueItems = newOrder;
+
+      // Keep hidden completed items appended to the end to prevent data loss
+      const completedItems = queueItems.filter(item => item.isCompleted);
+      
+      queueItems = [...newActiveOrder, ...completedItems];
       saveReorder();
     }
   });
 }
 
-async function toggleChecked(index) {
+async function togglePremium(index) {
   try {
-    const res = await fetch('/api/queue/toggle', {
+    const res = await fetch('/api/queue/toggle-premium', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ index })
@@ -99,7 +108,7 @@ async function toggleChecked(index) {
     if (data.success) {
       queueItems = data.queue;
       renderQueue();
-      showToast('Toggled successfully', 'success');
+      showToast('Premium status updated', 'success');
     } else {
       showToast(data.error || 'Failed to toggle.', 'error');
     }
@@ -114,10 +123,12 @@ async function addQueueItem() {
   const input = document.getElementById('queue-input');
   const gender = toggle.checked ? '♀️' : '♂️';
   const name = input.value.trim();
+  
   if (!name) {
     showToast('Please enter a name.', 'error');
     return;
   }
+  
   const entry = `${gender} ${name}`;
   try {
     const res = await fetch('/api/queue/add', {
@@ -151,7 +162,7 @@ async function removeQueueItem(index) {
     if (data.success) {
       queueItems = data.queue;
       renderQueue();
-      showToast('Removed from queue.', 'info');
+      showToast('Character slashed & removed from dashboard.', 'info');
     } else {
       showToast(data.error || 'Failed to remove.', 'error');
     }
