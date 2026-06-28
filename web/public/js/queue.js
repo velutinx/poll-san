@@ -98,6 +98,7 @@ async function toggleChecked(index) {
     if (data.success) {
       queueItems = data.queue;
       renderQueue();
+      // Also trigger Discord update (handled server-side)
     } else {
       showToast(data.error || 'Failed to toggle.', 'error');
     }
@@ -176,7 +177,6 @@ async function saveReorder() {
   }
 }
 
-// Make functions globally available
 window.loadQueue = loadQueue;
 window.addQueueItem = addQueueItem;
 window.removeQueueItem = removeQueueItem;
