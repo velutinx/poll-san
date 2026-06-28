@@ -1,4 +1,4 @@
-// web/public/js/queue.js
+// web/public/js/queue.js – FRONTEND with correct toggle
 let queueItems = [];
 let sortableInstance = null;
 
@@ -33,6 +33,7 @@ function renderQueue() {
     li.className = 'queue-item';
     li.dataset.index = index;
 
+    // Checkbox
     const checkbox = document.createElement('input');
     checkbox.type = 'checkbox';
     checkbox.checked = checked;
@@ -98,7 +99,7 @@ async function toggleChecked(index) {
     if (data.success) {
       queueItems = data.queue;
       renderQueue();
-      // Also trigger Discord update (handled server-side)
+      showToast('Toggled successfully', 'success');
     } else {
       showToast(data.error || 'Failed to toggle.', 'error');
     }
