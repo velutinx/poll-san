@@ -1,5 +1,4 @@
-// web/routes/queue.js – updated with expiry cleanup and strikethrough
-
+// web/routes/queue.js – with toggle & strikethrough
 const h = require('../../utils/helpers');
 const db = require('../../services/database');
 
@@ -7,7 +6,7 @@ const QUEUE_CHANNEL_ID = h.ids.channels.QUEUE;
 const LOGO_URL = h.urls.LOGO_URL;
 const DISCORD_API = 'https://discord.com/api/v10';
 
-// Helper: get or create the "Queue" webhook
+// Helper: get or create webhook
 async function getQueueWebhook(channel) {
   const token = process.env.DISCORD_TOKEN;
   if (!token) throw new Error('DISCORD_BOT_TOKEN not set');
@@ -42,20 +41,34 @@ async function getQueueWebhook(channel) {
   return webhookUrl;
 }
 
-// Clean expired checked items (older than 7 days)
+// Normalize all items to objects
+function normalizeQueue(queue) {
+  return queue.map(item => {
+    if (typeof item === 'string') {
+      return { text: item, checked: false };
+    }
+    return {
+      text: item.text || item,
+      checked: item.checked || false,
+      completedAt: item.completedAt || null
+    };
+  });
+}
+
+// Remove items checked for >7 days
 function cleanExpiredQueue(queue) {
   const now = Date.now();
   const sevenDays = 7 * 24 * 60 * 60 * 1000;
   return queue.filter(item => {
     if (item.checked && item.completedAt) {
       const age = now - new Date(item.completedAt).getTime();
-      if (age >= sevenDays) return false; // remove
+      if (age >= sevenDays) return false;
     }
     return true;
   });
 }
 
-// Update Discord queue message with strikethrough
+// Update Discord message with strikethrough
 async function updateDiscordQueue(client) {
   try {
     const row = await db.query(
@@ -66,7 +79,7 @@ async function updateDiscordQueue(client) {
     if (!row) return;
 
     let queue = JSON.parse(row.queue || '[]');
-    // Clean expired items before displaying
+    queue = normalizeQueue(queue);
     const cleaned = cleanExpiredQueue(queue);
     if (cleaned.length !== queue.length) {
       queue = cleaned;
@@ -89,7 +102,7 @@ async function updateDiscordQueue(client) {
       content += '*Queue is empty.*';
     } else {
       const lines = queue.map(item => {
-        const text = item.text || item;
+        const text = item.text;
         const checked = item.checked || false;
         const displayText = checked ? `~~${text}~~` : text;
         const bullet = checked ? `•` : `•`;
@@ -153,9 +166,8 @@ async function updateDiscordQueue(client) {
   }
 }
 
-// ─── Routes ───
 module.exports = function setupQueueRoutes(app, client) {
-  // GET /api/queue – returns cleaned queue
+  // GET /api/queue
   app.get('/api/queue', async (req, res) => {
     try {
       const row = await db.query(
@@ -164,6 +176,7 @@ module.exports = function setupQueueRoutes(app, client) {
         true
       );
       let queue = row ? JSON.parse(row.queue || '[]') : [];
+      queue = normalizeQueue(queue);
       const cleaned = cleanExpiredQueue(queue);
       if (cleaned.length !== queue.length) {
         queue = cleaned;
@@ -192,7 +205,8 @@ module.exports = function setupQueueRoutes(app, client) {
         [],
         true
       );
-      const queue = row ? JSON.parse(row.queue || '[]') : [];
+      let queue = row ? JSON.parse(row.queue || '[]') : [];
+      queue = normalizeQueue(queue);
       queue.push({ text: entry.trim(), checked: false });
       await db.query(
         `UPDATE ${h.tables.MAIN_QUEUE} SET queue = ?, updated_at = datetime('now') WHERE id = 1`,
@@ -219,18 +233,19 @@ module.exports = function setupQueueRoutes(app, client) {
         true
       );
       if (!row) return res.status(404).json({ error: 'Queue not found' });
-      const queue = JSON.parse(row.queue || '[]');
+      let queue = JSON.parse(row.queue || '[]');
+      queue = normalizeQueue(queue);
       if (index >= queue.length) {
         return res.status(400).json({ error: 'Index out of bounds' });
       }
 
       const item = queue[index];
       if (item.checked) {
-        // Unmark – remove completedAt and set checked false
+        // Uncheck
         item.checked = false;
         delete item.completedAt;
       } else {
-        // Mark as done – store current timestamp
+        // Check
         item.checked = true;
         item.completedAt = new Date().toISOString();
       }
@@ -254,9 +269,10 @@ module.exports = function setupQueueRoutes(app, client) {
       return res.status(400).json({ error: 'Queue must be an array' });
     }
     try {
+      const normalized = normalizeQueue(queue);
       await db.query(
         `UPDATE ${h.tables.MAIN_QUEUE} SET queue = ?, updated_at = datetime('now') WHERE id = 1`,
-        [JSON.stringify(queue)]
+        [JSON.stringify(normalized)]
       );
       await updateDiscordQueue(client);
       res.json({ success: true });
@@ -266,7 +282,7 @@ module.exports = function setupQueueRoutes(app, client) {
     }
   });
 
-  // POST /api/queue/remove – immediate removal (use sparingly)
+  // POST /api/queue/remove – permanent delete (use sparingly)
   app.post('/api/queue/remove', async (req, res) => {
     const { index } = req.body;
     if (typeof index !== 'number' || index < 0) {
@@ -279,7 +295,8 @@ module.exports = function setupQueueRoutes(app, client) {
         true
       );
       if (!row) return res.status(404).json({ error: 'Queue not found' });
-      const queue = JSON.parse(row.queue || '[]');
+      let queue = JSON.parse(row.queue || '[]');
+      queue = normalizeQueue(queue);
       if (index >= queue.length) {
         return res.status(400).json({ error: 'Index out of bounds' });
       }
