@@ -292,24 +292,26 @@ module.exports = function setupQueueRoutes(app, client) {
   });
 
   // POST /api/queue/reorder
-  app.post('/api/queue/reorder', async (req, res) => {
-    const { queue } = req.body;
-    if (!Array.isArray(queue)) {
-      return res.status(400).json({ error: 'Queue must be an array' });
-    }
-    try {
-      const normalized = normalizeQueue(queue);
-      await db.query(
-        `UPDATE ${h.tables.MAIN_QUEUE} SET queue = ?, updated_at = datetime('now') WHERE id = 1`,
-        [JSON.stringify(normalized)]
-      );
-      await updateDiscordQueue(client);
-      res.json({ success: true });
-    } catch (err) {
-      console.error('POST /api/queue/reorder error:', err);
-      res.status(500).json({ error: err.message });
-    }
-  });
+// Ensure this endpoint in web/routes/queue.js looks like this:
+app.post('/api/queue/reorder', async (req, res) => {
+  const { queue } = req.body; // This receives the full array [active + slashed]
+  if (!Array.isArray(queue)) {
+    return res.status(400).json({ error: 'Queue must be an array' });
+  }
+  try {
+    // We trust the dashboard provided the full, correctly sorted list
+    await db.query(
+      `UPDATE ${h.tables.MAIN_QUEUE} SET queue = ?, updated_at = datetime('now') WHERE id = 1`,
+      [JSON.stringify(queue)]
+    );
+    // Update Discord message so it reflects the new order and keeps the slashed items visible
+    await updateDiscordQueue(client);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('POST /api/queue/reorder error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
 
   // POST /api/queue/remove – Soft Delete (Slash)
   app.post('/api/queue/remove', async (req, res) => {
