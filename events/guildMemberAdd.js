@@ -22,12 +22,12 @@ module.exports = async (member) => {
             const unverifiedRole = member.guild.roles.cache.get(unverifiedRoleId);
             if (unverifiedRole) {
                 await member.roles.add(unverifiedRole);
-                console.log(`✅ Assigned Unverified role to ${member.user.tag}`);
+      //          console.log(`✅ Assigned Unverified role to ${member.user.tag}`);
             } else {
                 console.error(`❌ Unverified role not found (ID: ${unverifiedRoleId})`);
             }
         } else {
-            console.log(`⏭️ Skipped Unverified role for ${member.user.tag} (already Supporter)`);
+    //        console.log(`⏭️ Skipped Unverified role for ${member.user.tag} (already Supporter)`);
         }
 
         // Scan avatar on join – only alert me if it's flagged
