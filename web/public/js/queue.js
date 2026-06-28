@@ -27,7 +27,7 @@ function renderQueue() {
   ul.className = 'queue-drag-list';
   ul.id = 'queueDragList';
   queueItems.forEach((item, index) => {
-    const text = item.text || item; // fallback for old format
+    const text = item.text || item;
     const checked = item.checked || false;
     const li = document.createElement('li');
     li.className = 'queue-item';
@@ -50,6 +50,10 @@ function renderQueue() {
     const textSpan = document.createElement('span');
     textSpan.className = 'queue-text';
     textSpan.textContent = text;
+    if (checked) {
+      textSpan.style.textDecoration = 'line-through';
+      textSpan.style.opacity = '0.6';
+    }
 
     const removeBtn = document.createElement('button');
     removeBtn.className = 'queue-remove';
@@ -77,7 +81,6 @@ function renderQueue() {
       document.querySelectorAll('#queueDragList .queue-item').forEach(li => {
         const idx = parseInt(li.dataset.index);
         const originalItem = queueItems[idx];
-        // Keep the checked state from the original item
         newOrder.push(originalItem);
       });
       queueItems = newOrder;
