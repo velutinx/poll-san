@@ -1,4 +1,4 @@
-// web/public/js/queue.js – slashed items hidden from dashboard
+// web/public/js/queue.js – reorder fix
 let queueItems = [];
 let sortableInstance = null;
 
@@ -20,7 +20,6 @@ function renderQueue() {
   const container = document.getElementById('queue-list');
   container.innerHTML = '';
 
-  // ─── Filter out slashed items ──────────────────────────────
   const visibleItems = queueItems.filter(item => !item.slashed);
 
   if (visibleItems.length === 0) {
@@ -32,16 +31,14 @@ function renderQueue() {
   ul.className = 'queue-drag-list';
   ul.id = 'queueDragList';
   visibleItems.forEach((item, displayIndex) => {
-    // Find the original index in the full queue (needed for API calls)
     const originalIndex = queueItems.indexOf(item);
     const text = item.text || item;
     const checked = item.checked || false;
 
     const li = document.createElement('li');
     li.className = 'queue-item';
-    li.dataset.index = originalIndex;  // store original index
+    li.dataset.index = originalIndex;
 
-    // Premium checkbox
     const checkbox = document.createElement('input');
     checkbox.type = 'checkbox';
     checkbox.checked = checked;
@@ -63,7 +60,6 @@ function renderQueue() {
       textSpan.style.color = '#f1c40f';
     }
 
-    // Slash button (finish)
     const slashBtn = document.createElement('button');
     slashBtn.className = 'queue-remove';
     slashBtn.textContent = '✕';
@@ -86,22 +82,16 @@ function renderQueue() {
     handle: '.drag-handle',
     animation: 150,
     onEnd: function() {
-      // Reorder based on visible items only, but we need to update the full queue order
-      const newVisibleOrder = [];
+      // Build visible order from the sorted list
+      const visibleOrder = [];
       document.querySelectorAll('#queueDragList .queue-item').forEach(li => {
         const idx = parseInt(li.dataset.index);
         const originalItem = queueItems[idx];
-        if (originalItem) newVisibleOrder.push(originalItem);
+        if (originalItem && !originalItem.slashed) {
+          visibleOrder.push(originalItem);
+        }
       });
-      // Rebuild queueItems: keep slashed items in place, reorder visible ones
-      // Simpler: rebuild the full queue by replacing visible items order
-      const slashedItems = queueItems.filter(item => item.slashed);
-      const newQueue = [...newVisibleOrder, ...slashedItems];
-      // But this would place slashed at the end; they are hidden anyway, so order doesn't matter.
-      // For consistency, we'll just update the visible order and keep slashed where they are.
-      // To keep it simple, we'll update queueItems by splicing.
-      // We'll just save the new order to backend via saveReorder.
-      saveReorder(newQueue);
+      saveReorder(visibleOrder);
     }
   });
 }
@@ -128,7 +118,7 @@ async function togglePremium(index) {
   }
 }
 
-// ─── Slash toggle (finish) ──────────────────────────────────
+// ─── Slash toggle ──────────────────────────────────────────
 async function toggleSlash(index) {
   try {
     const res = await fetch('/api/queue/slash', {
@@ -139,7 +129,7 @@ async function toggleSlash(index) {
     const data = await res.json();
     if (data.success) {
       queueItems = data.queue;
-      renderQueue();  // slashed items will be filtered out
+      renderQueue();
       showToast('Item finished – removed from dashboard, will auto‑delete after 7 days.', 'info');
     } else {
       showToast(data.error || 'Failed.', 'error');
@@ -183,15 +173,18 @@ async function addQueueItem() {
 }
 
 // ─── Reorder ─────────────────────────────────────────────────
-async function saveReorder(newQueue) {
+async function saveReorder(visibleOrder) {
   try {
     const res = await fetch('/api/queue/reorder', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ queue: newQueue })
+      body: JSON.stringify({ visibleOrder })
     });
     const data = await res.json();
-    if (!data.success) {
+    if (data.success) {
+      queueItems = data.queue;
+      renderQueue();
+    } else {
       showToast('Failed to save order.', 'error');
     }
   } catch (err) {
