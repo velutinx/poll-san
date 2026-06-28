@@ -1,4 +1,5 @@
 // web/routes/queue.js
+
 const h = require('../../utils/helpers');
 const db = require('../../services/database');
 
@@ -42,7 +43,21 @@ async function getQueueWebhook(channel) {
   return webhookUrl;
 }
 
-// Helper: update Discord message with current queue
+// ─── Helper: clean expired checked items (older than 7 days) ───
+function cleanExpiredQueue(queue) {
+  const now = Date.now();
+  const sevenDays = 7 * 24 * 60 * 60 * 1000;
+  const filtered = queue.filter(item => {
+    if (item.checked && item.completedAt) {
+      const age = now - new Date(item.completedAt).getTime();
+      if (age >= sevenDays) return false; // remove
+    }
+    return true;
+  });
+  return filtered;
+}
+
+// ─── Update Discord message with strikethrough for checked items ───
 async function updateDiscordQueue(client) {
   try {
     const row = await db.query(
@@ -52,7 +67,17 @@ async function updateDiscordQueue(client) {
     );
     if (!row) return;
 
-    const queue = JSON.parse(row.queue || '[]');
+    let queue = JSON.parse(row.queue || '[]');
+    // Clean expired items before displaying
+    const cleaned = cleanExpiredQueue(queue);
+    if (cleaned.length !== queue.length) {
+      queue = cleaned;
+      await db.query(
+        `UPDATE ${h.tables.MAIN_QUEUE} SET queue = ?, updated_at = datetime('now') WHERE id = 1`,
+        [JSON.stringify(queue)]
+      );
+    }
+
     const channel = await client.channels.fetch(QUEUE_CHANNEL_ID);
     if (!channel) return;
 
@@ -68,12 +93,12 @@ async function updateDiscordQueue(client) {
       const lines = queue.map(item => {
         const text = item.text || item;
         const checked = item.checked || false;
-        if (checked) {
-          return `•** ${diamondEmoji} ${text}**`;
-        } else {
-          // Use blank emoji to keep alignment with checked items
-          return `• ${blankEmoji} ${text}`;
-        }
+        // Build the line – if checked, wrap entire text in strikethrough
+        const displayText = checked ? `~~${text}~~` : text;
+        const bullet = checked ? `•` : `•`;
+        // Keep the emoji outside strikethrough
+        const emoji = checked ? diamondEmoji : blankEmoji;
+        return `${bullet} ${emoji} ${displayText}`;
       });
       content += lines.join('\n');
     }
@@ -132,7 +157,7 @@ async function updateDiscordQueue(client) {
   }
 }
 
-// Helper to add an entry to the queue (used by poll)
+// ─── Helper to add an entry to the queue ───
 async function addEntryToQueue(entry, client) {
   try {
     const row = await db.query(
@@ -156,7 +181,7 @@ async function addEntryToQueue(entry, client) {
 }
 
 module.exports = function setupQueueRoutes(app, client) {
-  // GET /api/queue
+  // GET /api/queue – returns cleaned queue
   app.get('/api/queue', async (req, res) => {
     try {
       const row = await db.query(
@@ -164,7 +189,18 @@ module.exports = function setupQueueRoutes(app, client) {
         [],
         true
       );
-      const queue = row ? JSON.parse(row.queue || '[]') : [];
+      let queue = row ? JSON.parse(row.queue || '[]') : [];
+      // Clean expired checked items
+      const cleaned = cleanExpiredQueue(queue);
+      if (cleaned.length !== queue.length) {
+        queue = cleaned;
+        await db.query(
+          `UPDATE ${h.tables.MAIN_QUEUE} SET queue = ?, updated_at = datetime('now') WHERE id = 1`,
+          [JSON.stringify(queue)]
+        );
+        // Update Discord message to reflect removal
+        await updateDiscordQueue(client);
+      }
       res.json({ queue });
     } catch (err) {
       console.error('GET /api/queue error:', err);
@@ -200,7 +236,7 @@ module.exports = function setupQueueRoutes(app, client) {
     }
   });
 
-  // POST /api/queue/toggle
+  // POST /api/queue/toggle – mark/unmark as done
   app.post('/api/queue/toggle', async (req, res) => {
     const { index } = req.body;
     if (typeof index !== 'number' || index < 0) {
@@ -217,7 +253,17 @@ module.exports = function setupQueueRoutes(app, client) {
       if (index >= queue.length) {
         return res.status(400).json({ error: 'Index out of bounds' });
       }
-      queue[index].checked = !queue[index].checked;
+
+      const item = queue[index];
+      if (item.checked) {
+        // Unmark – remove completedAt and set checked false
+        item.checked = false;
+        delete item.completedAt;
+      } else {
+        // Mark as done – store current timestamp
+        item.checked = true;
+        item.completedAt = new Date().toISOString();
+      }
 
       await db.query(
         `UPDATE ${h.tables.MAIN_QUEUE} SET queue = ?, updated_at = datetime('now') WHERE id = 1`,
@@ -250,7 +296,7 @@ module.exports = function setupQueueRoutes(app, client) {
     }
   });
 
-  // POST /api/queue/remove
+  // POST /api/queue/remove – immediate removal (use sparingly)
   app.post('/api/queue/remove', async (req, res) => {
     const { index } = req.body;
     if (typeof index !== 'number' || index < 0) {
