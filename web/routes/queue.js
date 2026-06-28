@@ -1,4 +1,4 @@
-// web/routes/queue.js – with toggle & strikethrough
+// web/routes/queue.js – FULL WORKING VERSION
 const h = require('../../utils/helpers');
 const db = require('../../services/database');
 
@@ -6,7 +6,37 @@ const QUEUE_CHANNEL_ID = h.ids.channels.QUEUE;
 const LOGO_URL = h.urls.LOGO_URL;
 const DISCORD_API = 'https://discord.com/api/v10';
 
-// Helper: get or create webhook
+// ─── HELPERS ────────────────────────────────────────────────
+
+// Ensure every item is an object { text, checked, completedAt }
+function normalizeQueue(queue) {
+  if (!Array.isArray(queue)) return [];
+  return queue.map(item => {
+    if (typeof item === 'string') {
+      return { text: item, checked: false, completedAt: null };
+    }
+    return {
+      text: item.text || item,
+      checked: !!item.checked,
+      completedAt: item.completedAt || null
+    };
+  });
+}
+
+// Remove items that have been checked for >7 days
+function cleanExpiredQueue(queue) {
+  const now = Date.now();
+  const sevenDays = 7 * 24 * 60 * 60 * 1000;
+  return queue.filter(item => {
+    if (item.checked && item.completedAt) {
+      const age = now - new Date(item.completedAt).getTime();
+      if (age >= sevenDays) return false;
+    }
+    return true;
+  });
+}
+
+// Get or create the Queue webhook
 async function getQueueWebhook(channel) {
   const token = process.env.DISCORD_TOKEN;
   if (!token) throw new Error('DISCORD_BOT_TOKEN not set');
@@ -41,42 +71,18 @@ async function getQueueWebhook(channel) {
   return webhookUrl;
 }
 
-// Normalize all items to objects
-function normalizeQueue(queue) {
-  return queue.map(item => {
-    if (typeof item === 'string') {
-      return { text: item, checked: false };
-    }
-    return {
-      text: item.text || item,
-      checked: item.checked || false,
-      completedAt: item.completedAt || null
-    };
-  });
-}
-
-// Remove items checked for >7 days
-function cleanExpiredQueue(queue) {
-  const now = Date.now();
-  const sevenDays = 7 * 24 * 60 * 60 * 1000;
-  return queue.filter(item => {
-    if (item.checked && item.completedAt) {
-      const age = now - new Date(item.completedAt).getTime();
-      if (age >= sevenDays) return false;
-    }
-    return true;
-  });
-}
-
-// Update Discord message with strikethrough
+// Update the Discord queue message with strikethrough
 async function updateDiscordQueue(client) {
   try {
     const row = await db.query(
-      `SELECT queue, message_id, channel_id FROM ${h.tables.MAIN_QUEUE} WHERE id = 1`,
+      `SELECT queue, message_id FROM ${h.tables.MAIN_QUEUE} WHERE id = 1`,
       [],
       true
     );
-    if (!row) return;
+    if (!row) {
+      console.warn('No queue row found');
+      return;
+    }
 
     let queue = JSON.parse(row.queue || '[]');
     queue = normalizeQueue(queue);
@@ -90,7 +96,10 @@ async function updateDiscordQueue(client) {
     }
 
     const channel = await client.channels.fetch(QUEUE_CHANNEL_ID);
-    if (!channel) return;
+    if (!channel) {
+      console.error(`Channel ${QUEUE_CHANNEL_ID} not found`);
+      return;
+    }
 
     const webhookUrl = await getQueueWebhook(channel);
     const progressEmoji = h.releaseEmojis.PROGRESS || '<a:progress:1491670111923212308>';
@@ -103,7 +112,7 @@ async function updateDiscordQueue(client) {
     } else {
       const lines = queue.map(item => {
         const text = item.text;
-        const checked = item.checked || false;
+        const checked = !!item.checked;
         const displayText = checked ? `~~${text}~~` : text;
         const bullet = checked ? `•` : `•`;
         const emoji = checked ? diamondEmoji : blankEmoji;
@@ -112,27 +121,25 @@ async function updateDiscordQueue(client) {
       content += lines.join('\n');
     }
 
+    // Edit existing message or send new
     if (row.message_id) {
       try {
-        await fetch(`${webhookUrl}/messages/${row.message_id}`, {
+        const resp = await fetch(`${webhookUrl}/messages/${row.message_id}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            content,
-            username: 'Queue',
-            avatar_url: LOGO_URL,
-          }),
+          body: JSON.stringify({ content, username: 'Queue', avatar_url: LOGO_URL }),
         });
-      } catch (err) {
-        console.warn('Could not edit queue message, sending new:', err.message);
+        if (!resp.ok) {
+          console.warn(`Failed to edit queue message, sending new: ${resp.status}`);
+          throw new Error('Edit failed');
+        }
+        console.log('✅ Queue message updated');
+      } catch (editErr) {
+        console.warn('Edit failed, sending new message...');
         const msgRes = await fetch(`${webhookUrl}?wait=true`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            content,
-            username: 'Queue',
-            avatar_url: LOGO_URL,
-          }),
+          body: JSON.stringify({ content, username: 'Queue', avatar_url: LOGO_URL }),
         });
         const msg = await msgRes.json();
         if (msg.id) {
@@ -140,17 +147,15 @@ async function updateDiscordQueue(client) {
             `UPDATE ${h.tables.MAIN_QUEUE} SET message_id = ? WHERE id = 1`,
             [msg.id]
           );
+          console.log('✅ New queue message sent');
         }
       }
     } else {
+      // No message_id stored, send fresh
       const msgRes = await fetch(`${webhookUrl}?wait=true`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          content,
-          username: 'Queue',
-          avatar_url: LOGO_URL,
-        }),
+        body: JSON.stringify({ content, username: 'Queue', avatar_url: LOGO_URL }),
       });
       const msg = await msgRes.json();
       if (msg.id) {
@@ -158,13 +163,15 @@ async function updateDiscordQueue(client) {
           `UPDATE ${h.tables.MAIN_QUEUE} SET message_id = ? WHERE id = 1`,
           [msg.id]
         );
+        console.log('✅ Initial queue message sent');
       }
     }
   } catch (err) {
     console.error('updateDiscordQueue error:', err);
-    throw err;
   }
 }
+
+// ─── ROUTES ──────────────────────────────────────────────────
 
 module.exports = function setupQueueRoutes(app, client) {
   // GET /api/queue
@@ -207,7 +214,7 @@ module.exports = function setupQueueRoutes(app, client) {
       );
       let queue = row ? JSON.parse(row.queue || '[]') : [];
       queue = normalizeQueue(queue);
-      queue.push({ text: entry.trim(), checked: false });
+      queue.push({ text: entry.trim(), checked: false, completedAt: null });
       await db.query(
         `UPDATE ${h.tables.MAIN_QUEUE} SET queue = ?, updated_at = datetime('now') WHERE id = 1`,
         [JSON.stringify(queue)]
@@ -220,7 +227,7 @@ module.exports = function setupQueueRoutes(app, client) {
     }
   });
 
-  // POST /api/queue/toggle – mark/unmark as done
+  // POST /api/queue/toggle – mark/unmark
   app.post('/api/queue/toggle', async (req, res) => {
     const { index } = req.body;
     if (typeof index !== 'number' || index < 0) {
@@ -240,20 +247,23 @@ module.exports = function setupQueueRoutes(app, client) {
       }
 
       const item = queue[index];
+      // Toggle
       if (item.checked) {
         // Uncheck
         item.checked = false;
-        delete item.completedAt;
+        item.completedAt = null;
       } else {
         // Check
         item.checked = true;
         item.completedAt = new Date().toISOString();
       }
 
+      // Save to database
       await db.query(
         `UPDATE ${h.tables.MAIN_QUEUE} SET queue = ?, updated_at = datetime('now') WHERE id = 1`,
         [JSON.stringify(queue)]
       );
+      // Update Discord
       await updateDiscordQueue(client);
       res.json({ success: true, queue });
     } catch (err) {
