@@ -32,21 +32,23 @@ function renderQueue() {
   ul.id = 'queueDragList';
 
   queueItems.forEach((item, index) => {
-    // Hide completed items from the dashboard
+    // Hide completed/slashed items from the dashboard UI entirely
     if (item.isCompleted) return;
 
     const text = item.text || item;
+    // Map existing checked state to isPremium visually just in case
     const isPremium = item.isPremium || item.checked || false;
 
     const li = document.createElement('li');
     li.className = 'queue-item';
-    li.dataset.index = index; // Maps exactly to backend array
+    li.dataset.index = index; // Track the TRUE backend index
 
     // Checkbox mapping to Premium status
     const checkbox = document.createElement('input');
     checkbox.type = 'checkbox';
     checkbox.checked = isPremium;
     checkbox.className = 'queue-checkbox';
+    checkbox.title = 'Toggle Premium (Diamond)';
     checkbox.addEventListener('change', (e) => {
       e.stopPropagation();
       togglePremium(index);
@@ -58,11 +60,12 @@ function renderQueue() {
 
     const textSpan = document.createElement('span');
     textSpan.className = 'queue-text';
-    textSpan.textContent = isPremium ? `👑 ${text}` : text; // Add visual crown if premium
+    textSpan.textContent = text;
 
     const removeBtn = document.createElement('button');
     removeBtn.className = 'queue-remove';
     removeBtn.textContent = '✕';
+    removeBtn.title = 'Slash character (Hide here & mark done on Discord)';
     removeBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       removeQueueItem(index);
@@ -81,7 +84,7 @@ function renderQueue() {
     handle: '.drag-handle',
     animation: 150,
     onEnd: function() {
-      // Isolate active items in the DOM
+      // Rebuild the array by placing the active dragged items first
       const newActiveOrder = [];
       document.querySelectorAll('#queueDragList .queue-item').forEach(li => {
         const idx = parseInt(li.dataset.index);
@@ -99,7 +102,7 @@ function renderQueue() {
 
 async function togglePremium(index) {
   try {
-    const res = await fetch('/api/queue/toggle-premium', {
+    const res = await fetch('/api/queue/toggle', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ index })
