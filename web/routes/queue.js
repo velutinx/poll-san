@@ -1,4 +1,4 @@
-// web/routes/queue.js – with name‑only bold for Discord
+// web/routes/queue.js – with reorder merge fix
 const h = require('../../utils/helpers');
 const db = require('../../services/database');
 
@@ -63,7 +63,6 @@ async function updateDiscordQueue(client) {
     const token = process.env.DISCORD_TOKEN;
     if (!token) throw new Error('DISCORD_TOKEN missing');
 
-    // Webhook handling
     const channelUrl = `${DISCORD_API}/channels/${channel.id}`;
     const whListResp = await fetch(`${channelUrl}/webhooks`, {
       headers: { Authorization: `Bot ${token}` },
@@ -92,7 +91,6 @@ async function updateDiscordQueue(client) {
       webhookUrl = `${DISCORD_API}/webhooks/${created.id}/${created.token}`;
     }
 
-    // Build message with proper formatting
     const progressEmoji = h.releaseEmojis.PROGRESS || '<a:progress:1491670111923212308>';
     const diamondEmoji = h.releaseEmojis.DIAMOND || ':gem:';
     const blankEmoji = h.releaseEmojis.BLANK || '';
@@ -103,7 +101,6 @@ async function updateDiscordQueue(client) {
     } else {
       const lines = queue.map(item => {
         let text = item.text;
-        // Extract gender emoji if present (♂️ or ♀️)
         let gender = '';
         let name = text;
         const genderMatch = text.match(/^[♂♀]️?\s*/);
@@ -118,20 +115,18 @@ async function updateDiscordQueue(client) {
 
         if (item.checked) {
           emoji = diamondEmoji;
-          displayName = `**${name}**`;   // bold only the name
+          displayName = `**${name}**`;
         }
         if (item.slashed) {
-          displayName = `~~${displayName}~~`; // strikethrough (applied to bold if present)
+          displayName = `~~${displayName}~~`;
         }
 
-        // If there's no gender, just show the displayName without gender prefix
         const namePart = gender ? `${gender} ${displayName}` : displayName;
         return `${prefix} ${emoji} ${namePart}`;
       });
       content += lines.join('\n');
     }
 
-    // Update or create message
     const row = await db.query(
       `SELECT message_id FROM ${h.tables.MAIN_QUEUE} WHERE id = 1`,
       [],
@@ -165,10 +160,9 @@ async function updateDiscordQueue(client) {
   }
 }
 
-// ─── ROUTES (same as before) ──────────────────────────────────
+// ─── ROUTES ──────────────────────────────────────────────────
 
 module.exports = function setupQueueRoutes(app, client) {
-  // GET /api/queue
   app.get('/api/queue', async (req, res) => {
     try {
       const queue = await getQueue();
@@ -179,7 +173,6 @@ module.exports = function setupQueueRoutes(app, client) {
     }
   });
 
-  // POST /api/queue/add
   app.post('/api/queue/add', async (req, res) => {
     const { entry } = req.body;
     if (!entry || typeof entry !== 'string' || !entry.trim()) {
@@ -200,7 +193,6 @@ module.exports = function setupQueueRoutes(app, client) {
     }
   });
 
-  // POST /api/queue/toggle – premium
   app.post('/api/queue/toggle', async (req, res) => {
     const { index } = req.body;
     if (typeof index !== 'number' || index < 0) {
@@ -224,7 +216,6 @@ module.exports = function setupQueueRoutes(app, client) {
     }
   });
 
-  // POST /api/queue/slash – finish (strikethrough + 7d expiry)
   app.post('/api/queue/slash', async (req, res) => {
     const { index } = req.body;
     if (typeof index !== 'number' || index < 0) {
@@ -237,7 +228,6 @@ module.exports = function setupQueueRoutes(app, client) {
       }
       const item = queue[index];
       if (item.slashed) {
-        // Un‑slash (if you want to allow undo)
         item.slashed = false;
         item.slashedAt = null;
       } else {
@@ -256,27 +246,45 @@ module.exports = function setupQueueRoutes(app, client) {
     }
   });
 
-  // POST /api/queue/reorder
+  // ─── REORDER: accepts visibleOrder, merges with slashed items ───
   app.post('/api/queue/reorder', async (req, res) => {
-    const { queue } = req.body;
-    if (!Array.isArray(queue)) {
-      return res.status(400).json({ error: 'Queue must be an array' });
+    const { visibleOrder } = req.body;
+    if (!Array.isArray(visibleOrder)) {
+      return res.status(400).json({ error: 'visibleOrder must be an array' });
     }
     try {
-      const normalized = normalizeQueue(queue);
+      let queue = await getQueue();
+      // Build new queue: iterate over original queue, replace non‑slashed items with next visibleOrder item
+      let visibleIndex = 0;
+      const newQueue = queue.map(item => {
+        if (item.slashed) {
+          return item; // keep slashed as is
+        } else {
+          const newItem = visibleOrder[visibleIndex];
+          visibleIndex++;
+          // If we run out of visibleOrder items, fallback to original item (shouldn't happen)
+          return newItem || item;
+        }
+      });
+      // If there are extra visibleOrder items (shouldn't happen), append them
+      if (visibleIndex < visibleOrder.length) {
+        // This could happen if slashed items were removed? Just append the remaining visible items
+        for (let i = visibleIndex; i < visibleOrder.length; i++) {
+          newQueue.push(visibleOrder[i]);
+        }
+      }
       await db.query(
         `UPDATE ${h.tables.MAIN_QUEUE} SET queue = ?, updated_at = datetime('now') WHERE id = 1`,
-        [JSON.stringify(normalized)]
+        [JSON.stringify(newQueue)]
       );
       updateDiscordQueue(client);
-      res.json({ success: true });
+      res.json({ success: true, queue: newQueue });
     } catch (err) {
       console.error(err);
       res.status(500).json({ error: err.message });
     }
   });
 
-  // POST /api/queue/remove – permanent delete (use sparingly)
   app.post('/api/queue/remove', async (req, res) => {
     const { index } = req.body;
     if (typeof index !== 'number' || index < 0) {
