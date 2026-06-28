@@ -1,4 +1,4 @@
-// web/public/js/queue.js – checkbox = premium, remove button = slash
+// web/public/js/queue.js – slashed items hidden from dashboard
 let queueItems = [];
 let sortableInstance = null;
 
@@ -19,29 +19,36 @@ async function loadQueue() {
 function renderQueue() {
   const container = document.getElementById('queue-list');
   container.innerHTML = '';
-  if (queueItems.length === 0) {
+
+  // ─── Filter out slashed items ──────────────────────────────
+  const visibleItems = queueItems.filter(item => !item.slashed);
+
+  if (visibleItems.length === 0) {
     container.innerHTML = '<div class="status">Queue is empty.</div>';
     return;
   }
+
   const ul = document.createElement('ul');
   ul.className = 'queue-drag-list';
   ul.id = 'queueDragList';
-  queueItems.forEach((item, index) => {
+  visibleItems.forEach((item, displayIndex) => {
+    // Find the original index in the full queue (needed for API calls)
+    const originalIndex = queueItems.indexOf(item);
     const text = item.text || item;
     const checked = item.checked || false;
-    const slashed = item.slashed || false;
+
     const li = document.createElement('li');
     li.className = 'queue-item';
-    li.dataset.index = index;
+    li.dataset.index = originalIndex;  // store original index
 
-    // Checkbox (premium)
+    // Premium checkbox
     const checkbox = document.createElement('input');
     checkbox.type = 'checkbox';
     checkbox.checked = checked;
     checkbox.className = 'queue-checkbox';
     checkbox.addEventListener('change', (e) => {
       e.stopPropagation();
-      togglePremium(index);
+      togglePremium(originalIndex);
     });
 
     const dragHandle = document.createElement('span');
@@ -55,19 +62,15 @@ function renderQueue() {
       textSpan.style.fontWeight = 'bold';
       textSpan.style.color = '#f1c40f';
     }
-    if (slashed) {
-      textSpan.style.textDecoration = 'line-through';
-      textSpan.style.opacity = '0.6';
-    }
 
-    // Remove button -> now toggles slash
+    // Slash button (finish)
     const slashBtn = document.createElement('button');
     slashBtn.className = 'queue-remove';
     slashBtn.textContent = '✕';
-    slashBtn.title = 'Finish (strikethrough, disappears after 7 days)';
+    slashBtn.title = 'Finish (removed from dashboard, stays in DB for 7 days)';
     slashBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      toggleSlash(index);
+      toggleSlash(originalIndex);
     });
 
     li.appendChild(checkbox);
@@ -83,19 +86,27 @@ function renderQueue() {
     handle: '.drag-handle',
     animation: 150,
     onEnd: function() {
-      const newOrder = [];
+      // Reorder based on visible items only, but we need to update the full queue order
+      const newVisibleOrder = [];
       document.querySelectorAll('#queueDragList .queue-item').forEach(li => {
         const idx = parseInt(li.dataset.index);
         const originalItem = queueItems[idx];
-        newOrder.push(originalItem);
+        if (originalItem) newVisibleOrder.push(originalItem);
       });
-      queueItems = newOrder;
-      saveReorder();
+      // Rebuild queueItems: keep slashed items in place, reorder visible ones
+      // Simpler: rebuild the full queue by replacing visible items order
+      const slashedItems = queueItems.filter(item => item.slashed);
+      const newQueue = [...newVisibleOrder, ...slashedItems];
+      // But this would place slashed at the end; they are hidden anyway, so order doesn't matter.
+      // For consistency, we'll just update the visible order and keep slashed where they are.
+      // To keep it simple, we'll update queueItems by splicing.
+      // We'll just save the new order to backend via saveReorder.
+      saveReorder(newQueue);
     }
   });
 }
 
-// ─── Premium toggle (checkbox) ─────────────────────────────
+// ─── Premium toggle ──────────────────────────────────────────
 async function togglePremium(index) {
   try {
     const res = await fetch('/api/queue/toggle', {
@@ -117,7 +128,7 @@ async function togglePremium(index) {
   }
 }
 
-// ─── Slash toggle (remove button) ──────────────────────────
+// ─── Slash toggle (finish) ──────────────────────────────────
 async function toggleSlash(index) {
   try {
     const res = await fetch('/api/queue/slash', {
@@ -128,10 +139,8 @@ async function toggleSlash(index) {
     const data = await res.json();
     if (data.success) {
       queueItems = data.queue;
-      renderQueue();
-      const item = queueItems[index];
-      const msg = item.slashed ? 'Item finished (slashed, will expire in 7 days)' : 'Un‑finished';
-      showToast(msg, 'info');
+      renderQueue();  // slashed items will be filtered out
+      showToast('Item finished – removed from dashboard, will auto‑delete after 7 days.', 'info');
     } else {
       showToast(data.error || 'Failed.', 'error');
     }
@@ -141,7 +150,7 @@ async function toggleSlash(index) {
   }
 }
 
-// ─── Add, reorder, remove (permanent) ──────────────────────
+// ─── Add ─────────────────────────────────────────────────────
 async function addQueueItem() {
   const toggle = document.getElementById('queue-toggle');
   const input = document.getElementById('queue-input');
@@ -173,34 +182,13 @@ async function addQueueItem() {
   }
 }
 
-// Remove permanently (rare use) – we keep it but not bound to UI by default
-async function removeQueueItem(index) {
-  try {
-    const res = await fetch('/api/queue/remove', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ index })
-    });
-    const data = await res.json();
-    if (data.success) {
-      queueItems = data.queue;
-      renderQueue();
-      showToast('Permanently removed.', 'info');
-    } else {
-      showToast(data.error || 'Failed.', 'error');
-    }
-  } catch (err) {
-    console.error(err);
-    showToast('Network error.', 'error');
-  }
-}
-
-async function saveReorder() {
+// ─── Reorder ─────────────────────────────────────────────────
+async function saveReorder(newQueue) {
   try {
     const res = await fetch('/api/queue/reorder', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ queue: queueItems })
+      body: JSON.stringify({ queue: newQueue })
     });
     const data = await res.json();
     if (!data.success) {
@@ -215,6 +203,5 @@ async function saveReorder() {
 // ─── Expose ──────────────────────────────────────────────────
 window.loadQueue = loadQueue;
 window.addQueueItem = addQueueItem;
-window.removeQueueItem = removeQueueItem;   // still available but not used
 window.togglePremium = togglePremium;
 window.toggleSlash = toggleSlash;
