@@ -1,197 +1,353 @@
-// web/public/js/queue.js
-let queueItems = [];
-let sortableInstance = null;
+// web/routes/queue.js
+const h = require('../../utils/helpers');
+const db = require('../../services/database');
 
-async function loadQueue() {
-  const container = document.getElementById('queue-list');
-  container.innerHTML = '<div class="status">Loading queue...</div>';
-  try {
-    const res = await fetch('/api/queue');
-    const data = await res.json();
-    queueItems = data.queue || [];
-    renderQueue();
-  } catch (err) {
-    container.innerHTML = '<div class="status error">Failed to load queue.</div>';
-    console.error(err);
-  }
-}
+const QUEUE_CHANNEL_ID = h.ids.channels.QUEUE;
+const LOGO_URL = h.urls.LOGO_URL;
+const DISCORD_API = 'https://discord.com/api/v10';
 
-function renderQueue() {
-  const container = document.getElementById('queue-list');
-  container.innerHTML = '';
+// Helper: get or create the "Queue" webhook
+async function getQueueWebhook(channel) {
+  const token = process.env.DISCORD_TOKEN;
+  if (!token) throw new Error('DISCORD_BOT_TOKEN not set');
 
-  const activeItems = queueItems.filter(item => !item.isCompleted);
-
-  if (activeItems.length === 0) {
-    container.innerHTML = '<div class="status">Queue is empty.</div>';
-    return;
-  }
-
-  const ul = document.createElement('ul');
-  ul.className = 'queue-drag-list';
-  ul.id = 'queueDragList';
-
-  queueItems.forEach((item, index) => {
-    // Hide completed/slashed items from the dashboard UI entirely
-    if (item.isCompleted) return;
-
-    const text = item.text || item;
-    // Map existing checked state to isPremium visually just in case
-    const isPremium = item.isPremium || item.checked || false;
-
-    const li = document.createElement('li');
-    li.className = 'queue-item';
-    li.dataset.index = index; // Track the TRUE backend index
-
-    // Checkbox mapping to Premium status
-    const checkbox = document.createElement('input');
-    checkbox.type = 'checkbox';
-    checkbox.checked = isPremium;
-    checkbox.className = 'queue-checkbox';
-    checkbox.title = 'Toggle Premium (Diamond)';
-    checkbox.addEventListener('change', (e) => {
-      e.stopPropagation();
-      togglePremium(index);
-    });
-
-    const dragHandle = document.createElement('span');
-    dragHandle.className = 'drag-handle';
-    dragHandle.textContent = '⠿';
-
-    const textSpan = document.createElement('span');
-    textSpan.className = 'queue-text';
-    textSpan.textContent = text;
-
-    const removeBtn = document.createElement('button');
-    removeBtn.className = 'queue-remove';
-    removeBtn.textContent = '✕';
-    removeBtn.title = 'Slash character (Hide here & mark done on Discord)';
-    removeBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      removeQueueItem(index);
-    });
-
-    li.appendChild(checkbox);
-    li.appendChild(dragHandle);
-    li.appendChild(textSpan);
-    li.appendChild(removeBtn);
-    ul.appendChild(li);
+  const channelUrl = `${DISCORD_API}/channels/${channel.id}`;
+  const whListResp = await fetch(`${channelUrl}/webhooks`, {
+    headers: { Authorization: `Bot ${token}` },
   });
-  container.appendChild(ul);
-
-  if (sortableInstance) sortableInstance.destroy();
-  sortableInstance = new Sortable(document.getElementById('queueDragList'), {
-    handle: '.drag-handle',
-    animation: 150,
-    onEnd: function() {
-      // Rebuild the array by placing the active dragged items first
-      const newActiveOrder = [];
-      document.querySelectorAll('#queueDragList .queue-item').forEach(li => {
-        const idx = parseInt(li.dataset.index);
-        newActiveOrder.push(queueItems[idx]);
+  let webhookUrl = null;
+  if (whListResp.ok) {
+    const webhooks = await whListResp.json();
+    const existing = webhooks.find(w => w.name === 'Queue');
+    if (existing) {
+      webhookUrl = `${DISCORD_API}/webhooks/${existing.id}/${existing.token}`;
+      // Update avatar if needed
+      await fetch(webhookUrl, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bot ${token}` },
+        body: JSON.stringify({ avatar: LOGO_URL }),
       });
-
-      // Keep hidden completed items appended to the end to prevent data loss
-      const completedItems = queueItems.filter(item => item.isCompleted);
-      
-      queueItems = [...newActiveOrder, ...completedItems];
-      saveReorder();
     }
+  }
+  if (!webhookUrl) {
+    const createResp = await fetch(`${channelUrl}/webhooks`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bot ${token}` },
+      body: JSON.stringify({ name: 'Queue', avatar: LOGO_URL }),
+    });
+    if (!createResp.ok) throw new Error('Failed to create webhook');
+    const created = await createResp.json();
+    webhookUrl = `${DISCORD_API}/webhooks/${created.id}/${created.token}`;
+  }
+  return webhookUrl;
+}
+
+// ─── Data Normalization ───
+function normalizeQueue(queue) {
+  if (!Array.isArray(queue)) return [];
+  return queue.map(item => {
+    if (typeof item === 'string') {
+      return { text: item, isPremium: false, isCompleted: false, completedAt: null };
+    }
+    return {
+      text: item.text || item,
+      // Migrate old "checked" state to "isPremium" safely
+      isPremium: !!item.isPremium || !!item.checked,
+      isCompleted: !!item.isCompleted,
+      completedAt: item.completedAt || null
+    };
   });
 }
 
-async function togglePremium(index) {
+// ─── Helper: clean expired completed items (older than 7 days) ───
+function cleanExpiredQueue(queue) {
+  const now = Date.now();
+  const sevenDays = 7 * 24 * 60 * 60 * 1000;
+  return queue.filter(item => {
+    if (item.isCompleted && item.completedAt) {
+      const age = now - new Date(item.completedAt).getTime();
+      if (age >= sevenDays) return false; // purge
+    }
+    return true;
+  });
+}
+
+// ─── Update Discord message ───
+async function updateDiscordQueue(client) {
   try {
-    const res = await fetch('/api/queue/toggle', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ index })
-    });
-    const data = await res.json();
-    if (data.success) {
-      queueItems = data.queue;
-      renderQueue();
-      showToast('Premium status updated', 'success');
+    const row = await db.query(
+      `SELECT queue, message_id, channel_id FROM ${h.tables.MAIN_QUEUE} WHERE id = 1`,
+      [],
+      true
+    );
+    if (!row) return;
+
+    let queue = JSON.parse(row.queue || '[]');
+    queue = normalizeQueue(queue);
+    
+    // Clean expired items before displaying
+    const cleaned = cleanExpiredQueue(queue);
+    if (cleaned.length !== queue.length) {
+      queue = cleaned;
+      await db.query(
+        `UPDATE ${h.tables.MAIN_QUEUE} SET queue = ?, updated_at = datetime('now') WHERE id = 1`,
+        [JSON.stringify(queue)]
+      );
+    }
+
+    const channel = await client.channels.fetch(QUEUE_CHANNEL_ID);
+    if (!channel) return;
+
+    const webhookUrl = await getQueueWebhook(channel);
+    const progressEmoji = h.releaseEmojis?.PROGRESS || '<a:progress:1491670111923212308>';
+    const diamondEmoji = h.releaseEmojis?.DIAMOND || ':gem:';
+    const blankEmoji = h.releaseEmojis?.BLANK || '';
+
+    let content = `${progressEmoji} **Current queue** (general idea, subject to change):\n\n`;
+    if (queue.length === 0) {
+      content += '*Queue is empty.*';
     } else {
-      showToast(data.error || 'Failed to toggle.', 'error');
+      const lines = queue.map(item => {
+        const text = item.text;
+        // Strikethrough if completed/slashed
+        const displayText = item.isCompleted ? `~~${text}~~` : text;
+        // Diamond if premium
+        const emoji = item.isPremium ? diamondEmoji : blankEmoji;
+        return `• ${emoji} ${displayText}`;
+      });
+      content += lines.join('\n');
     }
-  } catch (err) {
-    console.error(err);
-    showToast('Network error.', 'error');
-  }
-}
 
-async function addQueueItem() {
-  const toggle = document.getElementById('queue-toggle');
-  const input = document.getElementById('queue-input');
-  const gender = toggle.checked ? '♀️' : '♂️';
-  const name = input.value.trim();
-  
-  if (!name) {
-    showToast('Please enter a name.', 'error');
-    return;
-  }
-  
-  const entry = `${gender} ${name}`;
-  try {
-    const res = await fetch('/api/queue/add', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ entry })
-    });
-    const data = await res.json();
-    if (data.success) {
-      queueItems = data.queue;
-      renderQueue();
-      input.value = '';
-      showToast('Added to queue!', 'success');
+    if (row.message_id) {
+      try {
+        await fetch(`${webhookUrl}/messages/${row.message_id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            content,
+            username: 'Queue',
+            avatar_url: LOGO_URL,
+          }),
+        });
+      } catch (err) {
+        console.warn('Could not edit queue message, sending new:', err.message);
+        const msgRes = await fetch(`${webhookUrl}?wait=true`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            content,
+            username: 'Queue',
+            avatar_url: LOGO_URL,
+          }),
+        });
+        const msg = await msgRes.json();
+        if (msg.id) {
+          await db.query(
+            `UPDATE ${h.tables.MAIN_QUEUE} SET message_id = ? WHERE id = 1`,
+            [msg.id]
+          );
+        }
+      }
     } else {
-      showToast(data.error || 'Failed to add.', 'error');
+      const msgRes = await fetch(`${webhookUrl}?wait=true`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          content,
+          username: 'Queue',
+          avatar_url: LOGO_URL,
+        }),
+      });
+      const msg = await msgRes.json();
+      if (msg.id) {
+        await db.query(
+          `UPDATE ${h.tables.MAIN_QUEUE} SET message_id = ? WHERE id = 1`,
+          [msg.id]
+        );
+      }
     }
   } catch (err) {
-    console.error(err);
-    showToast('Network error.', 'error');
+    console.error('updateDiscordQueue error:', err);
+    throw err;
   }
 }
 
-async function removeQueueItem(index) {
+// ─── Helper to add an entry to the queue ───
+async function addEntryToQueue(entry, client) {
   try {
-    const res = await fetch('/api/queue/remove', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ index })
-    });
-    const data = await res.json();
-    if (data.success) {
-      queueItems = data.queue;
-      renderQueue();
-      showToast('Character slashed & removed from dashboard.', 'info');
-    } else {
-      showToast(data.error || 'Failed to remove.', 'error');
-    }
+    const row = await db.query(
+      `SELECT queue FROM ${h.tables.MAIN_QUEUE} WHERE id = 1`,
+      [],
+      true
+    );
+    let queue = row ? JSON.parse(row.queue || '[]') : [];
+    queue = normalizeQueue(queue);
+    
+    const text = typeof entry === 'string' ? entry.trim() : entry.text;
+    queue.push({ text, isPremium: false, isCompleted: false, completedAt: null });
+    
+    await db.query(
+      `UPDATE ${h.tables.MAIN_QUEUE} SET queue = ?, updated_at = datetime('now') WHERE id = 1`,
+      [JSON.stringify(queue)]
+    );
+    await updateDiscordQueue(client);
+    return true;
   } catch (err) {
-    console.error(err);
-    showToast('Network error.', 'error');
+    console.error('addEntryToQueue error:', err);
+    throw err;
   }
 }
 
-async function saveReorder() {
-  try {
-    const res = await fetch('/api/queue/reorder', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ queue: queueItems })
-    });
-    const data = await res.json();
-    if (!data.success) {
-      showToast('Failed to save order.', 'error');
+module.exports = function setupQueueRoutes(app, client) {
+  // GET /api/queue
+  app.get('/api/queue', async (req, res) => {
+    try {
+      const row = await db.query(
+        `SELECT queue FROM ${h.tables.MAIN_QUEUE} WHERE id = 1`,
+        [],
+        true
+      );
+      let queue = row ? JSON.parse(row.queue || '[]') : [];
+      queue = normalizeQueue(queue);
+      
+      const cleaned = cleanExpiredQueue(queue);
+      if (cleaned.length !== queue.length) {
+        queue = cleaned;
+        await db.query(
+          `UPDATE ${h.tables.MAIN_QUEUE} SET queue = ?, updated_at = datetime('now') WHERE id = 1`,
+          [JSON.stringify(queue)]
+        );
+        await updateDiscordQueue(client);
+      }
+      res.json({ queue });
+    } catch (err) {
+      console.error('GET /api/queue error:', err);
+      res.status(500).json({ error: err.message });
     }
-  } catch (err) {
-    console.error(err);
-    showToast('Network error.', 'error');
-  }
-}
+  });
 
-window.loadQueue = loadQueue;
-window.addQueueItem = addQueueItem;
-window.removeQueueItem = removeQueueItem;
+  // POST /api/queue/add
+  app.post('/api/queue/add', async (req, res) => {
+    const { entry } = req.body;
+    if (!entry || typeof entry !== 'string' || !entry.trim()) {
+      return res.status(400).json({ error: 'Missing or invalid entry' });
+    }
+    try {
+      const row = await db.query(
+        `SELECT queue FROM ${h.tables.MAIN_QUEUE} WHERE id = 1`,
+        [],
+        true
+      );
+      let queue = row ? JSON.parse(row.queue || '[]') : [];
+      queue = normalizeQueue(queue);
+      queue.push({ text: entry.trim(), isPremium: false, isCompleted: false, completedAt: null });
+
+      await db.query(
+        `UPDATE ${h.tables.MAIN_QUEUE} SET queue = ?, updated_at = datetime('now') WHERE id = 1`,
+        [JSON.stringify(queue)]
+      );
+      await updateDiscordQueue(client);
+
+      res.json({ success: true, queue });
+    } catch (err) {
+      console.error('POST /api/queue/add error:', err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // POST /api/queue/toggle – mark/unmark as Premium
+  app.post('/api/queue/toggle', async (req, res) => {
+    const { index } = req.body;
+    if (typeof index !== 'number' || index < 0) {
+      return res.status(400).json({ error: 'Invalid index' });
+    }
+    try {
+      const row = await db.query(
+        `SELECT queue FROM ${h.tables.MAIN_QUEUE} WHERE id = 1`,
+        [],
+        true
+      );
+      if (!row) return res.status(404).json({ error: 'Queue not found' });
+      let queue = JSON.parse(row.queue || '[]');
+      queue = normalizeQueue(queue);
+      
+      if (index >= queue.length) {
+        return res.status(400).json({ error: 'Index out of bounds' });
+      }
+
+      const item = queue[index];
+      // Toggle premium status
+      item.isPremium = !item.isPremium;
+
+      await db.query(
+        `UPDATE ${h.tables.MAIN_QUEUE} SET queue = ?, updated_at = datetime('now') WHERE id = 1`,
+        [JSON.stringify(queue)]
+      );
+      await updateDiscordQueue(client);
+      res.json({ success: true, queue });
+    } catch (err) {
+      console.error('POST /api/queue/toggle error:', err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // POST /api/queue/reorder
+  app.post('/api/queue/reorder', async (req, res) => {
+    const { queue } = req.body;
+    if (!Array.isArray(queue)) {
+      return res.status(400).json({ error: 'Queue must be an array' });
+    }
+    try {
+      const normalized = normalizeQueue(queue);
+      await db.query(
+        `UPDATE ${h.tables.MAIN_QUEUE} SET queue = ?, updated_at = datetime('now') WHERE id = 1`,
+        [JSON.stringify(normalized)]
+      );
+      await updateDiscordQueue(client);
+      res.json({ success: true });
+    } catch (err) {
+      console.error('POST /api/queue/reorder error:', err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // POST /api/queue/remove – Soft Delete (Slash)
+  app.post('/api/queue/remove', async (req, res) => {
+    const { index } = req.body;
+    if (typeof index !== 'number' || index < 0) {
+      return res.status(400).json({ error: 'Invalid index' });
+    }
+    try {
+      const row = await db.query(
+        `SELECT queue FROM ${h.tables.MAIN_QUEUE} WHERE id = 1`,
+        [],
+        true
+      );
+      if (!row) return res.status(404).json({ error: 'Queue not found' });
+      
+      let queue = JSON.parse(row.queue || '[]');
+      queue = normalizeQueue(queue);
+      
+      if (index >= queue.length) {
+        return res.status(400).json({ error: 'Index out of bounds' });
+      }
+      
+      // Soft delete: flag as completed instead of removing from array
+      queue[index].isCompleted = true;
+      queue[index].completedAt = new Date().toISOString();
+
+      await db.query(
+        `UPDATE ${h.tables.MAIN_QUEUE} SET queue = ?, updated_at = datetime('now') WHERE id = 1`,
+        [JSON.stringify(queue)]
+      );
+      await updateDiscordQueue(client);
+      res.json({ success: true, queue });
+    } catch (err) {
+      console.error('POST /api/queue/remove error:', err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+};
+
+module.exports.updateDiscordQueue = updateDiscordQueue;
+module.exports.addEntryToQueue = addEntryToQueue;
