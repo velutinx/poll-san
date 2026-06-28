@@ -33,7 +33,6 @@ function renderQueue() {
     li.className = 'queue-item';
     li.dataset.index = index;
 
-    // Checkbox
     const checkbox = document.createElement('input');
     checkbox.type = 'checkbox';
     checkbox.checked = checked;
@@ -71,7 +70,6 @@ function renderQueue() {
   });
   container.appendChild(ul);
 
-  // Init SortableJS
   if (sortableInstance) sortableInstance.destroy();
   sortableInstance = new Sortable(document.getElementById('queueDragList'), {
     handle: '.drag-handle',
