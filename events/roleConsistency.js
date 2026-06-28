@@ -11,14 +11,9 @@ const TIER_ROLES = Object.values(h.weights.tierMapping);
 module.exports = async function handleRoleUpdate(oldMember, newMember) {
     if (newMember.user.bot) return;
     if (newMember.roles.cache.has(CREATOR_ROLE)) return;
-
-    // Removed the early return that skipped all logic for users with active memberships
-    // Now role consistency rules apply to everyone (including Patreon/website members)
-
     const member = await newMember.fetch();
     const oldRoles = oldMember.roles.cache;
     const newRoles = member.roles.cache;
-
     const hadSupporter = oldRoles.has(SUPPORTER_ROLE);
     const hasSupporter = newRoles.has(SUPPORTER_ROLE);
     const hasAnyPaidTier = TIER_ROLES.some(roleId => newRoles.has(roleId));
@@ -47,7 +42,6 @@ module.exports = async function handleRoleUpdate(oldMember, newMember) {
         if (hadMember && !hasMember) {
             if (!hasSupporter && !hasAnyPaidTier && !hasUnverified) {
                 await member.roles.add(MEMBER_ROLE);
-                console.log(`[RoleConsistency] Restored Member to ${member.user.tag} (was removed manually).`);
             }
             return;
         }
