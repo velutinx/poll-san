@@ -1,4 +1,4 @@
-// web/public/js/queue.js
+// web/public/js/queue.js – FRONTEND with correct toggle
 let queueItems = [];
 let sortableInstance = null;
 
@@ -19,39 +19,28 @@ async function loadQueue() {
 function renderQueue() {
   const container = document.getElementById('queue-list');
   container.innerHTML = '';
-
-  const activeItems = queueItems.filter(item => !item.isCompleted);
-
-  if (activeItems.length === 0) {
+  if (queueItems.length === 0) {
     container.innerHTML = '<div class="status">Queue is empty.</div>';
     return;
   }
-
   const ul = document.createElement('ul');
   ul.className = 'queue-drag-list';
   ul.id = 'queueDragList';
-
   queueItems.forEach((item, index) => {
-    // Hide completed/slashed items from the dashboard UI entirely
-    if (item.isCompleted) return;
-
     const text = item.text || item;
-    // Map existing checked state to isPremium visually just in case
-    const isPremium = item.isPremium || item.checked || false;
-
+    const checked = item.checked || false;
     const li = document.createElement('li');
     li.className = 'queue-item';
-    li.dataset.index = index; // Track the TRUE backend index
+    li.dataset.index = index;
 
-    // Checkbox mapping to Premium status
+    // Checkbox
     const checkbox = document.createElement('input');
     checkbox.type = 'checkbox';
-    checkbox.checked = isPremium;
+    checkbox.checked = checked;
     checkbox.className = 'queue-checkbox';
-    checkbox.title = 'Toggle Premium (Diamond)';
     checkbox.addEventListener('change', (e) => {
       e.stopPropagation();
-      togglePremium(index);
+      toggleChecked(index);
     });
 
     const dragHandle = document.createElement('span');
@@ -61,11 +50,14 @@ function renderQueue() {
     const textSpan = document.createElement('span');
     textSpan.className = 'queue-text';
     textSpan.textContent = text;
+    if (checked) {
+      textSpan.style.textDecoration = 'line-through';
+      textSpan.style.opacity = '0.6';
+    }
 
     const removeBtn = document.createElement('button');
     removeBtn.className = 'queue-remove';
     removeBtn.textContent = '✕';
-    removeBtn.title = 'Slash character (Hide here & mark done on Discord)';
     removeBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       removeQueueItem(index);
@@ -79,32 +71,24 @@ function renderQueue() {
   });
   container.appendChild(ul);
 
-if (sortableInstance) sortableInstance.destroy();
-sortableInstance = new Sortable(document.getElementById('queueDragList'), {
-  handle: '.drag-handle',
-  animation: 150,
-  onEnd: function() {
-    // 1. Get the new visual order of active items from the DOM
-    const activeItemsInOrder = [];
-    document.querySelectorAll('#queueDragList .queue-item').forEach(li => {
-      const originalIndex = parseInt(li.dataset.index);
-      activeItemsInOrder.push(queueItems[originalIndex]);
-    });
-
-    // 2. Identify all currently "slashed" (completed) items
-    const completedItems = queueItems.filter(item => item.isCompleted);
-
-    // 3. Reconstruct the queue: Active items first (in new order), then Slashed items
-    // This preserves all data in the database while updating the order
-    queueItems = [...activeItemsInOrder, ...completedItems];
-    
-    // 4. Send the ENTIRE array to the server
-    saveReorder();
-  }
-});
+  if (sortableInstance) sortableInstance.destroy();
+  sortableInstance = new Sortable(document.getElementById('queueDragList'), {
+    handle: '.drag-handle',
+    animation: 150,
+    onEnd: function() {
+      const newOrder = [];
+      document.querySelectorAll('#queueDragList .queue-item').forEach(li => {
+        const idx = parseInt(li.dataset.index);
+        const originalItem = queueItems[idx];
+        newOrder.push(originalItem);
+      });
+      queueItems = newOrder;
+      saveReorder();
+    }
+  });
 }
 
-async function togglePremium(index) {
+async function toggleChecked(index) {
   try {
     const res = await fetch('/api/queue/toggle', {
       method: 'POST',
@@ -115,7 +99,7 @@ async function togglePremium(index) {
     if (data.success) {
       queueItems = data.queue;
       renderQueue();
-      showToast('Premium status updated', 'success');
+      showToast('Toggled successfully', 'success');
     } else {
       showToast(data.error || 'Failed to toggle.', 'error');
     }
@@ -130,12 +114,10 @@ async function addQueueItem() {
   const input = document.getElementById('queue-input');
   const gender = toggle.checked ? '♀️' : '♂️';
   const name = input.value.trim();
-  
   if (!name) {
     showToast('Please enter a name.', 'error');
     return;
   }
-  
   const entry = `${gender} ${name}`;
   try {
     const res = await fetch('/api/queue/add', {
@@ -169,7 +151,7 @@ async function removeQueueItem(index) {
     if (data.success) {
       queueItems = data.queue;
       renderQueue();
-      showToast('Character slashed & removed from dashboard.', 'info');
+      showToast('Removed from queue.', 'info');
     } else {
       showToast(data.error || 'Failed to remove.', 'error');
     }
