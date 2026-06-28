@@ -1,4 +1,4 @@
-// web/routes/queue.js – separate premium & finished actions
+// web/routes/queue.js – with name‑only bold for Discord
 const h = require('../../utils/helpers');
 const db = require('../../services/database');
 
@@ -23,7 +23,6 @@ function normalizeQueue(queue) {
   });
 }
 
-// Remove items that have been slashed for >7 days
 function cleanExpiredQueue(queue) {
   const now = Date.now();
   const sevenDays = 7 * 24 * 60 * 60 * 1000;
@@ -64,7 +63,7 @@ async function updateDiscordQueue(client) {
     const token = process.env.DISCORD_TOKEN;
     if (!token) throw new Error('DISCORD_TOKEN missing');
 
-    // Webhook handling (same as before)
+    // Webhook handling
     const channelUrl = `${DISCORD_API}/channels/${channel.id}`;
     const whListResp = await fetch(`${channelUrl}/webhooks`, {
       headers: { Authorization: `Bot ${token}` },
@@ -93,7 +92,7 @@ async function updateDiscordQueue(client) {
       webhookUrl = `${DISCORD_API}/webhooks/${created.id}/${created.token}`;
     }
 
-    // Build message
+    // Build message with proper formatting
     const progressEmoji = h.releaseEmojis.PROGRESS || '<a:progress:1491670111923212308>';
     const diamondEmoji = h.releaseEmojis.DIAMOND || ':gem:';
     const blankEmoji = h.releaseEmojis.BLANK || '';
@@ -104,22 +103,35 @@ async function updateDiscordQueue(client) {
     } else {
       const lines = queue.map(item => {
         let text = item.text;
+        // Extract gender emoji if present (♂️ or ♀️)
+        let gender = '';
+        let name = text;
+        const genderMatch = text.match(/^[♂♀]️?\s*/);
+        if (genderMatch) {
+          gender = genderMatch[0].trim();
+          name = text.substring(genderMatch[0].length).trim();
+        }
+
+        let displayName = name;
         let prefix = '•';
         let emoji = blankEmoji;
 
         if (item.checked) {
           emoji = diamondEmoji;
-          text = `**${text}**`;  // bold for premium
+          displayName = `**${name}**`;   // bold only the name
         }
         if (item.slashed) {
-          text = `~~${text}~~`;  // strikethrough for finished
+          displayName = `~~${displayName}~~`; // strikethrough (applied to bold if present)
         }
-        return `${prefix} ${emoji} ${text}`;
+
+        // If there's no gender, just show the displayName without gender prefix
+        const namePart = gender ? `${gender} ${displayName}` : displayName;
+        return `${prefix} ${emoji} ${namePart}`;
       });
       content += lines.join('\n');
     }
 
-    // Update existing message or send new
+    // Update or create message
     const row = await db.query(
       `SELECT message_id FROM ${h.tables.MAIN_QUEUE} WHERE id = 1`,
       [],
@@ -153,7 +165,7 @@ async function updateDiscordQueue(client) {
   }
 }
 
-// ─── ROUTES ──────────────────────────────────────────────────
+// ─── ROUTES (same as before) ──────────────────────────────────
 
 module.exports = function setupQueueRoutes(app, client) {
   // GET /api/queue
@@ -188,7 +200,7 @@ module.exports = function setupQueueRoutes(app, client) {
     }
   });
 
-  // POST /api/queue/toggle – premium (checkbox)
+  // POST /api/queue/toggle – premium
   app.post('/api/queue/toggle', async (req, res) => {
     const { index } = req.body;
     if (typeof index !== 'number' || index < 0) {
@@ -199,8 +211,7 @@ module.exports = function setupQueueRoutes(app, client) {
       if (index >= queue.length) {
         return res.status(400).json({ error: 'Index out of bounds' });
       }
-      const item = queue[index];
-      item.checked = !item.checked;
+      queue[index].checked = !queue[index].checked;
       await db.query(
         `UPDATE ${h.tables.MAIN_QUEUE} SET queue = ?, updated_at = datetime('now') WHERE id = 1`,
         [JSON.stringify(queue)]
@@ -213,7 +224,7 @@ module.exports = function setupQueueRoutes(app, client) {
     }
   });
 
-  // POST /api/queue/slash – finish/delete (strikethrough + 7d expiry)
+  // POST /api/queue/slash – finish (strikethrough + 7d expiry)
   app.post('/api/queue/slash', async (req, res) => {
     const { index } = req.body;
     if (typeof index !== 'number' || index < 0) {
