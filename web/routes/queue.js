@@ -1,4 +1,4 @@
-// web/routes/queue.js – FULL WORKING VERSION
+// web/routes/queue.js
 const h = require('../../utils/helpers');
 const db = require('../../services/database');
 
@@ -8,27 +8,28 @@ const DISCORD_API = 'https://discord.com/api/v10';
 
 // ─── HELPERS ────────────────────────────────────────────────
 
-// Ensure every item is an object { text, checked, completedAt }
+// Ensure every item is an object { text, isPremium, isCompleted, completedAt }
 function normalizeQueue(queue) {
   if (!Array.isArray(queue)) return [];
   return queue.map(item => {
     if (typeof item === 'string') {
-      return { text: item, checked: false, completedAt: null };
+      return { text: item, isPremium: false, isCompleted: false, completedAt: null };
     }
     return {
       text: item.text || item,
-      checked: !!item.checked,
+      isPremium: !!item.isPremium || !!item.checked, // Migrates old 'checked' properties safely
+      isCompleted: !!item.isCompleted,
       completedAt: item.completedAt || null
     };
   });
 }
 
-// Remove items that have been checked for >7 days
+// Remove items that have been completed for >= 7 days
 function cleanExpiredQueue(queue) {
   const now = Date.now();
   const sevenDays = 7 * 24 * 60 * 60 * 1000;
   return queue.filter(item => {
-    if (item.checked && item.completedAt) {
+    if (item.isCompleted && item.completedAt) {
       const age = now - new Date(item.completedAt).getTime();
       if (age >= sevenDays) return false;
     }
@@ -45,6 +46,7 @@ async function getQueueWebhook(channel) {
   const whListResp = await fetch(`${channelUrl}/webhooks`, {
     headers: { Authorization: `Bot ${token}` },
   });
+
   let webhookUrl = null;
   if (whListResp.ok) {
     const webhooks = await whListResp.json();
@@ -71,7 +73,7 @@ async function getQueueWebhook(channel) {
   return webhookUrl;
 }
 
-// Update the Discord queue message with strikethrough
+// Update the Discord queue message
 async function updateDiscordQueue(client) {
   try {
     const row = await db.query(
@@ -79,6 +81,7 @@ async function updateDiscordQueue(client) {
       [],
       true
     );
+
     if (!row) {
       console.warn('No queue row found');
       return;
@@ -87,6 +90,7 @@ async function updateDiscordQueue(client) {
     let queue = JSON.parse(row.queue || '[]');
     queue = normalizeQueue(queue);
     const cleaned = cleanExpiredQueue(queue);
+
     if (cleaned.length !== queue.length) {
       queue = cleaned;
       await db.query(
@@ -103,20 +107,19 @@ async function updateDiscordQueue(client) {
 
     const webhookUrl = await getQueueWebhook(channel);
     const progressEmoji = h.releaseEmojis.PROGRESS || '<a:progress:1491670111923212308>';
-    const diamondEmoji = h.releaseEmojis.DIAMOND || ':gem:';
+    const crownEmoji = '👑';
     const blankEmoji = h.releaseEmojis.BLANK || '';
 
     let content = `${progressEmoji} **Current queue** (general idea, subject to change):\n\n`;
+
     if (queue.length === 0) {
       content += '*Queue is empty.*';
     } else {
       const lines = queue.map(item => {
         const text = item.text;
-        const checked = !!item.checked;
-        const displayText = checked ? `~~${text}~~` : text;
-        const bullet = checked ? `•` : `•`;
-        const emoji = checked ? diamondEmoji : blankEmoji;
-        return `${bullet} ${emoji} ${displayText}`;
+        const displayText = item.isCompleted ? `~~${text}~~` : text;
+        const emoji = item.isPremium ? crownEmoji : blankEmoji;
+        return `• ${emoji} ${displayText}`;
       });
       content += lines.join('\n');
     }
@@ -129,6 +132,7 @@ async function updateDiscordQueue(client) {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ content, username: 'Queue', avatar_url: LOGO_URL }),
         });
+
         if (!resp.ok) {
           console.warn(`Failed to edit queue message, sending new: ${resp.status}`);
           throw new Error('Edit failed');
@@ -184,6 +188,7 @@ module.exports = function setupQueueRoutes(app, client) {
       );
       let queue = row ? JSON.parse(row.queue || '[]') : [];
       queue = normalizeQueue(queue);
+      
       const cleaned = cleanExpiredQueue(queue);
       if (cleaned.length !== queue.length) {
         queue = cleaned;
@@ -214,7 +219,8 @@ module.exports = function setupQueueRoutes(app, client) {
       );
       let queue = row ? JSON.parse(row.queue || '[]') : [];
       queue = normalizeQueue(queue);
-      queue.push({ text: entry.trim(), checked: false, completedAt: null });
+      queue.push({ text: entry.trim(), isPremium: false, isCompleted: false, completedAt: null });
+      
       await db.query(
         `UPDATE ${h.tables.MAIN_QUEUE} SET queue = ?, updated_at = datetime('now') WHERE id = 1`,
         [JSON.stringify(queue)]
@@ -227,8 +233,8 @@ module.exports = function setupQueueRoutes(app, client) {
     }
   });
 
-  // POST /api/queue/toggle – mark/unmark
-  app.post('/api/queue/toggle', async (req, res) => {
+  // POST /api/queue/toggle-premium – marks item as Premium (Crown)
+  app.post('/api/queue/toggle-premium', async (req, res) => {
     const { index } = req.body;
     if (typeof index !== 'number' || index < 0) {
       return res.status(400).json({ error: 'Invalid index' });
@@ -240,6 +246,7 @@ module.exports = function setupQueueRoutes(app, client) {
         true
       );
       if (!row) return res.status(404).json({ error: 'Queue not found' });
+      
       let queue = JSON.parse(row.queue || '[]');
       queue = normalizeQueue(queue);
       if (index >= queue.length) {
@@ -247,27 +254,17 @@ module.exports = function setupQueueRoutes(app, client) {
       }
 
       const item = queue[index];
-      // Toggle
-      if (item.checked) {
-        // Uncheck
-        item.checked = false;
-        item.completedAt = null;
-      } else {
-        // Check
-        item.checked = true;
-        item.completedAt = new Date().toISOString();
-      }
+      item.isPremium = !item.isPremium; // Toggle premium status
 
-      // Save to database
       await db.query(
         `UPDATE ${h.tables.MAIN_QUEUE} SET queue = ?, updated_at = datetime('now') WHERE id = 1`,
         [JSON.stringify(queue)]
       );
-      // Update Discord
+
       await updateDiscordQueue(client);
       res.json({ success: true, queue });
     } catch (err) {
-      console.error('POST /api/queue/toggle error:', err);
+      console.error('POST /api/queue/toggle-premium error:', err);
       res.status(500).json({ error: err.message });
     }
   });
@@ -292,7 +289,7 @@ module.exports = function setupQueueRoutes(app, client) {
     }
   });
 
-  // POST /api/queue/remove – permanent delete (use sparingly)
+  // POST /api/queue/remove – Acts as a "Soft Delete" / "Slashed" status
   app.post('/api/queue/remove', async (req, res) => {
     const { index } = req.body;
     if (typeof index !== 'number' || index < 0) {
@@ -305,12 +302,18 @@ module.exports = function setupQueueRoutes(app, client) {
         true
       );
       if (!row) return res.status(404).json({ error: 'Queue not found' });
+      
       let queue = JSON.parse(row.queue || '[]');
       queue = normalizeQueue(queue);
+      
       if (index >= queue.length) {
         return res.status(400).json({ error: 'Index out of bounds' });
       }
-      queue.splice(index, 1);
+      
+      // Marks item as completed/slashed instead of deleting from array
+      queue[index].isCompleted = true;
+      queue[index].completedAt = new Date().toISOString();
+
       await db.query(
         `UPDATE ${h.tables.MAIN_QUEUE} SET queue = ?, updated_at = datetime('now') WHERE id = 1`,
         [JSON.stringify(queue)]
