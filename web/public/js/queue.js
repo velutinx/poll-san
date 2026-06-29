@@ -1,4 +1,4 @@
-// web/public/js/queue.js – with edit functionality
+// web/public/js/queue.js
 let queueItems = [];
 let sortableInstance = null;
 
@@ -40,7 +40,7 @@ function renderQueue() {
     li.className = 'queue-item';
     li.dataset.index = originalIndex;
 
-    // --- Checkbox ---
+    // Checkbox
     const checkbox = document.createElement('input');
     checkbox.type = 'checkbox';
     checkbox.checked = checked;
@@ -50,12 +50,12 @@ function renderQueue() {
       togglePremium(originalIndex);
     });
 
-    // --- Drag handle ---
+    // Drag handle
     const dragHandle = document.createElement('span');
     dragHandle.className = 'drag-handle';
     dragHandle.textContent = '⠿';
 
-    // --- Text container (editable) ---
+    // Text span
     const textSpan = document.createElement('span');
     textSpan.className = 'queue-text';
     textSpan.textContent = text;
@@ -64,25 +64,19 @@ function renderQueue() {
       textSpan.style.color = '#f1c40f';
     }
 
-    // --- Edit button ---
+    // Edit button (we'll use a class and attach event via delegation)
     const editBtn = document.createElement('button');
     editBtn.className = 'queue-edit';
     editBtn.textContent = '✏️';
     editBtn.title = 'Edit item';
-    editBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      startEdit(originalIndex);
-    });
+    editBtn.dataset.index = originalIndex; // store index for delegation
 
-    // --- Slash (remove) button ---
+    // Slash button
     const slashBtn = document.createElement('button');
     slashBtn.className = 'queue-remove';
     slashBtn.textContent = '✕';
     slashBtn.title = 'Finish (removed from dashboard, stays in DB for 7 days)';
-    slashBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      toggleSlash(originalIndex);
-    });
+    slashBtn.dataset.index = originalIndex;
 
     li.appendChild(checkbox);
     li.appendChild(dragHandle);
@@ -94,6 +88,26 @@ function renderQueue() {
 
   container.appendChild(ul);
 
+  // Use event delegation for edit and slash buttons
+  ul.addEventListener('click', (e) => {
+    const target = e.target.closest('button');
+    if (!target) return;
+
+    if (target.classList.contains('queue-edit')) {
+      const index = parseInt(target.dataset.index);
+      if (!isNaN(index)) startEdit(index);
+      e.stopPropagation();
+    } else if (target.classList.contains('queue-remove')) {
+      const index = parseInt(target.dataset.index);
+      if (!isNaN(index)) toggleSlash(index);
+      e.stopPropagation();
+    } else if (target.classList.contains('queue-save')) {
+      // Save button is dynamically created, handle separately
+      // We'll handle save via a different approach: use a data attribute
+    }
+  });
+
+  // Re-init sortable
   if (sortableInstance) sortableInstance.destroy();
   sortableInstance = new Sortable(document.getElementById('queueDragList'), {
     handle: '.drag-handle',
@@ -114,9 +128,17 @@ function renderQueue() {
 
 // ─── Edit functions ──────────────────────────────────────────
 function startEdit(index) {
+  // Find the li by data-index
   const li = document.querySelector(`.queue-item[data-index="${index}"]`);
-  if (!li) return;
+  if (!li) {
+    console.warn('Li not found for index', index);
+    return;
+  }
   const textSpan = li.querySelector('.queue-text');
+  if (!textSpan) {
+    console.warn('Text span not found for index', index);
+    return;
+  }
   const editBtn = li.querySelector('.queue-edit');
   const currentText = textSpan.textContent;
 
@@ -141,6 +163,7 @@ function startEdit(index) {
   editBtn.textContent = '✔️';
   editBtn.title = 'Save changes';
   editBtn.className = 'queue-save';
+  editBtn.dataset.index = index;
 
   // Save on Enter
   input.addEventListener('keydown', (e) => {
@@ -153,11 +176,10 @@ function startEdit(index) {
     }
   });
 
-  // Save on blur (optional – we'll keep it to save on click only)
-  // But we'll allow blur to cancel? Better to require explicit save.
-  // We'll keep it as is.
-
-  // Replace the save button's click handler
+  // Save on button click (we'll handle via event delegation)
+  // We'll remove the old listener and add a new one via delegation
+  // Since we used delegation, we need to handle save separately
+  // We'll set a one-time click handler on the save button
   editBtn.onclick = (e) => {
     e.stopPropagation();
     saveEdit(index, input.value);
@@ -165,8 +187,7 @@ function startEdit(index) {
 }
 
 function cancelEdit(index) {
-  // Re-render the whole queue to discard changes
-  renderQueue();
+  renderQueue(); // re-render discards changes
 }
 
 async function saveEdit(index, newText) {
@@ -196,7 +217,7 @@ async function saveEdit(index, newText) {
   }
 }
 
-// ─── Existing functions (togglePremium, toggleSlash, addQueueItem, saveReorder) ───
+// ─── Existing functions ──────────────────────────────────────
 async function togglePremium(index) {
   try {
     const res = await fetch('/api/queue/toggle', {
