@@ -3,16 +3,10 @@ const h = require('../utils/helpers');
 
 const WORKER_URL = h.urls.CLOUDFLARE_D1_WORKER;
 const MAX_RETRIES = 3;
-const RETRY_DELAY_MS = 1000;
-const REQUEST_TIMEOUT_MS = 30000; // 30 seconds
+const RETRY_DELAY_MS = 2000;
+const REQUEST_TIMEOUT_MS = 60000;
 
-/**
- * Execute a SQL query against Cloudflare D1 with automatic retries.
- * @param {string} sql
- * @param {any[]} params
- * @param {boolean} single
- * @returns {Promise<any>}
- */
+
 async function query(sql, params = [], single = false) {
     if (
         !WORKER_URL ||
@@ -63,9 +57,10 @@ async function query(sql, params = [], single = false) {
                 throw new Error(`D1 query error: ${data.error}`);
             }
 
-            if (elapsed > 1000) {
+            // Log slow queries (threshold now 2s)
+            if (elapsed > 2000) {
                 console.log(
-                    `[Database] Slow query (${elapsed}ms): ${sql.substring(
+                    `[Database] Slow query (${elapsed}ms, attempt ${attempt}): ${sql.substring(
                         0,
                         100
                     )}`
@@ -91,6 +86,7 @@ async function query(sql, params = [], single = false) {
             }
 
             console.warn({
+                attempt,
                 errorName: err.name,
                 message: err.message,
                 elapsed,
@@ -102,8 +98,12 @@ async function query(sql, params = [], single = false) {
             });
 
             if (attempt < MAX_RETRIES) {
+                // Exponential backoff with jitter
+                const jitter = Math.random() * 500;
+                const delay = (RETRY_DELAY_MS * attempt) + jitter;
+                console.log(`[Database] Retrying in ${Math.round(delay)}ms...`);
                 await new Promise((resolve) =>
-                    setTimeout(resolve, RETRY_DELAY_MS * attempt)
+                    setTimeout(resolve, delay)
                 );
             }
         } finally {
@@ -131,5 +131,5 @@ async function upsert(table, columns, values, single = false) {
 
 module.exports = {
     query,
-    upsert,  // <-- new export
+    upsert,
 };
