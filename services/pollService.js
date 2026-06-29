@@ -1,4 +1,4 @@
-// services/pollService.js – Optimized: separate queries, no heavy CTE
+// services/pollService.js
 
 const db = require('./database');
 const h = require('../utils/helpers');
@@ -8,10 +8,23 @@ const UPDATE_INTERVAL = h.POLL_UPDATE_INTERVAL_MS || 30000;
 
 let activePollTimer = null;
 
+let pollCache = {
+    results: null,
+    timestamp: 0,
+    lastError: null,
+};
+const CACHE_TTL_MS = 60000;
+
 // ──────────────────────────────────────────────────────────────
-// getPollResults – simplified with separate queries
+// getPollResults – simplified with separate queries + caching
 // ──────────────────────────────────────────────────────────────
 async function getPollResults(message, characters) {
+    const now = Date.now();
+
+    if (pollCache.results && (now - pollCache.timestamp) < CACHE_TTL_MS) {
+        return pollCache.results;
+    }
+
     try {
         // 1. Fetch Discord scores (weighted sum)
         const discordRows = await db.query(
@@ -39,7 +52,6 @@ async function getPollResults(message, characters) {
             [CURRENT_POLL_ID]
         );
 
-        // Build maps for quick lookup
         const discordMap = {};
         discordRows.forEach(r => { discordMap[r.option_id] = parseFloat(r.score) || 0; });
 
@@ -48,7 +60,6 @@ async function getPollResults(message, characters) {
 
         const winnerSet = new Set(winnerRows.map(r => r.option_id));
 
-        // Prepare display results and data for DB
         const displayResults = [];
         const rawDataForDB = [];
 
@@ -76,7 +87,6 @@ async function getPollResults(message, characters) {
             });
         }
 
-        // ── Only write to poll_votes_final if scores have changed ──
         const currentRows = await db.query(
             `SELECT option_id, score FROM ${h.tables.POLL_VOTES_FINAL} WHERE poll_id = ?`,
             [CURRENT_POLL_ID]
@@ -97,7 +107,6 @@ async function getPollResults(message, characters) {
         }
 
         if (changed) {
-            // Use INSERT OR REPLACE for each row (or batch if D1 supported it)
             for (const row of rawDataForDB) {
                 await db.query(
                     `INSERT OR REPLACE INTO ${h.tables.POLL_VOTES_FINAL} 
@@ -108,16 +117,29 @@ async function getPollResults(message, characters) {
             }
         }
 
-        return displayResults.join('');
+        const resultString = displayResults.join('');
+
+        pollCache.results = resultString;
+        pollCache.timestamp = now;
+        pollCache.lastError = null;
+
+        return resultString;
 
     } catch (err) {
         console.error("Error calculating poll results:", err);
+        pollCache.lastError = err;
+
+        if (pollCache.results) {
+            console.log('[PollCache] Returning stale results due to error');
+            return pollCache.results;
+        }
+
         return "Error loading results...";
     }
 }
 
 // ──────────────────────────────────────────────────────────────
-// Other functions (unchanged except for minor improvements)
+// Other functions (with improved error handling)
 // ──────────────────────────────────────────────────────────────
 
 async function generateMessageContent(endTime, resultsText, characters, isEnded = false) {
@@ -219,14 +241,15 @@ function runPollInterval(pollMessage, endTime, characters) {
                 );
             }
         } catch (e) {
-            if (e.code === 10008) {
+            if (e.code === 10008 || e.message?.includes('Unknown Message')) {
+                console.warn('[PollInterval] Poll message gone – stopping interval.');
                 forceStopPoll();
                 await db.query(
                     `DELETE FROM ${h.tables.POLL_AUTO_RESUME} WHERE message_id = ?`,
                     [pollMessage.id]
-                );
+                ).catch(() => {});
             } else {
-                console.error("Poll interval error:", e);
+                console.error('[PollInterval] Error (will retry):', e.message);
             }
         }
     }, UPDATE_INTERVAL);
