@@ -102,3 +102,31 @@ button:disabled { opacity: 0.6; cursor: not-allowed; }
 #queue-gender-label { font-weight: 600; color: #e2e8f0; min-width: 80px; }
 #queue-list .status { padding: 20px; color: #94a3b8; font-style: italic; }
 .queue-checkbox { width: 18px; height: 18px; cursor: pointer; accent-color: var(--accent); flex-shrink: 0; margin: 0 6px 0 0; }
+
+// ─── Edit queue item ──────────────────────────────────────────
+app.post('/api/queue/edit', async (req, res) => {
+  const { index, newText } = req.body;
+  if (typeof index !== 'number' || index < 0) {
+    return res.status(400).json({ error: 'Invalid index' });
+  }
+  if (!newText || typeof newText !== 'string' || !newText.trim()) {
+    return res.status(400).json({ error: 'Missing or invalid newText' });
+  }
+  try {
+    let queue = await getQueue();
+    if (index >= queue.length) {
+      return res.status(400).json({ error: 'Index out of bounds' });
+    }
+    // Update the text (preserve other properties)
+    queue[index].text = newText.trim();
+    await db.query(
+      `UPDATE ${h.tables.MAIN_QUEUE} SET queue = ?, updated_at = datetime('now') WHERE id = 1`,
+      [JSON.stringify(queue)]
+    );
+    updateDiscordQueue(client);
+    res.json({ success: true, queue });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
