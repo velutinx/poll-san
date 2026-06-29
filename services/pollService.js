@@ -1,5 +1,4 @@
 // services/pollService.js
-
 const db = require('./database');
 const h = require('../utils/helpers');
 
@@ -106,15 +105,17 @@ async function getPollResults(message, characters) {
             }
         }
 
-        if (changed) {
-            for (const row of rawDataForDB) {
-                await db.query(
-                    `INSERT OR REPLACE INTO ${h.tables.POLL_VOTES_FINAL} 
-                     (poll_id, option_id, character_name, score, selected_at)
-                     VALUES (?, ?, ?, ?, ?)`,
-                    [row.poll_id, row.option_id, row.character_name, row.score, row.selected_at]
-                );
-            }
+        // ─── BATCH UPSERT: replace individual queries with a single batch ───
+        if (changed && rawDataForDB.length > 0) {
+            const columns = ['poll_id', 'option_id', 'character_name', 'score', 'selected_at'];
+            const valuesArray = rawDataForDB.map(row => [
+                row.poll_id,
+                row.option_id,
+                row.character_name,
+                row.score,
+                row.selected_at
+            ]);
+            await db.batchInsertOrReplace(h.tables.POLL_VOTES_FINAL, columns, valuesArray);
         }
 
         const resultString = displayResults.join('');
