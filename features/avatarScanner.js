@@ -28,6 +28,27 @@ function safeTimeout(callback, delayMs) {
     return setTimeout(() => safeTimeout(callback, delayMs - MAX_TIMEOUT), MAX_TIMEOUT);
 }
 
+// ─── MUTEX FOR CREDIT INCREMENT (prevents race conditions) ───
+const creditMutex = {
+    _queue: [],
+    _locked: false,
+    acquire() {
+        return new Promise((resolve) => {
+            this._queue.push(resolve);
+            if (!this._locked) this._next();
+        });
+    },
+    _next() {
+        if (this._queue.length === 0) {
+            this._locked = false;
+            return;
+        }
+        this._locked = true;
+        const resolve = this._queue.shift();
+        resolve(() => this._next());
+    }
+};
+
 // ==================== API CALLS ====================
 async function scanWithSightengine(url) {
     const formData = new URLSearchParams();
@@ -169,16 +190,22 @@ async function getResetMonth() {
     return getSetting('sightengine_credits_reset_month');
 }
 
+// ─── FIXED: credit increment is now serialised using a mutex ───
 async function incrementCreditsUsed(amount) {
-    const currentMonth = await getCurrentMonth();
-    const resetMonth = await getResetMonth();
+    const release = await creditMutex.acquire();
+    try {
+        const currentMonth = await getCurrentMonth();
+        const resetMonth = await getResetMonth();
 
-    if (resetMonth !== currentMonth) {
-        await setSetting('sightengine_credits_used', amount.toString());
-        await setSetting('sightengine_credits_reset_month', currentMonth);
-    } else {
-        const used = await getCreditsUsed();
-        await setSetting('sightengine_credits_used', (used + amount).toString());
+        if (resetMonth !== currentMonth) {
+            await setSetting('sightengine_credits_used', amount.toString());
+            await setSetting('sightengine_credits_reset_month', currentMonth);
+        } else {
+            const used = await getCreditsUsed();
+            await setSetting('sightengine_credits_used', (used + amount).toString());
+        }
+    } finally {
+        release();
     }
 }
 
@@ -762,45 +789,45 @@ function startMonthlyCheck(client) {
 
 function init(client) {
     client.on('messageCreate', handleScanCommand);
-client.on(Events.InteractionCreate, async interaction => {
-    if (!interaction.isButton()) return;
+    client.on(Events.InteractionCreate, async interaction => {
+        if (!interaction.isButton()) return;
 
-    if (interaction.customId === 'enter_giveaway') return;
+        if (interaction.customId === 'enter_giveaway') return;
 
-    const avatarScannerButtons = [
-        'monthly_scan_accept',
-        'warn_avatar_',
-        'ignore_avatar_',
-        'accept_avatar_'
-    ];
+        const avatarScannerButtons = [
+            'monthly_scan_accept',
+            'warn_avatar_',
+            'ignore_avatar_',
+            'accept_avatar_'
+        ];
 
-    if (
-        !avatarScannerButtons.some(id =>
-            interaction.customId.startsWith(id)
-        )
-    ) {
-        return;
-    }
+        if (
+            !avatarScannerButtons.some(id =>
+                interaction.customId.startsWith(id)
+            )
+        ) {
+            return;
+        }
 
-    if (interaction.user.id !== ids.users.Velutinx) {
-        return interaction.reply({
-            content: 'Only the server owner can use these buttons.',
-            flags: MessageFlags.Ephemeral
-        });
-    }
+        if (interaction.user.id !== ids.users.Velutinx) {
+            return interaction.reply({
+                content: 'Only the server owner can use these buttons.',
+                flags: MessageFlags.Ephemeral
+            });
+        }
 
-    if (interaction.customId.startsWith('warn_avatar_')) {
-        await handleWarnButton(interaction);
-    } else if (interaction.customId.startsWith('ignore_avatar_')) {
-        await handleIgnoreButton(interaction);
-    } else if (interaction.customId.startsWith('accept_avatar_')) {
-        await handleAcceptButton(interaction);
-    } else if (interaction.customId.startsWith('deny_avatar_')) {
-        await handleDenyButton(interaction);
-    } else if (interaction.customId === 'monthly_scan_accept') {
-        await handleMonthlyScanAccept(interaction);
-    }
-});
+        if (interaction.customId.startsWith('warn_avatar_')) {
+            await handleWarnButton(interaction);
+        } else if (interaction.customId.startsWith('ignore_avatar_')) {
+            await handleIgnoreButton(interaction);
+        } else if (interaction.customId.startsWith('accept_avatar_')) {
+            await handleAcceptButton(interaction);
+        } else if (interaction.customId.startsWith('deny_avatar_')) {
+            await handleDenyButton(interaction);
+        } else if (interaction.customId === 'monthly_scan_accept') {
+            await handleMonthlyScanAccept(interaction);
+        }
+    });
 
     client.on(Events.UserUpdate, onUserUpdate);
 
@@ -809,7 +836,7 @@ client.on(Events.InteractionCreate, async interaction => {
             try {
                 if (await shouldRunMassScanToday()) {
                     await markMassScanDoneToday();
-                   // console.log('[MassScan] Daily free mass scan marked for today. Starting scan...');
+                    // console.log('[MassScan] Daily free mass scan marked for today. Starting scan...');
                     await scanAllMembersWithFreeAPI(client);
                 }
             } catch (err) {
