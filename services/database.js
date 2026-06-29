@@ -6,7 +6,6 @@ const MAX_RETRIES = 3;
 const RETRY_DELAY_MS = 2000;
 const REQUEST_TIMEOUT_MS = 60000;
 
-
 async function query(sql, params = [], single = false) {
     if (
         !WORKER_URL ||
@@ -115,8 +114,7 @@ async function query(sql, params = [], single = false) {
 }
 
 /**
- * Upsert (insert or replace) a row into a table that has a PRIMARY KEY or UNIQUE constraint.
- * This builds an INSERT OR REPLACE statement automatically.
+ * Upsert (insert or replace) a single row.
  * @param {string} table - Table name
  * @param {string[]} columns - Array of column names
  * @param {any[]} values - Array of values in the same order as columns
@@ -129,7 +127,61 @@ async function upsert(table, columns, values, single = false) {
     return query(sql, values, single);
 }
 
+/**
+ * Batch insert or replace multiple rows in a single SQL statement.
+ * All rows must have the same columns (uses first row's columns).
+ *
+ * @param {string} table - Table name
+ * @param {string[]} columns - Array of column names (same for all rows)
+ * @param {any[][]} valuesArray - Array of value arrays, each corresponding to a row
+ * @returns {Promise<any>} - Returns the result of the query (usually an array of results)
+ */
+async function batchInsertOrReplace(table, columns, valuesArray) {
+    if (!valuesArray || valuesArray.length === 0) {
+        return { results: [] };
+    }
+    const placeholders = columns.map(() => '?').join(', ');
+    const valueGroups = valuesArray.map(vals => `(${vals.map(() => '?').join(', ')})`).join(', ');
+    const sql = `INSERT OR REPLACE INTO ${table} (${columns.join(', ')}) VALUES ${valueGroups}`;
+    const flatValues = valuesArray.flat();
+    return query(sql, flatValues);
+}
+
+/**
+ * Delete rows where column IN (values) in a single query.
+ *
+ * @param {string} table - Table name
+ * @param {string} column - Column name for the IN clause
+ * @param {any[]} values - Array of values to match
+ * @returns {Promise<any>}
+ */
+async function deleteIn(table, column, values) {
+    if (!values || values.length === 0) {
+        return { results: [] };
+    }
+    const placeholders = values.map(() => '?').join(', ');
+    const sql = `DELETE FROM ${table} WHERE ${column} IN (${placeholders})`;
+    return query(sql, values);
+}
+
+/**
+ * Execute multiple queries in parallel (reduces total time, but does not reduce D1 query count).
+ * Useful for SELECTs that cannot be batched.
+ *
+ * @param {Array<{sql: string, params?: any[]}>} queries
+ * @returns {Promise<any[]>} - Array of results in the same order
+ */
+async function batchQuery(queries) {
+    if (!queries || queries.length === 0) return [];
+    return Promise.all(
+        queries.map(q => query(q.sql, q.params || []))
+    );
+}
+
 module.exports = {
     query,
     upsert,
+    batchInsertOrReplace,
+    deleteIn,
+    batchQuery,
 };
