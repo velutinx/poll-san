@@ -1,12 +1,10 @@
-// web/routes/queue.js – with reorder merge fix
+// web/routes/queue.js
 const h = require('../../utils/helpers');
 const db = require('../../services/database');
-
 const QUEUE_CHANNEL_ID = h.ids.channels.QUEUE;
 const LOGO_URL = h.urls.LOGO_URL;
 const DISCORD_API = 'https://discord.com/api/v10';
 
-// ─── HELPERS ────────────────────────────────────────────────
 
 function normalizeQueue(queue) {
   if (!Array.isArray(queue)) return [];
@@ -266,9 +264,7 @@ module.exports = function setupQueueRoutes(app, client) {
           return newItem || item;
         }
       });
-      // If there are extra visibleOrder items (shouldn't happen), append them
       if (visibleIndex < visibleOrder.length) {
-        // This could happen if slashed items were removed? Just append the remaining visible items
         for (let i = visibleIndex; i < visibleOrder.length; i++) {
           newQueue.push(visibleOrder[i]);
         }
@@ -279,6 +275,32 @@ module.exports = function setupQueueRoutes(app, client) {
       );
       updateDiscordQueue(client);
       res.json({ success: true, queue: newQueue });
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post('/api/queue/edit', async (req, res) => {
+    const { index, newText } = req.body;
+    if (typeof index !== 'number' || index < 0) {
+      return res.status(400).json({ error: 'Invalid index' });
+    }
+    if (!newText || typeof newText !== 'string' || !newText.trim()) {
+      return res.status(400).json({ error: 'Missing or invalid newText' });
+    }
+    try {
+      let queue = await getQueue();
+      if (index >= queue.length) {
+        return res.status(400).json({ error: 'Index out of bounds' });
+      }
+      queue[index].text = newText.trim();
+      await db.query(
+        `UPDATE ${h.tables.MAIN_QUEUE} SET queue = ?, updated_at = datetime('now') WHERE id = 1`,
+        [JSON.stringify(queue)]
+      );
+      updateDiscordQueue(client);
+      res.json({ success: true, queue });
     } catch (err) {
       console.error(err);
       res.status(500).json({ error: err.message });
