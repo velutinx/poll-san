@@ -765,7 +765,6 @@ function init(client) {
 client.on(Events.InteractionCreate, async interaction => {
     if (!interaction.isButton()) return;
 
-    // 👇 Skip giveaway button (handled elsewhere)
     if (interaction.customId === 'enter_giveaway') return;
 
     const avatarScannerButtons = [
@@ -790,16 +789,18 @@ client.on(Events.InteractionCreate, async interaction => {
         });
     }
 
-        if (interaction.customId.startsWith('warn_avatar_')) {
-            await handleWarnButton(interaction);
-        } else if (interaction.customId.startsWith('ignore_avatar_')) {
-            await handleIgnoreButton(interaction);
-        } else if (interaction.customId.startsWith('accept_avatar_')) {
-            await handleAcceptButton(interaction);
-        } else if (interaction.customId.startsWith('deny_avatar_')) {
-            await handleDenyButton(interaction);
-        }
-    });
+    if (interaction.customId.startsWith('warn_avatar_')) {
+        await handleWarnButton(interaction);
+    } else if (interaction.customId.startsWith('ignore_avatar_')) {
+        await handleIgnoreButton(interaction);
+    } else if (interaction.customId.startsWith('accept_avatar_')) {
+        await handleAcceptButton(interaction);
+    } else if (interaction.customId.startsWith('deny_avatar_')) {
+        await handleDenyButton(interaction);
+    } else if (interaction.customId === 'monthly_scan_accept') {
+        await handleMonthlyScanAccept(interaction);
+    }
+});
 
     client.on(Events.UserUpdate, onUserUpdate);
 
