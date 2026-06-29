@@ -1,4 +1,4 @@
-// web/public/js/queue.js – reorder fix
+// web/public/js/queue.js – with edit functionality
 let queueItems = [];
 let sortableInstance = null;
 
@@ -30,6 +30,7 @@ function renderQueue() {
   const ul = document.createElement('ul');
   ul.className = 'queue-drag-list';
   ul.id = 'queueDragList';
+
   visibleItems.forEach((item, displayIndex) => {
     const originalIndex = queueItems.indexOf(item);
     const text = item.text || item;
@@ -39,6 +40,7 @@ function renderQueue() {
     li.className = 'queue-item';
     li.dataset.index = originalIndex;
 
+    // --- Checkbox ---
     const checkbox = document.createElement('input');
     checkbox.type = 'checkbox';
     checkbox.checked = checked;
@@ -48,10 +50,12 @@ function renderQueue() {
       togglePremium(originalIndex);
     });
 
+    // --- Drag handle ---
     const dragHandle = document.createElement('span');
     dragHandle.className = 'drag-handle';
     dragHandle.textContent = '⠿';
 
+    // --- Text container (editable) ---
     const textSpan = document.createElement('span');
     textSpan.className = 'queue-text';
     textSpan.textContent = text;
@@ -60,6 +64,17 @@ function renderQueue() {
       textSpan.style.color = '#f1c40f';
     }
 
+    // --- Edit button ---
+    const editBtn = document.createElement('button');
+    editBtn.className = 'queue-edit';
+    editBtn.textContent = '✏️';
+    editBtn.title = 'Edit item';
+    editBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      startEdit(originalIndex);
+    });
+
+    // --- Slash (remove) button ---
     const slashBtn = document.createElement('button');
     slashBtn.className = 'queue-remove';
     slashBtn.textContent = '✕';
@@ -72,9 +87,11 @@ function renderQueue() {
     li.appendChild(checkbox);
     li.appendChild(dragHandle);
     li.appendChild(textSpan);
+    li.appendChild(editBtn);
     li.appendChild(slashBtn);
     ul.appendChild(li);
   });
+
   container.appendChild(ul);
 
   if (sortableInstance) sortableInstance.destroy();
@@ -82,7 +99,6 @@ function renderQueue() {
     handle: '.drag-handle',
     animation: 150,
     onEnd: function() {
-      // Build visible order from the sorted list
       const visibleOrder = [];
       document.querySelectorAll('#queueDragList .queue-item').forEach(li => {
         const idx = parseInt(li.dataset.index);
@@ -96,7 +112,91 @@ function renderQueue() {
   });
 }
 
-// ─── Premium toggle ──────────────────────────────────────────
+// ─── Edit functions ──────────────────────────────────────────
+function startEdit(index) {
+  const li = document.querySelector(`.queue-item[data-index="${index}"]`);
+  if (!li) return;
+  const textSpan = li.querySelector('.queue-text');
+  const editBtn = li.querySelector('.queue-edit');
+  const currentText = textSpan.textContent;
+
+  // Replace text with input
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.className = 'queue-edit-input';
+  input.value = currentText;
+  input.style.flex = '1';
+  input.style.background = '#0f172a';
+  input.style.border = '1px solid #475569';
+  input.style.borderRadius = '4px';
+  input.style.color = 'white';
+  input.style.padding = '4px 8px';
+  input.style.marginRight = '8px';
+
+  textSpan.replaceWith(input);
+  input.focus();
+  input.select();
+
+  // Change edit button to save button
+  editBtn.textContent = '✔️';
+  editBtn.title = 'Save changes';
+  editBtn.className = 'queue-save';
+
+  // Save on Enter
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      saveEdit(index, input.value);
+    }
+    if (e.key === 'Escape') {
+      cancelEdit(index);
+    }
+  });
+
+  // Save on blur (optional – we'll keep it to save on click only)
+  // But we'll allow blur to cancel? Better to require explicit save.
+  // We'll keep it as is.
+
+  // Replace the save button's click handler
+  editBtn.onclick = (e) => {
+    e.stopPropagation();
+    saveEdit(index, input.value);
+  };
+}
+
+function cancelEdit(index) {
+  // Re-render the whole queue to discard changes
+  renderQueue();
+}
+
+async function saveEdit(index, newText) {
+  newText = newText.trim();
+  if (!newText) {
+    showToast('Item text cannot be empty.', 'error');
+    cancelEdit(index);
+    return;
+  }
+  try {
+    const res = await fetch('/api/queue/edit', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ index, newText })
+    });
+    const data = await res.json();
+    if (data.success) {
+      queueItems = data.queue;
+      renderQueue();
+      showToast('Item updated.', 'success');
+    } else {
+      showToast(data.error || 'Failed to update.', 'error');
+    }
+  } catch (err) {
+    console.error(err);
+    showToast('Network error.', 'error');
+  }
+}
+
+// ─── Existing functions (togglePremium, toggleSlash, addQueueItem, saveReorder) ───
 async function togglePremium(index) {
   try {
     const res = await fetch('/api/queue/toggle', {
@@ -118,7 +218,6 @@ async function togglePremium(index) {
   }
 }
 
-// ─── Slash toggle ──────────────────────────────────────────
 async function toggleSlash(index) {
   try {
     const res = await fetch('/api/queue/slash', {
@@ -140,7 +239,6 @@ async function toggleSlash(index) {
   }
 }
 
-// ─── Add ─────────────────────────────────────────────────────
 async function addQueueItem() {
   const toggle = document.getElementById('queue-toggle');
   const input = document.getElementById('queue-input');
@@ -172,7 +270,6 @@ async function addQueueItem() {
   }
 }
 
-// ─── Reorder ─────────────────────────────────────────────────
 async function saveReorder(visibleOrder) {
   try {
     const res = await fetch('/api/queue/reorder', {
