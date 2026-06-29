@@ -27,12 +27,10 @@ const MESSAGES = {
   }
 };
 
-// Helper to format dates
 function formatDate(date) {
   return date.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
 }
 
-// Helper to get language for an order
 async function getLanguageForOrder(orderId) {
   if (!orderId) return 'en';
   try {
@@ -41,10 +39,7 @@ async function getLanguageForOrder(orderId) {
       [orderId],
       true
     );
-    if (!row) {
-      console.warn(`[MembershipSync] Language fetch: no row for order ${orderId}`);
-      return 'en';
-    }
+    if (!row) return 'en';
     return row.language || 'en';
   } catch (err) {
     console.warn(`[MembershipSync] Language fetch failed for ${orderId}:`, err.message);
@@ -52,7 +47,6 @@ async function getLanguageForOrder(orderId) {
   }
 }
 
-// Check if a welcome message has already been sent for this order
 async function hasMessageBeenSent(discordId, orderId) {
   try {
     const row = await db.query(
@@ -65,11 +59,10 @@ async function hasMessageBeenSent(discordId, orderId) {
     return !!row;
   } catch (err) {
     console.error('[MembershipSync] Failed to check message sent status:', err.message);
-    return true; // assume sent to avoid spam
+    return true;
   }
 }
 
-// Record that a message was sent
 async function recordMessageSent(discordId, orderId, language, membership, discordName) {
   try {
     await db.query(
@@ -91,7 +84,6 @@ async function recordMessageSent(discordId, orderId, language, membership, disco
   }
 }
 
-// Send a DM to a member
 async function sendDM(member, content, lang) {
   try {
     await member.send({ content, flags: ["SuppressEmbeds"] });
@@ -103,7 +95,6 @@ async function sendDM(member, content, lang) {
   }
 }
 
-// Send the membership welcome DM
 async function sendMembershipMessage(client, discordId, membership) {
   const tier = membership.tier;
   const expiresAt = new Date(membership.expires_at);
@@ -139,8 +130,6 @@ async function sendMembershipMessage(client, discordId, membership) {
     if (success) {
       await recordMessageSent(discordId, orderId, lang, membership, discordName);
 
-      // 🔥 OLD admin channel message – we will replace with webhook in syncMembershipRoles
-      // (We'll keep this for backward compatibility but it will be superseded)
       if (tier === 2 || tier === 3) {
         try {
           const adminChannelId = h.ids.channels.admin_channel;
@@ -166,7 +155,6 @@ async function sendMembershipMessage(client, discordId, membership) {
   }
 }
 
-// ─── NEW: Helper to get or create the "Website Subscriber" webhook ───
 async function getWebsiteWebhook(channel) {
   const webhooks = await channel.fetchWebhooks();
   let webhook = webhooks.find(w => w.name === 'Website Subscriber');
@@ -176,7 +164,6 @@ async function getWebsiteWebhook(channel) {
       avatar: h.urls.LOGO_URL
     });
   } else {
-    // Update avatar if it changed
     if (webhook.avatar !== h.urls.LOGO_URL) {
       await webhook.edit({ avatar: h.urls.LOGO_URL });
     }
@@ -184,16 +171,13 @@ async function getWebsiteWebhook(channel) {
   return webhook;
 }
 
-// ─── NEW: Send a webhook message for a new Request-tier member ───
 async function sendRequestTierWebhook(client, discordId, membership) {
   const tier = membership.tier;
-  // Only for Copper (2) and Silver (3) which are the "Request" tiers on the website
   if (tier !== 2 && tier !== 3) return;
 
   const expiresAt = new Date(membership.expires_at);
   const orderId = membership.order_id;
 
-  // Fetch email from purchase_success
   let email = 'unknown';
   try {
     const emailRow = await db.query(
@@ -206,7 +190,6 @@ async function sendRequestTierWebhook(client, discordId, membership) {
     console.warn(`Could not fetch email for order ${orderId}:`, err.message);
   }
 
-  // Get the user's tag
   let tag = 'Unknown';
   try {
     const guild = await client.guilds.fetch(process.env.GUILD_ID);
@@ -216,11 +199,9 @@ async function sendRequestTierWebhook(client, discordId, membership) {
     console.warn(`Could not fetch member ${discordId}:`, err.message);
   }
 
-  // Tier name for display
   const tierNames = { 2: 'Copper', 3: 'Silver' };
   const tierDisplay = `Request (${tierNames[tier] || tier})`;
 
-  // Build message
   const userLink = `[${tag}](https://discord.com/users/${discordId})`;
   const message = `${h.releaseEmojis.PIXELSKY} **New Request Member!**\n` +
                   `**Name:** ${userLink}\n` +
@@ -228,7 +209,6 @@ async function sendRequestTierWebhook(client, discordId, membership) {
                   `**Tier:** ${tierDisplay}\n` +
                   `**Expires on:** ${formatDate(expiresAt)}`;
 
-  // Send via webhook
   try {
     const adminChannel = await client.channels.fetch(h.ids.channels.admin_channel);
     const webhook = await getWebsiteWebhook(adminChannel);
@@ -237,7 +217,7 @@ async function sendRequestTierWebhook(client, discordId, membership) {
       username: 'Website Subscriber',
       avatarURL: h.urls.LOGO_URL,
       allowedMentions: { users: [] },
-      flags: [1 << 2] // Suppress notifications
+      flags: [1 << 2]
     });
     console.log(`📨 Sent admin webhook for ${tag} (tier ${tier})`);
   } catch (webhookErr) {
@@ -245,7 +225,6 @@ async function sendRequestTierWebhook(client, discordId, membership) {
   }
 }
 
-// ─── State management ───
 async function getLastActiveSet() {
   try {
     const row = await db.query(
@@ -278,7 +257,6 @@ async function storeCurrentActiveSet(ids) {
   }
 }
 
-// ─── Main sync function ───
 async function syncMembershipRoles(client) {
   let changesMade = false;
 
@@ -310,7 +288,6 @@ async function syncMembershipRoles(client) {
     const previousActiveIds = await getLastActiveSet();
     const newIds = [...currentActiveIds].filter(id => !previousActiveIds.has(id));
 
-    // ─── NEW: Send webhook for each new active member that is Copper or Silver ───
     if (newIds.length > 0) {
       const guild = await client.guilds.fetch(process.env.GUILD_ID);
       for (const discordId of newIds) {
@@ -319,16 +296,12 @@ async function syncMembershipRoles(client) {
           const tier = userBestMembership.get(discordId).tier;
           const tag = member ? member.user.tag : 'Unknown';
           console.log(`[MembershipSync] NEW ACTIVE MEMBER: ${tag} (${discordId}) - Tier ${tier}`);
-
-          // Send the admin webhook for Request tiers
           await sendRequestTierWebhook(client, discordId, userBestMembership.get(discordId));
         } catch (err) {}
       }
     }
 
-    // ─── Send DMs for all active members (existing logic) ───
     for (const [discordId, membership] of userBestMembership.entries()) {
-      // Skip sending messages to Creator role
       try {
         const guild = await client.guilds.fetch(process.env.GUILD_ID);
         const member = await guild.members.fetch(discordId).catch(() => null);
@@ -343,8 +316,47 @@ async function syncMembershipRoles(client) {
       await new Promise(res => setTimeout(res, 500));
     }
 
-    // ─── Role assignment for active members ───
+    const membershipsToUpsert = [];
+    for (const [discordId, membership] of userBestMembership.entries()) {
+      membershipsToUpsert.push([
+        discordId,
+        membership.tier,
+        membership.order_id || null,
+        membership.updated_at || new Date().toISOString(),
+        membership.expires_at,
+        membership.months || 1,
+        membership.recurring ? 1 : 0,
+        membership.plan_id || null,
+        membership.subscription_id || null,
+        membership.status || 'ACTIVE',
+        membership.source || 'website'
+      ]);
+    }
+
+    if (membershipsToUpsert.length > 0) {
+      const placeholders = membershipsToUpsert.map(() => '(?,?,?,?,?,?,?,?,?,?,?)').join(', ');
+      const flatValues = membershipsToUpsert.flat();
+      await db.query(
+        `INSERT OR REPLACE INTO ${h.tables.MEMBERSHIPS}
+         (discord_id, tier, order_id, updated_at, expires_at, months, recurring, plan_id, subscription_id, status, source)
+         VALUES ${placeholders}`,
+        flatValues
+      );
+      changesMade = true;
+    }
+
+    const inactiveUserIds = [...previousActiveIds].filter(id => !currentActiveIds.has(id));
+    if (inactiveUserIds.length > 0) {
+      const placeholders = inactiveUserIds.map(() => '?').join(',');
+      await db.query(
+        `DELETE FROM ${h.tables.MEMBERSHIPS} WHERE discord_id IN (${placeholders})`,
+        inactiveUserIds
+      );
+      changesMade = true;
+    }
+
     const guild = await client.guilds.fetch(process.env.GUILD_ID);
+
     for (const [discordId, membership] of userBestMembership.entries()) {
       const member = await guild.members.fetch(discordId).catch(() => null);
       if (!member) continue;
@@ -376,8 +388,7 @@ async function syncMembershipRoles(client) {
       }
     }
 
-    // ─── Clean up inactive members ───
-    const inactiveUserIds = [...previousActiveIds].filter(id => !currentActiveIds.has(id));
+    // Clean up roles for inactive members
     for (const discordId of inactiveUserIds) {
       try {
         const member = await guild.members.fetch(discordId).catch(() => null);
