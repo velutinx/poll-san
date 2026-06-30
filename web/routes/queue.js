@@ -330,6 +330,6 @@ module.exports = function setupQueueRoutes(app, client) {
     }
   });
 };
-
+module.exports = setupQueueRoutes;
 module.exports.updateDiscordQueue = updateDiscordQueue;
-module.exports = { updateDiscordQueue, getQueue };
+module.exports.getQueue = getQueue;
