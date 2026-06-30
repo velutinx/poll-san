@@ -1,6 +1,13 @@
-// index.js (FULL – fixed line 61: interactionHandler export)
+// index.js
 const path = require('path');
 require('dotenv').config({ path: path.resolve(__dirname, '.env'), quiet: true });
+const { setGlobalDispatcher, Agent } = require('undici');
+
+setGlobalDispatcher(new Agent({
+    connections: 100,
+    keepAliveTimeout: 60000,
+    keepAliveMaxTimeout: 600000
+}));
 
 const {
     Client,
