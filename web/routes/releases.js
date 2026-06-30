@@ -6,9 +6,11 @@ const AdmZip = require('adm-zip');
 const { Storage } = require('megajs');
 const h = require('../../utils/helpers');
 const { getMegaStorage } = require('../../services/megaSession');
+const db = require('../../services/database');
+const { updateDiscordQueue, getQueue } = require('./queue');
 
 // ─── CONFIGURATION ────────────────────────────────────────────
-const TEST_CHANNEL_ID = '1466019839205314644';
+const TEST_CHANNEL_ID = '1466019839205314644'; // Test bot channel for ghost pings
 
 // ─── HELPERS ──────────────────────────────────────────────────
 async function getFreeFemaleMembers(guild) {
@@ -60,13 +62,60 @@ async function sendGhostPingToFreeMembers(client, guild, packInfo, testChannelId
                 content,
                 allowedMentions: { users: chunk }
             });
-            // Delete after 10 seconds
             setTimeout(() => {
                 sentMsg.delete().catch(() => {});
             }, 10000);
         }
     } catch (err) {
         console.error('Failed to send ghost ping:', err);
+    }
+}
+
+// ─── QUEUE COMPLETION HELPER ────────────────────────────────
+async function markQueueCompleted(characterName) {
+    try {
+        let queue = await getQueue();
+
+        // Normalise
+        queue = queue.map(item => {
+            if (typeof item === 'string') {
+                return { text: item, checked: false, slashed: false, slashedAt: null };
+            }
+            return {
+                text: item.text || item,
+                checked: !!item.checked,
+                slashed: !!item.slashed,
+                slashedAt: item.slashedAt || null
+            };
+        });
+
+        let found = false;
+        const updatedQueue = queue.map(item => {
+            const itemName = item.text.replace(/^[♂♀]️?\s*/, '').trim();
+            if (itemName.toLowerCase() === characterName.toLowerCase()) {
+                found = true;
+                item.slashed = true;
+                item.slashedAt = new Date().toISOString();
+                // Optional: mark as "checked" (bold) as well
+                item.checked = true;
+            }
+            return item;
+        });
+
+        if (!found) {
+            console.log(`[Queue] Character "${characterName}" not found – skipping update.`);
+            return;
+        }
+
+        await db.query(
+            `UPDATE ${h.tables.MAIN_QUEUE} SET queue = ?, updated_at = datetime('now') WHERE id = 1`,
+            [JSON.stringify(updatedQueue)]
+        );
+
+        await updateDiscordQueue(client);
+        console.log(`[Queue] Marked "${characterName}" as released.`);
+    } catch (err) {
+        console.error('[Queue] Failed to mark as completed:', err);
     }
 }
 
@@ -293,37 +342,37 @@ ${getRandomArrow()} See <#${SUPPORTER_FORUM_ID}>`;
     }
   });
 
-app.post('/api/supporter-release', upload.array('images'), async (req, res) => {
-  const { pack, setSize, input, series, suffix, download, editPreview, previewThreadId, supporterThreadId } = req.body;
-  const files = req.files || [];
+  app.post('/api/supporter-release', upload.array('images'), async (req, res) => {
+    const { pack, setSize, input, series, suffix, download, editPreview, previewThreadId, supporterThreadId } = req.body;
+    const files = req.files || [];
 
-  try {
-    const fullInput = input.trim();
-    const spaceIndex = fullInput.indexOf(' ');
-    let genderEmoji = "";
-    let charName = fullInput;
-    if (spaceIndex !== -1) {
-      genderEmoji = fullInput.substring(0, spaceIndex).trim();
-      charName = fullInput.substring(spaceIndex + 1).trim();
-    }
+    try {
+      const fullInput = input.trim();
+      const spaceIndex = fullInput.indexOf(' ');
+      let genderEmoji = "";
+      let charName = fullInput;
+      if (spaceIndex !== -1) {
+        genderEmoji = fullInput.substring(0, spaceIndex).trim();
+        charName = fullInput.substring(spaceIndex + 1).trim();
+      }
 
-    let roleMention = "";
-    const appliedTags = [];
-    if (genderEmoji.includes('female_sign') || genderEmoji === '♀️') {
-      roleMention = `<@&${h.ids.roles.female_supporter}>`;
-      appliedTags.push(h.ids.tags.supporter_female);
-    } else if (genderEmoji.includes('male_sign') || genderEmoji === '♂️') {
-      roleMention = `<@&${h.ids.roles.male_supporter}>`;
-      appliedTags.push(...h.ids.tags.supporter_male);
-    }
+      let roleMention = "";
+      const appliedTags = [];
+      if (genderEmoji.includes('female_sign') || genderEmoji === '♀️') {
+        roleMention = `<@&${h.ids.roles.female_supporter}>`;
+        appliedTags.push(h.ids.tags.supporter_female);
+      } else if (genderEmoji.includes('male_sign') || genderEmoji === '♂️') {
+        roleMention = `<@&${h.ids.roles.male_supporter}>`;
+        appliedTags.push(...h.ids.tags.supporter_male);
+      }
 
-    const guild = await client.guilds.fetch(process.env.GUILD_ID);
-    const forumChannel = await guild.channels.fetch(SUPPORTER_FORUM_ID);
+      const guild = await client.guilds.fetch(process.env.GUILD_ID);
+      const forumChannel = await guild.channels.fetch(SUPPORTER_FORUM_ID);
 
-    const suffixStr = suffix ? ` — ${suffix}` : '';
-    const threadTitle = `[${series.toUpperCase()}] ${charName} — Pack #${pack}${suffixStr}`;
-    
-    const messageBody = `${SUPPORTER_RELEASE_HEADER}
+      const suffixStr = suffix ? ` — ${suffix}` : '';
+      const threadTitle = `[${series.toUpperCase()}] ${charName} — Pack #${pack}${suffixStr}`;
+      
+      const messageBody = `${SUPPORTER_RELEASE_HEADER}
 ${roleMention || ''}
 ━━━━━━━━━━━━━━
 Character: ${charName}
@@ -332,121 +381,120 @@ Content: Explicit (${h.releaseEmojis.EIGHTEEN})
 
 ${getRandomDownArrow()} Download:
 ${h.releaseEmojis.LINK} [megaLink](${download || 'https://mega.nz'})`;
-    
-    let supporterResult = {};
+      
+      let supporterResult = {};
 
-    if (supporterThreadId) {
-      const thread = await client.channels.fetch(supporterThreadId);
-      if (!thread) return res.status(404).json({ error: "Thread not found" });
+      if (supporterThreadId) {
+        const thread = await client.channels.fetch(supporterThreadId);
+        if (!thread) return res.status(404).json({ error: "Thread not found" });
 
-      await thread.setName(threadTitle);
-      await thread.setAppliedTags(appliedTags, `Updating tags for supporter release`);
+        await thread.setName(threadTitle);
+        await thread.setAppliedTags(appliedTags, `Updating tags for supporter release`);
 
-      const starter = await thread.fetchStarterMessage();
-      if (starter) {
-        await editThreadMessage(thread, messageBody);
-      }
-
-      if (files.length > 0) {
-        const attachments = files.map(f => ({ attachment: f.buffer, name: f.originalname }));
-        const sent = await thread.send({ content: `${getRandomDownArrow()} **Updated images:**`, files: attachments });
-        await sent.edit({ flags: ["SuppressEmbeds"] });
-      }
-      supporterResult = { updated: true };
-    } else {
-      const webhook = await getWebhook(forumChannel, 'Release');
-      const sentMessage = await webhook.send({
-        content: messageBody,
-        files: files.map(f => ({ attachment: f.buffer, name: f.originalname })),
-        threadName: threadTitle,
-        appliedTags: appliedTags.length > 0 ? appliedTags : undefined,
-        username: 'Release',
-        avatarURL: LOGO_URL,
-        flags: ["SuppressEmbeds"],
-      });
-
-      const heartEmoji = h.releaseEmojis?.HEART || '💖';
-      try {
-        await sentMessage.react(heartEmoji);
-      } catch (reactErr) {
-        console.warn('Could not add heart reaction:', reactErr.message);
-      }
-
-      supporterResult = { created: true };
-    }
-
-    let previewResult = {};
-    if (editPreview === 'true') {
-      let targetPreviewId = previewThreadId;
-
-      if (!targetPreviewId && supporterThreadId) {
-        try {
-          const previewForum = await guild.channels.fetch(FORUM_ID);
-          const threads = await previewForum.threads.fetchActive();
-          const seriesUpper = series.toUpperCase();
-          const packPattern = `Pack #${pack}`;
-          const matchingThread = threads.threads.find(t =>
-            t.name.includes(`[${seriesUpper}]`) && t.name.includes(packPattern)
-          );
-          if (matchingThread) targetPreviewId = matchingThread.id;
-        } catch (findErr) {
-          console.error('Error finding preview thread:', findErr);
+        const starter = await thread.fetchStarterMessage();
+        if (starter) {
+          await editThreadMessage(thread, messageBody);
         }
+
+        if (files.length > 0) {
+          const attachments = files.map(f => ({ attachment: f.buffer, name: f.originalname }));
+          const sent = await thread.send({ content: `${getRandomDownArrow()} **Updated images:**`, files: attachments });
+          await sent.edit({ flags: ["SuppressEmbeds"] });
+        }
+        supporterResult = { updated: true };
+      } else {
+        const webhook = await getWebhook(forumChannel, 'Release');
+        const sentMessage = await webhook.send({
+          content: messageBody,
+          files: files.map(f => ({ attachment: f.buffer, name: f.originalname })),
+          threadName: threadTitle,
+          appliedTags: appliedTags.length > 0 ? appliedTags : undefined,
+          username: 'Release',
+          avatarURL: LOGO_URL,
+          flags: ["SuppressEmbeds"],
+        });
+
+        const heartEmoji = h.releaseEmojis?.HEART || '💖';
+        try {
+          await sentMessage.react(heartEmoji);
+        } catch (reactErr) {
+          console.warn('Could not add heart reaction:', reactErr.message);
+        }
+
+        supporterResult = { created: true };
       }
 
-      if (targetPreviewId) {
-        try {
-          const previewThread = await client.channels.fetch(targetPreviewId);
-          if (previewThread) {
-            if (previewThread.archived) await previewThread.setArchived(false);
+      let previewResult = {};
+      if (editPreview === 'true') {
+        let targetPreviewId = previewThreadId;
 
-            let newTitle = previewThread.name;
-            if (newTitle.includes(' — SOON')) {
-              newTitle = newTitle.replace(' — SOON', '');
-              await previewThread.setName(newTitle);
-            }
-
-            const starter = await previewThread.fetchStarterMessage();
-            if (starter) {
-              let newContent = starter.content;
-              newContent = newContent.replace(/(Set size:\s*)(\d+|XX)(\s*images)/i, `$1${setSize}$3`);
-
-              const verifyEmoji = h.releaseEmojis.getRandomVerify();
-              if (newContent.includes(`${PREVIEW_RELEASE_HEADER} -- SOON`)) {
-                newContent = newContent.replace(`${PREVIEW_RELEASE_HEADER} -- SOON`, `${verifyEmoji} RELEASE`);
-              } else if (newContent.includes(PREVIEW_RELEASE_HEADER)) {
-                newContent = newContent.replace(PREVIEW_RELEASE_HEADER, `${verifyEmoji} RELEASE`);
-              }
-              newContent = newContent.replace(/ -- SOON/g, '');
-
-              const editResult = await editThreadMessage(previewThread, newContent);
-              if (editResult.success) {
-                previewResult = { previewUpdated: true };
-              } else {
-                console.error('Could not update preview message:', editResult.error);
-              }
-            }
+        if (!targetPreviewId && supporterThreadId) {
+          try {
+            const previewForum = await guild.channels.fetch(FORUM_ID);
+            const threads = await previewForum.threads.fetchActive();
+            const seriesUpper = series.toUpperCase();
+            const packPattern = `Pack #${pack}`;
+            const matchingThread = threads.threads.find(t =>
+              t.name.includes(`[${seriesUpper}]`) && t.name.includes(packPattern)
+            );
+            if (matchingThread) targetPreviewId = matchingThread.id;
+          } catch (findErr) {
+            console.error('Error finding preview thread:', findErr);
           }
-        } catch (previewErr) {
-          console.error('Error updating preview thread:', previewErr);
+        }
+
+        if (targetPreviewId) {
+          try {
+            const previewThread = await client.channels.fetch(targetPreviewId);
+            if (previewThread) {
+              if (previewThread.archived) await previewThread.setArchived(false);
+
+              let newTitle = previewThread.name;
+              if (newTitle.includes(' — SOON')) {
+                newTitle = newTitle.replace(' — SOON', '');
+                await previewThread.setName(newTitle);
+              }
+
+              const starter = await previewThread.fetchStarterMessage();
+              if (starter) {
+                let newContent = starter.content;
+                newContent = newContent.replace(/(Set size:\s*)(\d+|XX)(\s*images)/i, `$1${setSize}$3`);
+
+                const verifyEmoji = h.releaseEmojis.getRandomVerify();
+                if (newContent.includes(`${PREVIEW_RELEASE_HEADER} -- SOON`)) {
+                newContent = newContent.replace(`${PREVIEW_RELEASE_HEADER} -- SOON`, `${verifyEmoji} RELEASE`);
+                } else if (newContent.includes(PREVIEW_RELEASE_HEADER)) {
+                newContent = newContent.replace(PREVIEW_RELEASE_HEADER, `${verifyEmoji} RELEASE`);
+                }
+                newContent = newContent.replace(/ -- SOON/g, '');
+
+                const editResult = await editThreadMessage(previewThread, newContent);
+                if (editResult.success) {
+                  previewResult = { previewUpdated: true };
+                } else {
+                  console.error('Could not update preview message:', editResult.error);
+                }
+              }
+            }
+          } catch (previewErr) {
+            console.error('Error updating preview thread:', previewErr);
+          }
         }
       }
 
-      try {
-        await sendGhostPingToFreeMembers(client, guild, { pack, character: charName }, TEST_CHANNEL_ID);
-        console.log('✅ Ghost ping sent to free female members');
-      } catch (pingErr) {
-        console.error('Ghost ping error:', pingErr);
+      // ─── Mark queue as completed ────────────────────────────
+      const cleanCharName = input.replace(/^[♂♀]️?\s*/, '').trim();
+      if (cleanCharName) {
+        await markQueueCompleted(cleanCharName);
       }
+
+      res.json({ success: true, ...supporterResult, ...previewResult });
+
+    } catch (err) {
+      console.error('Supporter release error:', err);
+      res.status(500).json({ error: err.message });
     }
-
-    res.json({ success: true, ...supporterResult, ...previewResult });
-
-  } catch (err) {
-    console.error('Supporter release error:', err);
-    res.status(500).json({ error: err.message });
-  }
-});
+  });
 
   async function getOrCreateFolder(node, pathParts) {
     let current = node;
