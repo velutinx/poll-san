@@ -332,3 +332,4 @@ module.exports = function setupQueueRoutes(app, client) {
 };
 
 module.exports.updateDiscordQueue = updateDiscordQueue;
+module.exports = { updateDiscordQueue, getQueue };
