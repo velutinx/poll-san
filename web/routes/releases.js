@@ -1,5 +1,4 @@
-  //     poll-san/web/routes/releases.js
-
+// web/routes/releases.js – with ghost ping for free female members
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
@@ -8,11 +7,76 @@ const { Storage } = require('megajs');
 const h = require('../../utils/helpers');
 const { getMegaStorage } = require('../../services/megaSession');
 
+// ─── CONFIGURATION ────────────────────────────────────────────
+// No placeholder needed – use helpers directly!
+const TEST_CHANNEL_ID = '1466019839205314644'; // Test bot channel for ghost pings
+
+// ─── HELPERS ──────────────────────────────────────────────────
+async function getFreeFemaleMembers(guild) {
+    // Use the exact role IDs from helpers.js
+    const FEMALE_CONTENT_ROLE_ID = h.ids.roles.female_supporter; // '1465968041404928177'
+    const MEMBER_ROLE_ID = h.ids.roles.member;                  // '1495684657730158724'
+    const SUPPORTER_ROLE_ID = h.ids.roles.supporter;            // '1466155709547675795'
+
+    const members = await guild.members.fetch();
+    const targetIds = [];
+    for (const [, member] of members) {
+        if (member.user.bot) continue;
+        const hasFemaleContent = member.roles.cache.has(FEMALE_CONTENT_ROLE_ID);
+        const hasMember = member.roles.cache.has(MEMBER_ROLE_ID);
+        const hasSupporter = member.roles.cache.has(SUPPORTER_ROLE_ID);
+        if (hasFemaleContent && hasMember && !hasSupporter) {
+            targetIds.push(member.id);
+        }
+    }
+    return targetIds;
+}
+
+async function sendGhostPingToFreeMembers(client, guild, packInfo, testChannelId) {
+    try {
+        const targetIds = await getFreeFemaleMembers(guild);
+        if (targetIds.length === 0) {
+            console.log('No free female members to ping.');
+            return;
+        }
+
+        const testChannel = await client.channels.fetch(testChannelId).catch(() => null);
+        if (!testChannel) {
+            console.error(`Test channel ${testChannelId} not found.`);
+            return;
+        }
+
+        // Discord's safe mention limit per message is ~50 (to avoid rate limits)
+        const chunkSize = 50;
+        const chunks = [];
+        for (let i = 0; i < targetIds.length; i += chunkSize) {
+            chunks.push(targetIds.slice(i, i + chunkSize));
+        }
+
+        const packName = packInfo.pack ? `Pack ${packInfo.pack}` : 'a new pack';
+        const character = packInfo.character || '';
+
+        for (const chunk of chunks) {
+            const mentionString = chunk.map(id => `<@${id}>`).join(' ');
+            const content = `📢 ${packName} ${character} was just released! ${mentionString}`;
+            const sentMsg = await testChannel.send({
+                content,
+                allowedMentions: { users: chunk }
+            });
+            // Delete after 10 seconds
+            setTimeout(() => {
+                sentMsg.delete().catch(() => {});
+            }, 10000);
+        }
+    } catch (err) {
+        console.error('Failed to send ghost ping:', err);
+    }
+}
+
 module.exports = function setupReleasesRoutes(app, client, upload, FORUM_ID, SUPPORTER_FORUM_ID) {
   
   const LOGO_URL = h.urls.LOGO_URL;
 
-  // Helper: get or create a webhook with correct name & avatar
   async function getWebhook(channel, name) {
     let webhook = (await channel.fetchWebhooks()).find(w => w.name === name);
     if (webhook) {
@@ -25,13 +89,11 @@ module.exports = function setupReleasesRoutes(app, client, upload, FORUM_ID, SUP
     return webhook;
   }
 
-  // Helper to safely edit a thread's starter message
   async function editThreadMessage(thread, newContent) {
     try {
       const starter = await thread.fetchStarterMessage().catch(() => null);
       if (!starter) return { success: false, error: 'No starter message' };
 
-      // 1. Try Webhook Edit (most common for forum posts)
       if (starter.webhookId) {
         const webhooks = await thread.parent.fetchWebhooks();
         const webhook = webhooks.find(w => w.id === starter.webhookId);
@@ -46,7 +108,6 @@ module.exports = function setupReleasesRoutes(app, client, upload, FORUM_ID, SUP
         }
       }
 
-      // 2. Fallback to Bot Edit
       await starter.edit({ 
         content: newContent, 
         flags: ["SuppressEmbeds"] 
@@ -56,7 +117,6 @@ module.exports = function setupReleasesRoutes(app, client, upload, FORUM_ID, SUP
     } catch (err) {
       console.error("Edit thread message failed, attempting final fallback send:", err);
       
-      // 3. Final Fallback: If editing fails, send a new message so the info is at least updated
       try {
         await thread.send({ 
           content: `${h.releaseEmojis?.ALERT || '⚠️'} **Update:**\n${newContent}`, 
@@ -71,13 +131,10 @@ module.exports = function setupReleasesRoutes(app, client, upload, FORUM_ID, SUP
 
   const getRandomArrow = () => h.releaseEmojis.ARROWS[Math.floor(Math.random() * h.releaseEmojis.ARROWS.length)];
   const getRandomDownArrow = () => h.releaseEmojis.DOWN_ARROWS[Math.floor(Math.random() * h.releaseEmojis.DOWN_ARROWS.length)];
-
   const PREVIEW_RELEASE_HEADER = `${h.releaseEmojis.NEW1}${h.releaseEmojis.NEW2} RELEASE`;
   const SUPPORTER_RELEASE_HEADER = `${h.releaseEmojis.EIGHTEENPLUS} ${h.releaseEmojis.NEW1}${h.releaseEmojis.NEW2} SUPPORTER RELEASE`;
   
-  // ────────────────────────────────────────────────
-  // 8. RELEASE PREVIEW
-  // ────────────────────────────────────────────────
+
   app.post('/api/release-preview', upload.array('images'), async (req, res) => {
     const { pack, setSize, input, series, suffix } = req.body;
     const files = req.files || [];
@@ -128,7 +185,6 @@ ${getRandomArrow()} See <#${SUPPORTER_FORUM_ID}>`;
         avatarURL: LOGO_URL,
       });
 
-      // Add heart reaction
       const heartEmoji = h.releaseEmojis?.HEART || '💖';
       try {
         await sentMessage.react(heartEmoji);
@@ -143,9 +199,6 @@ ${getRandomArrow()} See <#${SUPPORTER_FORUM_ID}>`;
     }
   });
 
-  // ────────────────────────────────────────────────
-  // 9. FORUM FETCHING
-  // ────────────────────────────────────────────────
   app.get('/api/forum-posts', async (req, res) => {
     try {
       const channelId = req.query.channelId || FORUM_ID;
@@ -175,9 +228,6 @@ ${getRandomArrow()} See <#${SUPPORTER_FORUM_ID}>`;
     }
   });
 
-  // ────────────────────────────────────────────────
-  // 10. EDIT FORUM POST (now uses editThreadMessage)
-  // ────────────────────────────────────────────────
   app.post('/api/edit-post', async (req, res) => {
     const { threadId, pack, setSize, input, series, suffix } = req.body;
     try {
@@ -221,9 +271,6 @@ ${getRandomArrow()} See <#${SUPPORTER_FORUM_ID}>`;
     }
   });
 
-  // ────────────────────────────────────────────────
-  // 11. GET POST CONTENT (unchanged)
-  // ────────────────────────────────────────────────
   app.get('/api/get-post-content', async (req, res) => {
     const { id } = req.query;
     try {
@@ -249,9 +296,6 @@ ${getRandomArrow()} See <#${SUPPORTER_FORUM_ID}>`;
     }
   });
 
-  // ────────────────────────────────────────────────
-  // 12. SUPPORTER RELEASE
-  // ────────────────────────────────────────────────
   app.post('/api/supporter-release', upload.array('images'), async (req, res) => {
     const { pack, setSize, input, series, suffix, download, editPreview, previewThreadId, supporterThreadId } = req.body;
     const files = req.files || [];
@@ -295,7 +339,6 @@ ${h.releaseEmojis.LINK} [megaLink](${download || 'https://mega.nz'})`;
       let supporterResult = {};
 
       if (supporterThreadId) {
-        // Updating an existing thread
         const thread = await client.channels.fetch(supporterThreadId);
         if (!thread) return res.status(404).json({ error: "Thread not found" });
 
@@ -314,7 +357,6 @@ ${h.releaseEmojis.LINK} [megaLink](${download || 'https://mega.nz'})`;
         }
         supporterResult = { updated: true };
       } else {
-        // Create new thread
         const webhook = await getWebhook(forumChannel, 'Release');
         const sentMessage = await webhook.send({
           content: messageBody,
@@ -326,7 +368,6 @@ ${h.releaseEmojis.LINK} [megaLink](${download || 'https://mega.nz'})`;
           flags: ["SuppressEmbeds"],
         });
 
-        // Add heart reaction
         const heartEmoji = h.releaseEmojis?.HEART || '💖';
         try {
           await sentMessage.react(heartEmoji);
@@ -337,7 +378,6 @@ ${h.releaseEmojis.LINK} [megaLink](${download || 'https://mega.nz'})`;
         supporterResult = { created: true };
       }
 
-      // --- Update Preview Thread ---
       let previewResult = {};
       if (editPreview === 'true') {
         let targetPreviewId = previewThreadId;
@@ -404,9 +444,6 @@ ${h.releaseEmojis.LINK} [megaLink](${download || 'https://mega.nz'})`;
     }
   });
 
-  // ────────────────────────────────────────────────
-  // MEGA UPLOAD (with optional download timeout fix)
-  // ────────────────────────────────────────────────
   async function getOrCreateFolder(node, pathParts) {
     let current = node;
     for (const part of pathParts) {
@@ -455,7 +492,6 @@ ${h.releaseEmojis.LINK} [megaLink](${download || 'https://mega.nz'})`;
       console.log(`✅ Uploaded to Mega: ${megaLink}`);
 
       let localPath = null;
-      // optional local download – if it fails, we still return success
       if (req.body.downloadAfterUpload === 'true') {
         try {
           const downloadDir = req.body.localDownloadPath || './downloads/';
@@ -478,7 +514,6 @@ ${h.releaseEmojis.LINK} [megaLink](${download || 'https://mega.nz'})`;
           localPath = localFile;
         } catch (downloadErr) {
           console.warn('⚠️ Optional local download failed, continuing:', downloadErr.message);
-          // not fatal – we already have the MEGA link
         }
       }
 
@@ -497,9 +532,6 @@ ${h.releaseEmojis.LINK} [megaLink](${download || 'https://mega.nz'})`;
     }
   });
 
-  // ────────────────────────────────────────────────
-  // 14. TEST ZIP (unchanged)
-  // ────────────────────────────────────────────────
   app.post('/api/test-zip', upload.single('zipfile'), async (req, res) => {
     if (!req.file) {
       return res.status(400).json({ error: 'No file uploaded' });
@@ -537,9 +569,6 @@ ${h.releaseEmojis.LINK} [megaLink](${download || 'https://mega.nz'})`;
     }
   });
 
-  // ────────────────────────────────────────────────
-  // 15. DOWNLOAD FILE
-  // ────────────────────────────────────────────────
   app.get('/api/download-file', (req, res) => {
     const filename = req.query.filename;
     if (!filename) {
