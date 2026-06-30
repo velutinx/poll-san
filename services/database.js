@@ -56,7 +56,6 @@ async function query(sql, params = [], single = false) {
                 throw new Error(`D1 query error: ${data.error}`);
             }
 
-            // Log slow queries (threshold now 2s)
             if (elapsed > 2000) {
                 console.log(
                     `[Database] Slow query (${elapsed}ms, attempt ${attempt}): ${sql.substring(
@@ -72,35 +71,24 @@ async function query(sql, params = [], single = false) {
         } catch (err) {
             lastError = err;
 
-            const elapsed = Date.now() - startTime;
-
-            if (err.name === "AbortError") {
-                console.warn(
-                    `[Database] Query attempt ${attempt}/${MAX_RETRIES} timed out after ${elapsed}ms`
-                );
-            } else {
-                console.warn(
-                    `[Database] Query attempt ${attempt}/${MAX_RETRIES} failed`
-                );
+            if (attempt === MAX_RETRIES) {
+                const elapsed = Date.now() - startTime;
+                console.error(`[Database] Query failed after ${MAX_RETRIES} attempts:`);
+                console.error({
+                    errorName: err.name,
+                    message: err.message,
+                    elapsed,
+                    sql:
+                        sql.length > 200
+                            ? sql.substring(0, 200) + "..."
+                            : sql,
+                    params,
+                });
             }
 
-            console.warn({
-                attempt,
-                errorName: err.name,
-                message: err.message,
-                elapsed,
-                sql:
-                    sql.length > 200
-                        ? sql.substring(0, 200) + "..."
-                        : sql,
-                params,
-            });
-
             if (attempt < MAX_RETRIES) {
-                // Exponential backoff with jitter
                 const jitter = Math.random() * 500;
                 const delay = (RETRY_DELAY_MS * attempt) + jitter;
-                console.log(`[Database] Retrying in ${Math.round(delay)}ms...`);
                 await new Promise((resolve) =>
                     setTimeout(resolve, delay)
                 );
@@ -113,29 +101,12 @@ async function query(sql, params = [], single = false) {
     throw lastError;
 }
 
-/**
- * Upsert (insert or replace) a single row.
- * @param {string} table - Table name
- * @param {string[]} columns - Array of column names
- * @param {any[]} values - Array of values in the same order as columns
- * @param {boolean} single - Return single result?
- * @returns {Promise<any>}
- */
 async function upsert(table, columns, values, single = false) {
     const placeholders = columns.map(() => '?').join(', ');
     const sql = `INSERT OR REPLACE INTO ${table} (${columns.join(', ')}) VALUES (${placeholders})`;
     return query(sql, values, single);
 }
 
-/**
- * Batch insert or replace multiple rows in a single SQL statement.
- * All rows must have the same columns (uses first row's columns).
- *
- * @param {string} table - Table name
- * @param {string[]} columns - Array of column names (same for all rows)
- * @param {any[][]} valuesArray - Array of value arrays, each corresponding to a row
- * @returns {Promise<any>} - Returns the result of the query (usually an array of results)
- */
 async function batchInsertOrReplace(table, columns, valuesArray) {
     if (!valuesArray || valuesArray.length === 0) {
         return { results: [] };
@@ -147,14 +118,6 @@ async function batchInsertOrReplace(table, columns, valuesArray) {
     return query(sql, flatValues);
 }
 
-/**
- * Delete rows where column IN (values) in a single query.
- *
- * @param {string} table - Table name
- * @param {string} column - Column name for the IN clause
- * @param {any[]} values - Array of values to match
- * @returns {Promise<any>}
- */
 async function deleteIn(table, column, values) {
     if (!values || values.length === 0) {
         return { results: [] };
@@ -164,13 +127,6 @@ async function deleteIn(table, column, values) {
     return query(sql, values);
 }
 
-/**
- * Execute multiple queries in parallel (reduces total time, but does not reduce D1 query count).
- * Useful for SELECTs that cannot be batched.
- *
- * @param {Array<{sql: string, params?: any[]}>} queries
- * @returns {Promise<any[]>} - Array of results in the same order
- */
 async function batchQuery(queries) {
     if (!queries || queries.length === 0) return [];
     return Promise.all(
