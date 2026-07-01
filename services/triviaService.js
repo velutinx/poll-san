@@ -47,6 +47,20 @@ async function updateTriviaEmbed(client, game, revealedSections, imageUrl) {
         console.log(`✅ Updated embed for game ${game.id}, message ${game.message_id}`);
     } catch (err) {
         console.error(`Failed to update embed for game ${game.id}, message ${game.message_id}:`, err.message);
+        // If edit fails, try sending a new message in the thread as fallback
+        try {
+            const channel = await client.channels.fetch(game.channel_id);
+            const webhook = await getTriviaWebhook(channel);
+            await webhook.send({
+                content: `🔄 **Image updated!** (${revealedCount}/${total} revealed)`,
+                embeds: [embed],
+                threadId: game.thread_id,
+                username: 'Trivia',
+                avatarURL: LOGO_URL,
+            });
+        } catch (fallbackErr) {
+            console.error(`Fallback send also failed:`, fallbackErr.message);
+        }
     }
 }
 
