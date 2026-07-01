@@ -1,7 +1,7 @@
 // web/routes/trivia.js
 const multer = require('multer');
 const upload = multer({ storage: multer.memoryStorage() });
-const { ChannelType } = require('discord.js');
+const { ChannelType } = require('discord.js'); // <-- import
 const h = require('../../utils/helpers');
 const db = require('../../services/database');
 const { putR2Image, getR2Image } = require('../../services/r2Storage');
@@ -58,7 +58,6 @@ module.exports = function setupTriviaRoutes(app, client) {
             const folderName = `trivia_${dbId}`;
             const originalKey = `images/trivia/${folderName}/original.jpg`;
             await putR2Image(originalKey, imageFile.buffer, 'image/jpeg');
-
             const { url: initialUrl } = await processAndUploadTriviaImage(
                 imageFile.buffer,
                 folderName,
@@ -85,6 +84,11 @@ module.exports = function setupTriviaRoutes(app, client) {
                 username: 'Trivia',
                 avatarURL: LOGO_URL,
             });
+
+            if (!sentMessage.thread) {
+                await db.query(`DELETE FROM games_trivia WHERE id = ?`, [dbId]);
+                return res.status(500).json({ error: 'Failed to create thread. The channel might not be a forum channel or the bot lacks permissions.' });
+            }
 
             const imageKey = `images/trivia/${folderName}/trivia_1.jpg`;
             await db.query(
