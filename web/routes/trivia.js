@@ -1,118 +1,107 @@
 // web/routes/trivia.js
 const multer = require('multer');
 const upload = multer({ storage: multer.memoryStorage() });
+const { ChannelType } = require('discord.js');
 const h = require('../../utils/helpers');
 const db = require('../../services/database');
 const { putR2Image, getR2Image } = require('../../services/r2Storage');
 const { processAndUploadTriviaImage, SECTIONS } = require('../../services/triviaImage');
 const { getWebhook, startTriviaTimer, performReveal, endTriviaGameAdmin } = require('../../services/triviaService');
-
 const LOGO_URL = h.urls.LOGO_URL;
 
 module.exports = function setupTriviaRoutes(app, client) {
 
-    // ─── CREATE TRIVIA GAME ──────────────────────────────────────
-app.post('/api/trivia/create', upload.single('image'), async (req, res) => {
-    const { answer, series, hint, interval, channelId } = req.body;
-    const imageFile = req.file;
+    app.post('/api/trivia/create', upload.single('image'), async (req, res) => {
+        const { answer, series, hint, interval, channelId } = req.body;
+        const imageFile = req.file;
 
-    if (!answer || !series || !channelId || !imageFile) {
-        return res.status(400).json({ error: 'Missing required fields' });
-    }
-
-    try {
-        const guild = await client.guilds.fetch(process.env.GUILD_ID);
-        const channel = await guild.channels.fetch(channelId);
-        if (!channel) {
-            return res.status(404).json({ error: 'Channel not found' });
+        if (!answer || !series || !channelId || !imageFile) {
+            return res.status(400).json({ error: 'Missing required fields' });
         }
 
-        // Ensure it's a forum channel (Discord API requires forum for thread creation)
-        if (channel.type !== ChannelType.GuildForum) {
-            return res.status(400).json({ error: 'Trivia must be created in a forum channel.' });
+        try {
+            const guild = await client.guilds.fetch(process.env.GUILD_ID);
+            const channel = await guild.channels.fetch(channelId);
+            if (!channel) {
+                return res.status(404).json({ error: 'Channel not found' });
+            }
+
+            if (channel.type !== ChannelType.GuildForum) {
+                return res.status(400).json({ error: 'Trivia must be created in a forum channel.' });
+            }
+
+            const intervalMinutes = parseFloat(interval) || 60;
+
+            await db.query(
+                `INSERT INTO games_trivia
+                (channel_id, thread_id, message_id, image_key, answer, series, hint, total_sections, revealed_count, revealed_sections, interval_minutes, next_reveal_at, status)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                [
+                    channelId,
+                    '',
+                    '',
+                    'pending',
+                    answer,
+                    series,
+                    hint || null,
+                    SECTIONS,
+                    1,
+                    JSON.stringify([0]),
+                    intervalMinutes,
+                    new Date(Date.now() + intervalMinutes * 60 * 1000).toISOString(),
+                    'active'
+                ]
+            );
+
+            const rowIdResult = await db.query(`SELECT last_insert_rowid() as id`, [], true);
+            const dbId = rowIdResult.id;
+            const folderName = `trivia_${dbId}`;
+            const originalKey = `images/trivia/${folderName}/original.jpg`;
+            await putR2Image(originalKey, imageFile.buffer, 'image/jpeg');
+
+            const { url: initialUrl } = await processAndUploadTriviaImage(
+                imageFile.buffer,
+                folderName,
+                1
+            );
+
+            const webhook = await getWebhook(channel, 'Trivia');
+            const emoji = h.releaseEmojis.PIXELSKY || '✨';
+            const embed = {
+                title: '🧩 Character Trivia',
+                description: `${emoji} **Try to guess the character name!** ${emoji}\n\n` +
+                    `**Hint:** Type the **series name** (e.g., "${series}") to get a hint!\n\n` +
+                    `**Rules:**\n` +
+                    `• Guess the character name to win!\n` +
+                    `• Type the series name for a hint.\n` +
+                    `• A new section of the image will be revealed every **${intervalMinutes} minute(s)**.`,
+                color: 0x9B59B6,
+                image: { url: initialUrl },
+                footer: { text: `Game ID: ${dbId} • 1/${SECTIONS} revealed` },
+            };
+            const sentMessage = await webhook.send({
+                embeds: [embed],
+                threadName: `🧩 Trivia: ${answer}`,
+                username: 'Trivia',
+                avatarURL: LOGO_URL,
+            });
+
+            const imageKey = `images/trivia/${folderName}/trivia_1.jpg`;
+            await db.query(
+                `UPDATE games_trivia SET thread_id = ?, message_id = ?, image_key = ? WHERE id = ?`,
+                [sentMessage.thread.id, sentMessage.id, imageKey, dbId]
+            );
+
+            await startTriviaTimer(client, dbId);
+
+            res.json({ success: true, gameId: dbId });
+
+        } catch (err) {
+            console.error('Trivia creation error:', err);
+            res.status(500).json({ error: err.message });
         }
+    });
 
-        const intervalMinutes = parseFloat(interval) || 60;
-
-        // 1. Insert game with placeholder image_key
-        await db.query(
-            `INSERT INTO games_trivia
-            (channel_id, thread_id, message_id, image_key, answer, series, hint, total_sections, revealed_count, revealed_sections, interval_minutes, next_reveal_at, status)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-            [
-                channelId,
-                '', // thread_id
-                '', // message_id
-                'pending', // placeholder
-                answer,
-                series,
-                hint || null,
-                SECTIONS,
-                1,
-                JSON.stringify([0]),
-                intervalMinutes,
-                new Date(Date.now() + intervalMinutes * 60 * 1000).toISOString(),
-                'active'
-            ]
-        );
-
-        // 2. Get the inserted ID
-        const rowIdResult = await db.query(`SELECT last_insert_rowid() as id`, [], true);
-        const dbId = rowIdResult.id;
-
-        // 3. Process and upload the image using dbId as folder name
-        const folderName = `trivia_${dbId}`;
-        const originalKey = `images/trivia/${folderName}/original.jpg`;
-        await putR2Image(originalKey, imageFile.buffer, 'image/jpeg');
-
-        // Create initial image with 1 visible section
-        const { url: initialUrl } = await processAndUploadTriviaImage(
-            imageFile.buffer,
-            dbId, // pass numeric ID, function will use it as folder
-            1
-        );
-
-        // 4. Send the Discord message (webhook will create a thread in the forum channel)
-        const webhook = await getWebhook(channel, 'Trivia');
-        const emoji = h.releaseEmojis.PIXELSKY || '✨';
-        const embed = {
-            title: '🧩 Character Trivia',
-            description: `${emoji} **Try to guess the character name!** ${emoji}\n\n` +
-                `**Hint:** Type the **series name** (e.g., "${series}") to get a hint!\n\n` +
-                `**Rules:**\n` +
-                `• Guess the character name to win!\n` +
-                `• Type the series name for a hint.\n` +
-                `• A new section of the image will be revealed every **${intervalMinutes} minute(s)**.`,
-            color: 0x9B59B6,
-            image: { url: initialUrl },
-            footer: { text: `Game ID: ${dbId} • 1/${SECTIONS} revealed` },
-        };
-        const sentMessage = await webhook.send({
-            embeds: [embed],
-            threadName: `🧩 Trivia: ${answer}`,
-            username: 'Trivia',
-            avatarURL: LOGO_URL,
-        });
-
-        // 5. Update DB with thread, message, and correct image_key
-        const imageKey = `images/trivia/${folderName}/trivia_1.jpg`;
-        await db.query(
-            `UPDATE games_trivia SET thread_id = ?, message_id = ?, image_key = ? WHERE id = ?`,
-            [sentMessage.thread.id, sentMessage.id, imageKey, dbId]
-        );
-
-        // 6. Start the reveal timer
-        await startTriviaTimer(client, dbId);
-
-        res.json({ success: true, gameId: dbId });
-
-    } catch (err) {
-        console.error('Trivia creation error:', err);
-        res.status(500).json({ error: err.message });
-    }
-});
-
-    // ─── GET ACTIVE GAMES ──────────────────────────────────────
     app.get('/api/trivia/active', async (req, res) => {
         try {
             const games = await db.query(
@@ -125,7 +114,6 @@ app.post('/api/trivia/create', upload.single('image'), async (req, res) => {
         }
     });
 
-    // ─── GET RECENT WINNERS ──────────────────────────────────
     app.get('/api/trivia/winners', async (req, res) => {
         try {
             const games = await db.query(
@@ -145,12 +133,10 @@ app.post('/api/trivia/create', upload.single('image'), async (req, res) => {
         }
     });
 
-    // ─── MANUAL REVEAL (admin) ──────────────────────────────────
     app.post('/api/trivia/reveal', async (req, res) => {
         const { gameId } = req.body;
         if (!gameId) return res.status(400).json({ error: 'Missing gameId' });
         try {
-            // Fetch the game
             const game = await db.query(
                 `SELECT * FROM games_trivia WHERE id = ? AND status = 'active'`,
                 [gameId],
@@ -159,7 +145,6 @@ app.post('/api/trivia/create', upload.single('image'), async (req, res) => {
             if (!game) {
                 return res.status(404).json({ error: 'Game not found or already ended' });
             }
-            // Perform reveal (this will also schedule the next timer)
             await performReveal(client, gameId);
             res.json({ success: true });
         } catch (err) {
@@ -168,7 +153,6 @@ app.post('/api/trivia/create', upload.single('image'), async (req, res) => {
         }
     });
 
-    // ─── END GAME (admin) ──────────────────────────────────────
     app.post('/api/trivia/end', async (req, res) => {
         const { gameId } = req.body;
         if (!gameId) return res.status(400).json({ error: 'Missing gameId' });
