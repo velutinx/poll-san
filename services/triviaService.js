@@ -1,4 +1,4 @@
-// services/triviaService.js
+// services/triviaService.js – updated fallback
 const db = require('./database');
 const h = require('../utils/helpers');
 const { getOriginalImage, uploadTriviaImage } = require('./triviaImage');
@@ -51,6 +51,9 @@ async function updateTriviaEmbed(client, game, imageUrl) {
                 `UPDATE games_trivia SET webhook_id = ?, webhook_token = ? WHERE id = ?`,
                 [webhook.id, webhook.token, game.id]
             );
+            // Update the game object with new webhook credentials
+            game.webhook_id = webhook.id;
+            game.webhook_token = webhook.token;
         }
         const newMessage = await webhook.send({
             embeds: [embed],
@@ -58,11 +61,13 @@ async function updateTriviaEmbed(client, game, imageUrl) {
             username: 'Trivia',
             avatarURL: LOGO_URL,
         });
-        // Update message_id to the new message
+        // Update message_id in the database
         await db.query(
             `UPDATE games_trivia SET message_id = ? WHERE id = ?`,
             [newMessage.id, game.id]
         );
+        // Update the game object so subsequent attempts use the new message_id
+        game.message_id = newMessage.id;
         console.log(`✅ Sent new embed message for game ${game.id}`);
         return true;
     } catch (err) {
