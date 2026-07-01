@@ -3,6 +3,16 @@ const db = require('./database');
 const h = require('../utils/helpers');
 const { getOriginalImage, uploadTriviaImage } = require('./triviaImage');
 
+const LOGO_URL = h.urls.LOGO_URL;
+const SECTIONS = 12;
+
+function formatHintMessage(hintTemplate, series) {
+    if (!hintTemplate) {
+        return `Yes, **${series}** is indeed his series, keep trying to guess the character name!`;
+    }
+    return hintTemplate.replace(/\{series\}/g, series);
+}
+
 async function performReveal(client, gameId) {
     const game = await db.query(
         `SELECT * FROM games_trivia WHERE id = ? AND status = 'active'`,
@@ -16,7 +26,7 @@ async function performReveal(client, gameId) {
 
     const revealOrder = JSON.parse(game.reveal_order || '[]');
     const revealedSections = JSON.parse(game.revealed_sections || '[]');
-    const total = game.total_sections || 12;
+    const total = game.total_sections || SECTIONS;
 
     if (revealedSections.length >= total) {
         console.log(`Game ${gameId} already fully revealed.`);
@@ -54,13 +64,13 @@ async function performReveal(client, gameId) {
         const channel = await client.channels.fetch(game.channel_id);
         let webhook = (await channel.fetchWebhooks()).find(w => w.name === 'Trivia');
         if (!webhook) {
-            webhook = await channel.createWebhook({ name: 'Trivia', avatar: h.urls.LOGO_URL });
+            webhook = await channel.createWebhook({ name: 'Trivia', avatar: LOGO_URL });
         }
         await webhook.send({
             content: `🔄 **Image updated!** (${revealedSections.length}/${total} revealed)`,
             threadId: game.thread_id,
             username: 'Trivia',
-            avatarURL: h.urls.LOGO_URL,
+            avatarURL: LOGO_URL,
         });
     } catch (err) {
         console.warn(`Could not send notification for game ${gameId}:`, err.message);
@@ -136,13 +146,8 @@ async function completeTriviaGame(client, gameId, userId, username) {
     const folderName = `trivia_${gameId}`;
     const totalSections = game.total_sections || SECTIONS;
     const allSections = Array.from({ length: totalSections }, (_, i) => i);
-    const originalKey = `images/trivia/${folderName}/original.jpg`;
-    const { url: fullImageUrl } = await updateTriviaImage(
-        folderName,
-        allSections,
-        originalKey
-    );
-
+    const originalImageBuffer = await getOriginalImage(folderName);
+    const { url: fullImageUrl } = await uploadTriviaImage(originalImageBuffer, folderName, allSections);
     const channel = await client.channels.fetch(game.channel_id);
     let webhook = (await channel.fetchWebhooks()).find(w => w.name === 'Trivia');
     if (!webhook) {
@@ -157,10 +162,11 @@ async function completeTriviaGame(client, gameId, userId, username) {
         avatarURL: LOGO_URL,
     });
 
+    const cacheBuster = Date.now();
     const embed = {
         description: `${h.releaseEmojis.SPARKLES || '🎉'} **${username}** guessed the character: **${game.answer}**!`,
         color: 0x4ADE80,
-        image: { url: fullImageUrl },
+        image: { url: `${fullImageUrl}?t=${cacheBuster}` },
     };
     await webhook.editMessage(game.message_id, { embeds: [embed], content: null });
 
