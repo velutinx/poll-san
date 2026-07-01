@@ -63,7 +63,7 @@ const client = new Client({
     ],
     partials: [Partials.Message, Partials.Reaction, Partials.User]
 });
-
+client.setMaxListeners(20);
 client.once(Events.ClientReady, (c) => require('./events/ready')(c));
 client.on(Events.InteractionCreate, handleInteraction);
 client.on(Events.GuildMemberAdd, guildMemberAddEvent);
