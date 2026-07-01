@@ -1,6 +1,7 @@
 // services/triviaImage.js
 const sharp = require('sharp');
 const { putR2Image, getR2Image } = require('./r2Storage');
+
 const RAINBOW_OVERLAY_URL = 'https://www.velutinx.com/images/rainbow_foreground.jpg';
 const SECTIONS = 12;
 
@@ -16,6 +17,7 @@ async function createTriviaImage(originalImage, revealedSections, overlayImage) 
     const { width, height } = metadata;
     const sectionWidth = Math.floor(width / 3);
     const sectionHeight = Math.floor(height / 4);
+
     const overlayResized = await sharp(overlayImage)
         .resize(width, height, { fit: 'fill' })
         .toBuffer();
@@ -36,7 +38,6 @@ async function createTriviaImage(originalImage, revealedSections, overlayImage) 
                     })
                     .toBuffer();
 
-                // Overlay on top of the result
                 result = await sharp(result)
                     .composite([{
                         input: overlaySection,
@@ -53,41 +54,41 @@ async function createTriviaImage(originalImage, revealedSections, overlayImage) 
     return result;
 }
 
-function getTriviaImageKey(folderName, visibleCount) {
-    return `images/trivia/${folderName}/trivia_${visibleCount}.jpg`;
+function getTriviaImageKey(folderName) {
+    return `images/trivia/${folderName}/trivia.jpg`;
 }
 
-async function processAndUploadTriviaImage(originalImageBuffer, folderName, revealedSections, totalSections = SECTIONS) {
+function getOriginalImageKey(folderName) {
+    return `images/trivia/${folderName}/original.jpg`;
+}
+
+async function uploadTriviaImage(originalImageBuffer, folderName, revealedSections) {
     const overlayBuffer = await downloadImage(RAINBOW_OVERLAY_URL);
     const compositeImage = await createTriviaImage(originalImageBuffer, revealedSections, overlayBuffer);
-    const visibleCount = revealedSections.length;
-    const key = getTriviaImageKey(folderName, visibleCount);
+    const key = getTriviaImageKey(folderName);
     const result = await putR2Image(key, compositeImage, 'image/jpeg');
     return {
-        key,
         url: result.url,
-        sectionsVisible: visibleCount
+        key,
     };
 }
 
-async function updateTriviaImage(folderName, revealedSections, originalImageKey) {
-    const originalImageBuffer = await getR2Image(originalImageKey);
-    const overlayBuffer = await downloadImage(RAINBOW_OVERLAY_URL);
-    const compositeImage = await createTriviaImage(originalImageBuffer, revealedSections, overlayBuffer);
-    const visibleCount = revealedSections.length;
-    const key = getTriviaImageKey(folderName, visibleCount);
-    const result = await putR2Image(key, compositeImage, 'image/jpeg');
-    return {
-        key,
-        url: result.url,
-        sectionsVisible: visibleCount
-    };
+async function uploadOriginalImage(originalImageBuffer, folderName) {
+    const key = getOriginalImageKey(folderName);
+    const result = await putR2Image(key, originalImageBuffer, 'image/jpeg');
+    return { url: result.url, key };
+}
+
+async function getOriginalImage(folderName) {
+    const key = getOriginalImageKey(folderName);
+    return await getR2Image(key);
 }
 
 module.exports = {
-    createTriviaImage,
-    processAndUploadTriviaImage,
-    updateTriviaImage,
+    uploadTriviaImage,
+    uploadOriginalImage,
+    getOriginalImage,
     getTriviaImageKey,
+    getOriginalImageKey,
     SECTIONS
 };
