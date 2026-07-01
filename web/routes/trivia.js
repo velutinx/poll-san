@@ -33,7 +33,6 @@ module.exports = function setupTriviaRoutes(app, client) {
 
             const intervalMinutes = parseFloat(interval) || 60;
 
-            // Generate random reveal order (first not a corner)
             const sections = Array.from({ length: SECTIONS }, (_, i) => i);
             for (let i = sections.length - 1; i > 0; i--) {
                 const j = Math.floor(Math.random() * (i + 1));
@@ -51,10 +50,22 @@ module.exports = function setupTriviaRoutes(app, client) {
             const revealOrder = sections;
             const firstReveal = revealOrder[0];
 
+            // Delete any existing "Trivia" webhook to get a fresh valid token
+            const existing = (await channel.fetchWebhooks()).find(w => w.name === 'Trivia');
+            if (existing) {
+                await existing.delete();
+            }
+
+            // Create a brand new webhook (token is guaranteed to be valid)
+            const webhook = await channel.createWebhook({ name: 'Trivia', avatar: LOGO_URL });
+            const webhookId = webhook.id;
+            const webhookToken = webhook.token;
+
+            // Insert game into DB with webhook credentials
             await db.query(
                 `INSERT INTO games_trivia
-                (channel_id, thread_id, message_id, image_key, answer, series, hint, total_sections, revealed_count, revealed_sections, reveal_order, interval_minutes, next_reveal_at, status)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                (channel_id, thread_id, message_id, image_key, answer, series, hint, total_sections, revealed_count, revealed_sections, reveal_order, interval_minutes, next_reveal_at, status, webhook_id, webhook_token)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
                 [
                     channelId,
                     '',
@@ -69,7 +80,9 @@ module.exports = function setupTriviaRoutes(app, client) {
                     JSON.stringify(revealOrder),
                     intervalMinutes,
                     new Date(Date.now() + intervalMinutes * 60 * 1000).toISOString(),
-                    'active'
+                    'active',
+                    webhookId,
+                    webhookToken
                 ]
             );
 
@@ -84,14 +97,6 @@ module.exports = function setupTriviaRoutes(app, client) {
                 folderName,
                 [firstReveal]
             );
-
-            const channelObj = await client.channels.fetch(channelId);
-            let webhook = (await channelObj.fetchWebhooks()).find(w => w.name === 'Trivia');
-            if (!webhook) {
-                webhook = await channelObj.createWebhook({ name: 'Trivia', avatar: LOGO_URL });
-            } else if (webhook.avatar !== LOGO_URL) {
-                await webhook.edit({ avatar: LOGO_URL });
-            }
 
             const emoji = h.releaseEmojis.PIXELSKY || '✨';
             const cacheBuster = Date.now();
