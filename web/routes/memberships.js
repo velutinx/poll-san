@@ -32,7 +32,7 @@ module.exports = function setupMembershipsRoute(app, client) {
                             `UPDATE ${h.tables.MEMBERSHIPS} SET discord_tag = ? WHERE discord_id = ?`,
                             [discordTag, sub.discord_id]
                         );
-                        console.log(`✅ Updated discord_tag for ${sub.discord_id} to ${discordTag}`);
+                   //     console.log(`✅ Updated discord_tag for ${sub.discord_id} to ${discordTag}`);
                     }
                 } catch (err) {
                     // Member left the server – keep original data
