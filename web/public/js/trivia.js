@@ -33,7 +33,7 @@ async function initTrivia() {
         }
     };
 
-    // Load channels and set default to test channel
+    // Load channels and set default to test logs channel
     await loadChannels('trivia-channel');
     const channelSelect = document.getElementById('trivia-channel');
     if (channelSelect) {
@@ -50,13 +50,16 @@ function handleTriviaFiles(files) {
     const previewContainer = document.getElementById('trivia-preview-container');
     const dropText = document.getElementById('trivia-drop-text');
 
+    // Clear previous
+    previewContainer.innerHTML = '';
+    triviaUploadedFiles = [];
+
     for (const file of files) {
         if (!file.type.startsWith('image/')) continue;
-        triviaUploadedFiles = [file];
+        triviaUploadedFiles.push(file);
 
         const reader = new FileReader();
         reader.onload = (e) => {
-            previewContainer.innerHTML = '';
             const img = document.createElement('img');
             img.src = e.target.result;
             img.style.width = '100%';
