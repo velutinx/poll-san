@@ -1,7 +1,7 @@
 // web/public/js/trivia.js
 let triviaUploadedFiles = [];
 
-function initTrivia() {
+async function initTrivia() {
     const dropZone = document.getElementById('trivia-drop-zone');
     const fileInput = document.getElementById('trivia-file-input');
     const previewContainer = document.getElementById('trivia-preview-container');
@@ -33,7 +33,7 @@ function initTrivia() {
         }
     };
 
-    loadChannels('trivia-channel');
+    // Load channels and set default to test channel
     await loadChannels('trivia-channel');
     const channelSelect = document.getElementById('trivia-channel');
     if (channelSelect) {
