@@ -28,19 +28,19 @@ async function updateTriviaEmbed(client, game, revealedSections, imageUrl) {
         image: { url: imageUrl },
     };
 
-    // 1. Try using stored webhook credentials
+    // Use the stored webhook credentials
     if (game.webhook_id && game.webhook_token) {
         try {
             const webhook = await client.fetchWebhook(game.webhook_id, game.webhook_token);
             await webhook.editMessage(game.message_id, { embeds: [embed], content: null });
-            console.log(`✅ Updated embed (stored webhook) for game ${game.id}`);
+            console.log(`✅ Updated embed for game ${game.id}`);
             return;
         } catch (err) {
             console.error(`Stored webhook failed for game ${game.id}:`, err.message);
         }
     }
 
-    // 2. Fallback: fetch webhook by name from the channel
+    // Fallback: try to get webhook from channel
     try {
         const channel = await client.channels.fetch(game.channel_id);
         let webhook = (await channel.fetchWebhooks()).find(w => w.name === 'Trivia');
@@ -51,7 +51,6 @@ async function updateTriviaEmbed(client, game, revealedSections, imageUrl) {
         console.log(`✅ Updated embed (fallback) for game ${game.id}`);
     } catch (err) {
         console.error(`Fallback update failed for game ${game.id}:`, err.message);
-        // Do NOT send a new message – just log the error
     }
 }
 
