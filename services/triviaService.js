@@ -13,6 +13,44 @@ function formatHintMessage(hintTemplate, series) {
     return hintTemplate.replace(/\{series\}/g, series);
 }
 
+async function updateTriviaEmbed(client, game, imageUrl) {
+    const emoji = h.releaseEmojis.PIXELSKY || '✨';
+    const embed = {
+        description: `${emoji} **Try to guess the character name!** ${emoji}\n\n` +
+            `**Rules:**\n` +
+            `• Guess the character name to win!\n` +
+            `• Type the series name for a hint.\n` +
+            `• A new section of the image will be revealed every **${game.interval_minutes} minute(s)**.`,
+        color: 0x9B59B6,
+        image: { url: `${imageUrl}?t=${Date.now()}` },
+    };
+
+    // Use stored webhook credentials
+    if (game.webhook_id && game.webhook_token) {
+        try {
+            const webhook = await client.fetchWebhook(game.webhook_id, game.webhook_token);
+            await webhook.editMessage(game.message_id, { embeds: [embed], content: null });
+            console.log(`✅ Updated embed for game ${game.id}`);
+            return;
+        } catch (err) {
+            console.error(`Stored webhook failed for game ${game.id}:`, err.message);
+        }
+    }
+
+    // Fallback: fetch from channel
+    try {
+        const channel = await client.channels.fetch(game.channel_id);
+        let webhook = (await channel.fetchWebhooks()).find(w => w.name === 'Trivia');
+        if (!webhook) {
+            webhook = await channel.createWebhook({ name: 'Trivia', avatar: LOGO_URL });
+        }
+        await webhook.editMessage(game.message_id, { embeds: [embed], content: null });
+        console.log(`✅ Updated embed (fallback) for game ${game.id}`);
+    } catch (err) {
+        console.error(`Fallback update failed for game ${game.id}:`, err.message);
+    }
+}
+
 async function performReveal(client, gameId) {
     const game = await db.query(
         `SELECT * FROM games_trivia WHERE id = ? AND status = 'active'`,
@@ -60,21 +98,7 @@ async function performReveal(client, gameId) {
     const originalImageBuffer = await getOriginalImage(folderName);
     const { url: imageUrl } = await uploadTriviaImage(originalImageBuffer, folderName, revealedSections);
 
-    try {
-        const channel = await client.channels.fetch(game.channel_id);
-        let webhook = (await channel.fetchWebhooks()).find(w => w.name === 'Trivia');
-        if (!webhook) {
-            webhook = await channel.createWebhook({ name: 'Trivia', avatar: LOGO_URL });
-        }
-        await webhook.send({
-            content: `🔄 **Image updated!** (${revealedSections.length}/${total} revealed)`,
-            threadId: game.thread_id,
-            username: 'Trivia',
-            avatarURL: LOGO_URL,
-        });
-    } catch (err) {
-        console.warn(`Could not send notification for game ${gameId}:`, err.message);
-    }
+    await updateTriviaEmbed(client, game, imageUrl);
 
     if (game.status === 'active') {
         await startTriviaTimer(client, gameId);
@@ -148,6 +172,7 @@ async function completeTriviaGame(client, gameId, userId, username) {
     const allSections = Array.from({ length: totalSections }, (_, i) => i);
     const originalImageBuffer = await getOriginalImage(folderName);
     const { url: fullImageUrl } = await uploadTriviaImage(originalImageBuffer, folderName, allSections);
+
     const channel = await client.channels.fetch(game.channel_id);
     let webhook = (await channel.fetchWebhooks()).find(w => w.name === 'Trivia');
     if (!webhook) {
@@ -162,11 +187,10 @@ async function completeTriviaGame(client, gameId, userId, username) {
         avatarURL: LOGO_URL,
     });
 
-    const cacheBuster = Date.now();
     const embed = {
         description: `${h.releaseEmojis.SPARKLES || '🎉'} **${username}** guessed the character: **${game.answer}**!`,
         color: 0x4ADE80,
-        image: { url: `${fullImageUrl}?t=${cacheBuster}` },
+        image: { url: `${fullImageUrl}?t=${Date.now()}` },
     };
     await webhook.editMessage(game.message_id, { embeds: [embed], content: null });
 
