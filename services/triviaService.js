@@ -40,24 +40,13 @@ async function updateTriviaEmbed(client, game, revealedSections, imageUrl) {
         image: { url: imageUrl },
     };
 
-    // Use stored webhook if available
-    if (game.webhook_id && game.webhook_token) {
-        try {
-            const webhook = await client.fetchWebhook(game.webhook_id, game.webhook_token);
-            await webhook.editMessage(game.message_id, { embeds: [embed], content: null });
-            return;
-        } catch (err) {
-            console.error(`Failed to edit with stored webhook for game ${game.id}:`, err.message);
-        }
-    }
-
-    // Fallback: get webhook from channel
     try {
         const channel = await client.channels.fetch(game.channel_id);
         const webhook = await getWebhook(channel, 'Trivia');
         await webhook.editMessage(game.message_id, { embeds: [embed], content: null });
+        console.log(`✅ Updated embed for game ${game.id}, message ${game.message_id}`);
     } catch (err) {
-        console.error(`Failed to edit message ${game.message_id}:`, err.message);
+        console.error(`Failed to update embed for game ${game.id}, message ${game.message_id}:`, err.message);
     }
 }
 
@@ -274,7 +263,7 @@ async function endTriviaGameAdmin(client, gameId) {
     try {
         await webhook.editMessage(game.message_id, { embeds: [embed], content: null });
     } catch (err) {
-        console.warn(`Could not edit message ${game.message_id}, sending new message instead.`);
+        console.warn(`Could not edit message ${game.message_id}:`, err.message);
         await webhook.send({
             embeds: [embed],
             threadId: game.thread_id,
