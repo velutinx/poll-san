@@ -28,14 +28,7 @@ module.exports = (client) => {
     app.use((req, res, next) => {
         const url = req.url.toLowerCase();
         const probePatterns = [
-            /\.env/i, /\.git/i, /actuator/i, /swagger/i, /api-docs/i, /v[2-3]\/api/i,
-            /php(info|myadmin|phpunit|adminer)/i, /\.ht(access|passwd)/i, /web\.config/i,
-            /nginx\.conf/i, /docker-compose/i, /Dockerfile/i, /composer\.(json|lock)/i,
-            /package\.json/i, /requirements\.(txt)/i, /backup|dump|db\.sql|database\.sql/i,
-            /config\.(php|yml|yaml|json|xml)/i, /settings\.(json|yml)/i, /secrets|credentials/i,
-            /robots\.txt/i, /sitemap\.xml/i, /crossdomain\.xml/i, /\.\.\//, /%3Cscript/i,
-            /union\+select/i, /server-status|server-info|trace/i, /graphql/i,
-            /wp-(admin|content|includes)/i, /\.bak|\.old|\.backup/i
+            /\.env/i, /\.git/i, /actuator/i, /swagger/i, /api-docs/i, /v[2-3]\/api/i, /php(info|myadmin|phpunit|adminer)/i, /\.ht(access|passwd)/i, /web\.config/i, /nginx\.conf/i, /docker-compose/i, /Dockerfile/i, /composer\.(json|lock)/i, /package\.json/i, /requirements\.(txt)/i, /backup|dump|db\.sql|database\.sql/i, /config\.(php|yml|yaml|json|xml)/i, /settings\.(json|yml)/i, /secrets|credentials/i, /robots\.txt/i, /sitemap\.xml/i, /crossdomain\.xml/i, /\.\.\//, /%3Cscript/i, /union\+select/i, /server-status|server-info|trace/i, /graphql/i, /wp-(admin|content|includes)/i, /\.bak|\.old|\.backup/i
         ];
         if (probePatterns.some(pattern => pattern.test(url))) {
             return res.status(404).send('Not Found');
@@ -156,18 +149,19 @@ module.exports = (client) => {
         req.on('close', () => pollClients.delete(res));
     });
 
-app.get('/api/channels', async (req, res) => {
-    try {
-        const guild = client.guilds.cache.get(process.env.GUILD_ID);
-        if (!guild) return res.status(500).json({ error: 'Guild not found' });
-        const channels = guild.channels.cache
-            .filter(ch => ch.type === ChannelType.GuildText || ch.type === ChannelType.GuildForum)
-            .map(ch => ({ id: ch.id, name: ch.name }));
-        res.json(channels);
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
-});
+    app.get('/api/channels', async (req, res) => {
+        try {
+            const guild = client.guilds.cache.get(process.env.GUILD_ID);
+            if (!guild) return res.status(500).json({ error: 'Guild not found' });
+            await guild.channels.fetch();
+            const channels = guild.channels.cache
+                .filter(ch => ch.type === ChannelType.GuildText || ch.type === ChannelType.GuildForum)
+                .map(ch => ({ id: ch.id, name: ch.name }));
+            res.json(channels);
+        } catch (err) {
+            res.status(500).json({ error: err.message });
+        }
+    });
 
     app.get('/poll-san', (req, res) => {
         res.sendFile(path.join(__dirname, 'public', 'index.html'));
@@ -181,7 +175,6 @@ app.get('/api/channels', async (req, res) => {
     const setupGiveawayRoutes = require('./routes/giveaway');
     const setupQueueRoutes = require('./routes/queue');
     const reminderRouter = require('./routes/reminder');
-
     const setupTriviaRoutes = require('./routes/trivia');
 
     app.use(reminderRouter);
