@@ -285,7 +285,6 @@ async function endTriviaGameAdmin(client, gameId) {
 }
 
 module.exports = {
-    getWebhook,
     formatHintMessage,
     performReveal,
     handleTriviaGuess,
