@@ -25,19 +25,19 @@ async function updateTriviaEmbed(client, game, imageUrl) {
         image: { url: `${imageUrl}?t=${Date.now()}` },
     };
 
-    // Use the dedicated webhook for this game
+    // Try using the dedicated webhook
     if (game.webhook_id && game.webhook_token) {
         try {
             const webhook = await client.fetchWebhook(game.webhook_id, game.webhook_token);
             await webhook.editMessage(game.message_id, { embeds: [embed], content: null });
             console.log(`✅ Updated embed for game ${game.id}`);
-            return;
+            return true;
         } catch (err) {
             console.error(`Webhook edit failed for game ${game.id}:`, err.message);
         }
     }
 
-    // Fallback: try to get webhook by name (shouldn't happen if we stored correctly)
+    // Fallback: send a new message in the thread and update message_id
     try {
         const channel = await client.channels.fetch(game.channel_id);
         const webhookName = `Trivia-${game.id}`;
@@ -47,16 +47,27 @@ async function updateTriviaEmbed(client, game, imageUrl) {
                 name: webhookName,
                 avatar: LOGO_URL,
             });
-            // Update database with new credentials
             await db.query(
                 `UPDATE games_trivia SET webhook_id = ?, webhook_token = ? WHERE id = ?`,
                 [webhook.id, webhook.token, game.id]
             );
         }
-        await webhook.editMessage(game.message_id, { embeds: [embed], content: null });
-        console.log(`✅ Updated embed (fallback) for game ${game.id}`);
+        const newMessage = await webhook.send({
+            embeds: [embed],
+            threadId: game.thread_id,
+            username: 'Trivia',
+            avatarURL: LOGO_URL,
+        });
+        // Update message_id to the new message
+        await db.query(
+            `UPDATE games_trivia SET message_id = ? WHERE id = ?`,
+            [newMessage.id, game.id]
+        );
+        console.log(`✅ Sent new embed message for game ${game.id}`);
+        return true;
     } catch (err) {
-        console.error(`Fallback update failed for game ${game.id}:`, err.message);
+        console.error(`Failed to send new message for game ${game.id}:`, err.message);
+        return false;
     }
 }
 
