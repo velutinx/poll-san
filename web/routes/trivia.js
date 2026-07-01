@@ -50,14 +50,16 @@ module.exports = function setupTriviaRoutes(app, client) {
             const revealOrder = sections;
             const firstReveal = revealOrder[0];
 
-            // Delete any existing "Trivia" webhook to get a fresh valid token
-            const existing = (await channel.fetchWebhooks()).find(w => w.name === 'Trivia');
-            if (existing) {
-                await existing.delete();
+            // Get existing webhook or create one (do NOT delete)
+            let webhook = (await channel.fetchWebhooks()).find(w => w.name === 'Trivia');
+            if (!webhook) {
+                webhook = await channel.createWebhook({ name: 'Trivia', avatar: LOGO_URL });
+            } else {
+                if (webhook.avatar !== LOGO_URL) {
+                    await webhook.edit({ avatar: LOGO_URL });
+                }
             }
 
-            // Create a brand new webhook (token is guaranteed to be valid)
-            const webhook = await channel.createWebhook({ name: 'Trivia', avatar: LOGO_URL });
             const webhookId = webhook.id;
             const webhookToken = webhook.token;
 
