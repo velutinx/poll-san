@@ -69,8 +69,8 @@ module.exports = function setupTriviaRoutes(app, client) {
                     intervalMinutes,
                     new Date(Date.now() + intervalMinutes * 60 * 1000).toISOString(),
                     'active',
-                    '', // webhook_id placeholder
-                    ''  // webhook_token placeholder
+                    '',
+                    ''
                 ]
             );
 
@@ -79,6 +79,7 @@ module.exports = function setupTriviaRoutes(app, client) {
             const folderName = `trivia_${dbId}`;
             const originalKey = `images/trivia/${folderName}/original.jpg`;
             await putR2Image(originalKey, imageFile.buffer, 'image/jpeg');
+
             const { url: initialUrl } = await processAndUploadTriviaImage(
                 imageFile.buffer,
                 folderName,
@@ -92,7 +93,6 @@ module.exports = function setupTriviaRoutes(app, client) {
 
             const emoji = h.releaseEmojis.PIXELSKY || '✨';
             const embed = {
-                title: '🧩 Character Trivia',
                 description: `${emoji} **Try to guess the character name!** ${emoji}\n\n` +
                     `**Rules:**\n` +
                     `• Guess the character name to win!\n` +
