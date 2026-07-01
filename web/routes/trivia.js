@@ -50,24 +50,11 @@ module.exports = function setupTriviaRoutes(app, client) {
             const revealOrder = sections;
             const firstReveal = revealOrder[0];
 
-            // Get existing webhook or create one (do NOT delete)
-            let webhook = (await channel.fetchWebhooks()).find(w => w.name === 'Trivia');
-            if (!webhook) {
-                webhook = await channel.createWebhook({ name: 'Trivia', avatar: LOGO_URL });
-            } else {
-                if (webhook.avatar !== LOGO_URL) {
-                    await webhook.edit({ avatar: LOGO_URL });
-                }
-            }
-
-            const webhookId = webhook.id;
-            const webhookToken = webhook.token;
-
-            // Insert game into DB with webhook credentials
+            // Insert game first to get an ID
             await db.query(
                 `INSERT INTO games_trivia
-                (channel_id, thread_id, message_id, image_key, answer, series, hint, total_sections, revealed_count, revealed_sections, reveal_order, interval_minutes, next_reveal_at, status, webhook_id, webhook_token)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                (channel_id, thread_id, message_id, image_key, answer, series, hint, total_sections, revealed_count, revealed_sections, reveal_order, interval_minutes, next_reveal_at, status)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
                 [
                     channelId,
                     '',
@@ -82,9 +69,7 @@ module.exports = function setupTriviaRoutes(app, client) {
                     JSON.stringify(revealOrder),
                     intervalMinutes,
                     new Date(Date.now() + intervalMinutes * 60 * 1000).toISOString(),
-                    'active',
-                    webhookId,
-                    webhookToken
+                    'active'
                 ]
             );
 
@@ -92,16 +77,29 @@ module.exports = function setupTriviaRoutes(app, client) {
             const dbId = rowIdResult.id;
             const folderName = `trivia_${dbId}`;
 
-            await uploadOriginalImage(imageFile.buffer, folderName);
+            // Create a dedicated webhook for this game
+            const webhookName = `Trivia-${dbId}`;
+            let webhook = (await channel.fetchWebhooks()).find(w => w.name === webhookName);
+            if (webhook) {
+                await webhook.delete();
+            }
+            webhook = await channel.createWebhook({
+                name: webhookName,
+                avatar: LOGO_URL,
+            });
+            const webhookId = webhook.id;
+            const webhookToken = webhook.token;
 
+            // Upload images
+            await uploadOriginalImage(imageFile.buffer, folderName);
             const { url: imageUrl } = await uploadTriviaImage(
                 imageFile.buffer,
                 folderName,
                 [firstReveal]
             );
 
+            // Send message
             const emoji = h.releaseEmojis.PIXELSKY || '✨';
-            const cacheBuster = Date.now();
             const embed = {
                 description: `${emoji} **Try to guess the character name!** ${emoji}\n\n` +
                     `**Rules:**\n` +
@@ -109,7 +107,7 @@ module.exports = function setupTriviaRoutes(app, client) {
                     `• Type the series name for a hint.\n` +
                     `• A new section of the image will be revealed every **${intervalMinutes} minute(s)**.`,
                 color: 0x9B59B6,
-                image: { url: `${imageUrl}?t=${cacheBuster}` },
+                image: { url: `${imageUrl}?t=${Date.now()}` },
             };
 
             const sentMessage = await webhook.send({
@@ -124,10 +122,17 @@ module.exports = function setupTriviaRoutes(app, client) {
                 return res.status(500).json({ error: 'Failed to create thread.' });
             }
 
+            // Update DB with thread, message, image key, and webhook credentials
             const imageKey = `images/trivia/${folderName}/trivia.jpg`;
             await db.query(
-                `UPDATE games_trivia SET thread_id = ?, message_id = ?, image_key = ? WHERE id = ?`,
-                [thread.id, sentMessage.id, imageKey, dbId]
+                `UPDATE games_trivia SET
+                    thread_id = ?,
+                    message_id = ?,
+                    image_key = ?,
+                    webhook_id = ?,
+                    webhook_token = ?
+                WHERE id = ?`,
+                [thread.id, sentMessage.id, imageKey, webhookId, webhookToken, dbId]
             );
 
             await startTriviaTimer(client, dbId);
