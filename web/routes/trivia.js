@@ -1,12 +1,13 @@
 // web/routes/trivia.js
 const multer = require('multer');
 const upload = multer({ storage: multer.memoryStorage() });
-const { ChannelType } = require('discord.js'); // <-- import
+const { ChannelType } = require('discord.js');
 const h = require('../../utils/helpers');
 const db = require('../../services/database');
 const { putR2Image, getR2Image } = require('../../services/r2Storage');
 const { processAndUploadTriviaImage, SECTIONS } = require('../../services/triviaImage');
 const { getWebhook, startTriviaTimer, performReveal, endTriviaGameAdmin } = require('../../services/triviaService');
+
 const LOGO_URL = h.urls.LOGO_URL;
 
 module.exports = function setupTriviaRoutes(app, client) {
@@ -31,11 +32,27 @@ module.exports = function setupTriviaRoutes(app, client) {
             }
 
             const intervalMinutes = parseFloat(interval) || 60;
+            const sections = Array.from({ length: SECTIONS }, (_, i) => i);
+            for (let i = sections.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [sections[i], sections[j]] = [sections[j], sections[i]];
+            }
+            const corners = [0, 2, 9, 11];
+            if (corners.includes(sections[0])) {
+                for (let i = 1; i < sections.length; i++) {
+                    if (!corners.includes(sections[i])) {
+                        [sections[0], sections[i]] = [sections[i], sections[0]];
+                        break;
+                    }
+                }
+            }
+            const revealOrder = sections;
+            const firstReveal = revealOrder[0];
 
             await db.query(
                 `INSERT INTO games_trivia
-                (channel_id, thread_id, message_id, image_key, answer, series, hint, total_sections, revealed_count, revealed_sections, interval_minutes, next_reveal_at, status)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                (channel_id, thread_id, message_id, image_key, answer, series, hint, total_sections, revealed_count, revealed_sections, reveal_order, interval_minutes, next_reveal_at, status)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
                 [
                     channelId,
                     '',
@@ -46,7 +63,8 @@ module.exports = function setupTriviaRoutes(app, client) {
                     hint || null,
                     SECTIONS,
                     1,
-                    JSON.stringify([0]),
+                    JSON.stringify([firstReveal]),
+                    JSON.stringify(revealOrder),
                     intervalMinutes,
                     new Date(Date.now() + intervalMinutes * 60 * 1000).toISOString(),
                     'active'
@@ -55,13 +73,16 @@ module.exports = function setupTriviaRoutes(app, client) {
 
             const rowIdResult = await db.query(`SELECT last_insert_rowid() as id`, [], true);
             const dbId = rowIdResult.id;
+
             const folderName = `trivia_${dbId}`;
             const originalKey = `images/trivia/${folderName}/original.jpg`;
             await putR2Image(originalKey, imageFile.buffer, 'image/jpeg');
+
             const { url: initialUrl } = await processAndUploadTriviaImage(
                 imageFile.buffer,
                 folderName,
-                1
+                [firstReveal],
+                SECTIONS
             );
 
             const webhook = await getWebhook(channel, 'Trivia');
