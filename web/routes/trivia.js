@@ -4,7 +4,7 @@ const upload = multer({ storage: multer.memoryStorage() });
 const { ChannelType } = require('discord.js');
 const h = require('../../utils/helpers');
 const db = require('../../services/database');
-const { putR2Image, getR2Image } = require('../../services/r2Storage');
+const { putR2Image } = require('../../services/r2Storage');
 const { processAndUploadTriviaImage, SECTIONS } = require('../../services/triviaImage');
 const { getWebhook, startTriviaTimer, performReveal, endTriviaGameAdmin } = require('../../services/triviaService');
 
@@ -52,8 +52,8 @@ module.exports = function setupTriviaRoutes(app, client) {
 
             await db.query(
                 `INSERT INTO games_trivia
-                (channel_id, thread_id, message_id, image_key, answer, series, hint, total_sections, revealed_count, revealed_sections, reveal_order, interval_minutes, next_reveal_at, status)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                (channel_id, thread_id, message_id, image_key, answer, series, hint, total_sections, revealed_count, revealed_sections, reveal_order, interval_minutes, next_reveal_at, status, webhook_id, webhook_token)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
                 [
                     channelId,
                     '',
@@ -68,7 +68,9 @@ module.exports = function setupTriviaRoutes(app, client) {
                     JSON.stringify(revealOrder),
                     intervalMinutes,
                     new Date(Date.now() + intervalMinutes * 60 * 1000).toISOString(),
-                    'active'
+                    'active',
+                    '', // webhook_id placeholder
+                    ''  // webhook_token placeholder
                 ]
             );
 
@@ -85,11 +87,13 @@ module.exports = function setupTriviaRoutes(app, client) {
             );
 
             const webhook = await getWebhook(channel, 'Trivia');
+            const webhookId = webhook.id;
+            const webhookToken = webhook.token;
+
             const emoji = h.releaseEmojis.PIXELSKY || '✨';
             const embed = {
                 title: '🧩 Character Trivia',
                 description: `${emoji} **Try to guess the character name!** ${emoji}\n\n` +
-                    `**Hint:** Type the **series name** (e.g., "${series}") to get a hint!\n\n` +
                     `**Rules:**\n` +
                     `• Guess the character name to win!\n` +
                     `• Type the series name for a hint.\n` +
@@ -111,8 +115,8 @@ module.exports = function setupTriviaRoutes(app, client) {
 
             const imageKey = `images/trivia/${folderName}/trivia_1.jpg`;
             await db.query(
-                `UPDATE games_trivia SET thread_id = ?, message_id = ?, image_key = ? WHERE id = ?`,
-                [thread.id, sentMessage.id, imageKey, dbId]
+                `UPDATE games_trivia SET thread_id = ?, message_id = ?, image_key = ?, webhook_id = ?, webhook_token = ? WHERE id = ?`,
+                [thread.id, sentMessage.id, imageKey, webhookId, webhookToken, dbId]
             );
 
             await startTriviaTimer(client, dbId);
