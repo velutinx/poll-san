@@ -5,8 +5,8 @@ const { ChannelType } = require('discord.js');
 const h = require('../../utils/helpers');
 const db = require('../../services/database');
 const { putR2Image } = require('../../services/r2Storage');
-const { processAndUploadTriviaImage, SECTIONS } = require('../../services/triviaImage');
-const { startTriviaTimer, performReveal, endTriviaGameAdmin } = require('../../services/triviaService');
+const { uploadOriginalImage, uploadTriviaImage, SECTIONS } = require('../../services/triviaImage');
+const { startTriviaTimer } = require('../../services/triviaService');
 
 const LOGO_URL = h.urls.LOGO_URL;
 
@@ -33,6 +33,7 @@ module.exports = function setupTriviaRoutes(app, client) {
 
             const intervalMinutes = parseFloat(interval) || 60;
 
+            // Generate random reveal order (first not a corner)
             const sections = Array.from({ length: SECTIONS }, (_, i) => i);
             for (let i = sections.length - 1; i > 0; i--) {
                 const j = Math.floor(Math.random() * (i + 1));
@@ -50,22 +51,10 @@ module.exports = function setupTriviaRoutes(app, client) {
             const revealOrder = sections;
             const firstReveal = revealOrder[0];
 
-            // Delete any existing 'Trivia' webhook to ensure we get a fresh token
-            const existing = (await channel.fetchWebhooks()).find(w => w.name === 'Trivia');
-            if (existing) {
-                await existing.delete();
-            }
-
-            // Create a new webhook – token is guaranteed to be defined
-            const webhook = await channel.createWebhook({ name: 'Trivia', avatar: LOGO_URL });
-            const webhookId = webhook.id;
-            const webhookToken = webhook.token;
-
-            // Insert game with webhook credentials
             await db.query(
                 `INSERT INTO games_trivia
-                (channel_id, thread_id, message_id, image_key, answer, series, hint, total_sections, revealed_count, revealed_sections, reveal_order, interval_minutes, next_reveal_at, status, webhook_id, webhook_token)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                (channel_id, thread_id, message_id, image_key, answer, series, hint, total_sections, revealed_count, revealed_sections, reveal_order, interval_minutes, next_reveal_at, status)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
                 [
                     channelId,
                     '',
@@ -80,26 +69,32 @@ module.exports = function setupTriviaRoutes(app, client) {
                     JSON.stringify(revealOrder),
                     intervalMinutes,
                     new Date(Date.now() + intervalMinutes * 60 * 1000).toISOString(),
-                    'active',
-                    webhookId,
-                    webhookToken
+                    'active'
                 ]
             );
 
             const rowIdResult = await db.query(`SELECT last_insert_rowid() as id`, [], true);
             const dbId = rowIdResult.id;
             const folderName = `trivia_${dbId}`;
-            const originalKey = `images/trivia/${folderName}/original.jpg`;
-            await putR2Image(originalKey, imageFile.buffer, 'image/jpeg');
 
-            const { url: initialUrl } = await processAndUploadTriviaImage(
+            await uploadOriginalImage(imageFile.buffer, folderName);
+
+            const { url: imageUrl } = await uploadTriviaImage(
                 imageFile.buffer,
                 folderName,
-                [firstReveal],
-                SECTIONS
+                [firstReveal]
             );
 
+            const channelObj = await client.channels.fetch(channelId);
+            let webhook = (await channelObj.fetchWebhooks()).find(w => w.name === 'Trivia');
+            if (!webhook) {
+                webhook = await channelObj.createWebhook({ name: 'Trivia', avatar: LOGO_URL });
+            } else if (webhook.avatar !== LOGO_URL) {
+                await webhook.edit({ avatar: LOGO_URL });
+            }
+
             const emoji = h.releaseEmojis.PIXELSKY || '✨';
+            const cacheBuster = Date.now();
             const embed = {
                 description: `${emoji} **Try to guess the character name!** ${emoji}\n\n` +
                     `**Rules:**\n` +
@@ -107,8 +102,9 @@ module.exports = function setupTriviaRoutes(app, client) {
                     `• Type the series name for a hint.\n` +
                     `• A new section of the image will be revealed every **${intervalMinutes} minute(s)**.`,
                 color: 0x9B59B6,
-                image: { url: initialUrl },
+                image: { url: `${imageUrl}?t=${cacheBuster}` },
             };
+
             const sentMessage = await webhook.send({
                 embeds: [embed],
                 threadName: `🧩 Trivia: ${dbId}`,
@@ -121,7 +117,7 @@ module.exports = function setupTriviaRoutes(app, client) {
                 return res.status(500).json({ error: 'Failed to create thread.' });
             }
 
-            const imageKey = `images/trivia/${folderName}/trivia_1.jpg`;
+            const imageKey = `images/trivia/${folderName}/trivia.jpg`;
             await db.query(
                 `UPDATE games_trivia SET thread_id = ?, message_id = ?, image_key = ? WHERE id = ?`,
                 [thread.id, sentMessage.id, imageKey, dbId]
