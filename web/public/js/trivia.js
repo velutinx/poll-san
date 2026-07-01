@@ -33,14 +33,16 @@ function initTrivia() {
         }
     };
 
-    // Load channels
     loadChannels('trivia-channel');
+    await loadChannels('trivia-channel');
+    const channelSelect = document.getElementById('trivia-channel');
+    if (channelSelect) {
+        channelSelect.value = '1521826626034340021';
+    }
 
-    // Load active games and winners
     loadTriviaGames();
     loadTriviaWinners();
 
-    // Launch button
     document.getElementById('trivia-launch-btn').onclick = launchTrivia;
 }
 
@@ -50,7 +52,7 @@ function handleTriviaFiles(files) {
 
     for (const file of files) {
         if (!file.type.startsWith('image/')) continue;
-        triviaUploadedFiles = [file]; // Only allow one image for trivia
+        triviaUploadedFiles = [file];
 
         const reader = new FileReader();
         reader.onload = (e) => {
@@ -242,7 +244,6 @@ async function endTriviaGame(gameId) {
     }
 }
 
-// Initialize when the tab is shown
 window.initTrivia = initTrivia;
 window.loadTriviaGames = loadTriviaGames;
 window.loadTriviaWinners = loadTriviaWinners;
