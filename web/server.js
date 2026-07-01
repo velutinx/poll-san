@@ -182,6 +182,8 @@ module.exports = (client) => {
     const setupQueueRoutes = require('./routes/queue');
     const reminderRouter = require('./routes/reminder');
 
+    const setupTriviaRoutes = require('./routes/trivia');
+
     app.use(reminderRouter);
     app.use(greetingsRouter);
 
@@ -192,6 +194,7 @@ module.exports = (client) => {
     setupReleasesRoutes(app, client, upload, FORUM_ID, SUPPORTER_FORUM_ID);
     setupMonitoringRoutes(app, client, getGuildMembers);
     setupQueueRoutes(app, client);
+    setupTriviaRoutes(app, client);
 
     const server = app.listen(PORT, () => {
         console.log(`🌐 Dashboard running at http://localhost:${PORT}/poll-san`);
