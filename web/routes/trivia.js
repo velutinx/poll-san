@@ -42,7 +42,7 @@ module.exports = function setupTriviaRoutes(app, client) {
             );
 
             // Insert into DB (single table with JSON fields)
-            const result = await db.query(
+            await db.query(
                 `INSERT INTO games_trivia
                 (channel_id, thread_id, message_id, image_key, answer, series, hint, total_sections, revealed_count, revealed_sections, interval_minutes, next_reveal_at, status)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -62,7 +62,14 @@ module.exports = function setupTriviaRoutes(app, client) {
                     'active'
                 ]
             );
-            const dbId = result.meta.last_row_id;
+
+            // Get the inserted ID
+            const rowIdResult = await db.query(
+                `SELECT last_insert_rowid() as id`,
+                [],
+                true
+            );
+            const dbId = rowIdResult.id;
 
             // Send the message in Discord
             const webhook = await getWebhook(channel, 'Trivia');
