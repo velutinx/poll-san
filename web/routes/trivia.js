@@ -73,11 +73,9 @@ module.exports = function setupTriviaRoutes(app, client) {
 
             const rowIdResult = await db.query(`SELECT last_insert_rowid() as id`, [], true);
             const dbId = rowIdResult.id;
-
             const folderName = `trivia_${dbId}`;
             const originalKey = `images/trivia/${folderName}/original.jpg`;
             await putR2Image(originalKey, imageFile.buffer, 'image/jpeg');
-
             const { url: initialUrl } = await processAndUploadTriviaImage(
                 imageFile.buffer,
                 folderName,
@@ -108,7 +106,7 @@ module.exports = function setupTriviaRoutes(app, client) {
 
             if (!sentMessage.thread) {
                 await db.query(`DELETE FROM games_trivia WHERE id = ?`, [dbId]);
-                return res.status(500).json({ error: 'Failed to create thread. The channel might not be a forum channel or the bot lacks permissions.' });
+                return res.status(500).json({ error: 'Failed to create thread. Check bot permissions.' });
             }
 
             const imageKey = `images/trivia/${folderName}/trivia_1.jpg`;
@@ -162,14 +160,6 @@ module.exports = function setupTriviaRoutes(app, client) {
         const { gameId } = req.body;
         if (!gameId) return res.status(400).json({ error: 'Missing gameId' });
         try {
-            const game = await db.query(
-                `SELECT * FROM games_trivia WHERE id = ? AND status = 'active'`,
-                [gameId],
-                true
-            );
-            if (!game) {
-                return res.status(404).json({ error: 'Game not found or already ended' });
-            }
             await performReveal(client, gameId);
             res.json({ success: true });
         } catch (err) {
