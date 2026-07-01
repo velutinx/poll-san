@@ -156,18 +156,18 @@ module.exports = (client) => {
         req.on('close', () => pollClients.delete(res));
     });
 
-    app.get('/api/channels', async (req, res) => {
-        try {
-            const guild = client.guilds.cache.get(process.env.GUILD_ID);
-            if (!guild) return res.status(500).json({ error: 'Guild not found' });
-            const channels = guild.channels.cache
-                .filter(ch => ch.type === ChannelType.GuildText)
-                .map(ch => ({ id: ch.id, name: ch.name }));
-            res.json(channels);
-        } catch (err) {
-            res.status(500).json({ error: err.message });
-        }
-    });
+app.get('/api/channels', async (req, res) => {
+    try {
+        const guild = client.guilds.cache.get(process.env.GUILD_ID);
+        if (!guild) return res.status(500).json({ error: 'Guild not found' });
+        const channels = guild.channels.cache
+            .filter(ch => ch.type === ChannelType.GuildText || ch.type === ChannelType.GuildForum)
+            .map(ch => ({ id: ch.id, name: ch.name }));
+        res.json(channels);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
 
     app.get('/poll-san', (req, res) => {
         res.sendFile(path.join(__dirname, 'public', 'index.html'));
