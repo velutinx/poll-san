@@ -25,7 +25,7 @@ async function updateTriviaEmbed(client, game, imageUrl) {
         image: { url: `${imageUrl}?t=${Date.now()}` },
     };
 
-    // Use stored webhook credentials
+    // Use the dedicated webhook for this game
     if (game.webhook_id && game.webhook_token) {
         try {
             const webhook = await client.fetchWebhook(game.webhook_id, game.webhook_token);
@@ -33,16 +33,19 @@ async function updateTriviaEmbed(client, game, imageUrl) {
             console.log(`✅ Updated embed for game ${game.id}`);
             return;
         } catch (err) {
-            console.error(`Stored webhook failed for game ${game.id}:`, err.message);
+            console.error(`Webhook edit failed for game ${game.id}:`, err.message);
         }
     }
 
-    // Fallback: fetch from channel
+    // Fallback: try to get webhook by name (shouldn't happen if we stored correctly)
     try {
         const channel = await client.channels.fetch(game.channel_id);
-        let webhook = (await channel.fetchWebhooks()).find(w => w.name === 'Trivia');
+        let webhook = (await channel.fetchWebhooks()).find(w => w.name === `Trivia-${game.id}`);
         if (!webhook) {
-            webhook = await channel.createWebhook({ name: 'Trivia', avatar: LOGO_URL });
+            webhook = await channel.createWebhook({
+                name: `Trivia-${game.id}`,
+                avatar: LOGO_URL,
+            });
         }
         await webhook.editMessage(game.message_id, { embeds: [embed], content: null });
         console.log(`✅ Updated embed (fallback) for game ${game.id}`);
@@ -125,9 +128,12 @@ async function handleTriviaGuess(client, message) {
     if (content.toLowerCase().includes(game.series.toLowerCase())) {
         const hintMsg = formatHintMessage(game.hint, game.series);
         const channel = message.channel;
-        let webhook = (await channel.fetchWebhooks()).find(w => w.name === 'Trivia');
+        let webhook = (await channel.fetchWebhooks()).find(w => w.name === `Trivia-${game.id}`);
         if (!webhook) {
-            webhook = await channel.createWebhook({ name: 'Trivia', avatar: LOGO_URL });
+            webhook = await channel.createWebhook({
+                name: `Trivia-${game.id}`,
+                avatar: LOGO_URL,
+            });
         }
         await webhook.send({
             content: `${h.releaseEmojis.SPARKLES || '✨'} **Hint:** ${hintMsg}`,
@@ -174,9 +180,12 @@ async function completeTriviaGame(client, gameId, userId, username) {
     const { url: fullImageUrl } = await uploadTriviaImage(originalImageBuffer, folderName, allSections);
 
     const channel = await client.channels.fetch(game.channel_id);
-    let webhook = (await channel.fetchWebhooks()).find(w => w.name === 'Trivia');
+    let webhook = (await channel.fetchWebhooks()).find(w => w.name === `Trivia-${game.id}`);
     if (!webhook) {
-        webhook = await channel.createWebhook({ name: 'Trivia', avatar: LOGO_URL });
+        webhook = await channel.createWebhook({
+            name: `Trivia-${game.id}`,
+            avatar: LOGO_URL,
+        });
     }
 
     const announceMsg = `${h.releaseEmojis.SPARKLES || '🎉'} **Congratulations, <@${userId}>!** You guessed correctly! ${h.releaseEmojis.SPARKLES || '🎉'}`;
@@ -255,9 +264,12 @@ async function endTriviaGameAdmin(client, gameId) {
     }
 
     const channel = await client.channels.fetch(game.channel_id);
-    let webhook = (await channel.fetchWebhooks()).find(w => w.name === 'Trivia');
+    let webhook = (await channel.fetchWebhooks()).find(w => w.name === `Trivia-${game.id}`);
     if (!webhook) {
-        webhook = await channel.createWebhook({ name: 'Trivia', avatar: LOGO_URL });
+        webhook = await channel.createWebhook({
+            name: `Trivia-${game.id}`,
+            avatar: LOGO_URL,
+        });
     }
     const embed = {
         description: `The game was ended by an admin. No winner this time.`,
