@@ -25,60 +25,54 @@ async function updateTriviaEmbed(client, game, imageUrl) {
         image: { url: `${imageUrl}?t=${Date.now()}` },
     };
 
-    // Debug: log the stored credentials and message_id
-    console.log(`🔍 Debug: game ${game.id}, webhook_id=${game.webhook_id || 'missing'}, webhook_token=${game.webhook_token ? 'exists' : 'missing'}, message_id=${game.message_id}`);
-
-    // Try using the dedicated webhook
-    if (game.webhook_id && game.webhook_token) {
-        try {
-            const webhook = await client.fetchWebhook(game.webhook_id, game.webhook_token);
-            await webhook.editMessage(game.message_id, { embeds: [embed], content: null });
-            console.log(`✅ Updated embed for game ${game.id}`);
-            return true;
-        } catch (err) {
-            console.error(`Webhook edit failed for game ${game.id}:`, err.message);
-        }
-    }
-
-    // Fallback: send a new message in the thread and update message_id
-    try {
-        const channel = await client.channels.fetch(game.channel_id);
-        const webhookName = `Trivia-${game.id}`;
-        let webhook = (await channel.fetchWebhooks()).find(w => w.name === webhookName);
-        if (!webhook) {
-            webhook = await channel.createWebhook({
-                name: webhookName,
-                avatar: LOGO_URL,
-            });
-            const updateResult = await db.query(
-                `UPDATE games_trivia SET webhook_id = ?, webhook_token = ? WHERE id = ?`,
-                [webhook.id, webhook.token, game.id]
-            );
-            console.log(`🔍 Updated webhook credentials for game ${game.id}, result:`, updateResult);
-            // Update the game object with new webhook credentials
-            game.webhook_id = webhook.id;
-            game.webhook_token = webhook.token;
-        }
-        const newMessage = await webhook.send({
-            embeds: [embed],
-            threadId: game.thread_id,
-            username: 'Trivia',
-            avatarURL: LOGO_URL,
+    // Get the webhook
+    const channel = await client.channels.fetch(game.channel_id);
+    const webhookName = `Trivia-${game.id}`;
+    let webhook = (await channel.fetchWebhooks()).find(w => w.name === webhookName);
+    if (!webhook) {
+        webhook = await channel.createWebhook({
+            name: webhookName,
+            avatar: LOGO_URL,
         });
-        // Update message_id in the database
-        const updateResult = await db.query(
-            `UPDATE games_trivia SET message_id = ? WHERE id = ?`,
-            [newMessage.id, game.id]
+        // Save webhook credentials
+        await db.query(
+            `UPDATE games_trivia SET webhook_id = ?, webhook_token = ? WHERE id = ?`,
+            [webhook.id, webhook.token, game.id]
         );
-        console.log(`🔍 Updated message_id to ${newMessage.id} for game ${game.id}, result:`, updateResult);
-        // Update the game object so subsequent attempts use the new message_id
-        game.message_id = newMessage.id;
-        console.log(`✅ Sent new embed message for game ${game.id}`);
-        return true;
-    } catch (err) {
-        console.error(`Failed to send new message for game ${game.id}:`, err.message);
-        return false;
+        game.webhook_id = webhook.id;
+        game.webhook_token = webhook.token;
     }
+
+    // Try to delete the old message (if exists)
+    if (game.message_id) {
+        try {
+            const oldMessage = await webhook.fetchMessage(game.message_id).catch(() => null);
+            if (oldMessage) {
+                await oldMessage.delete();
+                console.log(`🗑️ Deleted old message ${game.message_id} for game ${game.id}`);
+            }
+        } catch (err) {
+            console.log(`Could not delete old message ${game.message_id}:`, err.message);
+        }
+    }
+
+    // Send new message
+    const newMessage = await webhook.send({
+        embeds: [embed],
+        threadId: game.thread_id,
+        username: 'Trivia',
+        avatarURL: LOGO_URL,
+    });
+
+    // Update message_id in database
+    await db.query(
+        `UPDATE games_trivia SET message_id = ? WHERE id = ?`,
+        [newMessage.id, game.id]
+    );
+    game.message_id = newMessage.id;
+
+    console.log(`✅ Sent new embed message for game ${game.id}`);
+    return true;
 }
 
 async function performReveal(client, gameId) {
@@ -135,7 +129,6 @@ async function performReveal(client, gameId) {
     }
 }
 
-// ... (the rest of the file remains unchanged) ...
 async function handleTriviaGuess(client, message) {
     const game = await db.query(
         `SELECT * FROM games_trivia WHERE thread_id = ? AND status = 'active'`,
@@ -218,6 +211,18 @@ async function completeTriviaGame(client, gameId, userId, username) {
         });
     }
 
+    // Delete old message if it exists
+    if (game.message_id) {
+        try {
+            const oldMessage = await webhook.fetchMessage(game.message_id).catch(() => null);
+            if (oldMessage) {
+                await oldMessage.delete();
+            }
+        } catch (err) {
+            console.log(`Could not delete old message ${game.message_id}:`, err.message);
+        }
+    }
+
     const announceMsg = `${h.releaseEmojis.SPARKLES || '🎉'} **Congratulations, <@${userId}>!** You guessed correctly! ${h.releaseEmojis.SPARKLES || '🎉'}`;
     await webhook.send({
         content: announceMsg,
@@ -231,7 +236,18 @@ async function completeTriviaGame(client, gameId, userId, username) {
         color: 0x4ADE80,
         image: { url: `${fullImageUrl}?t=${Date.now()}` },
     };
-    await webhook.editMessage(game.message_id, { embeds: [embed], content: null });
+    const finalMessage = await webhook.send({
+        embeds: [embed],
+        threadId: game.thread_id,
+        username: 'Trivia',
+        avatarURL: LOGO_URL,
+    });
+
+    // Update message_id to the final message
+    await db.query(
+        `UPDATE games_trivia SET message_id = ? WHERE id = ?`,
+        [finalMessage.id, game.id]
+    );
 
     if (triviaTimers.has(gameId)) {
         clearTimeout(triviaTimers.get(gameId));
@@ -302,21 +318,35 @@ async function endTriviaGameAdmin(client, gameId) {
             avatar: LOGO_URL,
         });
     }
+
+    // Delete old message if it exists
+    if (game.message_id) {
+        try {
+            const oldMessage = await webhook.fetchMessage(game.message_id).catch(() => null);
+            if (oldMessage) {
+                await oldMessage.delete();
+            }
+        } catch (err) {
+            console.log(`Could not delete old message ${game.message_id}:`, err.message);
+        }
+    }
+
     const embed = {
         description: `The game was ended by an admin. No winner this time.`,
         color: 0xEF4444,
     };
-    try {
-        await webhook.editMessage(game.message_id, { embeds: [embed], content: null });
-    } catch (err) {
-        console.warn(`Could not edit message ${game.message_id}:`, err.message);
-        await webhook.send({
-            embeds: [embed],
-            threadId: game.thread_id,
-            username: 'Trivia',
-            avatarURL: LOGO_URL,
-        });
-    }
+    const finalMessage = await webhook.send({
+        embeds: [embed],
+        threadId: game.thread_id,
+        username: 'Trivia',
+        avatarURL: LOGO_URL,
+    });
+
+    // Update message_id to the final message
+    await db.query(
+        `UPDATE games_trivia SET message_id = ? WHERE id = ?`,
+        [finalMessage.id, game.id]
+    );
 }
 
 module.exports = {
