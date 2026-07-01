@@ -52,8 +52,8 @@ module.exports = function setupTriviaRoutes(app, client) {
 
             await db.query(
                 `INSERT INTO games_trivia
-                (channel_id, thread_id, message_id, image_key, answer, series, hint, total_sections, revealed_count, revealed_sections, reveal_order, interval_minutes, next_reveal_at, status, webhook_id, webhook_token)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                (channel_id, thread_id, message_id, image_key, answer, series, hint, total_sections, revealed_count, revealed_sections, reveal_order, interval_minutes, next_reveal_at, status)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
                 [
                     channelId,
                     '',
@@ -68,9 +68,7 @@ module.exports = function setupTriviaRoutes(app, client) {
                     JSON.stringify(revealOrder),
                     intervalMinutes,
                     new Date(Date.now() + intervalMinutes * 60 * 1000).toISOString(),
-                    'active',
-                    '',
-                    ''
+                    'active'
                 ]
             );
 
@@ -88,8 +86,6 @@ module.exports = function setupTriviaRoutes(app, client) {
             );
 
             const webhook = await getWebhook(channel, 'Trivia');
-            const webhookId = webhook.id;
-            const webhookToken = webhook.token;
 
             const emoji = h.releaseEmojis.PIXELSKY || '✨';
             const embed = {
@@ -115,8 +111,8 @@ module.exports = function setupTriviaRoutes(app, client) {
 
             const imageKey = `images/trivia/${folderName}/trivia_1.jpg`;
             await db.query(
-                `UPDATE games_trivia SET thread_id = ?, message_id = ?, image_key = ?, webhook_id = ?, webhook_token = ? WHERE id = ?`,
-                [thread.id, sentMessage.id, imageKey, webhookId, webhookToken, dbId]
+                `UPDATE games_trivia SET thread_id = ?, message_id = ?, image_key = ? WHERE id = ?`,
+                [thread.id, sentMessage.id, imageKey, dbId]
             );
 
             await startTriviaTimer(client, dbId);
