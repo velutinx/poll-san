@@ -33,6 +33,9 @@ const initMudaeMessageHandler = require('./handlers/mudaeMessageHandler');
 const h = require('./utils/helpers');
 const initChannelCleaner = require('./handlers/channelCleaner');
 
+// ── Trivia guess handler ──
+const triviaGuessEvent = require('./events/triviaGuess');
+
 // ── Safe require helper ──
 function getFn(mod, name) {
     if (typeof mod === 'function') return mod;
@@ -78,6 +81,7 @@ client.on(Events.MessageCreate, (message) => {
 client.on(Events.MessageCreate, async (message) => {
     await XPLib.updateXP(message);
 });
+client.on(Events.MessageCreate, triviaGuessEvent);
 
 client.on('error', console.error);
 process.on('unhandledRejection', (reason) => {
