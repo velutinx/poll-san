@@ -6,6 +6,7 @@ const h = require('../../utils/helpers');
 const db = require('../../services/database');
 const { putR2Image } = require('../../services/r2Storage');
 const { processAndUploadTriviaImage, SECTIONS } = require('../../services/triviaImage');
+const { startTriviaTimer, performReveal, endTriviaGameAdmin } = require('../../services/triviaService');
 
 const LOGO_URL = h.urls.LOGO_URL;
 
