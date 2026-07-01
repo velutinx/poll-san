@@ -3,9 +3,9 @@ const db = require('./database');
 const h = require('../utils/helpers');
 const { getR2Image } = require('./r2Storage');
 const { updateTriviaImage, SECTIONS } = require('./triviaImage');
+const { Webhook } = require('discord.js');
 
 const LOGO_URL = h.urls.LOGO_URL;
-const DISCORD_API = 'https://discord.com/api/v10';
 
 async function getWebhook(channel, name) {
     let webhook = (await channel.fetchWebhooks()).find(w => w.name === name);
@@ -26,16 +26,14 @@ function formatHintMessage(hintTemplate, series) {
     return hintTemplate.replace(/\{series\}/g, series);
 }
 
-async function updateTriviaEmbed(webhook, messageId, game, revealedSections, imageUrl) {
+async function updateTriviaEmbed(client, game, revealedSections, imageUrl) {
     const total = game.total_sections || SECTIONS;
     const revealedCount = revealedSections.length;
-    const progress = Math.round((revealedCount / total) * 100);
     const emoji = h.releaseEmojis.PIXELSKY || '✨';
 
     const embed = {
         title: '🧩 Character Trivia',
         description: `${emoji} **Try to guess the character name!** ${emoji}\n\n` +
-            `**Hint:** Type the **series name** (e.g., "${game.series}") to get a hint!\n\n` +
             `**Rules:**\n` +
             `• Guess the character name to win!\n` +
             `• Type the series name for a hint.\n` +
@@ -44,10 +42,27 @@ async function updateTriviaEmbed(webhook, messageId, game, revealedSections, ima
         image: { url: imageUrl },
     };
 
+    // Use stored webhook if available
+    if (game.webhook_id && game.webhook_token) {
+        try {
+            const webhook = new Webhook({ id: game.webhook_id, token: game.webhook_token });
+            await webhook.editMessage(game.message_id, { embeds: [embed], content: null });
+            return;
+        } catch (err) {
+            console.error(`Failed to edit with stored webhook for game ${game.id}:`, err.message);
+        }
+    }
+
+    // Fallback: get webhook from channel
     try {
-        await webhook.editMessage(messageId, { embeds: [embed], content: null });
+        const channel = await client.channels.fetch(game.channel_id);
+        const webhook = await getWebhook(channel, 'Trivia');
+        await webhook.editMessage(game.message_id, { embeds: [embed], content: null });
     } catch (err) {
-        console.error(`Failed to update embed for message ${messageId}:`, err.message);
+        console.error(`Failed to edit message ${game.message_id} with fallback:`, err.message);
+        // Final fallback: send a new message in the thread
+        const channel = await client.channels.fetch(game.channel_id);
+        const webhook = await getWebhook(channel, 'Trivia');
         await webhook.send({
             content: `🔄 **Image updated!** (${revealedCount}/${total} revealed)`,
             embeds: [embed],
@@ -108,9 +123,7 @@ async function performReveal(client, gameId) {
         originalKey
     );
 
-    const channel = await client.channels.fetch(game.channel_id);
-    const webhook = await getWebhook(channel, 'Trivia');
-    await updateTriviaEmbed(webhook, game.message_id, game, revealedSections, newImageUrl);
+    await updateTriviaEmbed(client, game, revealedSections, newImageUrl);
 
     if (game.status === 'active') {
         await startTriviaTimer(client, gameId);
@@ -188,6 +201,7 @@ async function completeTriviaGame(client, gameId, userId, username) {
 
     const channel = await client.channels.fetch(game.channel_id);
     const webhook = await getWebhook(channel, 'Trivia');
+
     const announceMsg = `${h.releaseEmojis.SPARKLES || '🎉'} **Congratulations, <@${userId}>!** You guessed correctly! ${h.releaseEmojis.SPARKLES || '🎉'}`;
     await webhook.send({
         content: announceMsg,
@@ -201,7 +215,6 @@ async function completeTriviaGame(client, gameId, userId, username) {
         description: `${h.releaseEmojis.SPARKLES || '🎉'} **${username}** guessed the character: **${game.answer}**!`,
         color: 0x4ADE80,
         image: { url: fullImageUrl },
-        footer: { text: `Game ended • Winner: ${username}` },
     };
     await webhook.editMessage(game.message_id, { embeds: [embed], content: null });
 
