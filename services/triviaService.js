@@ -3,7 +3,6 @@ const db = require('./database');
 const h = require('../utils/helpers');
 const { getR2Image } = require('./r2Storage');
 const { updateTriviaImage, SECTIONS } = require('./triviaImage');
-const { Webhook } = require('discord.js');
 
 const LOGO_URL = h.urls.LOGO_URL;
 
@@ -32,7 +31,6 @@ async function updateTriviaEmbed(client, game, revealedSections, imageUrl) {
     const emoji = h.releaseEmojis.PIXELSKY || '✨';
 
     const embed = {
-        title: '🧩 Character Trivia',
         description: `${emoji} **Try to guess the character name!** ${emoji}\n\n` +
             `**Rules:**\n` +
             `• Guess the character name to win!\n` +
@@ -45,7 +43,7 @@ async function updateTriviaEmbed(client, game, revealedSections, imageUrl) {
     // Use stored webhook if available
     if (game.webhook_id && game.webhook_token) {
         try {
-            const webhook = new Webhook({ id: game.webhook_id, token: game.webhook_token });
+            const webhook = await client.fetchWebhook(game.webhook_id, game.webhook_token);
             await webhook.editMessage(game.message_id, { embeds: [embed], content: null });
             return;
         } catch (err) {
@@ -59,17 +57,7 @@ async function updateTriviaEmbed(client, game, revealedSections, imageUrl) {
         const webhook = await getWebhook(channel, 'Trivia');
         await webhook.editMessage(game.message_id, { embeds: [embed], content: null });
     } catch (err) {
-        console.error(`Failed to edit message ${game.message_id} with fallback:`, err.message);
-        // Final fallback: send a new message in the thread
-        const channel = await client.channels.fetch(game.channel_id);
-        const webhook = await getWebhook(channel, 'Trivia');
-        await webhook.send({
-            content: `🔄 **Image updated!** (${revealedCount}/${total} revealed)`,
-            embeds: [embed],
-            threadId: game.thread_id,
-            username: 'Trivia',
-            avatarURL: LOGO_URL,
-        });
+        console.error(`Failed to edit message ${game.message_id}:`, err.message);
     }
 }
 
@@ -211,7 +199,6 @@ async function completeTriviaGame(client, gameId, userId, username) {
     });
 
     const embed = {
-        title: '🧩 Character Trivia – Completed!',
         description: `${h.releaseEmojis.SPARKLES || '🎉'} **${username}** guessed the character: **${game.answer}**!`,
         color: 0x4ADE80,
         image: { url: fullImageUrl },
@@ -281,7 +268,6 @@ async function endTriviaGameAdmin(client, gameId) {
     const channel = await client.channels.fetch(game.channel_id);
     const webhook = await getWebhook(channel, 'Trivia');
     const embed = {
-        title: '🧩 Character Trivia – Ended',
         description: `The game was ended by an admin. No winner this time.`,
         color: 0xEF4444,
     };
