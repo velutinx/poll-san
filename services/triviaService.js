@@ -1,4 +1,4 @@
-// services/triviaService.js – updated fallback
+// services/triviaService.js
 const db = require('./database');
 const h = require('../utils/helpers');
 const { getOriginalImage, uploadTriviaImage } = require('./triviaImage');
@@ -25,6 +25,9 @@ async function updateTriviaEmbed(client, game, imageUrl) {
         image: { url: `${imageUrl}?t=${Date.now()}` },
     };
 
+    // Debug: log the stored credentials and message_id
+    console.log(`🔍 Debug: game ${game.id}, webhook_id=${game.webhook_id || 'missing'}, webhook_token=${game.webhook_token ? 'exists' : 'missing'}, message_id=${game.message_id}`);
+
     // Try using the dedicated webhook
     if (game.webhook_id && game.webhook_token) {
         try {
@@ -47,10 +50,11 @@ async function updateTriviaEmbed(client, game, imageUrl) {
                 name: webhookName,
                 avatar: LOGO_URL,
             });
-            await db.query(
+            const updateResult = await db.query(
                 `UPDATE games_trivia SET webhook_id = ?, webhook_token = ? WHERE id = ?`,
                 [webhook.id, webhook.token, game.id]
             );
+            console.log(`🔍 Updated webhook credentials for game ${game.id}, result:`, updateResult);
             // Update the game object with new webhook credentials
             game.webhook_id = webhook.id;
             game.webhook_token = webhook.token;
@@ -62,10 +66,11 @@ async function updateTriviaEmbed(client, game, imageUrl) {
             avatarURL: LOGO_URL,
         });
         // Update message_id in the database
-        await db.query(
+        const updateResult = await db.query(
             `UPDATE games_trivia SET message_id = ? WHERE id = ?`,
             [newMessage.id, game.id]
         );
+        console.log(`🔍 Updated message_id to ${newMessage.id} for game ${game.id}, result:`, updateResult);
         // Update the game object so subsequent attempts use the new message_id
         game.message_id = newMessage.id;
         console.log(`✅ Sent new embed message for game ${game.id}`);
@@ -130,6 +135,7 @@ async function performReveal(client, gameId) {
     }
 }
 
+// ... (the rest of the file remains unchanged) ...
 async function handleTriviaGuess(client, message) {
     const game = await db.query(
         `SELECT * FROM games_trivia WHERE thread_id = ? AND status = 'active'`,
