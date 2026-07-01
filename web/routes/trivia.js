@@ -6,7 +6,7 @@ const h = require('../../utils/helpers');
 const db = require('../../services/database');
 const { putR2Image } = require('../../services/r2Storage');
 const { uploadOriginalImage, uploadTriviaImage, SECTIONS } = require('../../services/triviaImage');
-const { startTriviaTimer } = require('../../services/triviaService');
+const { startTriviaTimer, performReveal, endTriviaGameAdmin } = require('../../services/triviaService');
 
 const LOGO_URL = h.urls.LOGO_URL;
 
@@ -134,6 +134,8 @@ module.exports = function setupTriviaRoutes(app, client) {
                 WHERE id = ?`,
                 [thread.id, sentMessage.id, imageKey, webhookId, webhookToken, dbId]
             );
+
+            console.log(`✅ Trivia game ${dbId} created with webhook ${webhookId}`);
 
             await startTriviaTimer(client, dbId);
 
