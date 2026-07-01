@@ -32,6 +32,7 @@ module.exports = function setupTriviaRoutes(app, client) {
             }
 
             const intervalMinutes = parseFloat(interval) || 60;
+
             const sections = Array.from({ length: SECTIONS }, (_, i) => i);
             for (let i = sections.length - 1; i > 0; i--) {
                 const j = Math.floor(Math.random() * (i + 1));
@@ -95,24 +96,23 @@ module.exports = function setupTriviaRoutes(app, client) {
                     `• A new section of the image will be revealed every **${intervalMinutes} minute(s)**.`,
                 color: 0x9B59B6,
                 image: { url: initialUrl },
-                footer: { text: `Game ID: ${dbId} • 1/${SECTIONS} revealed` },
             };
             const sentMessage = await webhook.send({
                 embeds: [embed],
-                threadName: `🧩 Trivia: ${answer}`,
+                threadName: `🧩 Trivia: ${dbId}`,
                 username: 'Trivia',
                 avatarURL: LOGO_URL,
             });
 
-            if (!sentMessage.thread) {
-                await db.query(`DELETE FROM games_trivia WHERE id = ?`, [dbId]);
-                return res.status(500).json({ error: 'Failed to create thread. Check bot permissions.' });
+            const thread = sentMessage.channel;
+            if (!thread || !thread.isThread()) {
+                return res.status(500).json({ error: 'Failed to create thread.' });
             }
 
             const imageKey = `images/trivia/${folderName}/trivia_1.jpg`;
             await db.query(
                 `UPDATE games_trivia SET thread_id = ?, message_id = ?, image_key = ? WHERE id = ?`,
-                [sentMessage.thread.id, sentMessage.id, imageKey, dbId]
+                [thread.id, sentMessage.id, imageKey, dbId]
             );
 
             await startTriviaTimer(client, dbId);
