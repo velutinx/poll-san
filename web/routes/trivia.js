@@ -50,10 +50,24 @@ module.exports = function setupTriviaRoutes(app, client) {
             const revealOrder = sections;
             const firstReveal = revealOrder[0];
 
+            // Get or create webhook BEFORE inserting
+            let webhook = (await channel.fetchWebhooks()).find(w => w.name === 'Trivia');
+            if (!webhook) {
+                webhook = await channel.createWebhook({ name: 'Trivia', avatar: LOGO_URL });
+            } else {
+                if (webhook.avatar !== LOGO_URL) {
+                    await webhook.edit({ avatar: LOGO_URL });
+                }
+            }
+
+            const webhookId = webhook.id;
+            const webhookToken = webhook.token;
+
+            // Insert game with webhook credentials
             await db.query(
                 `INSERT INTO games_trivia
-                (channel_id, thread_id, message_id, image_key, answer, series, hint, total_sections, revealed_count, revealed_sections, reveal_order, interval_minutes, next_reveal_at, status)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                (channel_id, thread_id, message_id, image_key, answer, series, hint, total_sections, revealed_count, revealed_sections, reveal_order, interval_minutes, next_reveal_at, status, webhook_id, webhook_token)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
                 [
                     channelId,
                     '',
@@ -68,7 +82,9 @@ module.exports = function setupTriviaRoutes(app, client) {
                     JSON.stringify(revealOrder),
                     intervalMinutes,
                     new Date(Date.now() + intervalMinutes * 60 * 1000).toISOString(),
-                    'active'
+                    'active',
+                    webhookId,
+                    webhookToken
                 ]
             );
 
@@ -84,15 +100,6 @@ module.exports = function setupTriviaRoutes(app, client) {
                 [firstReveal],
                 SECTIONS
             );
-
-            let webhook = (await channel.fetchWebhooks()).find(w => w.name === 'Trivia');
-            if (!webhook) {
-                webhook = await channel.createWebhook({ name: 'Trivia', avatar: LOGO_URL });
-            } else {
-                if (webhook.avatar !== LOGO_URL) {
-                    await webhook.edit({ avatar: LOGO_URL });
-                }
-            }
 
             const emoji = h.releaseEmojis.PIXELSKY || '✨';
             const embed = {
