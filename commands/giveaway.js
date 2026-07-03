@@ -5,13 +5,10 @@ const fs = require('fs').promises;
 const { colors, releaseEmojis } = require('../utils/helpers');
 const h = require('../utils/helpers');
 const db = require('../services/database');
-
 const activeGiveaways = new Map();
 const giveawaySessions = new Map();
-
 const GIVEAWAY_IMAGE_URL = process.env.GIVEAWAY_IMAGE_URL;
 const USE_HOSTED_IMAGE = !!GIVEAWAY_IMAGE_URL;
-
 const MAX_TIMEOUT = 2147483647;
 
 function safeTimeout(callback, delayMs) {
@@ -57,7 +54,6 @@ module.exports = {
                 .setRequired(true)),
 
     async execute(interaction) {
-        // Intercept button clicks that might be routed here
         if (interaction.isButton() && interaction.customId === 'enter_giveaway') {
             return handleGiveawayButton(interaction);
         }
@@ -318,16 +314,34 @@ async function endGiveaway(messageId, client) {
                 avatar: h.urls.LOGO_URL
             });
         } else {
-            const winners = [];
             const shuffled = [...entrantsArray];
-            for (let i = 0; i < Math.min(row.winners_count, shuffled.length); i++) {
+            const winners = [];
+            for (let i = 0; i < Math.min(3, shuffled.length); i++) {
                 const randomIndex = Math.floor(Math.random() * shuffled.length);
                 winners.push(shuffled.splice(randomIndex, 1)[0]);
             }
-            const winnerMentions = winners.map(id => `<@${id}>`).join(', ');
+
             const { left, right } = h.getTwoRandomPresents();
+            const firstWinner = winners[0];
+            const backups = winners.slice(1);
+
+            let announcement = `${releaseEmojis?.CONFETTI || '🎉'} Congratulations to <@${firstWinner}> for winning ${left} **${row.prize}** ${right}!`;
+
+            if (backups.length > 0) {
+                const guild = channel.guild;
+                const backupNames = backups.map(id => {
+                    try {
+                        const member = guild.members.cache.get(id);
+                        return member ? member.displayName : id;
+                    } catch {
+                        return id;
+                    }
+                }).join(' and ');
+                announcement += `\n\n_Backup winners (in order, if prize is not claimed): ${backupNames}_`;
+            }
+
             await webhook.send({
-                content: `${releaseEmojis?.CONFETTI || '🎉'} Congratulations to ${winnerMentions} for winning ${left} **${row.prize}** ${right}!`,
+                content: announcement,
                 username: 'Giveaway',
                 avatar: h.urls.LOGO_URL
             });
