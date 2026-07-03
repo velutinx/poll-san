@@ -334,7 +334,7 @@ async function checkAndWarnDuplicateMemberships(client, activeMemberships) {
     const tierNames = { 1: 'Bronze', 2: 'Copper', 3: 'Silver', 4: 'Gold', 5: 'Platinum' };
     const listItems = memberships.map(m => {
       const tierName = tierNames[m.tier] || `Tier ${m.tier}`;
-      const orderId = m.order_id || m.subscription_id || 'unknown';
+      const orderId = m.order_id || 'unknown';
       return `✨ ${tierName} (${orderId})`;
     }).join(' and ');
 
@@ -363,7 +363,7 @@ async function syncMembershipRoles(client) {
 
     const activeMemberships = await db.query(
       `SELECT discord_id, tier, expires_at, order_id, updated_at, months,
-              recurring, plan_id, subscription_id, status, source, discord_tag
+              recurring, plan_id, status, source, discord_tag
        FROM ${h.tables.MEMBERSHIPS}
        WHERE expires_at > ?`,
       [now]
@@ -436,7 +436,6 @@ async function syncMembershipRoles(client) {
         membership.months || 1,
         membership.recurring ?? 0,
         membership.plan_id || null,
-        membership.subscription_id || null,
         membership.status || 'ACTIVE',
         membership.source || 'website',
         currentTag
@@ -444,11 +443,11 @@ async function syncMembershipRoles(client) {
     }
 
     if (membershipsToUpsert.length > 0) {
-      const placeholders = membershipsToUpsert.map(() => '(?,?,?,?,?,?,?,?,?,?,?,?)').join(', ');
+      const placeholders = membershipsToUpsert.map(() => '(?,?,?,?,?,?,?,?,?,?,?)').join(', ');
       const flatValues = membershipsToUpsert.flat();
       await db.query(
         `INSERT OR REPLACE INTO ${h.tables.MEMBERSHIPS}
-         (discord_id, tier, order_id, updated_at, expires_at, months, recurring, plan_id, subscription_id, status, source, discord_tag)
+         (discord_id, tier, order_id, updated_at, expires_at, months, recurring, plan_id, status, source, discord_tag)
          VALUES ${placeholders}`,
         flatValues
       );
@@ -496,6 +495,7 @@ async function syncMembershipRoles(client) {
       }
     }
 
+    // Clean up inactive roles (unchanged)
     for (const discordId of inactiveUserIds) {
       try {
         const member = await guild.members.fetch(discordId).catch(() => null);
