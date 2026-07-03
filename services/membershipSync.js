@@ -2,6 +2,7 @@
 
 const db = require('./database');
 const h = require('../utils/helpers');
+
 const TIER_ROLES = h.weights.tierMapping;
 const SUPPORTER_ROLE = h.ids.roles.supporter;
 const CREATOR_ROLE = h.ids.roles.creator;
@@ -263,7 +264,8 @@ async function syncMembershipRoles(client) {
     const now = new Date().toISOString();
 
     const activeMemberships = await db.query(
-      `SELECT discord_id, tier, expires_at, order_id
+      `SELECT discord_id, tier, expires_at, order_id, updated_at, months,
+              recurring, plan_id, subscription_id, status, source
        FROM ${h.tables.MEMBERSHIPS}
        WHERE expires_at > ?`,
       [now]
@@ -287,17 +289,18 @@ async function syncMembershipRoles(client) {
     const previousActiveIds = await getLastActiveSet();
     const newIds = [...currentActiveIds].filter(id => !previousActiveIds.has(id));
 
-if (newIds.length > 0) {
-  const guild = await client.guilds.fetch(process.env.GUILD_ID);
-  for (const discordId of newIds) {
-    try {
-      const member = await guild.members.fetch(discordId).catch(() => null);
-      const tier = userBestMembership.get(discordId).tier;
-      const tag = member ? member.user.tag : 'Unknown';
-      console.log(`[MembershipSync] NEW ACTIVE MEMBER: ${tag} (${discordId}) - Tier ${tier}`);
-    } catch (err) {}
-  }
-}
+    if (newIds.length > 0) {
+      const guild = await client.guilds.fetch(process.env.GUILD_ID);
+      for (const discordId of newIds) {
+        try {
+          const member = await guild.members.fetch(discordId).catch(() => null);
+          const tier = userBestMembership.get(discordId).tier;
+          const tag = member ? member.user.tag : 'Unknown';
+          console.log(`[MembershipSync] NEW ACTIVE MEMBER: ${tag} (${discordId}) - Tier ${tier}`);
+          await sendRequestTierWebhook(client, discordId, userBestMembership.get(discordId));
+        } catch (err) {}
+      }
+    }
 
     for (const [discordId, membership] of userBestMembership.entries()) {
       try {
@@ -323,7 +326,7 @@ if (newIds.length > 0) {
         membership.updated_at || new Date().toISOString(),
         membership.expires_at,
         membership.months || 1,
-        membership.recurring ? 1 : 0,
+        membership.recurring ?? 0,
         membership.plan_id || null,
         membership.subscription_id || null,
         membership.status || 'ACTIVE',
