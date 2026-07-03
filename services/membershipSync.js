@@ -2,7 +2,6 @@
 
 const db = require('./database');
 const h = require('../utils/helpers');
-
 const TIER_ROLES = h.weights.tierMapping;
 const SUPPORTER_ROLE = h.ids.roles.supporter;
 const CREATOR_ROLE = h.ids.roles.creator;
@@ -288,18 +287,17 @@ async function syncMembershipRoles(client) {
     const previousActiveIds = await getLastActiveSet();
     const newIds = [...currentActiveIds].filter(id => !previousActiveIds.has(id));
 
-    if (newIds.length > 0) {
-      const guild = await client.guilds.fetch(process.env.GUILD_ID);
-      for (const discordId of newIds) {
-        try {
-          const member = await guild.members.fetch(discordId).catch(() => null);
-          const tier = userBestMembership.get(discordId).tier;
-          const tag = member ? member.user.tag : 'Unknown';
-          console.log(`[MembershipSync] NEW ACTIVE MEMBER: ${tag} (${discordId}) - Tier ${tier}`);
-          await sendRequestTierWebhook(client, discordId, userBestMembership.get(discordId));
-        } catch (err) {}
-      }
-    }
+if (newIds.length > 0) {
+  const guild = await client.guilds.fetch(process.env.GUILD_ID);
+  for (const discordId of newIds) {
+    try {
+      const member = await guild.members.fetch(discordId).catch(() => null);
+      const tier = userBestMembership.get(discordId).tier;
+      const tag = member ? member.user.tag : 'Unknown';
+      console.log(`[MembershipSync] NEW ACTIVE MEMBER: ${tag} (${discordId}) - Tier ${tier}`);
+    } catch (err) {}
+  }
+}
 
     for (const [discordId, membership] of userBestMembership.entries()) {
       try {
@@ -388,7 +386,6 @@ async function syncMembershipRoles(client) {
       }
     }
 
-    // Clean up roles for inactive members
     for (const discordId of inactiveUserIds) {
       try {
         const member = await guild.members.fetch(discordId).catch(() => null);
