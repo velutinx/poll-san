@@ -257,15 +257,17 @@ async function storeCurrentActiveSet(ids) {
   }
 }
 
+// ─── Main sync function (fixed – includes discord_tag) ───
 async function syncMembershipRoles(client) {
   let changesMade = false;
 
   try {
     const now = new Date().toISOString();
 
+    // ─── FETCH ALL columns, including discord_tag ─────────────
     const activeMemberships = await db.query(
       `SELECT discord_id, tier, expires_at, order_id, updated_at, months,
-              recurring, plan_id, subscription_id, status, source
+              recurring, plan_id, subscription_id, status, source, discord_tag
        FROM ${h.tables.MEMBERSHIPS}
        WHERE expires_at > ?`,
       [now]
@@ -289,8 +291,21 @@ async function syncMembershipRoles(client) {
     const previousActiveIds = await getLastActiveSet();
     const newIds = [...currentActiveIds].filter(id => !previousActiveIds.has(id));
 
+    // ─── Fetch current Discord tags for all active members ────
+    const guild = await client.guilds.fetch(process.env.GUILD_ID);
+    const tagMap = new Map();
+    for (const discordId of currentActiveIds) {
+      try {
+        const member = await guild.members.fetch(discordId);
+        if (member) tagMap.set(discordId, member.user.tag);
+      } catch (err) {
+        // Member not in guild – keep existing tag or set to null
+        tagMap.set(discordId, null);
+      }
+    }
+
+    // ─── Send webhooks for new members ────────────────────────
     if (newIds.length > 0) {
-      const guild = await client.guilds.fetch(process.env.GUILD_ID);
       for (const discordId of newIds) {
         try {
           const member = await guild.members.fetch(discordId).catch(() => null);
@@ -302,9 +317,9 @@ async function syncMembershipRoles(client) {
       }
     }
 
+    // ─── Send DMs ─────────────────────────────────────────────
     for (const [discordId, membership] of userBestMembership.entries()) {
       try {
-        const guild = await client.guilds.fetch(process.env.GUILD_ID);
         const member = await guild.members.fetch(discordId).catch(() => null);
         if (member && member.roles.cache.has(CREATOR_ROLE)) {
           console.log(`[MembershipSync] Skipping DM and role sync for Creator ${member.user.tag} (${discordId})`);
@@ -317,8 +332,10 @@ async function syncMembershipRoles(client) {
       await new Promise(res => setTimeout(res, 500));
     }
 
+    // ─── BATCH UPSERT – now includes discord_tag ──────────────
     const membershipsToUpsert = [];
     for (const [discordId, membership] of userBestMembership.entries()) {
+      const currentTag = tagMap.get(discordId) || membership.discord_tag || null;
       membershipsToUpsert.push([
         discordId,
         membership.tier,
@@ -330,22 +347,24 @@ async function syncMembershipRoles(client) {
         membership.plan_id || null,
         membership.subscription_id || null,
         membership.status || 'ACTIVE',
-        membership.source || 'website'
+        membership.source || 'website',
+        currentTag   // include the discord_tag
       ]);
     }
 
     if (membershipsToUpsert.length > 0) {
-      const placeholders = membershipsToUpsert.map(() => '(?,?,?,?,?,?,?,?,?,?,?)').join(', ');
+      const placeholders = membershipsToUpsert.map(() => '(?,?,?,?,?,?,?,?,?,?,?,?)').join(', ');
       const flatValues = membershipsToUpsert.flat();
       await db.query(
         `INSERT OR REPLACE INTO ${h.tables.MEMBERSHIPS}
-         (discord_id, tier, order_id, updated_at, expires_at, months, recurring, plan_id, subscription_id, status, source)
+         (discord_id, tier, order_id, updated_at, expires_at, months, recurring, plan_id, subscription_id, status, source, discord_tag)
          VALUES ${placeholders}`,
         flatValues
       );
       changesMade = true;
     }
 
+    // ─── BATCH DELETE inactive memberships ────────────────────
     const inactiveUserIds = [...previousActiveIds].filter(id => !currentActiveIds.has(id));
     if (inactiveUserIds.length > 0) {
       const placeholders = inactiveUserIds.map(() => '?').join(',');
@@ -356,8 +375,7 @@ async function syncMembershipRoles(client) {
       changesMade = true;
     }
 
-    const guild = await client.guilds.fetch(process.env.GUILD_ID);
-
+    // ─── ROLE ASSIGNMENT ──────────────────────────────────────
     for (const [discordId, membership] of userBestMembership.entries()) {
       const member = await guild.members.fetch(discordId).catch(() => null);
       if (!member) continue;
@@ -389,6 +407,7 @@ async function syncMembershipRoles(client) {
       }
     }
 
+    // Clean up roles for inactive members
     for (const discordId of inactiveUserIds) {
       try {
         const member = await guild.members.fetch(discordId).catch(() => null);
