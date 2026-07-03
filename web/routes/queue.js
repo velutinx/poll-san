@@ -5,7 +5,6 @@ const QUEUE_CHANNEL_ID = h.ids.channels.QUEUE;
 const LOGO_URL = h.urls.LOGO_URL;
 const DISCORD_API = 'https://discord.com/api/v10';
 
-
 function normalizeQueue(queue) {
   if (!Array.isArray(queue)) return [];
   return queue.map(item => {
@@ -158,7 +157,39 @@ async function updateDiscordQueue(client) {
   }
 }
 
-// ─── ROUTES ──────────────────────────────────────────────────
+function extractCharacterName(text) {
+  if (!text) return '';
+  let cleaned = text.replace(/^[•:blank:diamond]?\s*/, '');
+  cleaned = cleaned.replace(/^[♂♀]️?\s*/, '');
+  return cleaned.trim();
+}
+
+async function markQueueItemByCharacterName(characterName) {
+  if (!characterName) return false;
+  const queue = await getQueue();
+  let found = false;
+  for (const item of queue) {
+    const itemName = extractCharacterName(item.text);
+    if (itemName.toLowerCase() === characterName.toLowerCase()) {
+      if (!item.slashed) {
+        item.slashed = true;
+        item.slashedAt = new Date().toISOString();
+        found = true;
+        break;
+      } else {
+        found = true;
+        break;
+      }
+    }
+  }
+  if (!found) return false;
+
+  await db.query(
+    `UPDATE ${h.tables.MAIN_QUEUE} SET queue = ?, updated_at = datetime('now') WHERE id = 1`,
+    [JSON.stringify(queue)]
+  );
+  return true;
+}
 
 module.exports = function setupQueueRoutes(app, client) {
   app.get('/api/queue', async (req, res) => {
@@ -330,5 +361,8 @@ module.exports = function setupQueueRoutes(app, client) {
     }
   });
 };
+
 module.exports.updateDiscordQueue = updateDiscordQueue;
 module.exports.getQueue = getQueue;
+module.exports.markQueueItemByCharacterName = markQueueItemByCharacterName;
+module.exports.extractCharacterName = extractCharacterName;
