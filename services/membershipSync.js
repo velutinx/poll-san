@@ -2,6 +2,7 @@
 
 const db = require('./database');
 const h = require('../utils/helpers');
+
 const TIER_ROLES = h.weights.tierMapping;
 const SUPPORTER_ROLE = h.ids.roles.supporter;
 const CREATOR_ROLE = h.ids.roles.creator;
@@ -62,12 +63,20 @@ async function hasMessageBeenSent(discordId, orderId) {
   }
 }
 
-async function recordMessageSent(discordId, orderId, language, membership, discordName) {
+async function recordMessageSent(
+  discordId,
+  orderId,
+  language,
+  membership,
+  discordName,
+  sentBy = 'auto',
+  messageType = 'cycle_start'
+) {
   try {
     await db.query(
       `INSERT INTO ${h.tables.MEMBER_MESSAGE_LOG}
-       (discord_id, order_id, language, sent_at, tier, expires_at, discord_name)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+       (discord_id, order_id, language, sent_at, tier, expires_at, discord_name, sent_by, message_type)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         discordId,
         orderId,
@@ -75,7 +84,9 @@ async function recordMessageSent(discordId, orderId, language, membership, disco
         new Date().toISOString(),
         membership.tier,
         membership.expires_at,
-        discordName
+        discordName,
+        sentBy,
+        messageType
       ]
     );
   } catch (err) {
@@ -127,7 +138,15 @@ async function sendMembershipMessage(client, discordId, membership) {
 
     const success = await sendDM(member, message, lang);
     if (success) {
-      await recordMessageSent(discordId, orderId, lang, membership, discordName);
+      await recordMessageSent(
+        discordId,
+        orderId,
+        lang,
+        membership,
+        discordName,
+        'auto',
+        'cycle_start'
+      );
     }
   } catch (err) {
     console.error(`[MembershipSync] Could not handle DM for ${discordId}:`, err.message);
