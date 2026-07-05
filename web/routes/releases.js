@@ -11,8 +11,8 @@ const { updateDiscordQueue, getQueue } = require('./queue');
 const TEST_CHANNEL_ID = '1466019839205314644';
 
 const SERIES_NAME_MAP = {
-  'RE-ZERO': 'RE:ZERO',
-  'STEINS-GATE': 'STEINS;GATE',
+  'RE-ZERO': 'Re:Zero',
+  'STEINS-GATE': 'Steins;Gate',
   'FATE-GRAND-ORDER': 'Fate/Grand Order',
 };
 
@@ -215,7 +215,7 @@ module.exports = function setupReleasesRoutes(app, client, upload, FORUM_ID, SUP
 
       const isSoon = setSize.toUpperCase() === 'XX';
       const suffixStr = suffix ? ` — ${suffix}` : '';
-      const threadTitle = `[${series.toUpperCase()}] ${charName} — Pack #${pack}${suffixStr}`;
+      const threadTitle = `[${series}] ${charName} — Pack #${pack}${suffixStr}`;
 
       const messageBody = `${PREVIEW_RELEASE_HEADER}${isSoon ? ' -- SOON' : ''}
 ━━━━━━━━━━━━━━
