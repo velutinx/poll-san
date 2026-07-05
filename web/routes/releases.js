@@ -10,109 +10,119 @@ const db = require('../../services/database');
 const { updateDiscordQueue, getQueue } = require('./queue');
 const TEST_CHANNEL_ID = '1466019839205314644';
 
-async function getFreeFemaleMembers(guild) {
-    const FEMALE_CONTENT_ROLE_ID = h.ids.roles.female_supporter;
-    const MEMBER_ROLE_ID = h.ids.roles.member;
-    const SUPPORTER_ROLE_ID = h.ids.roles.supporter;
+const SERIES_NAME_MAP = {
+  'RE-ZERO': 'RE:ZERO',
+  'STEINS-GATE': 'STEINS;GATE',
+};
 
-    const members = await guild.members.fetch();
-    const targetIds = [];
-    for (const [, member] of members) {
-        if (member.user.bot) continue;
-        const hasFemaleContent = member.roles.cache.has(FEMALE_CONTENT_ROLE_ID);
-        const hasMember = member.roles.cache.has(MEMBER_ROLE_ID);
-        const hasSupporter = member.roles.cache.has(SUPPORTER_ROLE_ID);
-        if (hasFemaleContent && hasMember && !hasSupporter) {
-            targetIds.push(member.id);
-        }
+function getProperSeries(series) {
+  const upper = series.toUpperCase();
+  return SERIES_NAME_MAP[upper] || series;
+}
+
+async function getFreeFemaleMembers(guild) {
+  const FEMALE_CONTENT_ROLE_ID = h.ids.roles.female_supporter;
+  const MEMBER_ROLE_ID = h.ids.roles.member;
+  const SUPPORTER_ROLE_ID = h.ids.roles.supporter;
+
+  const members = await guild.members.fetch();
+  const targetIds = [];
+  for (const [, member] of members) {
+    if (member.user.bot) continue;
+    const hasFemaleContent = member.roles.cache.has(FEMALE_CONTENT_ROLE_ID);
+    const hasMember = member.roles.cache.has(MEMBER_ROLE_ID);
+    const hasSupporter = member.roles.cache.has(SUPPORTER_ROLE_ID);
+    if (hasFemaleContent && hasMember && !hasSupporter) {
+      targetIds.push(member.id);
     }
-    return targetIds;
+  }
+  return targetIds;
 }
 
 async function sendGhostPingToFreeMembers(client, guild, packInfo, testChannelId) {
-    try {
-        console.log('🔔 Attempting to send ghost ping...');
-        const targetIds = await getFreeFemaleMembers(guild);
-        if (targetIds.length === 0) {
-            console.log('No free female members to ping.');
-            return;
-        }
-
-        const testChannel = await client.channels.fetch(testChannelId).catch(() => null);
-        if (!testChannel) {
-            console.error(`Test channel ${testChannelId} not found.`);
-            return;
-        }
-
-        const chunkSize = 50;
-        const chunks = [];
-        for (let i = 0; i < targetIds.length; i += chunkSize) {
-            chunks.push(targetIds.slice(i, i + chunkSize));
-        }
-
-        const packName = packInfo.pack ? `Pack ${packInfo.pack}` : 'a new pack';
-        const character = packInfo.character || '';
-
-        for (const chunk of chunks) {
-            const mentionString = chunk.map(id => `<@${id}>`).join(' ');
-            const content = `📢 ${packName} ${character} was just released! ${mentionString}`;
-            const sentMsg = await testChannel.send({
-                content,
-                allowedMentions: { users: chunk }
-            });
-            setTimeout(() => {
-                sentMsg.delete().catch(() => {});
-            }, 10000);
-        }
-        console.log('✅ Ghost ping sent to free female members');
-    } catch (err) {
-        console.error('Failed to send ghost ping:', err);
+  try {
+    console.log('🔔 Attempting to send ghost ping...');
+    const targetIds = await getFreeFemaleMembers(guild);
+    if (targetIds.length === 0) {
+      console.log('No free female members to ping.');
+      return;
     }
+
+    const testChannel = await client.channels.fetch(testChannelId).catch(() => null);
+    if (!testChannel) {
+      console.error(`Test channel ${testChannelId} not found.`);
+      return;
+    }
+
+    const chunkSize = 50;
+    const chunks = [];
+    for (let i = 0; i < targetIds.length; i += chunkSize) {
+      chunks.push(targetIds.slice(i, i + chunkSize));
+    }
+
+    const packName = packInfo.pack ? `Pack ${packInfo.pack}` : 'a new pack';
+    const character = packInfo.character || '';
+
+    for (const chunk of chunks) {
+      const mentionString = chunk.map(id => `<@${id}>`).join(' ');
+      const content = `📢 ${packName} ${character} was just released! ${mentionString}`;
+      const sentMsg = await testChannel.send({
+        content,
+        allowedMentions: { users: chunk }
+      });
+      setTimeout(() => {
+        sentMsg.delete().catch(() => {});
+      }, 10000);
+    }
+    console.log('✅ Ghost ping sent to free female members');
+  } catch (err) {
+    console.error('Failed to send ghost ping:', err);
+  }
 }
 
 async function markQueueCompleted(client, characterName) {
-    try {
-        let queue = await getQueue();
+  try {
+    let queue = await getQueue();
 
-        queue = queue.map(item => {
-            if (typeof item === 'string') {
-                return { text: item, checked: false, slashed: false, slashedAt: null };
-            }
-            return {
-                text: item.text || item,
-                checked: !!item.checked,
-                slashed: !!item.slashed,
-                slashedAt: item.slashedAt || null
-            };
-        });
+    queue = queue.map(item => {
+      if (typeof item === 'string') {
+        return { text: item, checked: false, slashed: false, slashedAt: null };
+      }
+      return {
+        text: item.text || item,
+        checked: !!item.checked,
+        slashed: !!item.slashed,
+        slashedAt: item.slashedAt || null
+      };
+    });
 
-        let found = false;
-        const updatedQueue = queue.map(item => {
-            const itemName = item.text.replace(/^[•:blank:diamond]?\s*/, '').replace(/^[♂♀]️?\s*/, '').trim();
-            if (itemName.toLowerCase() === characterName.toLowerCase()) {
-                found = true;
-                item.slashed = true;
-                item.slashedAt = new Date().toISOString();
-                item.checked = true;
-            }
-            return item;
-        });
+    let found = false;
+    const updatedQueue = queue.map(item => {
+      const itemName = item.text.replace(/^[•:blank:diamond]?\s*/, '').replace(/^[♂♀]️?\s*/, '').trim();
+      if (itemName.toLowerCase() === characterName.toLowerCase()) {
+        found = true;
+        item.slashed = true;
+        item.slashedAt = new Date().toISOString();
+        item.checked = true;
+      }
+      return item;
+    });
 
-        if (!found) {
-            console.log(`[Queue] Character "${characterName}" not found – skipping update.`);
-            return;
-        }
-
-        await db.query(
-            `UPDATE ${h.tables.MAIN_QUEUE} SET queue = ?, updated_at = datetime('now') WHERE id = 1`,
-            [JSON.stringify(updatedQueue)]
-        );
-
-        await updateDiscordQueue(client);
-        console.log(`[Queue] Marked "${characterName}" as released.`);
-    } catch (err) {
-        console.error('[Queue] Failed to mark as completed:', err);
+    if (!found) {
+      console.log(`[Queue] Character "${characterName}" not found – skipping update.`);
+      return;
     }
+
+    await db.query(
+      `UPDATE ${h.tables.MAIN_QUEUE} SET queue = ?, updated_at = datetime('now') WHERE id = 1`,
+      [JSON.stringify(updatedQueue)]
+    );
+
+    await updateDiscordQueue(client);
+    console.log(`[Queue] Marked "${characterName}" as released.`);
+  } catch (err) {
+    console.error('[Queue] Failed to mark as completed:', err);
+  }
 }
 
 module.exports = function setupReleasesRoutes(app, client, upload, FORUM_ID, SUPPORTER_FORUM_ID) {
@@ -489,13 +499,14 @@ ${h.releaseEmojis.LINK} [megaLink](${download || 'https://mega.nz'})`;
         await markQueueCompleted(client, cleanCharName);
       }
 
-      // ─── NEW: Sync to website store ────────────────────────────────────────
+      // ─── Sync to website store ─────────────────────────────────────────────
       try {
         const category = genderEmoji.includes('female_sign') || genderEmoji === '♀️' ? 1 : 2;
         const illustrationCount = parseInt(setSize, 10) || 0;
         const priceKey = illustrationCount <= 45 ? 'PRICE_1' : 'PRICE_2';
-        // ─── FIXED: use series in title ──────────────────────────────────────
-        const title = `[${series.toUpperCase()}] ${charName} — Pack #${pack}`;
+        // ─── Use the proper series name for the store title ──────────────
+        const properSeries = getProperSeries(series);
+        const title = `[${properSeries.toUpperCase()}] ${charName} — Pack #${pack}`;
 
         const websiteFormData = new FormData();
         websiteFormData.append('id', String(pack).padStart(3, '0'));
