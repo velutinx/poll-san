@@ -2,7 +2,7 @@
 
 let supporterSortable = null;
 let previewSortable = null;
-
+let cachedConfig = null; 
 async function getConfig() {
     if (cachedConfig) return cachedConfig;
     try {
