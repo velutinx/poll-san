@@ -13,6 +13,7 @@ const TEST_CHANNEL_ID = '1466019839205314644';
 const SERIES_NAME_MAP = {
   'RE-ZERO': 'RE:ZERO',
   'STEINS-GATE': 'STEINS;GATE',
+  'FATE-GRAND-ORDER': 'Fate/Grand Order',
 };
 
 function getProperSeries(series) {
@@ -54,6 +55,8 @@ async function sendGhostPingToFreeMembers(client, guild, packInfo, testChannelId
       return;
     }
 
+    console.log(`📢 Sending ghost ping to channel ${testChannelId} (${testChannel.name})`);
+
     const chunkSize = 50;
     const chunks = [];
     for (let i = 0; i < targetIds.length; i += chunkSize) {
@@ -72,7 +75,7 @@ async function sendGhostPingToFreeMembers(client, guild, packInfo, testChannelId
       });
       setTimeout(() => {
         sentMsg.delete().catch(() => {});
-      }, 10000);
+      }, 60000);
     }
     console.log('✅ Ghost ping sent to free female members');
   } catch (err) {
@@ -499,15 +502,12 @@ ${h.releaseEmojis.LINK} [megaLink](${download || 'https://mega.nz'})`;
         await markQueueCompleted(client, cleanCharName);
       }
 
-      // ─── Sync to website store ─────────────────────────────────────────────
       try {
         const category = genderEmoji.includes('female_sign') || genderEmoji === '♀️' ? 1 : 2;
         const illustrationCount = parseInt(setSize, 10) || 0;
         const priceKey = illustrationCount <= 45 ? 'PRICE_1' : 'PRICE_2';
-        // ─── Use the proper series name for the store title ──────────────
         const properSeries = getProperSeries(series);
         const title = `[${properSeries.toUpperCase()}] ${charName} — Pack #${pack}`;
-
         const websiteFormData = new FormData();
         websiteFormData.append('id', String(pack).padStart(3, '0'));
         websiteFormData.append('title', title);
