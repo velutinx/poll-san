@@ -8,7 +8,6 @@ function initMega() {
             setTimeout(generateFilenameFromPost, 500);
         }
     }
- //   console.log('Mega module initialized');
 }
 
 function generateFilenameFromPost() {
@@ -91,7 +90,7 @@ async function uploadToMega() {
     const renamedFile = new File([fileToUpload], finalFileName, { type: fileToUpload.type });
     formData.append('file', renamedFile);
     formData.append('month', currentMonth);
-    formData.append('downloadAfterUpload', 'true'); // Always request local download
+    formData.append('downloadAfterUpload', 'true');
 
     const xhr = new XMLHttpRequest();
     xhr.open('POST', '/api/upload-to-mega', true);
@@ -109,15 +108,12 @@ xhr.onload = () => {
             const data = JSON.parse(xhr.responseText);
             document.getElementById('supDownload').value = data.link || '';
             
-            // Trigger download of the local copy
             if (data.localPath) {
-                // Extract just the filename from the path
                 const filename = data.localPath.split('/').pop();
-                // Use the download endpoint
                 const downloadUrl = `/api/download-file?filename=${encodeURIComponent(filename)}`;
                 const a = document.createElement('a');
                 a.href = downloadUrl;
-                a.download = filename; // optional, but helps
+                a.download = filename;
                 document.body.appendChild(a);
                 a.click();
                 document.body.removeChild(a);
