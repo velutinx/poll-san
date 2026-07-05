@@ -98,31 +98,31 @@ async function uploadToMega() {
     xhr.upload.onprogress = (e) => {
         if (e.lengthComputable) {
             progressBar.value = (e.loaded / e.total) * 100;
-            console.log(`Upload progress: ${Math.round(progressBar.value)}%`);
+            // Removed console.log for each progress update.
         }
     };
 
-xhr.onload = () => {
-    if (xhr.status === 200) {
-        try {
-            const data = JSON.parse(xhr.responseText);
-            document.getElementById('supDownload').value = data.link || '';
-            
-            if (data.localPath) {
-                const filename = data.localPath.split('/').pop();
-                const downloadUrl = `/api/download-file?filename=${encodeURIComponent(filename)}`;
-                const a = document.createElement('a');
-                a.href = downloadUrl;
-                a.download = filename;
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-                console.log(`Download triggered: ${downloadUrl}`);
-            }
-            
-            if (typeof showToast === 'function') showToast('Upload Complete', 'File uploaded to MEGA');
-            status.innerText = '';
-        } catch (e) {
+    xhr.onload = () => {
+        if (xhr.status === 200) {
+            try {
+                const data = JSON.parse(xhr.responseText);
+                document.getElementById('supDownload').value = data.link || '';
+
+                if (data.localPath) {
+                    const filename = data.localPath.split('/').pop();
+                    const downloadUrl = `/api/download-file?filename=${encodeURIComponent(filename)}`;
+                    const a = document.createElement('a');
+                    a.href = downloadUrl;
+                    a.download = filename;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    console.log(`Download triggered: ${downloadUrl}`);
+                }
+
+                if (typeof showToast === 'function') showToast('Upload Complete', 'File uploaded to MEGA');
+                status.innerText = '';
+            } catch (e) {
                 console.error('Error parsing response:', e);
                 if (typeof showToast === 'function') showToast('Error', 'Invalid server response', 'error');
                 status.innerText = '';
