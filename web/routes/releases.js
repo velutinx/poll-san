@@ -494,7 +494,8 @@ ${h.releaseEmojis.LINK} [megaLink](${download || 'https://mega.nz'})`;
         const category = genderEmoji.includes('female_sign') || genderEmoji === '♀️' ? 1 : 2;
         const illustrationCount = parseInt(setSize, 10) || 0;
         const priceKey = illustrationCount <= 45 ? 'PRICE_1' : 'PRICE_2';
-        const title = `${charName} — Pack #${pack}`;
+        // ─── FIXED: use series in title ──────────────────────────────────────
+        const title = `[${series.toUpperCase()}] ${charName} — Pack #${pack}`;
 
         const websiteFormData = new FormData();
         websiteFormData.append('id', String(pack).padStart(3, '0'));
