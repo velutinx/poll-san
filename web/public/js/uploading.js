@@ -180,7 +180,6 @@ function addToSupporter(index) {
     const imgData = currentImages[index];
     if (!imgData) return;
 
-    // Prevent duplicate addition
     if (Array.from(document.querySelectorAll('#sup-preview-container > div')).some(div => div.dataset.index == index)) {
         return;
     }
@@ -218,7 +217,6 @@ function addToSupporter(index) {
     imgContainer.appendChild(imgEl);
     container.appendChild(imgContainer);
 
-    // Optional: re-init Sortable (kept as is)
     if (typeof Sortable !== 'undefined') {
         new Sortable(container, {
             animation: 150,
