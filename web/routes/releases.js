@@ -489,6 +489,45 @@ ${h.releaseEmojis.LINK} [megaLink](${download || 'https://mega.nz'})`;
         await markQueueCompleted(client, cleanCharName);
       }
 
+      // ─── NEW: Sync to website store ────────────────────────────────────────
+      try {
+        const category = genderEmoji.includes('female_sign') || genderEmoji === '♀️' ? 1 : 2;
+        const illustrationCount = parseInt(setSize, 10) || 0;
+        const priceKey = illustrationCount <= 45 ? 'PRICE_1' : 'PRICE_2';
+        const title = `${charName} — Pack #${pack}`;
+
+        const websiteFormData = new FormData();
+        websiteFormData.append('id', String(pack).padStart(3, '0'));
+        websiteFormData.append('title', title);
+        websiteFormData.append('category', category);
+        websiteFormData.append('price', priceKey);
+        websiteFormData.append('illustrationCount', illustrationCount);
+        websiteFormData.append('downloadUrl', download || '');
+
+        const imageFiles = files.map(f => new Blob([f.buffer], { type: f.mimetype || 'image/jpeg' }));
+        imageFiles.forEach((blob, idx) => {
+          const name = files[idx]?.originalname || `image_${idx}.jpg`;
+          websiteFormData.append('images', blob, name);
+        });
+
+        await fetch('https://packs-api.velutinx.workers.dev/api/packs', {
+          method: 'POST',
+          body: websiteFormData,
+          mode: 'cors'
+        }).then(async resp => {
+          if (resp.ok) {
+            console.log(`✅ Pack #${pack} synced to website store.`);
+          } else {
+            const errText = await resp.text();
+            console.warn(`⚠️ Website sync failed: ${resp.status} ${errText}`);
+          }
+        }).catch(err => {
+          console.warn('⚠️ Website sync error (non-fatal):', err.message);
+        });
+      } catch (syncErr) {
+        console.warn('⚠️ Website sync error (non-fatal):', syncErr.message);
+      }
+
       res.json({ success: true, ...supporterResult, ...previewResult });
 
     } catch (err) {
