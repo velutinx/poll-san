@@ -3,11 +3,6 @@
 let supporterSortable = null;
 let previewSortable = null;
 
-// ------------------------------------------------------------
-// Fetch configuration (forum IDs and tag IDs) from server
-// ------------------------------------------------------------
-let cachedConfig = null;
-
 async function getConfig() {
     if (cachedConfig) return cachedConfig;
     try {
@@ -26,9 +21,6 @@ async function getConfig() {
     }
 }
 
-// ------------------------------------------------------------
-// Preview Sortable (unchanged)
-// ------------------------------------------------------------
 function initPreviewSortable() {
     const container = document.getElementById('preview-container');
     if (!container || previewSortable) return;
@@ -122,9 +114,6 @@ function setupPreviewSortable() {
     }
 }
 
-// ------------------------------------------------------------
-// Supporter Sortable (unchanged)
-// ------------------------------------------------------------
 function initSupporterSortable() {
     const container = document.getElementById('sup-preview-container');
     if (!container || supporterSortable) return;
@@ -191,9 +180,6 @@ function setupSupporterSortable() {
     }
 }
 
-// ------------------------------------------------------------
-// Fetch forum posts (Preview and Supporter dropdowns) using config
-// ------------------------------------------------------------
 async function fetchForumPosts() {
     const previewDrop = document.getElementById('postDropdown');
     const supporterBaseDrop = document.getElementById('supporterPostSelect');
@@ -268,9 +254,6 @@ async function fetchSupporterPosts() {
     }
 }
 
-// ------------------------------------------------------------
-// Load preview post data into edit form (using dynamic tag IDs)
-// ------------------------------------------------------------
 async function loadPostData() {
     const drop = document.getElementById('postDropdown');
     const postId = drop.value;
@@ -288,7 +271,7 @@ async function loadPostData() {
         const appliedTags = post.applied_tags || [];
         const config = await getConfig();
         const previewFemaleTag = config.tagIds.preview_female;
-        const previewMaleTags = config.tagIds.preview_male; // array
+        const previewMaleTags = config.tagIds.preview_male;
         let genderValue = ":male_sign:";
         if (appliedTags.includes(previewFemaleTag)) {
             genderValue = ":female_sign:";
@@ -324,9 +307,6 @@ async function loadPostData() {
     }
 }
 
-// ------------------------------------------------------------
-// Load supporter post data into edit form (with download link fix and dynamic tag IDs)
-// ------------------------------------------------------------
 async function loadSupporterEditData() {
     const drop = document.getElementById('supporterEditDropdown');
     const postId = drop.value;
@@ -351,7 +331,7 @@ async function loadSupporterEditData() {
     const appliedTags = post.applied_tags || [];
     const config = await getConfig();
     const femaleTag = config.tagIds.supporter_female;
-    const maleTags = config.tagIds.supporter_male; // array
+    const maleTags = config.tagIds.supporter_male;
     const genderSelect = document.getElementById('supGender');
 
     if (appliedTags.includes(femaleTag)) {
@@ -383,11 +363,8 @@ async function loadSupporterEditData() {
             }
         }
 
-        // FIX: remove trailing punctuation from URL
 if (megaUrl) {
-    // Remove trailing punctuation: ), ], }, ., , and also any closing parentheses
     megaUrl = megaUrl.replace(/[)\]},.]+$/, '');
-    // Also remove any leftover ) that might be inside the URL (rare)
     megaUrl = megaUrl.replace(/\)$/, '');
     document.getElementById('supDownload').value = megaUrl.replace(/[<>*]/g, '').trim();
 }
@@ -409,9 +386,6 @@ if (megaUrl) {
     }
 }
 
-// ------------------------------------------------------------
-// Auto-fill supporter form from a selected preview post (using dynamic tag IDs)
-// ------------------------------------------------------------
 async function loadSupporterPostData() {
     const drop = document.getElementById('supporterPostSelect');
     const postId = drop.value;
@@ -460,9 +434,6 @@ async function loadSupporterPostData() {
     }
 }
 
-// ------------------------------------------------------------
-// Submit edit for preview post
-// ------------------------------------------------------------
 async function submitEdit() {
     const status = document.getElementById('edit-status');
     const btn = document.getElementById('edit-submit-btn');
@@ -498,9 +469,6 @@ async function submitEdit() {
     }
 }
 
-// ------------------------------------------------------------
-// Create a new preview release
-// ------------------------------------------------------------
 async function submitRelease() {
     const status = document.getElementById('release-status');
     const btn = document.getElementById('rel-submit-btn');
@@ -543,9 +511,6 @@ async function submitRelease() {
     }
 }
 
-// ------------------------------------------------------------
-// Submit Supporter Release (Post/Update to #supporter-releases)
-// ------------------------------------------------------------
 async function submitSupporterRelease() {
     const status = document.getElementById('supporter-status');
     const btn = document.querySelector('button[onclick="submitSupporterRelease()"]');
@@ -603,9 +568,6 @@ async function submitSupporterRelease() {
     }
 }
 
-// ------------------------------------------------------------
-// Drag & drop helpers (unchanged)
-// ------------------------------------------------------------
 function handleFiles(files) {
     for (let file of files) {
         window.uploadedFiles.push(file);
@@ -661,11 +623,7 @@ function clearSupporterImages() {
     if (supFileInput) supFileInput.value = '';
 }
 
-// ------------------------------------------------------------
-// Initialisation
-// ------------------------------------------------------------
 function initReleases() {
-    // Preview images drop zone
     const dropZone = document.getElementById('drop-zone');
     const fileInput = document.getElementById('file-input');
     if (dropZone) {
@@ -680,7 +638,6 @@ function initReleases() {
     }
     if (fileInput) fileInput.onchange = (e) => handleFiles(e.target.files);
 
-    // Supporter images drop zone
     const supDropZone = document.getElementById('sup-drop-zone');
     const supFileInput = document.getElementById('sup-file-input');
     if (supDropZone) {
