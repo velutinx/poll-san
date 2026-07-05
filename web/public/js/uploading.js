@@ -155,14 +155,13 @@ async function uploadTestZip() {
     }
 }
 
-
 function toggleSelectImage(index) {
     if (selectedIndices.has(index)) {
         removeFromSupporter(index);
         selectedIndices.delete(index);
     } else {
-        if (selectedIndices.size >= 4) {
-            alert('Maximum 4 images can be selected.');
+        if (selectedIndices.size >= 10) {
+            alert('Maximum 10 images can be selected.');
             return;
         }
         addToSupporter(index);
@@ -172,14 +171,15 @@ function toggleSelectImage(index) {
 }
 
 function addToSupporter(index) {
-    if (selectedIndices.size >= 4) {
-        alert('Maximum 4 images can be selected.');
+    if (selectedIndices.size >= 10) {
+        alert('Maximum 10 images can be selected.');
         return;
     }
 
     const imgData = currentImages[index];
     if (!imgData) return;
 
+    // Prevent duplicate addition
     if (Array.from(document.querySelectorAll('#sup-preview-container > div')).some(div => div.dataset.index == index)) {
         return;
     }
@@ -217,6 +217,7 @@ function addToSupporter(index) {
     imgContainer.appendChild(imgEl);
     container.appendChild(imgContainer);
 
+    // Optional: re-init Sortable (kept as is)
     if (typeof Sortable !== 'undefined') {
         new Sortable(container, {
             animation: 150,
