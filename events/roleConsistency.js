@@ -22,6 +22,12 @@ module.exports = async function handleRoleUpdate(oldMember, newMember) {
     const hasUnverified = newRoles.has(UNVERIFIED_ROLE);
 
     try {
+        if (hasSupporter && hasMember) {
+            console.log(`[RoleConsistency] ${member.user.tag} had both Supporter and Member – removing Member.`);
+            await member.roles.remove(MEMBER_ROLE);
+            return;
+        }
+
         if (!hadSupporter && hasSupporter) {
             if (hasMember) {
                 await member.roles.remove(MEMBER_ROLE);
