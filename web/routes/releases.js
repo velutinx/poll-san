@@ -42,7 +42,6 @@ async function getFreeFemaleMembers(guild) {
 
 async function sendGhostPingToFreeMembers(client, guild, packInfo, testChannelId) {
   try {
-    console.log('🔔 Attempting to send ghost ping...');
     const targetIds = await getFreeFemaleMembers(guild);
     if (targetIds.length === 0) {
       console.log('No free female members to ping.');
@@ -55,7 +54,6 @@ async function sendGhostPingToFreeMembers(client, guild, packInfo, testChannelId
       return;
     }
 
-    console.log(`📢 Sending ghost ping to channel ${testChannelId} (${testChannel.name})`);
 
     const chunkSize = 50;
     const chunks = [];
@@ -77,7 +75,6 @@ async function sendGhostPingToFreeMembers(client, guild, packInfo, testChannelId
         sentMsg.delete().catch(() => {});
       }, 60000);
     }
-    console.log('✅ Ghost ping sent to free female members');
   } catch (err) {
     console.error('Failed to send ghost ping:', err);
   }
@@ -506,8 +503,8 @@ ${h.releaseEmojis.LINK} [megaLink](${download || 'https://mega.nz'})`;
         const category = genderEmoji.includes('female_sign') || genderEmoji === '♀️' ? 1 : 2;
         const illustrationCount = parseInt(setSize, 10) || 0;
         const priceKey = illustrationCount <= 45 ? 'PRICE_1' : 'PRICE_2';
-        const properSeries = getProperSeries(series);
-        const title = `[${properSeries.toUpperCase()}] ${charName} — Pack #${pack}`;
+const properSeries = getProperSeries(series);
+const title = `[Pack ${pack}] ${charName} - ${properSeries}`;
         const websiteFormData = new FormData();
         websiteFormData.append('id', String(pack).padStart(3, '0'));
         websiteFormData.append('title', title);
