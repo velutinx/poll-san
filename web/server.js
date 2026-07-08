@@ -1,4 +1,4 @@
-// web/server.js – simplified for bot dashboard only
+// web/server.js
 const express = require('express');
 const path = require('path');
 const { ChannelType } = require('discord.js');
@@ -25,18 +25,10 @@ module.exports = (client) => {
         res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
     });
 
-    // Block malicious probes (optional)
     app.use((req, res, next) => {
         const url = req.url.toLowerCase();
         const probePatterns = [
-            /\.env/i, /\.git/i, /actuator/i, /swagger/i, /api-docs/i, /v[2-3]\/api/i,
-            /php(info|myadmin|phpunit|adminer)/i, /\.ht(access|passwd)/i, /web\.config/i,
-            /nginx\.conf/i, /docker-compose/i, /Dockerfile/i, /composer\.(json|lock)/i,
-            /package\.json/i, /requirements\.(txt)/i, /backup|dump|db\.sql|database\.sql/i,
-            /config\.(php|yml|yaml|json|xml)/i, /settings\.(json|yml)/i, /secrets|credentials/i,
-            /robots\.txt/i, /sitemap\.xml/i, /crossdomain\.xml/i, /\.\.\//, /%3Cscript/i,
-            /union\+select/i, /server-status|server-info|trace/i, /graphql/i,
-            /wp-(admin|content|includes)/i, /\.bak|\.old|\.backup/i
+            /\.env/i, /\.git/i, /actuator/i, /swagger/i, /api-docs/i, /v[2-3]\/api/i, /php(info|myadmin|phpunit|adminer)/i, /\.ht(access|passwd)/i, /web\.config/i, /nginx\.conf/i, /docker-compose/i, /Dockerfile/i, /composer\.(json|lock)/i, /package\.json/i, /requirements\.(txt)/i, /backup|dump|db\.sql|database\.sql/i, /config\.(php|yml|yaml|json|xml)/i, /settings\.(json|yml)/i, /secrets|credentials/i, /robots\.txt/i, /sitemap\.xml/i, /crossdomain\.xml/i, /\.\.\//, /%3Cscript/i, /union\+select/i, /server-status|server-info|trace/i, /graphql/i, /wp-(admin|content|includes)/i, /\.bak|\.old|\.backup/i
         ];
         if (probePatterns.some(pattern => pattern.test(url))) {
             return res.status(404).send('Not Found');
@@ -44,11 +36,13 @@ module.exports = (client) => {
         next();
     });
 
+    app.use(express.static(path.join(__dirname, 'public')));
     app.use(express.json());
-
-    // API timeout middleware
     app.use('/api', (req, res, next) => {
-        if (req.path === '/poll/live') return next();
+        if (req.path === '/poll/live') {
+            return next();
+        }
+
         let timedOut = false;
         const timeout = setTimeout(() => {
             timedOut = true;
@@ -57,12 +51,13 @@ module.exports = (client) => {
             }
             req.destroy();
         }, API_TIMEOUT_MS);
+
         res.on('finish', () => clearTimeout(timeout));
         res.on('close', () => clearTimeout(timeout));
+
         next();
     });
 
-    // ---- Helper: find file in MEGA storage ----
     function findFile(node, name) {
         if (!node.children) return null;
         for (const child of node.children) {
@@ -76,7 +71,6 @@ module.exports = (client) => {
         return null;
     }
 
-    // ---- MEGA link API ----
     app.get('/api/mega-link', async (req, res) => {
         const filename = req.query.filename;
         if (!filename) return res.status(400).json({ error: 'Missing filename' });
@@ -92,7 +86,6 @@ module.exports = (client) => {
         }
     });
 
-    // ---- Config API ----
     app.get('/api/config', (req, res) => {
         res.json({
             forumIds: {
@@ -115,7 +108,6 @@ module.exports = (client) => {
     const FORUM_ID = helpers.ids.channels.preview_forum || '1465938599378812980';
     const SUPPORTER_FORUM_ID = helpers.ids.channels.supporter_forum || '1465937644394512516';
 
-    // ---- Guild members caching ----
     let cachedMembers = null;
     let lastMemberFetch = 0;
     const MEMBER_CACHE_TTL = 15 * 60 * 1000;
@@ -138,7 +130,6 @@ module.exports = (client) => {
         return memberFetchPromise;
     }
 
-    // ---- Poll live updates ----
     const pollClients = new Set();
     function broadcastPollUpdate() {
         const data = JSON.stringify({ type: 'pollUpdate', timestamp: Date.now() });
@@ -158,7 +149,6 @@ module.exports = (client) => {
         req.on('close', () => pollClients.delete(res));
     });
 
-    // ---- Discord channels API ----
     app.get('/api/channels', async (req, res) => {
         try {
             const guild = client.guilds.cache.get(process.env.GUILD_ID);
@@ -173,15 +163,10 @@ module.exports = (client) => {
         }
     });
 
-    // ---- Serve static files for dashboard ----
-    app.use(express.static(path.join(__dirname, 'public')));
-
-    // ---- Dashboard ----
-    app.get('/', (req, res) => {
+    app.get('/poll-san', (req, res) => {
         res.sendFile(path.join(__dirname, 'public', 'index.html'));
     });
 
-    // ---- All other routes (API and legacy) ----
     const setupPollRoutes = require('./routes/poll');
     const setupMembershipsRoute = require('./routes/memberships');
     const setupSendMessageRoute = require('./routes/sendMessage');
@@ -205,8 +190,7 @@ module.exports = (client) => {
     setupTriviaRoutes(app, client);
 
     const server = app.listen(PORT, () => {
-        console.log(`✅ Dashboard running on port ${PORT}`);
-        console.log(`   📊 Dashboard: https://d.velutinx.com/`);
+        console.log(`🌐 Dashboard running at http://localhost:${PORT}/poll-san`);
     });
 
     server.timeout = SERVER_TIMEOUT_MS;
