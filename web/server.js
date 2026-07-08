@@ -36,7 +36,10 @@ module.exports = (client) => {
         next();
     });
 
-    app.use(express.static(path.join(__dirname, 'public')));
+    // ---- Serve static files for BOTH dashboard and main site ----
+    app.use(express.static(path.join(__dirname, 'public'))); // dashboard assets
+    app.use(express.static(path.join(__dirname, 's')));      // main website assets
+
     app.use(express.json());
     app.use('/api', (req, res, next) => {
         if (req.path === '/poll/live') {
@@ -163,10 +166,17 @@ module.exports = (client) => {
         }
     });
 
+    // ---- MAIN WEBSITE (root) ----
+    app.get('/', (req, res) => {
+        res.sendFile(path.join(__dirname, 's', 'index.html'));
+    });
+
+    // ---- DASHBOARD (sub‑path) ----
     app.get('/poll-san', (req, res) => {
         res.sendFile(path.join(__dirname, 'public', 'index.html'));
     });
 
+    // ---- Other routes ----
     const setupPollRoutes = require('./routes/poll');
     const setupMembershipsRoute = require('./routes/memberships');
     const setupSendMessageRoute = require('./routes/sendMessage');
@@ -191,6 +201,7 @@ module.exports = (client) => {
 
     const server = app.listen(PORT, () => {
         console.log(`🌐 Dashboard running at http://localhost:${PORT}/poll-san`);
+        console.log(`🌐 Main website running at http://localhost:${PORT}/`);
     });
 
     server.timeout = SERVER_TIMEOUT_MS;
