@@ -1,4 +1,4 @@
-// web/server.js
+// web/server.js – domain‑based routing
 const express = require('express');
 const path = require('path');
 const { ChannelType } = require('discord.js');
@@ -15,19 +15,16 @@ module.exports = (client) => {
     const app = express();
     const PORT = process.env.PORT || 8080;
 
-    // ---- CORS ----
     app.use(cors({
         origin: ['https://velutinx.com', 'https://d.velutinx.com', 'http://localhost:8080', 'https://i2-uploader.velutinx.workers.dev'],
         methods: ['GET', 'POST', 'OPTIONS'],
         allowedHeaders: ['Content-Type', 'Authorization']
     }));
 
-    // ---- Health Check ----
     app.get('/health', (req, res) => {
         res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
     });
 
-    // ---- Block Malicious Probes (optional) ----
     app.use((req, res, next) => {
         const url = req.url.toLowerCase();
         const probePatterns = [
@@ -46,14 +43,10 @@ module.exports = (client) => {
         next();
     });
 
-    // ---- Body Parsing ----
     app.use(express.json());
 
-    // ---- API Timeout Middleware ----
     app.use('/api', (req, res, next) => {
-        if (req.path === '/poll/live') {
-            return next();
-        }
+        if (req.path === '/poll/live') return next();
         let timedOut = false;
         const timeout = setTimeout(() => {
             timedOut = true;
@@ -62,13 +55,11 @@ module.exports = (client) => {
             }
             req.destroy();
         }, API_TIMEOUT_MS);
-
         res.on('finish', () => clearTimeout(timeout));
         res.on('close', () => clearTimeout(timeout));
         next();
     });
 
-    // ---- Helper: Find file in MEGA storage ----
     function findFile(node, name) {
         if (!node.children) return null;
         for (const child of node.children) {
@@ -82,7 +73,6 @@ module.exports = (client) => {
         return null;
     }
 
-    // ---- MEGA Link API ----
     app.get('/api/mega-link', async (req, res) => {
         const filename = req.query.filename;
         if (!filename) return res.status(400).json({ error: 'Missing filename' });
@@ -98,7 +88,6 @@ module.exports = (client) => {
         }
     });
 
-    // ---- Config API ----
     app.get('/api/config', (req, res) => {
         res.json({
             forumIds: {
@@ -114,16 +103,13 @@ module.exports = (client) => {
         });
     });
 
-    // ---- Verification Callback (Turnstile) ----
     app.use(verifyRouter);
     app.set('client', client);
 
-    // ---- Multer Setup for File Uploads ----
     const upload = multer({ storage: multer.memoryStorage() });
     const FORUM_ID = helpers.ids.channels.preview_forum || '1465938599378812980';
     const SUPPORTER_FORUM_ID = helpers.ids.channels.supporter_forum || '1465937644394512516';
 
-    // ---- Guild Members Caching (for Monitoring) ----
     let cachedMembers = null;
     let lastMemberFetch = 0;
     const MEMBER_CACHE_TTL = 15 * 60 * 1000;
@@ -146,7 +132,6 @@ module.exports = (client) => {
         return memberFetchPromise;
     }
 
-    // ---- Poll Live (EventSource) ----
     const pollClients = new Set();
     function broadcastPollUpdate() {
         const data = JSON.stringify({ type: 'pollUpdate', timestamp: Date.now() });
@@ -166,7 +151,6 @@ module.exports = (client) => {
         req.on('close', () => pollClients.delete(res));
     });
 
-    // ---- Discord Channels API ----
     app.get('/api/channels', async (req, res) => {
         try {
             const guild = client.guilds.cache.get(process.env.GUILD_ID);
@@ -181,43 +165,61 @@ module.exports = (client) => {
         }
     });
 
-    // =========================================================================
-    //  ROUTING: MAIN WEBSITE vs DASHBOARD
-    // =========================================================================
+    app.use((req, res, next) => {
+        const host = req.get('host') || '';
+        const domain = host.split(':')[0].toLowerCase();
 
-    // ---- 1. ROOT – MAIN WEBSITE ----
-    // Serves the main website's index.html from the project root.
-    // If you have your main site in a subfolder (e.g., "s"), adjust the path.
-    app.get('/', (req, res) => {
-        const mainIndexPath = path.join(__dirname, '..', 'index.html');
-        res.sendFile(mainIndexPath, (err) => {
-            if (err) {
-                // If the file doesn't exist, return a clear error message.
-                res.status(404).send(`
-                    <h1>Main website not found</h1>
-                    <p>Please ensure that <code>index.html</code> exists in the project root.</p>
-                    <p>If your main site is in a subfolder (e.g., <code>s/</code>), update the path in <code>web/server.js</code>.</p>
-                `);
-            }
-        });
+        req.domain = domain;
+        next();
     });
 
-    // ---- 2. DASHBOARD (Admin Panel) ----
-    // Serves the dashboard at /poll-san.
-    app.get('/poll-san', (req, res) => {
+    app.use((req, res, next) => {
+        const domain = req.domain;
+        next();
+    });
+
+    app.get('*', (req, res, next) => {
+        const domain = req.domain;
+        if (domain === 'velutinx.com' || domain === 'www.velutinx.com') {
+            return next('route');
+        } else {
+            next();
+        }
+    });
+
+    const mainSiteRouter = express.Router();
+
+    mainSiteRouter.use(express.static(path.join(__dirname, '..')));
+
+    mainSiteRouter.get('/', (req, res) => {
+        res.sendFile(path.join(__dirname, '..', 'index.html'));
+    });
+
+    mainSiteRouter.get('*', (req, res) => {
+
+        res.status(404).send('Not Found on main site');
+    });
+
+    const dashboardRouter = express.Router();
+
+    dashboardRouter.use(express.static(path.join(__dirname, 'public')));
+
+    dashboardRouter.get(['/', '/poll-san'], (req, res) => {
         res.sendFile(path.join(__dirname, 'public', 'index.html'));
     });
 
-    // ---- 3. STATIC FILES ----
-    // Serve static assets for the dashboard (CSS, JS) from /web/public
-    app.use('/poll-san', express.static(path.join(__dirname, 'public')));
+    dashboardRouter.get('*', (req, res) => {
+        res.status(404).send('Not Found on dashboard');
+    });
 
-    // Serve static files for the main website (CSS, JS, images) from the project root
-    app.use(express.static(path.join(__dirname, '..')));
-
-    // =========================================================================
-    //  ALL OTHER API ROUTES
-    // =========================================================================
+    app.use((req, res, next) => {
+        const domain = req.domain;
+        if (domain === 'velutinx.com' || domain === 'www.velutinx.com') {
+            mainSiteRouter(req, res, next);
+        } else {
+            dashboardRouter(req, res, next);
+        }
+    });
 
     const setupPollRoutes = require('./routes/poll');
     const setupMembershipsRoute = require('./routes/memberships');
@@ -241,11 +243,11 @@ module.exports = (client) => {
     setupQueueRoutes(app, client);
     setupTriviaRoutes(app, client);
 
-    // ---- Start Server ----
     const server = app.listen(PORT, () => {
         console.log(`✅ Server running on port ${PORT}`);
-        console.log(`   🌐 Main website: http://localhost:${PORT}/`);
-        console.log(`   📊 Dashboard: http://localhost:${PORT}/poll-san`);
+        console.log(`   🌐 Main website: https://velutinx.com/`);
+        console.log(`   📊 Dashboard: https://d.velutinx.com/`);
+        console.log(`   (Dashboard also at /poll-san on either domain)`);
     });
 
     server.timeout = SERVER_TIMEOUT_MS;
