@@ -1,4 +1,5 @@
 // commands/giveaway.js
+
 const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, PermissionsBitField, AttachmentBuilder, MessageFlags } = require('discord.js');
 const path = require('path');
 const fs = require('fs').promises;
@@ -34,15 +35,11 @@ async function getGiveawayWebhook(channel) {
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('giveaway')
-        .setDescription('Create a giveaway')
+        .setDescription('Create a giveaway – always picks 1 winner and 2 runner‑ups')
         .setDefaultMemberPermissions(PermissionsBitField.Flags.ManageGuild)
         .addStringOption(option =>
             option.setName('duration')
                 .setDescription('Duration (e.g., 7d, 12h, 30m)')
-                .setRequired(true))
-        .addIntegerOption(option =>
-            option.setName('winners')
-                .setDescription('Number of winners')
                 .setRequired(true))
         .addStringOption(option =>
             option.setName('prize')
@@ -66,7 +63,6 @@ module.exports = {
         }
 
         const durationStr = interaction.options.getString('duration');
-        const winnersCount = interaction.options.getInteger('winners');
         const prize = interaction.options.getString('prize');
         const channel = interaction.options.getChannel('channel');
 
@@ -78,6 +74,7 @@ module.exports = {
             });
         }
 
+        const winnersCount = 1;
         const endTime = new Date(Date.now() + durationMs);
 
         let imageUrl = null;
@@ -105,7 +102,7 @@ module.exports = {
             .addFields(
                 { name: 'Ends', value: `<t:${Math.floor(endTime.getTime() / 1000)}:R>`, inline: true },
                 { name: 'Hosts', value: `${interaction.user}`, inline: true },
-                { name: 'Winners', value: `${winnersCount}`, inline: true }
+                { name: 'Winner', value: `${winnersCount}`, inline: true }
             )
             .setColor(colors.giveaway)
             .setFooter({ text: `Giveaway ID: ${giveawayId}` });
@@ -315,8 +312,9 @@ async function endGiveaway(messageId, client) {
             });
         } else {
             const shuffled = [...entrantsArray];
+            const maxWinners = Math.min(3, shuffled.length);
             const winners = [];
-            for (let i = 0; i < Math.min(3, shuffled.length); i++) {
+            for (let i = 0; i < maxWinners; i++) {
                 const randomIndex = Math.floor(Math.random() * shuffled.length);
                 winners.push(shuffled.splice(randomIndex, 1)[0]);
             }
@@ -356,7 +354,7 @@ async function endGiveaway(messageId, client) {
             .setFooter({ text: 'Ended' })
             .setFields(
                 { name: 'Hosts', value: `<@${row.host_id}>`, inline: true },
-                { name: 'Winners', value: `${row.winners_count}`, inline: true },
+                { name: 'Winner', value: `${row.winners_count}`, inline: true },
                 { name: 'Total Entries', value: `${totalEntries}`, inline: true }
             );
 
