@@ -1,4 +1,4 @@
-// web/server.js – FINAL CORRECTED
+// web/server.js
 const express = require('express');
 const path = require('path');
 const { ChannelType } = require('discord.js');
@@ -25,7 +25,6 @@ module.exports = (client) => {
         res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
     });
 
-    // Block malicious probes (optional)
     app.use((req, res, next) => {
         const url = req.url.toLowerCase();
         const probePatterns = [
@@ -37,24 +36,8 @@ module.exports = (client) => {
         next();
     });
 
-    app.use(express.json());
-
-    // ---------- CRITICAL: Root route BEFORE static middleware ----------
-    // Main website root
-    app.get('/', (req, res) => {
-        res.sendFile(path.join(__dirname, '..', 'index.html'));
-    });
-
-    // ---- Serve static files ----
-    // 1. Dashboard assets (CSS, JS, images) from /web/public
     app.use(express.static(path.join(__dirname, 'public')));
-
-    // 2. Main website assets (everything else in the project root)
-    //    This serves store.html, s/, assets/, etc.
-    app.use(express.static(path.join(__dirname, '..')));
-    // --------------------------------------------------------------------
-
-    // API timeout middleware
+    app.use(express.json());
     app.use('/api', (req, res, next) => {
         if (req.path === '/poll/live') {
             return next();
@@ -180,12 +163,10 @@ module.exports = (client) => {
         }
     });
 
-    // ---- DASHBOARD (sub‑path) ----
     app.get('/poll-san', (req, res) => {
         res.sendFile(path.join(__dirname, 'public', 'index.html'));
     });
 
-    // ---- API route setups ----
     const setupPollRoutes = require('./routes/poll');
     const setupMembershipsRoute = require('./routes/memberships');
     const setupSendMessageRoute = require('./routes/sendMessage');
@@ -210,7 +191,6 @@ module.exports = (client) => {
 
     const server = app.listen(PORT, () => {
         console.log(`🌐 Dashboard running at http://localhost:${PORT}/poll-san`);
-        console.log(`🌐 Main website running at http://localhost:${PORT}/`);
     });
 
     server.timeout = SERVER_TIMEOUT_MS;
