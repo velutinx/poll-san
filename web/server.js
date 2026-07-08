@@ -1,4 +1,4 @@
-// web/server.js – domain‑based routing
+// web/server.js – simplified for bot dashboard only
 const express = require('express');
 const path = require('path');
 const { ChannelType } = require('discord.js');
@@ -25,6 +25,7 @@ module.exports = (client) => {
         res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
     });
 
+    // Block malicious probes (optional)
     app.use((req, res, next) => {
         const url = req.url.toLowerCase();
         const probePatterns = [
@@ -45,6 +46,7 @@ module.exports = (client) => {
 
     app.use(express.json());
 
+    // API timeout middleware
     app.use('/api', (req, res, next) => {
         if (req.path === '/poll/live') return next();
         let timedOut = false;
@@ -60,6 +62,7 @@ module.exports = (client) => {
         next();
     });
 
+    // ---- Helper: find file in MEGA storage ----
     function findFile(node, name) {
         if (!node.children) return null;
         for (const child of node.children) {
@@ -73,6 +76,7 @@ module.exports = (client) => {
         return null;
     }
 
+    // ---- MEGA link API ----
     app.get('/api/mega-link', async (req, res) => {
         const filename = req.query.filename;
         if (!filename) return res.status(400).json({ error: 'Missing filename' });
@@ -88,6 +92,7 @@ module.exports = (client) => {
         }
     });
 
+    // ---- Config API ----
     app.get('/api/config', (req, res) => {
         res.json({
             forumIds: {
@@ -110,6 +115,7 @@ module.exports = (client) => {
     const FORUM_ID = helpers.ids.channels.preview_forum || '1465938599378812980';
     const SUPPORTER_FORUM_ID = helpers.ids.channels.supporter_forum || '1465937644394512516';
 
+    // ---- Guild members caching ----
     let cachedMembers = null;
     let lastMemberFetch = 0;
     const MEMBER_CACHE_TTL = 15 * 60 * 1000;
@@ -132,6 +138,7 @@ module.exports = (client) => {
         return memberFetchPromise;
     }
 
+    // ---- Poll live updates ----
     const pollClients = new Set();
     function broadcastPollUpdate() {
         const data = JSON.stringify({ type: 'pollUpdate', timestamp: Date.now() });
@@ -151,6 +158,7 @@ module.exports = (client) => {
         req.on('close', () => pollClients.delete(res));
     });
 
+    // ---- Discord channels API ----
     app.get('/api/channels', async (req, res) => {
         try {
             const guild = client.guilds.cache.get(process.env.GUILD_ID);
@@ -165,62 +173,15 @@ module.exports = (client) => {
         }
     });
 
-    app.use((req, res, next) => {
-        const host = req.get('host') || '';
-        const domain = host.split(':')[0].toLowerCase();
+    // ---- Serve static files for dashboard ----
+    app.use(express.static(path.join(__dirname, 'public')));
 
-        req.domain = domain;
-        next();
-    });
-
-    app.use((req, res, next) => {
-        const domain = req.domain;
-        next();
-    });
-
-    app.get('*', (req, res, next) => {
-        const domain = req.domain;
-        if (domain === 'velutinx.com' || domain === 'www.velutinx.com') {
-            return next('route');
-        } else {
-            next();
-        }
-    });
-
-    const mainSiteRouter = express.Router();
-
-    mainSiteRouter.use(express.static(path.join(__dirname, '..')));
-
-    mainSiteRouter.get('/', (req, res) => {
-        res.sendFile(path.join(__dirname, '..', 'index.html'));
-    });
-
-    mainSiteRouter.get('*', (req, res) => {
-
-        res.status(404).send('Not Found on main site');
-    });
-
-    const dashboardRouter = express.Router();
-
-    dashboardRouter.use(express.static(path.join(__dirname, 'public')));
-
-    dashboardRouter.get(['/', '/poll-san'], (req, res) => {
+    // ---- Dashboard ----
+    app.get('/', (req, res) => {
         res.sendFile(path.join(__dirname, 'public', 'index.html'));
     });
 
-    dashboardRouter.get('*', (req, res) => {
-        res.status(404).send('Not Found on dashboard');
-    });
-
-    app.use((req, res, next) => {
-        const domain = req.domain;
-        if (domain === 'velutinx.com' || domain === 'www.velutinx.com') {
-            mainSiteRouter(req, res, next);
-        } else {
-            dashboardRouter(req, res, next);
-        }
-    });
-
+    // ---- All other routes (API and legacy) ----
     const setupPollRoutes = require('./routes/poll');
     const setupMembershipsRoute = require('./routes/memberships');
     const setupSendMessageRoute = require('./routes/sendMessage');
@@ -244,10 +205,8 @@ module.exports = (client) => {
     setupTriviaRoutes(app, client);
 
     const server = app.listen(PORT, () => {
-        console.log(`✅ Server running on port ${PORT}`);
-        console.log(`   🌐 Main website: https://velutinx.com/`);
+        console.log(`✅ Dashboard running on port ${PORT}`);
         console.log(`   📊 Dashboard: https://d.velutinx.com/`);
-        console.log(`   (Dashboard also at /poll-san on either domain)`);
     });
 
     server.timeout = SERVER_TIMEOUT_MS;
