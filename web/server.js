@@ -1,4 +1,4 @@
-// web/server.js
+// web/server.js – FINAL CORRECTED
 const express = require('express');
 const path = require('path');
 const { ChannelType } = require('discord.js');
@@ -37,15 +37,22 @@ module.exports = (client) => {
         next();
     });
 
+    app.use(express.json());
+
+    // ---------- CRITICAL: Root route BEFORE static middleware ----------
+    // Main website root
+    app.get('/', (req, res) => {
+        res.sendFile(path.join(__dirname, '..', 'index.html'));
+    });
+
     // ---- Serve static files ----
     // 1. Dashboard assets (CSS, JS, images) from /web/public
     app.use(express.static(path.join(__dirname, 'public')));
-    
-    // 2. Main website assets (all files from the project root, e.g., store.html, s/, css/, etc.)
-    //    This serves everything that isn't caught by the above or by API routes.
-    app.use(express.static(path.join(__dirname, '..')));
 
-    app.use(express.json());
+    // 2. Main website assets (everything else in the project root)
+    //    This serves store.html, s/, assets/, etc.
+    app.use(express.static(path.join(__dirname, '..')));
+    // --------------------------------------------------------------------
 
     // API timeout middleware
     app.use('/api', (req, res, next) => {
@@ -68,7 +75,6 @@ module.exports = (client) => {
         next();
     });
 
-    // Helper for MEGA links
     function findFile(node, name) {
         if (!node.children) return null;
         for (const child of node.children) {
@@ -172,12 +178,6 @@ module.exports = (client) => {
         } catch (err) {
             res.status(500).json({ error: err.message });
         }
-    });
-
-    // ---- MAIN WEBSITE (root) ----
-    // This serves the main website's index.html from the project root.
-    app.get('/', (req, res) => {
-        res.sendFile(path.join(__dirname, '..', 'index.html'));
     });
 
     // ---- DASHBOARD (sub‑path) ----
