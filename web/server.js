@@ -25,6 +25,7 @@ module.exports = (client) => {
         res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
     });
 
+    // Block malicious probes (optional)
     app.use((req, res, next) => {
         const url = req.url.toLowerCase();
         const probePatterns = [
@@ -36,11 +37,17 @@ module.exports = (client) => {
         next();
     });
 
-    // ---- Serve static files for BOTH dashboard and main site ----
-    app.use(express.static(path.join(__dirname, 'public'))); // dashboard assets
-    app.use(express.static(path.join(__dirname, 's')));      // main website assets
+    // ---- Serve static files ----
+    // 1. Dashboard assets (CSS, JS, images) from /web/public
+    app.use(express.static(path.join(__dirname, 'public')));
+    
+    // 2. Main website assets (all files from the project root, e.g., store.html, s/, css/, etc.)
+    //    This serves everything that isn't caught by the above or by API routes.
+    app.use(express.static(path.join(__dirname, '..')));
 
     app.use(express.json());
+
+    // API timeout middleware
     app.use('/api', (req, res, next) => {
         if (req.path === '/poll/live') {
             return next();
@@ -61,6 +68,7 @@ module.exports = (client) => {
         next();
     });
 
+    // Helper for MEGA links
     function findFile(node, name) {
         if (!node.children) return null;
         for (const child of node.children) {
@@ -167,8 +175,9 @@ module.exports = (client) => {
     });
 
     // ---- MAIN WEBSITE (root) ----
+    // This serves the main website's index.html from the project root.
     app.get('/', (req, res) => {
-        res.sendFile(path.join(__dirname, 's', 'index.html'));
+        res.sendFile(path.join(__dirname, '..', 'index.html'));
     });
 
     // ---- DASHBOARD (sub‑path) ----
@@ -176,7 +185,7 @@ module.exports = (client) => {
         res.sendFile(path.join(__dirname, 'public', 'index.html'));
     });
 
-    // ---- Other routes ----
+    // ---- API route setups ----
     const setupPollRoutes = require('./routes/poll');
     const setupMembershipsRoute = require('./routes/memberships');
     const setupSendMessageRoute = require('./routes/sendMessage');
