@@ -25,13 +25,6 @@ module.exports = (client) => {
         res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
     });
 
-    // 🔍 Log all requests (helps debug routing)
-    app.use((req, res, next) => {
-        console.log(`📥 ${req.method} ${req.url}`);
-        next();
-    });
-
-    // Block malicious probes (unchanged)
     app.use((req, res, next) => {
         const url = req.url.toLowerCase();
         const probePatterns = [
@@ -43,13 +36,8 @@ module.exports = (client) => {
         next();
     });
 
-    // Serve static files (CSS, JS, etc.) – must come before custom routes that might conflict
     app.use(express.static(path.join(__dirname, 'public')));
-
-    // Parse JSON bodies
     app.use(express.json());
-
-    // API timeout middleware
     app.use('/api', (req, res, next) => {
         if (req.path === '/poll/live') {
             return next();
@@ -175,16 +163,10 @@ module.exports = (client) => {
         }
     });
 
-    // ----- 🏠 Root and Dashboard routes -----
-    // Serve the dashboard at both '/' and '/poll-san'
-    app.get('/', (req, res) => {
-        res.sendFile(path.join(__dirname, 'public', 'index.html'));
-    });
     app.get('/poll-san', (req, res) => {
         res.sendFile(path.join(__dirname, 'public', 'index.html'));
     });
 
-    // ----- API route setups -----
     const setupPollRoutes = require('./routes/poll');
     const setupMembershipsRoute = require('./routes/memberships');
     const setupSendMessageRoute = require('./routes/sendMessage');
@@ -209,7 +191,6 @@ module.exports = (client) => {
 
     const server = app.listen(PORT, () => {
         console.log(`🌐 Dashboard running at http://localhost:${PORT}/poll-san`);
-        console.log(`   Also available at http://localhost:${PORT}/`);
     });
 
     server.timeout = SERVER_TIMEOUT_MS;
