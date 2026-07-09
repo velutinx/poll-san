@@ -190,7 +190,7 @@ module.exports = (client) => {
     setupTriviaRoutes(app, client);
 
     const server = app.listen(PORT, () => {
-        console.log(`🌐 Dashboard running at http://localhost:${PORT}/poll-san`);
+        console.log(`🌐 Dashboard running at https://poll-san-production-bfc0.up.railway.app/`);
     });
 
     server.timeout = SERVER_TIMEOUT_MS;
