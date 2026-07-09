@@ -21,6 +21,14 @@ function getProperSeries(series) {
   return SERIES_NAME_MAP[upper] || series;
 }
 
+function sortFilesByIndex(files) {
+  return files.sort((a, b) => {
+    const numA = parseInt((a.originalname.match(/-(\d+)\./))?.[1] || '0');
+    const numB = parseInt((b.originalname.match(/-(\d+)\./))?.[1] || '0');
+    return numA - numB;
+  });
+}
+
 async function getFreeFemaleMembers(guild) {
   const FEMALE_CONTENT_ROLE_ID = h.ids.roles.female_supporter;
   const MEMBER_ROLE_ID = h.ids.roles.member;
@@ -53,7 +61,6 @@ async function sendGhostPingToFreeMembers(client, guild, packInfo, testChannelId
       console.error(`Test channel ${testChannelId} not found.`);
       return;
     }
-
 
     const chunkSize = 50;
     const chunks = [];
@@ -189,7 +196,7 @@ module.exports = function setupReleasesRoutes(app, client, upload, FORUM_ID, SUP
 
   app.post('/api/release-preview', upload.array('images'), async (req, res) => {
     const { pack, setSize, input, series, suffix } = req.body;
-    const files = req.files || [];
+    const files = sortFilesByIndex(req.files || []);   // ← FIX: sort by index
     try {
       const fullInput = input.trim();
       const spaceIndex = fullInput.indexOf(' ');
@@ -350,7 +357,7 @@ ${getRandomArrow()} See <#${SUPPORTER_FORUM_ID}>`;
 
   app.post('/api/supporter-release', upload.array('images'), async (req, res) => {
     const { pack, setSize, input, series, suffix, download, editPreview, previewThreadId, supporterThreadId } = req.body;
-    const files = req.files || [];
+    const files = sortFilesByIndex(req.files || []);   // ← FIX: sort by index
 
     try {
       const fullInput = input.trim();
@@ -503,8 +510,8 @@ ${h.releaseEmojis.LINK} [megaLink](${download || 'https://mega.nz'})`;
         const category = genderEmoji.includes('female_sign') || genderEmoji === '♀️' ? 1 : 2;
         const illustrationCount = parseInt(setSize, 10) || 0;
         const priceKey = illustrationCount <= 45 ? 'PRICE_1' : 'PRICE_2';
-const properSeries = getProperSeries(series);
-const title = `[Pack ${pack}] ${charName} - ${properSeries}`;
+        const properSeries = getProperSeries(series);
+        const title = `[Pack ${pack}] ${charName} - ${properSeries}`;
         const websiteFormData = new FormData();
         websiteFormData.append('id', String(pack).padStart(3, '0'));
         websiteFormData.append('title', title);
