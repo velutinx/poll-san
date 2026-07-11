@@ -132,6 +132,46 @@ async function markQueueCompleted(client, characterName) {
   }
 }
 
+async function addPremiumToQueue(characterText, client) {
+  try {
+    let queue = await getQueue();
+    queue = queue.map(item => {
+      if (typeof item === 'string') {
+        return { text: item, checked: false, slashed: false, slashedAt: null };
+      }
+      return {
+        text: item.text || item,
+        checked: !!item.checked,
+        slashed: !!item.slashed,
+        slashedAt: item.slashedAt || null
+      };
+    });
+
+    const exists = queue.some(item => item.text === characterText);
+    if (exists) {
+      console.log(`[Queue] "${characterText}" already in queue, skipping.`);
+      return;
+    }
+
+    queue.push({
+      text: characterText,
+      checked: true,
+      slashed: false,
+      slashedAt: null
+    });
+
+    await db.query(
+      `UPDATE ${h.tables.MAIN_QUEUE} SET queue = ?, updated_at = datetime('now') WHERE id = 1`,
+      [JSON.stringify(queue)]
+    );
+
+    await updateDiscordQueue(client);
+    console.log(`[Queue] Added "${characterText}" as premium.`);
+  } catch (err) {
+    console.error('[Queue] Failed to add premium entry:', err);
+  }
+}
+
 module.exports = function setupReleasesRoutes(app, client, upload, FORUM_ID, SUPPORTER_FORUM_ID) {
   
   const LOGO_URL = h.urls.LOGO_URL;
@@ -249,6 +289,10 @@ ${getRandomArrow()} See <#${SUPPORTER_FORUM_ID}>`;
         await sentMessage.react(heartEmoji);
       } catch (reactErr) {
         console.warn('Could not add heart reaction:', reactErr.message);
+      }
+
+      if (suffix && suffix.toLowerCase() === 'request') {
+        await addPremiumToQueue(input, client);
       }
 
       res.json({ success: true });
