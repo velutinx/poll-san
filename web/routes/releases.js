@@ -29,8 +29,9 @@ function sortFilesByIndex(files) {
   });
 }
 
-async function getFreeFemaleMembers(guild) {
-  const FEMALE_CONTENT_ROLE_ID = h.ids.roles.female_supporter;
+// Updated function to check for either male or female roles dynamically
+async function getFreeMembersByGender(guild, isFemale) {
+  const CONTENT_ROLE_ID = isFemale ? h.ids.roles.female_supporter : h.ids.roles.male_supporter;
   const MEMBER_ROLE_ID = h.ids.roles.member;
   const SUPPORTER_ROLE_ID = h.ids.roles.supporter;
 
@@ -38,21 +39,22 @@ async function getFreeFemaleMembers(guild) {
   const targetIds = [];
   for (const [, member] of members) {
     if (member.user.bot) continue;
-    const hasFemaleContent = member.roles.cache.has(FEMALE_CONTENT_ROLE_ID);
+    const hasContentRole = member.roles.cache.has(CONTENT_ROLE_ID);
     const hasMember = member.roles.cache.has(MEMBER_ROLE_ID);
     const hasSupporter = member.roles.cache.has(SUPPORTER_ROLE_ID);
-    if (hasFemaleContent && hasMember && !hasSupporter) {
+    if (hasContentRole && hasMember && !hasSupporter) {
       targetIds.push(member.id);
     }
   }
   return targetIds;
 }
 
+// Updated to receive the isFemale flag from packInfo
 async function sendGhostPingToFreeMembers(client, guild, packInfo, testChannelId) {
   try {
-    const targetIds = await getFreeFemaleMembers(guild);
+    const targetIds = await getFreeMembersByGender(guild, packInfo.isFemale);
     if (targetIds.length === 0) {
-      console.log('No free female members to ping.');
+      console.log(`No free ${packInfo.isFemale ? 'female' : 'male'} members to ping.`);
       return;
     }
 
@@ -413,9 +415,12 @@ ${getRandomArrow()} See <#${SUPPORTER_FORUM_ID}>`;
         charName = fullInput.substring(spaceIndex + 1).trim();
       }
 
+      // 1. Establish the gender flag state cleanly here
+      const isFemale = genderEmoji.includes('female_sign') || genderEmoji === '♀️';
+
       let roleMention = "";
       const appliedTags = [];
-      if (genderEmoji.includes('female_sign') || genderEmoji === '♀️') {
+      if (isFemale) {
         roleMention = `<@&${h.ids.roles.female_supporter}>`;
         appliedTags.push(h.ids.tags.supporter_female);
       } else if (genderEmoji.includes('male_sign') || genderEmoji === '♂️') {
@@ -540,7 +545,8 @@ ${h.releaseEmojis.LINK} [megaLink](${download || 'https://mega.nz'})`;
       }
 
       try {
-        await sendGhostPingToFreeMembers(client, guild, { pack, character: charName }, TEST_CHANNEL_ID);
+        // 2. Pass the isFemale state directly into the configuration payload
+        await sendGhostPingToFreeMembers(client, guild, { pack, character: charName, isFemale }, TEST_CHANNEL_ID);
       } catch (pingErr) {
         console.error('Ghost ping error:', pingErr);
       }
@@ -551,7 +557,7 @@ ${h.releaseEmojis.LINK} [megaLink](${download || 'https://mega.nz'})`;
       }
 
       try {
-        const category = genderEmoji.includes('female_sign') || genderEmoji === '♀️' ? 1 : 2;
+        const category = isFemale ? 1 : 2;
         const illustrationCount = parseInt(setSize, 10) || 0;
         const priceKey = illustrationCount <= 45 ? 'PRICE_1' : 'PRICE_2';
         const properSeries = getProperSeries(series);
