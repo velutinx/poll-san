@@ -48,17 +48,24 @@ function initPreviewSortable() {
 
 const originalHandleFiles = window.handleFiles;
 window.handleFiles = function(files) {
+    const container = document.getElementById('preview-container');
+    
     if (originalHandleFiles) {
         originalHandleFiles(files);
     } else {
         for (let file of files) {
             window.uploadedFiles.push(file);
+            const currentIdx = window.uploadedFiles.length - 1;
+
+            // Synchronously create and append placeholder to guarantee order
+            const img = document.createElement('img');
+            img.className = "preview-img";
+            img.setAttribute('data-file-index', currentIdx);
+            container.appendChild(img);
+
             const reader = new FileReader();
             reader.onload = (e) => {
-                const img = document.createElement('img');
                 img.src = e.target.result;
-                img.className = "preview-img";
-                document.getElementById('preview-container').appendChild(img);
             };
             reader.readAsDataURL(file);
         }
@@ -67,8 +74,8 @@ window.handleFiles = function(files) {
     }
 
     setTimeout(() => {
-        const container = document.getElementById('preview-container');
         if (container) {
+            // Re-indexing safely ensuring everything matches perfectly
             container.querySelectorAll('.preview-img').forEach((img, idx) => {
                 img.setAttribute('data-file-index', idx);
             });
@@ -597,14 +604,19 @@ async function submitSupporterRelease() {
 }
 
 function handleFiles(files) {
+    const container = document.getElementById('preview-container');
     for (let file of files) {
         window.uploadedFiles.push(file);
+        const currentIdx = window.uploadedFiles.length - 1;
+
+        const img = document.createElement('img');
+        img.className = "preview-img";
+        img.setAttribute('data-file-index', currentIdx);
+        container.appendChild(img);
+
         const reader = new FileReader();
         reader.onload = (e) => {
-            const img = document.createElement('img');
             img.src = e.target.result;
-            img.className = "preview-img";
-            document.getElementById('preview-container').appendChild(img);
         };
         reader.readAsDataURL(file);
     }
@@ -623,15 +635,21 @@ function clearImages() {
 }
 
 function handleSupporterFiles(files) {
+    const container = document.getElementById('sup-preview-container');
     for (let file of files) {
         if (!file.type.startsWith('image/')) continue;
         window.supporterUploadedFiles.push(file);
+        const currentIdx = window.supporterUploadedFiles.length - 1;
+
+        // Create DOM element inline to secure correct array alignment
+        const img = document.createElement('img');
+        img.className = "preview-img";
+        img.setAttribute('data-file-index', currentIdx);
+        container.appendChild(img);
+
         const reader = new FileReader();
         reader.onload = (e) => {
-            const img = document.createElement('img');
             img.src = e.target.result;
-            img.className = "preview-img";
-            document.getElementById('sup-preview-container').appendChild(img);
         };
         reader.readAsDataURL(file);
     }
