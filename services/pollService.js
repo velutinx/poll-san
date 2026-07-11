@@ -240,6 +240,15 @@ function runPollInterval(pollMessage, endTime, characters) {
                     `DELETE FROM ${h.tables.POLL_AUTO_RESUME} WHERE message_id = ?`,
                     [pollMessage.id]
                 );
+                await db.query(
+                    `DELETE FROM ${h.tables.POLL_VOTING_DISCORD} WHERE poll_id = 'character_poll_new'`
+                );
+                await db.query(
+                    `DELETE FROM ${h.tables.POLL_VOTING_WEBSITE} WHERE poll_id = 'character_poll_new'`
+                );
+                await db.query(
+                    `DELETE FROM ${h.tables.POLL_VOTES_FINAL} WHERE poll_id = 'character_poll_new'`
+                );
             }
         } catch (e) {
             if (e.code === 10008 || e.message?.includes('Unknown Message')) {
