@@ -196,7 +196,7 @@ module.exports = function setupReleasesRoutes(app, client, upload, FORUM_ID, SUP
 
   app.post('/api/release-preview', upload.array('images'), async (req, res) => {
     const { pack, setSize, input, series, suffix } = req.body;
-    const files = sortFilesByIndex(req.files || []);   // ← FIX: sort by index
+    const files = req.files || [];
     try {
       const fullInput = input.trim();
       const spaceIndex = fullInput.indexOf(' ');
@@ -357,7 +357,7 @@ ${getRandomArrow()} See <#${SUPPORTER_FORUM_ID}>`;
 
   app.post('/api/supporter-release', upload.array('images'), async (req, res) => {
     const { pack, setSize, input, series, suffix, download, editPreview, previewThreadId, supporterThreadId } = req.body;
-    const files = sortFilesByIndex(req.files || []);   // ← FIX: sort by index
+    const files = req.files || [];
 
     try {
       const fullInput = input.trim();
