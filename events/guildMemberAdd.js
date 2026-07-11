@@ -10,7 +10,8 @@ module.exports = async (member) => {
     try {
         const supporterRoleId = h.ids.roles.supporter;
         const unverifiedRoleId = h.ids.roles.unverified;
-        
+        const memberRoleId = h.ids.roles.member;
+
         if (member.user.bot) return;
         if (member.roles.cache.has(h.ids.roles.creator)) {
             console.log(`⏭️ Skipped all role management for ${member.user.tag} (Creator, exempt)`);
@@ -22,20 +23,20 @@ module.exports = async (member) => {
             const unverifiedRole = member.guild.roles.cache.get(unverifiedRoleId);
             if (unverifiedRole) {
                 await member.roles.add(unverifiedRole);
-      //          console.log(`✅ Assigned Unverified role to ${member.user.tag}`);
+                if (member.roles.cache.has(memberRoleId)) {
+                    await member.roles.remove(memberRoleId);
+                //    console.log(`✅ Removed Member role from ${member.user.tag} while adding Unverified`);
+                }
             } else {
                 console.error(`❌ Unverified role not found (ID: ${unverifiedRoleId})`);
             }
         } else {
-    //        console.log(`⏭️ Skipped Unverified role for ${member.user.tag} (already Supporter)`);
         }
 
-        // Scan avatar on join – only alert me if it's flagged
         processMember(member.client, member, NUDITY_THRESHOLD, true).catch(err =>
             console.error('Avatar scan on join failed:', err)
         );
 
-        // ----- WELCOME MESSAGE -----
         try {
             const settings = await db.query(
                 `SELECT welcome_channel_id, welcome_message
@@ -72,7 +73,6 @@ module.exports = async (member) => {
                         flags: [MessageFlags.SuppressNotifications]
                     });
 
-                    // Animated wave reaction
                     await sent.react(h.releaseEmojis.WAVE).catch(err => console.error("Failed to react:", err));
                 }
             }
@@ -84,7 +84,6 @@ module.exports = async (member) => {
         console.error('Error assigning Unverified role:', err);
     }
 
-    // ==================== RESTRICTED ROLE CLEANUP ====================
     setTimeout(async () => {
         try {
             const freshMember = await member.guild.members.fetch(member.id).catch(() => null);
