@@ -482,6 +482,20 @@ async function submitRelease() {
     btn.disabled = true;
     if (status) status.innerText = "⏳ Posting...";
 
+    // --- REORDER FIX: Ensure uploadedFiles order matches visual order ---
+    const container = document.getElementById('preview-container');
+    const orderedFiles = [];
+    container.querySelectorAll('.preview-img').forEach((img) => {
+        const idx = img.getAttribute('data-file-index');
+        if (idx !== null && window.uploadedFiles[idx]) {
+            orderedFiles.push(window.uploadedFiles[idx]);
+        }
+    });
+    if (orderedFiles.length === window.uploadedFiles.length) {
+        window.uploadedFiles = orderedFiles;
+    }
+    // -----------------------------------------------------------------
+
     const formData = new FormData();
     formData.append('pack', document.getElementById('rel-pack').value);
     formData.append('setSize', document.getElementById('rel-size').value);
@@ -529,6 +543,20 @@ async function submitSupporterRelease() {
 
     btn.disabled = true;
     if (status) status.innerText = "⏳ Posting...";
+
+    // --- REORDER FIX: Ensure supporterUploadedFiles order matches visual order ---
+    const container = document.getElementById('sup-preview-container');
+    const orderedFiles = [];
+    container.querySelectorAll('.preview-img').forEach((img) => {
+        const idx = img.getAttribute('data-file-index');
+        if (idx !== null && window.supporterUploadedFiles[idx]) {
+            orderedFiles.push(window.supporterUploadedFiles[idx]);
+        }
+    });
+    if (orderedFiles.length === window.supporterUploadedFiles.length) {
+        window.supporterUploadedFiles = orderedFiles;
+    }
+    // -------------------------------------------------------------------------
 
     const formData = new FormData();
     formData.append('pack', pack);
