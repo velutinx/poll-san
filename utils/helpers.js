@@ -290,6 +290,7 @@ module.exports = {
         POLL_VOTES_FINAL: 'poll_votes_final',
         POLL_VOTING_DISCORD: 'poll_voting_discord',
         POLL_VOTING_WEBSITE: 'poll_voting_website',
+        PURCHASE_MEMBERSHIP_ANTIQUITY: 'purchase_membership_antiquity',
 
         // Settings & others
         GIVEAWAYS: 'settings_giveaways',
