@@ -80,7 +80,6 @@ module.exports = async (reaction, user, action = 'add') => {
                     const antiquity = parseInt(antiquityRow.membership_antiquity, 10) || 0;
                     const antiquityBonus = antiquity * 0.1;
                     weight += antiquityBonus;
-                    console.log(`📈 Added antiquity bonus +${antiquityBonus.toFixed(2)} for ${user.username} (${antiquity} months)`);
                 }
             }
 
