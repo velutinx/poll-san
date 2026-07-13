@@ -149,8 +149,10 @@ async function sendMembershipMessage(client, discordId, membership) {
       );
     }
   } catch (err) {
+  if (err.message !== 'Unknown Member') {
     console.error(`[MembershipSync] Could not handle DM for ${discordId}:`, err.message);
   }
+}
 }
 
 async function getWebsiteWebhook(channel) {
