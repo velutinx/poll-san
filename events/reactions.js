@@ -13,7 +13,6 @@ module.exports = async (reaction, user, action = 'add') => {
 
     const { message } = reaction;
 
-    // 1. Check if this is an active poll
     const activePoll = await db.query(
         `SELECT * FROM ${helpers.tables.POLL_AUTO_RESUME} WHERE message_id = ?`,
         [message.id],
@@ -21,12 +20,10 @@ module.exports = async (reaction, user, action = 'add') => {
     );
     if (!activePoll) return;
 
-    // 2. Map reaction emoji to option ID using reactIds (order must match poll emojis)
     const emojiKey = reaction.emoji.id || reaction.emoji.name;
     const optionId = reactIds.indexOf(emojiKey) + 1;
     if (optionId < 1) return;
 
-    // Parse character list from poll_list (same order as reactIds)
     const characters = activePoll.poll_list
         .split(/(?=:female_sign:|:male_sign:|♀️|♂️)/)
         .map(s => s.trim())
@@ -44,7 +41,6 @@ module.exports = async (reaction, user, action = 'add') => {
             );
             console.log(`🗳️ Vote Removed: ${user.username} from Option ${optionId} (${cleanName})`);
         } else {
-            // --- ADD VOTE with weight calculation ---
             const member = await message.guild.members.fetch(user.id).catch(() => null);
             let weight = 1.0;
             let baseWeight = 1.0;
@@ -73,6 +69,19 @@ module.exports = async (reaction, user, action = 'add') => {
                     true
                 );
                 if (xpData?.level) weight += (xpData.level * weights.xpFactor);
+
+                const antiquityRow = await db.query(
+                    `SELECT membership_antiquity FROM ${helpers.tables.PURCHASE_MEMBERSHIP_ANTIQUITY}
+                     WHERE discord_id = ?`,
+                    [user.id],
+                    true
+                );
+                if (antiquityRow?.membership_antiquity) {
+                    const antiquity = parseInt(antiquityRow.membership_antiquity, 10) || 0;
+                    const antiquityBonus = antiquity * 0.1;
+                    weight += antiquityBonus;
+                    console.log(`📈 Added antiquity bonus +${antiquityBonus.toFixed(2)} for ${user.username} (${antiquity} months)`);
+                }
             }
 
             await db.query(
@@ -92,7 +101,6 @@ module.exports = async (reaction, user, action = 'add') => {
             console.log(`🗳️ Vote Recorded: ${user.username} for Option ${optionId} (Weight: ${weight.toFixed(2)}) - Character: ${cleanName}`);
         }
 
-        // Refresh the poll message to show updated scores
         const charactersList = activePoll.poll_list
             .split(/(?=:female_sign:|:male_sign:|♀️|♂️)/)
             .map(s => s.trim())
@@ -100,7 +108,6 @@ module.exports = async (reaction, user, action = 'add') => {
         const endTimeMs = new Date(activePoll.ends_at).getTime();
         await pollService.refreshPollMessage(message, charactersList, endTimeMs);
 
-        // Remove other reactions from the same user (keep only one vote)
         if (action !== 'remove') {
             const otherReactions = message.reactions.cache.filter(r => {
                 const rId = r.emoji.id || r.emoji.name;
