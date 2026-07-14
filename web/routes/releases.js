@@ -64,21 +64,28 @@ async function sendGhostPingToFreeMembers(client, guild, packInfo, testChannelId
       return;
     }
 
+    let webhook = (await testChannel.fetchWebhooks()).find(w => w.name === 'New Release');
+    if (!webhook) {
+      webhook = await testChannel.createWebhook({
+        name: 'New Release',
+        avatar: h.urls.LOGO_URL
+      });
+    }
+
     const chunkSize = 50;
     const chunks = [];
     for (let i = 0; i < targetIds.length; i += chunkSize) {
       chunks.push(targetIds.slice(i, i + chunkSize));
     }
 
-    const packName = packInfo.pack ? `Pack ${packInfo.pack}` : 'a new pack';
-    const character = packInfo.character || '';
-
     for (const chunk of chunks) {
       const mentionString = chunk.map(id => `<@${id}>`).join(' ');
-      const content = `📢 ${packName} ${character} was just released! ${mentionString}`;
-      const sentMsg = await testChannel.send({
+      const content = `📢 ${packInfo.pack ? `Pack ${packInfo.pack}` : 'New release'} ${packInfo.character || ''} was just released! ${mentionString}`;
+      const sentMsg = await webhook.send({
         content,
-        allowedMentions: { users: chunk }
+        allowedMentions: { users: chunk },
+        username: 'New Release',
+        avatarURL: h.urls.LOGO_URL,
       });
       setTimeout(() => {
         sentMsg.delete().catch(() => {});
@@ -276,15 +283,16 @@ ${getRandomArrow()} See <#${SUPPORTER_FORUM_ID}>`;
 
       const attachments = files.map(f => ({ attachment: f.buffer, name: f.originalname }));
 
-      const webhook = await getWebhook(forumChannel, 'Preview');
-      const sentMessage = await webhook.send({
-        content: messageBody,
-        files: attachments,
-        threadName: threadTitle,
-        appliedTags,
-        username: 'Preview',
-        avatarURL: LOGO_URL,
-      });
+const webhook = await getWebhook(forumChannel, 'New Release');
+const sentMessage = await webhook.send({
+  content: messageBody,
+  files: files.map(f => ({ attachment: f.buffer, name: f.originalname })),
+  threadName: threadTitle,
+  appliedTags: appliedTags.length > 0 ? appliedTags : undefined,
+  username: 'New Release',
+  avatarURL: LOGO_URL,
+  flags: ["SuppressEmbeds"],
+});
 
       const heartEmoji = h.releaseEmojis?.HEART || '💖';
       try {
