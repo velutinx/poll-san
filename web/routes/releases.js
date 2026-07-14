@@ -96,19 +96,20 @@ async function sendGhostPingToFreeMembers(client, guild, packInfo, testChannelId
   }
 }
 
-async function markQueueCompleted(client, characterName) {
+// Add isRequest to your parameters
+async function markQueueCompleted(client, characterName, isRequest) { 
   try {
-    let queue = await getQueue();
+    let queue = await getQueue(); //
 
-    queue = queue.map(item => {
-      if (typeof item === 'string') {
-        return { text: item, checked: false, slashed: false, slashedAt: null };
+    queue = queue.map(item => { //
+      if (typeof item === 'string') { //[cite: 2]
+        return { text: item, checked: false, slashed: false, slashedAt: null }; //[cite: 2]
       }
-      return {
-        text: item.text || item,
-        checked: !!item.checked,
-        slashed: !!item.slashed,
-        slashedAt: item.slashedAt || null
+      return { //[cite: 2]
+        text: item.text || item, //[cite: 2]
+        checked: !!item.checked, //[cite: 2]
+        slashed: !!item.slashed, //[cite: 2]
+        slashedAt: item.slashedAt || null //[cite: 2]
       };
     });
 
@@ -119,7 +120,8 @@ async function markQueueCompleted(client, characterName) {
         found = true;
         item.slashed = true;
         item.slashedAt = new Date().toISOString();
-        item.checked = true;
+        
+        item.checked = isRequest; 
       }
       return item;
     });
@@ -553,16 +555,17 @@ ${h.releaseEmojis.LINK} [megaLink](${download || 'https://mega.nz'})`;
       }
 
       try {
-        // 2. Pass the isFemale state directly into the configuration payload
         await sendGhostPingToFreeMembers(client, guild, { pack, character: charName, isFemale }, TEST_CHANNEL_ID);
       } catch (pingErr) {
         console.error('Ghost ping error:', pingErr);
       }
 
-      const cleanCharName = charName.replace(/^[♂♀]️?\s*/, '').trim();
+const cleanCharName = charName.replace(/^[♂♀]️?\s*/, '').trim();
       if (cleanCharName) {
-        await markQueueCompleted(client, cleanCharName);
+        const isRequest = suffix && suffix.toLowerCase() === 'request';
+        await markQueueCompleted(client, cleanCharName, isRequest); 
       }
+
 
       try {
         const category = isFemale ? 1 : 2;
