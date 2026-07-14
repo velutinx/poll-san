@@ -259,13 +259,17 @@ module.exports = {
         giveaway: '#FF69B4',
         ended: '#808080'
     },
-
-    urls: {
-        base: "https://www.velutinx.com",
-        pollImages: "https://www.velutinx.com/images/poll/",
-        LOGO_URL: 'https://www.velutinx.com/images/LogoDiscord.png',
-        CLOUDFLARE_D1_WORKER: 'https://database-one-time-setup.velutinx.workers.dev'
-    },
+    
+urls: {
+    base: "https://www.velutinx.com",
+    pollImages: "https://www.velutinx.com/images/poll/",
+    LOGO_URL: 'https://www.velutinx.com/images/LogoDiscord.png',
+    SUBSCRIBESTAR_LOGO: 'https://www.velutinx.com/images/LogoSubscribeStar.png',
+    PATREON_LOGO: 'https://www.velutinx.com/images/LogoPatreon.png',
+    KOFI_LOGO: 'https://www.velutinx.com/images/LogoKoFi.png',
+    PAYPAL_LOGO: 'https://www.velutinx.com/images/LogoPaypal.png',
+    CLOUDFLARE_D1_WORKER: 'https://database-one-time-setup.velutinx.workers.dev'
+},
 
     // ==================== CLOUDFLARE D1 TABLES ====================
     tables: {
