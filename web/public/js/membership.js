@@ -34,7 +34,7 @@ function renderMembersTable() {
     const tb = document.getElementById('membership-list-body');
     if (!tb) return;
     if (!membersData.length) {
-        tb.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:20px;">No active subscribers found.</td></tr>';
+        tb.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:20px;">No active subscribers found.</td></tr>';
         return;
     }
 
@@ -69,6 +69,11 @@ function renderMembersTable() {
                 <path d="M3 19H15C17.2091 19 19 17.2091 19 15"/>
             </svg>
         </span>` : '';
+
+        const logoHtml = m.logoUrl 
+            ? `<img src="${m.logoUrl}" alt="Source" style="height:20px; width:auto; vertical-align:middle;">` 
+            : '—';
+
         return `<tr style="border-bottom:1px solid #1e293b;">
             <td style="padding:12px;">${escapeHtml(m.nickname||'Unknown')}</td>
             <td style="padding:12px; color:#94a3b8;">${escapeHtml(m.discordTag||'Unknown')}</td>
@@ -77,6 +82,8 @@ function renderMembersTable() {
             <td style="padding:12px; color:${days<5?'#f87171':'#10b981'};">
                 ${days} Days${recurringIcon}
             </td>
+            <!-- New column -->
+            <td style="padding:12px; text-align:center;">${logoHtml}</td>
         </tr>`;
     }).join('');
 }
