@@ -1,5 +1,4 @@
 // web/routes/queue.js
-
 const h = require('../../utils/helpers');
 const db = require('../../services/database');
 const QUEUE_CHANNEL_ID = h.ids.channels.QUEUE;
@@ -175,6 +174,7 @@ async function markQueueItemByCharacterName(characterName) {
       if (!item.slashed) {
         item.slashed = true;
         item.slashedAt = new Date().toISOString();
+        item.checked = false;
         found = true;
         break;
       } else {
@@ -197,7 +197,20 @@ async function addEntryToQueue(entry, client) {
     throw new Error('Invalid entry');
   }
   let queue = await getQueue();
-  queue.push({ text: entry.trim(), checked: false, slashed: false, slashedAt: null });
+  const newName = extractCharacterName(entry);
+  const existingIndex = queue.findIndex(item => {
+    const itemName = extractCharacterName(item.text);
+    return itemName.toLowerCase() === newName.toLowerCase();
+  });
+
+  if (existingIndex !== -1) {
+    queue[existingIndex].checked = false;
+    queue[existingIndex].slashed = false;
+    queue[existingIndex].slashedAt = null;
+  } else {
+    queue.push({ text: entry.trim(), checked: false, slashed: false, slashedAt: null });
+  }
+
   await db.query(
     `UPDATE ${h.tables.MAIN_QUEUE} SET queue = ?, updated_at = datetime('now') WHERE id = 1`,
     [JSON.stringify(queue)]
@@ -225,13 +238,7 @@ module.exports = function setupQueueRoutes(app, client) {
       return res.status(400).json({ error: 'Missing or invalid entry' });
     }
     try {
-      let queue = await getQueue();
-      queue.push({ text: entry.trim(), checked: false, slashed: false, slashedAt: null });
-      await db.query(
-        `UPDATE ${h.tables.MAIN_QUEUE} SET queue = ?, updated_at = datetime('now') WHERE id = 1`,
-        [JSON.stringify(queue)]
-      );
-      updateDiscordQueue(client);
+      const queue = await addEntryToQueue(entry, client);
       res.json({ success: true, queue });
     } catch (err) {
       console.error(err);
@@ -279,6 +286,7 @@ module.exports = function setupQueueRoutes(app, client) {
       } else {
         item.slashed = true;
         item.slashedAt = new Date().toISOString();
+        item.checked = false;
       }
       await db.query(
         `UPDATE ${h.tables.MAIN_QUEUE} SET queue = ?, updated_at = datetime('now') WHERE id = 1`,
