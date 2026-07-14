@@ -98,10 +98,16 @@ async function sendDM(member, content, lang) {
   try {
     await member.send({ content, flags: ["SuppressEmbeds"] });
     console.log(`[MembershipSync] ✅ DM sent to ${member.user.tag} (lang: ${lang})`);
-    return true;
+    return { success: true };
   } catch (err) {
     console.error(`[MembershipSync] ❌ Failed to send DM to ${member.user.tag}:`, err.message);
-    return false;
+    // If the user cannot be messaged (no mutual guilds, closed DMs, etc.), treat as permanent failure.
+    if (err.message.includes('Cannot send messages to this user') ||
+        err.message.includes('no mutual guilds') ||
+        err.code === 50007) {
+      return { success: false, permanentFailure: true };
+    }
+    return { success: false, permanentFailure: false };
   }
 }
 
@@ -136,6 +142,7 @@ async function sendMembershipMessage(client, discordId, membership) {
     const guild = await client.guilds.fetch(process.env.GUILD_ID);
     member = await guild.members.fetch(discordId);
   } catch (err) {
+    // If the member is not in the guild (Discord API error code 10007), mark as sent so we don't retry.
     if (err.code === 10007 || err.message.includes('Unknown Member')) {
       console.log(`[MembershipSync] Member ${discordId} not in guild, marking as sent.`);
       await recordMessageSent(
@@ -149,13 +156,26 @@ async function sendMembershipMessage(client, discordId, membership) {
       );
       return;
     }
+    // For other errors, log and return without marking as sent (will retry next sync).
     console.error(`[MembershipSync] Could not fetch member ${discordId}:`, err.message);
     return;
   }
 
   const discordName = member.user.tag;
-  const success = await sendDM(member, message, lang);
-  if (success) {
+  const result = await sendDM(member, message, lang);
+
+  if (result.success) {
+    await recordMessageSent(
+      discordId,
+      orderId,
+      lang,
+      membership,
+      discordName,
+      'auto',
+      'cycle_start'
+    );
+  } else if (result.permanentFailure) {
+    console.log(`[MembershipSync] Permanent DM failure for ${discordId} (${discordName}), marking as sent.`);
     await recordMessageSent(
       discordId,
       orderId,
