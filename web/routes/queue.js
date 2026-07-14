@@ -1,4 +1,5 @@
 // web/routes/queue.js
+
 const h = require('../../utils/helpers');
 const db = require('../../services/database');
 const QUEUE_CHANNEL_ID = h.ids.channels.QUEUE;
@@ -191,6 +192,22 @@ async function markQueueItemByCharacterName(characterName) {
   return true;
 }
 
+async function addEntryToQueue(entry, client) {
+  if (!entry || typeof entry !== 'string' || !entry.trim()) {
+    throw new Error('Invalid entry');
+  }
+  let queue = await getQueue();
+  queue.push({ text: entry.trim(), checked: false, slashed: false, slashedAt: null });
+  await db.query(
+    `UPDATE ${h.tables.MAIN_QUEUE} SET queue = ?, updated_at = datetime('now') WHERE id = 1`,
+    [JSON.stringify(queue)]
+  );
+  if (client) {
+    await updateDiscordQueue(client);
+  }
+  return queue;
+}
+
 module.exports = function setupQueueRoutes(app, client) {
   app.get('/api/queue', async (req, res) => {
     try {
@@ -275,7 +292,6 @@ module.exports = function setupQueueRoutes(app, client) {
     }
   });
 
-  // ─── REORDER: accepts visibleOrder, merges with slashed items ───
   app.post('/api/queue/reorder', async (req, res) => {
     const { visibleOrder } = req.body;
     if (!Array.isArray(visibleOrder)) {
@@ -283,15 +299,13 @@ module.exports = function setupQueueRoutes(app, client) {
     }
     try {
       let queue = await getQueue();
-      // Build new queue: iterate over original queue, replace non‑slashed items with next visibleOrder item
       let visibleIndex = 0;
       const newQueue = queue.map(item => {
         if (item.slashed) {
-          return item; // keep slashed as is
+          return item;
         } else {
           const newItem = visibleOrder[visibleIndex];
           visibleIndex++;
-          // If we run out of visibleOrder items, fallback to original item (shouldn't happen)
           return newItem || item;
         }
       });
@@ -366,3 +380,4 @@ module.exports.updateDiscordQueue = updateDiscordQueue;
 module.exports.getQueue = getQueue;
 module.exports.markQueueItemByCharacterName = markQueueItemByCharacterName;
 module.exports.extractCharacterName = extractCharacterName;
+module.exports.addEntryToQueue = addEntryToQueue;
