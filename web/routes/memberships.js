@@ -1,13 +1,17 @@
-            // web/routes/memberships.js
-
+// web/routes/memberships.js
 
 const h = require('../../utils/helpers');
 const db = require('../../services/database');
+const LOGO_MAP = {
+    'subscribestar': h.urls.SUBSCRIBESTAR_LOGO,
+    'patreon': h.urls.PATREON_LOGO,
+    'kofi': h.urls.KOFI_LOGO,
+    'paypal': h.urls.PAYPAL_LOGO
+};
 
 module.exports = function setupMembershipsRoute(app, client) {
     app.get('/api/memberships', async (req, res) => {
         try {
-            // Fetch all active memberships
             const subs = await db.query(`SELECT * FROM ${h.tables.MEMBERSHIPS}`);
 
             const guild = await client.guilds.fetch(process.env.GUILD_ID);
@@ -32,13 +36,14 @@ module.exports = function setupMembershipsRoute(app, client) {
                             `UPDATE ${h.tables.MEMBERSHIPS} SET discord_tag = ? WHERE discord_id = ?`,
                             [discordTag, sub.discord_id]
                         );
-                   //     console.log(`✅ Updated discord_tag for ${sub.discord_id} to ${discordTag}`);
                     }
                 } catch (err) {
-                    // Member left the server – keep original data
                     discordTag = sub.discord_tag || "Unknown";
                     userId = sub.discord_id;
                 }
+
+                const source = sub.source || 'website';
+                const logoUrl = LOGO_MAP[source] || null;
 
                 return {
                     nickname,
@@ -46,7 +51,9 @@ module.exports = function setupMembershipsRoute(app, client) {
                     userId,
                     rank: sub.tier.toString(),
                     daysLeft,
-                    recurring: sub.recurring || false
+                    recurring: sub.recurring || false,
+                    source,
+                    logoUrl
                 };
             }));
 
@@ -81,7 +88,6 @@ module.exports = function setupMembershipsRoute(app, client) {
                 [discordId, parseInt(tier), orderId, now.toISOString(), expirationDate.toISOString()]
             );
 
-            // Assign Discord role
             try {
                 const guild = await client.guilds.fetch(process.env.GUILD_ID);
                 const member = await guild.members.fetch(discordId).catch(() => null);
