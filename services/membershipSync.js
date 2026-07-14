@@ -131,28 +131,41 @@ async function sendMembershipMessage(client, discordId, membership) {
     .replace('{currentMonth}', currentMonth)
     .replace(/DM Velutinx/g, ownerDmLink);
 
+  let member;
   try {
     const guild = await client.guilds.fetch(process.env.GUILD_ID);
-    const member = await guild.members.fetch(discordId);
-    const discordName = member.user.tag;
-
-    const success = await sendDM(member, message, lang);
-    if (success) {
+    member = await guild.members.fetch(discordId);
+  } catch (err) {
+    if (err.code === 10007 || err.message.includes('Unknown Member')) {
+      console.log(`[MembershipSync] Member ${discordId} not in guild, marking as sent.`);
       await recordMessageSent(
         discordId,
         orderId,
         lang,
         membership,
-        discordName,
+        'Unknown',
         'auto',
         'cycle_start'
       );
+      return;
     }
-  } catch (err) {
-  if (err.message !== 'Unknown Member') {
-    console.error(`[MembershipSync] Could not handle DM for ${discordId}:`, err.message);
+    console.error(`[MembershipSync] Could not fetch member ${discordId}:`, err.message);
+    return;
   }
-}
+
+  const discordName = member.user.tag;
+  const success = await sendDM(member, message, lang);
+  if (success) {
+    await recordMessageSent(
+      discordId,
+      orderId,
+      lang,
+      membership,
+      discordName,
+      'auto',
+      'cycle_start'
+    );
+  }
 }
 
 async function getWebsiteWebhook(channel) {
