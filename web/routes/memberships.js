@@ -6,7 +6,8 @@ const LOGO_MAP = {
     'subscribestar': h.urls.SUBSCRIBESTAR_LOGO,
     'patreon': h.urls.PATREON_LOGO,
     'kofi': h.urls.KOFI_LOGO,
-    'paypal': h.urls.PAYPAL_LOGO
+    'paypal': h.urls.PAYPAL_LOGO,
+    'website': h.urls.PAYPAL_LOGO,
 };
 
 module.exports = function setupMembershipsRoute(app, client) {
@@ -76,7 +77,6 @@ module.exports = function setupMembershipsRoute(app, client) {
             const expirationDate = new Date();
             expirationDate.setDate(now.getDate() + 30);
 
-            // Upsert membership
             await db.query(
                 `INSERT INTO ${h.tables.MEMBERSHIPS} (discord_id, tier, order_id, updated_at, expires_at)
                  VALUES (?, ?, ?, ?, ?)
