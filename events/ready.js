@@ -43,8 +43,6 @@ module.exports = async (c) => {
     require('../commands/admin/post-redeem-ui').data.toJSON()
   ];
 
-  require('../services/roleAuditHandler')(c);
-
   const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
   try {
     await rest.put(
