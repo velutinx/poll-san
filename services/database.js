@@ -56,7 +56,7 @@ async function query(sql, params = [], single = false) {
                 throw new Error(`D1 query error: ${data.error}`);
             }
 
-            if (elapsed > 2000) {
+            if (elapsed > 5000) {
                 console.log(
                     `[Database] Slow query (${elapsed}ms, attempt ${attempt}): ${sql.substring(
                         0,
