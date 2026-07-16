@@ -593,7 +593,6 @@ const cleanCharName = charName.replace(/^[♂♀]️?\s*/, '').trim();
           mode: 'cors'
         }).then(async resp => {
           if (resp.ok) {
-            console.log(`✅ Pack #${pack} synced to website store.`);
           } else {
             const errText = await resp.text();
             console.warn(`⚠️ Website sync failed: ${resp.status} ${errText}`);
