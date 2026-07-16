@@ -137,7 +137,6 @@ async function markQueueCompleted(client, characterName, isRequest) {
     );
 
     await updateDiscordQueue(client);
-    console.log(`[Queue] Marked "${characterName}" as released.`);
   } catch (err) {
     console.error('[Queue] Failed to mark as completed:', err);
   }
