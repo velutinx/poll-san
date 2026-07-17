@@ -564,9 +564,7 @@ if (membershipsToUpsert.length > 0) {
         if (!member.roles.cache.has(MEMBER_ROLE)) {
           await member.roles.add(MEMBER_ROLE);
           changesMade = true;
-          console.log(`[MembershipSync] ✅ Added Member role to ${member.user.tag} (${discordId})`);
         } else {
-          console.log(`[MembershipSync] ℹ️ ${member.user.tag} already has Member role, no action needed.`);
         }
       } catch (err) {
         console.error(`[MembershipSync] ❌ Error processing inactive user ${discordId}:`, err.message);
