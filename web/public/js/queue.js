@@ -33,7 +33,9 @@ function renderQueue() {
 
   visibleItems.forEach((item, displayIndex) => {
     const originalIndex = queueItems.indexOf(item);
-    const text = item.text || item;
+    const rawText = item.text || item;
+    // ─── Convert gender placeholders ───
+    const text = rawText.replace(/:female_sign:/g, '♀️').replace(/:male_sign:/g, '♂️');
     const checked = item.checked || false;
 
     const li = document.createElement('li');
@@ -55,7 +57,7 @@ function renderQueue() {
 
     const textSpan = document.createElement('span');
     textSpan.className = 'queue-text';
-    textSpan.textContent = text;
+    textSpan.textContent = text;   // <-- converted text
     if (checked) {
       textSpan.style.fontWeight = 'bold';
       textSpan.style.color = '#f1c40f';
