@@ -49,8 +49,8 @@ async function getFreeMembersByGender(guild, isFemale) {
   return targetIds;
 }
 
-// Updated to receive the isFemale flag from packInfo
-async function sendGhostPingToFreeMembers(client, guild, packInfo, testChannelId) {
+// ─── UPDATED: accepts threadId and sends ping inside that thread ──────
+async function sendGhostPingToFreeMembers(client, guild, packInfo, threadId) {
   try {
     const targetIds = await getFreeMembersByGender(guild, packInfo.isFemale);
     if (targetIds.length === 0) {
@@ -58,15 +58,35 @@ async function sendGhostPingToFreeMembers(client, guild, packInfo, testChannelId
       return;
     }
 
-    const testChannel = await client.channels.fetch(testChannelId).catch(() => null);
-    if (!testChannel) {
-      console.error(`Test channel ${testChannelId} not found.`);
+    // Determine the channel/thread to send to
+    let channel;
+    let isThread = false;
+    if (threadId) {
+      try {
+        const thread = await client.channels.fetch(threadId);
+        if (thread && thread.isThread()) {
+          channel = thread.parent;   // parent forum channel
+          isThread = true;
+        } else {
+          // If it's not a thread, treat it as a normal channel
+          channel = thread;
+        }
+      } catch (e) {
+        console.error(`Failed to fetch thread ${threadId}:`, e.message);
+        channel = await client.channels.fetch(TEST_CHANNEL_ID).catch(() => null);
+      }
+    } else {
+      channel = await client.channels.fetch(TEST_CHANNEL_ID).catch(() => null);
+    }
+
+    if (!channel) {
+      console.error(`No valid channel found for ghost ping.`);
       return;
     }
 
-    let webhook = (await testChannel.fetchWebhooks()).find(w => w.name === 'New Release');
+    let webhook = (await channel.fetchWebhooks()).find(w => w.name === 'New Release');
     if (!webhook) {
-      webhook = await testChannel.createWebhook({
+      webhook = await channel.createWebhook({
         name: 'New Release',
         avatar: h.urls.LOGO_URL
       });
@@ -81,15 +101,20 @@ async function sendGhostPingToFreeMembers(client, guild, packInfo, testChannelId
     for (const chunk of chunks) {
       const mentionString = chunk.map(id => `<@${id}>`).join(' ');
       const content = `📢 ${packInfo.pack ? `Pack ${packInfo.pack}` : 'New release'} ${packInfo.character || ''} was just released! ${mentionString}`;
-      const sentMsg = await webhook.send({
+      const sendOptions = {
         content,
         allowedMentions: { users: chunk },
         username: 'New Release',
         avatarURL: h.urls.LOGO_URL,
-      });
+      };
+      if (isThread && threadId) {
+        sendOptions.threadId = threadId;
+      }
+      const sentMsg = await webhook.send(sendOptions);
+      // Delete after 10 seconds (instead of 60)
       setTimeout(() => {
         sentMsg.delete().catch(() => {});
-      }, 60000);
+      }, 10000);
     }
   } catch (err) {
     console.error('Failed to send ghost ping:', err);
@@ -495,9 +520,10 @@ ${h.releaseEmojis.LINK} [megaLink](${download || 'https://mega.nz'})`;
         supporterResult = { created: true };
       }
 
+      let targetPreviewId = null;   // DECLARE OUTSIDE for later use
       let previewResult = {};
       if (editPreview === 'true') {
-        let targetPreviewId = previewThreadId;
+        targetPreviewId = previewThreadId;   // assign
 
         if (!targetPreviewId && supporterThreadId) {
           try {
@@ -553,8 +579,20 @@ ${h.releaseEmojis.LINK} [megaLink](${download || 'https://mega.nz'})`;
         }
       }
 
+      // ─── Ghost ping – send inside preview thread if available ──────
+      let targetThreadId = null;
+      if (previewThreadId) {
+        targetThreadId = previewThreadId;
+      } else if (editPreview === 'true' && targetPreviewId) {
+        targetThreadId = targetPreviewId;
+      }
+
       try {
-        await sendGhostPingToFreeMembers(client, guild, { pack, character: charName, isFemale }, TEST_CHANNEL_ID);
+        if (targetThreadId) {
+          await sendGhostPingToFreeMembers(client, guild, { pack, character: charName, isFemale }, targetThreadId);
+        } else {
+          await sendGhostPingToFreeMembers(client, guild, { pack, character: charName, isFemale }, TEST_CHANNEL_ID);
+        }
       } catch (pingErr) {
         console.error('Ghost ping error:', pingErr);
       }
