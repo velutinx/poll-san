@@ -477,17 +477,29 @@ async function syncMembershipRoles(client) {
       ]);
     }
 
-if (membershipsToUpsert.length > 0) {
-  const stmt = `
-    INSERT OR REPLACE INTO ${h.tables.MEMBERSHIPS}
-    (discord_id, tier, order_id, updated_at, expires_at, months, recurring, plan_id, status, source, discord_tag)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `;
-  for (const row of membershipsToUpsert) {
-    await db.query(stmt, row);
-  }
-  changesMade = true;
-}
+    // ─── ✅ UPDATED: Using ON CONFLICT instead of INSERT OR REPLACE ───
+    if (membershipsToUpsert.length > 0) {
+      const stmt = `
+        INSERT INTO ${h.tables.MEMBERSHIPS}
+        (discord_id, tier, order_id, updated_at, expires_at, months, recurring, plan_id, status, source, discord_tag)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(discord_id) DO UPDATE SET
+          tier = excluded.tier,
+          order_id = excluded.order_id,
+          updated_at = excluded.updated_at,
+          expires_at = excluded.expires_at,
+          months = excluded.months,
+          recurring = excluded.recurring,
+          plan_id = excluded.plan_id,
+          status = excluded.status,
+          source = excluded.source,
+          discord_tag = excluded.discord_tag
+      `;
+      for (const row of membershipsToUpsert) {
+        await db.query(stmt, row);
+      }
+      changesMade = true;
+    }
 
     const inactiveUserIds = [...previousActiveIds].filter(id => !currentActiveIds.has(id));
     if (inactiveUserIds.length > 0) {
