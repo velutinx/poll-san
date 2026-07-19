@@ -298,6 +298,7 @@ urls: {
 
         // Settings & others
         GIVEAWAYS: 'settings_giveaways',
+        GIVEAWAY_BLACKLIST: 'settings_giveaway_blacklist',
         MAIN_QUEUE: 'settings_main_queue',
         SERVER_SETTINGS: 'settings_server_settings',
         SYNC_STATE: 'settings_sync_state',
