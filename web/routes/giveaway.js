@@ -21,6 +21,14 @@ async function getGiveawayWebhook(channel) {
     return webhook;
 }
 
+// ─── Helper: get blacklist IDs ──────────────────────────────────────
+async function getBlacklistIds() {
+    const rows = await db.query(
+        `SELECT user_id FROM ${h.tables.GIVEAWAY_BLACKLIST}`
+    );
+    return rows.map(r => r.user_id);
+}
+
 module.exports = function setupGiveawayRoutes(app, client, getGuildMembers) {
 
     // ────────────────────────────────────────────────
@@ -29,26 +37,15 @@ module.exports = function setupGiveawayRoutes(app, client, getGuildMembers) {
     app.get('/api/giveaway/active', async (req, res) => {
         try {
             const now = new Date().toUTCString();
-            // Fetch active giveaway
-const giveaway = await db.query(
-    `SELECT * FROM ${h.tables.GIVEAWAYS}
-     WHERE ended = 0
-     ORDER BY julianday(end_time) ASC
-     LIMIT 1`,
-    [],
-    true
-);
+            const giveaway = await db.query(
+                `SELECT * FROM ${h.tables.GIVEAWAYS}
+                 WHERE ended = 0
+                 ORDER BY julianday(end_time) ASC
+                 LIMIT 1`,
+                [],
+                true
+            );
 
-// Don't try to end the giveaway here - the bot handles that
-if (!giveaway) {
-    return res.json({ active: false });
-}
-
-// Then filter in JavaScript - commented out because endGiveaway isn't defined here
-// if (giveaway && new Date(giveaway.end_time) <= new Date()) {
-//     // It's expired, process end - this would happen automatically via the bot's timer
-//     return res.json({ active: false });
-// }
             if (!giveaway) {
                 return res.json({ active: false });
             }
@@ -116,6 +113,10 @@ if (!giveaway) {
                 }
             }
 
+            // Fetch blacklist IDs
+            const blacklistIds = await getBlacklistIds();
+            const blacklistSet = new Set(blacklistIds);
+
             // Build entrants details with live member data
             for (const userId of entrants) {
                 let member = null;
@@ -151,7 +152,8 @@ if (!giveaway) {
                     voted: !!vote,
                     voteCharacter: vote ? vote.characterName : null,
                     isSupporter,
-                    leftServer
+                    leftServer,
+                    isBlacklisted: blacklistSet.has(userId)
                 });
             }
 
@@ -171,50 +173,50 @@ if (!giveaway) {
     // ────────────────────────────────────────────────
     // POST – Adjust giveaway end time by hours (+/-)
     // ────────────────────────────────────────────────
-app.post('/api/giveaway/adjust-time', async (req, res) => {
-    const { hours } = req.body;
-    if (typeof hours !== 'number' || isNaN(hours)) {
-        return res.status(400).json({ error: 'Invalid hours value' });
-    }
-
-    try {
-        const giveaway = await db.query(
-            `SELECT * FROM ${h.tables.GIVEAWAYS}
-             WHERE ended = 0
-             ORDER BY julianday(end_time) ASC
-             LIMIT 1`,
-            [],
-            true
-        );
-        
-        if (!giveaway) {
-            return res.status(404).json({ error: 'No active giveaway found' });
+    app.post('/api/giveaway/adjust-time', async (req, res) => {
+        const { hours } = req.body;
+        if (typeof hours !== 'number' || isNaN(hours)) {
+            return res.status(400).json({ error: 'Invalid hours value' });
         }
 
-        const oldEnd = new Date(giveaway.end_time);
-        const newEnd = new Date(oldEnd.getTime() + hours * 60 * 60 * 1000);
-        const newEndISO = newEnd.toISOString();
+        try {
+            const giveaway = await db.query(
+                `SELECT * FROM ${h.tables.GIVEAWAYS}
+                 WHERE ended = 0
+                 ORDER BY julianday(end_time) ASC
+                 LIMIT 1`,
+                [],
+                true
+            );
 
-        await db.query(
-            `UPDATE ${h.tables.GIVEAWAYS} SET end_time = ? WHERE message_id = ?`,
-            [newEndISO, giveaway.message_id]
-        );
+            if (!giveaway) {
+                return res.status(404).json({ error: 'No active giveaway found' });
+            }
 
-        const channel = await client.channels.fetch(giveaway.channel_id);
-        const webhook = await getGiveawayWebhook(channel);
-        const message = await channel.messages.fetch(giveaway.message_id);
-        const oldEmbed = message.embeds[0];
-        const newEmbed = new EmbedBuilder(oldEmbed.data)
-            .spliceFields(0, 1, { name: 'Ends', value: `<t:${Math.floor(newEnd.getTime() / 1000)}:R>`, inline: true });
+            const oldEnd = new Date(giveaway.end_time);
+            const newEnd = new Date(oldEnd.getTime() + hours * 60 * 60 * 1000);
+            const newEndISO = newEnd.toISOString();
 
-        await webhook.editMessage(message.id, { embeds: [newEmbed] });
+            await db.query(
+                `UPDATE ${h.tables.GIVEAWAYS} SET end_time = ? WHERE message_id = ?`,
+                [newEndISO, giveaway.message_id]
+            );
 
-        res.json({ success: true, newEndTime: newEndISO });
-    } catch (err) {
-        console.error('Giveaway time adjust error:', err);
-        res.status(500).json({ error: err.message });
-    }
-});
+            const channel = await client.channels.fetch(giveaway.channel_id);
+            const webhook = await getGiveawayWebhook(channel);
+            const message = await channel.messages.fetch(giveaway.message_id);
+            const oldEmbed = message.embeds[0];
+            const newEmbed = new EmbedBuilder(oldEmbed.data)
+                .spliceFields(0, 1, { name: 'Ends', value: `<t:${Math.floor(newEnd.getTime() / 1000)}:R>`, inline: true });
+
+            await webhook.editMessage(message.id, { embeds: [newEmbed] });
+
+            res.json({ success: true, newEndTime: newEndISO });
+        } catch (err) {
+            console.error('Giveaway time adjust error:', err);
+            res.status(500).json({ error: err.message });
+        }
+    });
 
     // ────────────────────────────────────────────────
     // POST – Remove a user from the active giveaway
@@ -258,6 +260,64 @@ app.post('/api/giveaway/adjust-time', async (req, res) => {
             res.json({ success: true, message: `Removed ${userId} from giveaway and deleted their poll votes` });
         } catch (err) {
             console.error('Giveaway remove error:', err);
+            res.status(500).json({ error: err.message });
+        }
+    });
+
+    // ────────────────────────────────────────────────
+    // GET – Blacklist
+    // ────────────────────────────────────────────────
+    app.get('/api/giveaway/blacklist', async (req, res) => {
+        try {
+            const rows = await db.query(
+                `SELECT user_id, discord_tag, added_at
+                 FROM ${h.tables.GIVEAWAY_BLACKLIST}
+                 ORDER BY added_at DESC`
+            );
+            res.json(rows);
+        } catch (err) {
+            console.error('Blacklist fetch error:', err);
+            res.status(500).json({ error: err.message });
+        }
+    });
+
+    // ────────────────────────────────────────────────
+    // POST – Add to blacklist
+    // ────────────────────────────────────────────────
+    app.post('/api/giveaway/blacklist/add', async (req, res) => {
+        const { userId, discordTag } = req.body;
+        if (!userId || !discordTag) {
+            return res.status(400).json({ error: 'Missing userId or discordTag' });
+        }
+        try {
+            await db.query(
+                `INSERT OR IGNORE INTO ${h.tables.GIVEAWAY_BLACKLIST} (user_id, discord_tag)
+                 VALUES (?, ?)`,
+                [userId, discordTag]
+            );
+            res.json({ success: true });
+        } catch (err) {
+            console.error('Add blacklist error:', err);
+            res.status(500).json({ error: err.message });
+        }
+    });
+
+    // ────────────────────────────────────────────────
+    // POST – Remove from blacklist
+    // ────────────────────────────────────────────────
+    app.post('/api/giveaway/blacklist/remove', async (req, res) => {
+        const { userId } = req.body;
+        if (!userId) {
+            return res.status(400).json({ error: 'Missing userId' });
+        }
+        try {
+            await db.query(
+                `DELETE FROM ${h.tables.GIVEAWAY_BLACKLIST} WHERE user_id = ?`,
+                [userId]
+            );
+            res.json({ success: true });
+        } catch (err) {
+            console.error('Remove blacklist error:', err);
             res.status(500).json({ error: err.message });
         }
     });
