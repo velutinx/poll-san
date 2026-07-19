@@ -420,34 +420,42 @@ New challenger unlocked: {user(proper)}.
             </div>
         </div>
 
-        <!-- Giveaway tab -->
-        <div id="giveaway-mgmt" class="tab-content">
-            <h1>Giveaway Monitor</h1>
-            <div class="card" style="margin-bottom: 20px;">
-                <div id="giveaway-info">
-                    <p>Loading giveaway data...</p>
-                </div>
-            </div>
-            <div class="card">
-                <div style="overflow-x: auto;">
-                    <table style="width: 100%; border-collapse: collapse;">
-                        <thead>
-                            <tr style="text-align: left; border-bottom: 2px solid #334155;">
-                                <th style="padding: 8px; cursor: pointer;" onclick="sortGiveawayTable('username')">Discord Username</th>
-                                <th style="padding: 8px; cursor: pointer;" onclick="sortGiveawayTable('userId')">Discord ID</th>
-                                <th style="padding: 8px; cursor: pointer;" onclick="sortGiveawayTable('accountAge')">Account Age (days)</th>
-                                <th style="padding: 8px; cursor: pointer;" onclick="sortGiveawayTable('voteCharacter')">Current Vote</th>
-                                <th style="padding: 8px;">Action</th>
-                            </tr>
-                        </thead>
-                        <tbody id="giveaway-table-body">
-                            <tr><td colspan="5" style="text-align:center;">No active giveaway or loading...</td></tr>
-                        </tbody>
-                    </table>
-                </div>
-                <div id="giveaway-status" class="status" style="margin-top: 12px;"></div>
-            </div>
+<!-- Giveaway tab -->
+<div id="giveaway-mgmt" class="tab-content">
+    <h1>Giveaway Monitor</h1>
+    <div class="card" style="margin-bottom: 20px;">
+        <div id="giveaway-info">
+            <p>Loading giveaway data...</p>
         </div>
+    </div>
+    <div class="card">
+        <div style="overflow-x: auto;">
+            <table style="width: 100%; border-collapse: collapse;">
+                <thead>
+                    <tr style="text-align: left; border-bottom: 2px solid #334155;">
+                        <th style="padding: 8px; cursor: pointer;" onclick="sortGiveawayTable('username')">Discord Username</th>
+                        <th style="padding: 8px; cursor: pointer;" onclick="sortGiveawayTable('userId')">Discord ID</th>
+                        <th style="padding: 8px; cursor: pointer;" onclick="sortGiveawayTable('accountAge')">Account Age (days)</th>
+                        <th style="padding: 8px; cursor: pointer;" onclick="sortGiveawayTable('voteCharacter')">Current Vote</th>
+                        <th style="padding: 8px;">Action</th>
+                    </tr>
+                </thead>
+                <tbody id="giveaway-table-body">
+                    <tr><td colspan="5" style="text-align:center;">No active giveaway or loading...</td></tr>
+                </tbody>
+            </table>
+        </div>
+        <div id="giveaway-status" class="status" style="margin-top: 12px;"></div>
+    </div>
+
+    <!-- ─── NEW: Blacklist Section ──────────────────────────────────── -->
+    <div class="card" style="margin-top: 20px;">
+        <span class="card-header-label" style="color: var(--warning-orange);">🚫 Blacklisted Users</span>
+        <div id="blacklist-list">
+            <p style="color:#94a3b8;">Loading...</p>
+        </div>
+    </div>
+</div>
 
         <!-- ─── TRIVIA TAB ────────────────────────────────────────── -->
         <div id="trivia-mgmt" class="tab-content">
