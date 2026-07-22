@@ -101,7 +101,6 @@ async function sendDM(member, content, lang) {
     return { success: true };
   } catch (err) {
     console.error(`[MembershipSync] ❌ Failed to send DM to ${member.user.tag}:`, err.message);
-    // If the user cannot be messaged (no mutual guilds, closed DMs, etc.), treat as permanent failure.
     if (err.message.includes('Cannot send messages to this user') ||
         err.message.includes('no mutual guilds') ||
         err.code === 50007) {
@@ -142,7 +141,6 @@ async function sendMembershipMessage(client, discordId, membership) {
     const guild = await client.guilds.fetch(process.env.GUILD_ID);
     member = await guild.members.fetch(discordId);
   } catch (err) {
-    // If the member is not in the guild (Discord API error code 10007), mark as sent so we don't retry.
     if (err.code === 10007 || err.message.includes('Unknown Member')) {
       console.log(`[MembershipSync] Member ${discordId} not in guild, marking as sent.`);
       await recordMessageSent(
@@ -156,7 +154,6 @@ async function sendMembershipMessage(client, discordId, membership) {
       );
       return;
     }
-    // For other errors, log and return without marking as sent (will retry next sync).
     console.error(`[MembershipSync] Could not fetch member ${discordId}:`, err.message);
     return;
   }
@@ -258,6 +255,40 @@ async function sendRequestTierWebhook(client, discordId, membership) {
   }
 }
 
+// ─── New: Get full previous state (map of discordId -> membership) ──
+async function getPreviousFullState() {
+  try {
+    const row = await db.query(
+      `SELECT value FROM ${h.tables.SYNC_STATE} WHERE key = 'active_members_full'`,
+      [],
+      true
+    );
+    if (row && row.value) {
+      return JSON.parse(row.value);
+    }
+    return {};
+  } catch (err) {
+    console.error('[MembershipSync] Failed to fetch previous full state:', err.message);
+    return {};
+  }
+}
+
+// ─── New: Store full current state ──────────────────────────────────
+async function storeCurrentFullState(state) {
+  const json = JSON.stringify(state);
+  try {
+    await db.query(
+      `INSERT INTO ${h.tables.SYNC_STATE} (key, value)
+       VALUES ('active_members_full', ?)
+       ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+      [json]
+    );
+  } catch (err) {
+    console.error('[MembershipSync] Failed to store full state:', err.message);
+  }
+}
+
+// ─── Keep existing functions for backward compatibility ──────────
 async function getLastActiveSet() {
   try {
     const row = await db.query(
@@ -408,9 +439,11 @@ async function syncMembershipRoles(client) {
 
     if (!activeMemberships || activeMemberships.length === 0) {
       await storeCurrentActiveSet(new Set());
+      await storeCurrentFullState({});
       return;
     }
 
+    // Build current state: highest tier per user
     const userBestMembership = new Map();
     for (const membership of activeMemberships) {
       const discordId = membership.discord_id;
@@ -420,9 +453,35 @@ async function syncMembershipRoles(client) {
       }
     }
 
-    const currentActiveIds = new Set(userBestMembership.keys());
-    const previousActiveIds = await getLastActiveSet();
+    const currentFullState = Object.fromEntries(userBestMembership);
+    const currentActiveIds = new Set(Object.keys(currentFullState));
+
+    // ─── Load previous full state ──────────────────────────────────
+    const previousFullState = await getPreviousFullState();
+    const previousActiveIds = new Set(Object.keys(previousFullState));
+
+    // ─── Diff: new, changed, removed ──────────────────────────────
+    const toUpsert = []; // new or updated
+    const toDelete = [];
+
+    for (const [discordId, membership] of Object.entries(currentFullState)) {
+      const prev = previousFullState[discordId];
+      if (!prev) {
+        toUpsert.push(membership);
+      } else if (prev.tier !== membership.tier || prev.expires_at !== membership.expires_at) {
+        toUpsert.push(membership);
+      }
+    }
+
+    for (const discordId of Object.keys(previousFullState)) {
+      if (!currentFullState[discordId]) {
+        toDelete.push(discordId);
+      }
+    }
+
     const newIds = [...currentActiveIds].filter(id => !previousActiveIds.has(id));
+
+    // ─── Log new members ──────────────────────────────────────────
     const guild = await client.guilds.fetch(process.env.GUILD_ID);
     const tagMap = new Map();
     for (const discordId of currentActiveIds) {
@@ -445,6 +504,8 @@ async function syncMembershipRoles(client) {
       }
     }
 
+    // ─── Send welcome DMs only for new or updated (but we send for all active) ──
+    // Keep existing behavior: send DM for every active user (already checks if sent)
     for (const [discordId, membership] of userBestMembership.entries()) {
       try {
         const member = await guild.members.fetch(discordId).catch(() => null);
@@ -459,26 +520,8 @@ async function syncMembershipRoles(client) {
       await new Promise(res => setTimeout(res, 500));
     }
 
-    const membershipsToUpsert = [];
-    for (const [discordId, membership] of userBestMembership.entries()) {
-      const currentTag = tagMap.get(discordId) || membership.discord_tag || null;
-      membershipsToUpsert.push([
-        discordId,
-        membership.tier,
-        membership.order_id || null,
-        membership.updated_at || new Date().toISOString(),
-        membership.expires_at,
-        membership.months || 1,
-        membership.recurring ?? 0,
-        membership.plan_id || null,
-        membership.status || 'ACTIVE',
-        membership.source || 'website',
-        currentTag
-      ]);
-    }
-
-    // ─── ✅ UPDATED: Using ON CONFLICT instead of INSERT OR REPLACE ───
-    if (membershipsToUpsert.length > 0) {
+    // ─── Apply changes (only for diff) ──────────────────────────────
+    if (toUpsert.length > 0) {
       const stmt = `
         INSERT INTO ${h.tables.MEMBERSHIPS}
         (discord_id, tier, order_id, updated_at, expires_at, months, recurring, plan_id, status, source, discord_tag)
@@ -495,22 +538,35 @@ async function syncMembershipRoles(client) {
           source = excluded.source,
           discord_tag = excluded.discord_tag
       `;
-      for (const row of membershipsToUpsert) {
+      for (const membership of toUpsert) {
+        const row = [
+          membership.discord_id,
+          membership.tier,
+          membership.order_id || null,
+          membership.updated_at || new Date().toISOString(),
+          membership.expires_at,
+          membership.months || 1,
+          membership.recurring ?? 0,
+          membership.plan_id || null,
+          membership.status || 'ACTIVE',
+          membership.source || 'website',
+          tagMap.get(membership.discord_id) || membership.discord_tag || null
+        ];
         await db.query(stmt, row);
       }
       changesMade = true;
     }
 
-    const inactiveUserIds = [...previousActiveIds].filter(id => !currentActiveIds.has(id));
-    if (inactiveUserIds.length > 0) {
-      const placeholders = inactiveUserIds.map(() => '?').join(',');
+    if (toDelete.length > 0) {
+      const placeholders = toDelete.map(() => '?').join(',');
       await db.query(
         `DELETE FROM ${h.tables.MEMBERSHIPS} WHERE discord_id IN (${placeholders})`,
-        inactiveUserIds
+        toDelete
       );
       changesMade = true;
     }
 
+    // ─── Role assignment for active users ───────────────────────────
     for (const [discordId, membership] of userBestMembership.entries()) {
       const member = await guild.members.fetch(discordId).catch(() => null);
       if (!member) continue;
@@ -542,8 +598,8 @@ async function syncMembershipRoles(client) {
       }
     }
 
-    // Clean up inactive roles (unchanged)
-    for (const discordId of inactiveUserIds) {
+    // ─── Clean up inactive users (roles) ─────────────────────────────
+    for (const discordId of toDelete) {
       try {
         const member = await guild.members.fetch(discordId).catch(() => null);
         if (!member) {
@@ -576,14 +632,16 @@ async function syncMembershipRoles(client) {
         if (!member.roles.cache.has(MEMBER_ROLE)) {
           await member.roles.add(MEMBER_ROLE);
           changesMade = true;
-        } else {
         }
       } catch (err) {
         console.error(`[MembershipSync] ❌ Error processing inactive user ${discordId}:`, err.message);
       }
     }
 
+    // ─── Store new full state ──────────────────────────────────────
+    await storeCurrentFullState(currentFullState);
     await storeCurrentActiveSet(currentActiveIds);
+
   } catch (err) {
     console.error('[MembershipSync] Fatal error:', err.message);
   }
