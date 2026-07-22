@@ -23,15 +23,15 @@ async function handleShopSelect(interaction) {
         return interaction.followUp({ content: `${h.releaseEmojis?.BATSU || '❌'} Item not found.`, flags: MessageFlags.Ephemeral });
     }
 
-    // Fetch ticket balance from games_wordle
+    // Fetch ticket balance from games_user_data
     let balance = 0;
     try {
         const row = await db.query(
-            `SELECT ticket_count FROM ${h.tables.GAMES_WORDLE} WHERE discord_id = ?`,
+            `SELECT tickets FROM ${h.tables.GAMES_USER_DATA} WHERE user_id = ?`,
             [interaction.user.id],
             true
         );
-        balance = row?.ticket_count || 0;
+        balance = row?.tickets || 0;
     } catch (err) {
         console.error('Balance fetch error in shop select:', err);
         return interaction.followUp({ content: `${h.releaseEmojis?.BATSU || '❌'} Could not retrieve your balance.`, flags: MessageFlags.Ephemeral });
@@ -70,15 +70,15 @@ async function handleShopPurchase(interaction) {
 
     const item = SHOP_ITEMS[0];
 
-    // Fetch current ticket count from games_wordle
+    // Fetch current ticket count from games_user_data
     let balance = 0;
     try {
         const row = await db.query(
-            `SELECT ticket_count FROM ${h.tables.GAMES_WORDLE} WHERE discord_id = ?`,
+            `SELECT tickets FROM ${h.tables.GAMES_USER_DATA} WHERE user_id = ?`,
             [interaction.user.id],
             true
         );
-        balance = row?.ticket_count || 0;
+        balance = row?.tickets || 0;
     } catch (fetchError) {
         console.error('Fetch balance error:', fetchError);
         return interaction.followUp({ content: `${h.releaseEmojis?.BATSU || '❌'} Error checking balance.`, flags: MessageFlags.Ephemeral });
@@ -88,14 +88,13 @@ async function handleShopPurchase(interaction) {
         return interaction.followUp({ content: `${h.releaseEmojis?.BATSU || '❌'} You do not have enough tickets.`, flags: MessageFlags.Ephemeral });
     }
 
-    // Deduct tickets atomically
+    // Deduct tickets
     const newBalance = balance - item.cost;
     try {
-        const result = await db.query(
-            `UPDATE ${h.tables.GAMES_WORDLE} SET ticket_count = ticket_count - ? WHERE discord_id = ?`,
-            [item.cost, interaction.user.id]
+        await db.query(
+            `UPDATE ${h.tables.GAMES_USER_DATA} SET tickets = ? WHERE user_id = ?`,
+            [newBalance, interaction.user.id]
         );
-        // If no row was updated (user not in table), refund would be complex, but we already checked balance>0, so it should exist.
     } catch (deductError) {
         console.error('Deduct error:', deductError);
         return interaction.followUp({ content: `${h.releaseEmojis?.BATSU || '❌'} Purchase failed. Please try again.`, flags: MessageFlags.Ephemeral });
