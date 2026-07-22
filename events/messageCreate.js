@@ -23,39 +23,37 @@ async function awardTicket(userId, username) {
     try {
         const now = new Date();
 
-        // 1. Check cooldown
-        const row = await db.query(
-            `SELECT last_win_at FROM ${h.tables.GAMES_WORDLE} WHERE discord_id = ?`,
+        // 1. Check cooldown from games_user_data
+        const userData = await db.query(
+            `SELECT wordle_last_played, tickets FROM ${h.tables.GAMES_USER_DATA} WHERE user_id = ?`,
             [userId],
             true
         );
 
-        if (row?.last_win_at) {
-            const lastWin = new Date(row.last_win_at);
-            const hoursSince = (now - lastWin) / (1000 * 60 * 60);
+        if (userData?.wordle_last_played) {
+            const lastPlayed = new Date(userData.wordle_last_played);
+            const hoursSince = (now - lastPlayed) / (1000 * 60 * 60);
             if (hoursSince < COOLDOWN_HOURS) {
                 return { awarded: false, reason: 'cooldown' };
             }
         }
 
-        // 2. Atomically insert / increment ticket
+        // 2. Increment tickets atomically
+        const currentTickets = userData?.tickets ?? 0;
+        const newTickets = currentTickets + 1;
+
         await db.query(
-            `INSERT INTO ${h.tables.GAMES_WORDLE} (discord_id, ticket_count, last_win_at)
-             VALUES (?, 1, ?)
-             ON CONFLICT(discord_id) DO UPDATE SET
-                ticket_count = ticket_count + 1,
-                last_win_at = excluded.last_win_at`,
-            [userId, now.toISOString()]
+            `INSERT INTO ${h.tables.GAMES_USER_DATA} (user_id, tickets, wordle_last_played, discord_username, updated_at)
+             VALUES (?, ?, ?, ?, ?)
+             ON CONFLICT(user_id) DO UPDATE SET
+                 tickets = excluded.tickets,
+                 wordle_last_played = excluded.wordle_last_played,
+                 discord_username = excluded.discord_username,
+                 updated_at = excluded.updated_at`,
+            [userId, newTickets, now.toISOString(), username, now.toISOString()]
         );
 
-        // 3. Read the new count
-        const updated = await db.query(
-            `SELECT ticket_count FROM ${h.tables.GAMES_WORDLE} WHERE discord_id = ?`,
-            [userId],
-            true
-        );
-        const newCount = updated?.ticket_count ?? 1;
-        return { awarded: true, newCount };
+        return { awarded: true, newCount: newTickets };
     } catch (error) {
         console.error('Ticket award error:', error);
         return { awarded: false, reason: 'error' };
