@@ -280,7 +280,6 @@ tables: {
     GAMES_TRIVIA_DAILY: 'games_trivia_daily',
     GAMES_TRIVIA_SESSIONS: 'games_trivia_sessions',
     GAMES_USER_DATA: 'games_user_data',
-    GAMES_WORDLE: 'games_wordle',
 
     // ─── NEW: Redeem feature tables ─────────────────────────────
     GAMES_CHARACTER_REQUESTS: 'games_character_requests',
