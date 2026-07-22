@@ -21,7 +21,6 @@ const words = rawLines.map(line => {
 }).filter(item => item.word.length > 3);
 
 const COOLDOWN_HOURS = 24;
-const GAME_TYPE = 'hangman';
 
 const HANGMAN_STAGES = [
     `🟫🟫🟫🟫🟫\n🟫😀🟫\n🟫\n🟫\n🟫`,
@@ -42,13 +41,12 @@ const HANGMAN_STAGES = [
 async function awardTicket(userId, username) {
     const now = new Date();
 
-    // Check cooldown
-    let cooldownRow;
+    // Check cooldown from games_user_data
+    let userData;
     try {
-        cooldownRow = await db.query(
-            `SELECT last_win_at FROM ${h.tables.GAMES_COOLDOWNS}
-             WHERE discord_id = ? AND game_type = ?`,
-            [userId, GAME_TYPE],
+        userData = await db.query(
+            `SELECT hangman_last_played, tickets FROM ${h.tables.GAMES_USER_DATA} WHERE user_id = ?`,
+            [userId],
             true
         );
     } catch (fetchError) {
@@ -56,9 +54,9 @@ async function awardTicket(userId, username) {
         return { awarded: false, reason: 'error' };
     }
 
-    if (cooldownRow?.last_win_at) {
-        const lastWin = new Date(cooldownRow.last_win_at);
-        const hoursSince = (now - lastWin) / (1000 * 60 * 60);
+    if (userData?.hangman_last_played) {
+        const lastPlayed = new Date(userData.hangman_last_played);
+        const hoursSince = (now - lastPlayed) / (1000 * 60 * 60);
         if (hoursSince < COOLDOWN_HOURS) {
             const remainingHours = COOLDOWN_HOURS - hoursSince;
             const remainingMinutes = Math.floor(remainingHours * 60);
@@ -66,64 +64,41 @@ async function awardTicket(userId, username) {
         }
     }
 
-    // Increment ticket count (replace the old RPC with atomic upsert)
-    let newCount;
-    try {
-        // Atomically insert/update the ticket count
-        await db.query(
-            `INSERT INTO ${h.tables.GAMES_WORDLE} (discord_id, ticket_count, last_win_at)
-             VALUES (?, 1, ?)
-             ON CONFLICT(discord_id) DO UPDATE SET
-                ticket_count = ticket_count + 1,
-                last_win_at = excluded.last_win_at`,
-            [userId, now.toISOString()]
-        );
+    // Increment tickets
+    const currentTickets = userData?.tickets ?? 0;
+    const newTickets = currentTickets + 1;
 
-        // Read the new count
-        const updated = await db.query(
-            `SELECT ticket_count FROM ${h.tables.GAMES_WORDLE} WHERE discord_id = ?`,
-            [userId],
-            true
+    try {
+        await db.query(
+            `INSERT INTO ${h.tables.GAMES_USER_DATA} (user_id, tickets, hangman_last_played, discord_username, updated_at)
+             VALUES (?, ?, ?, ?, ?)
+             ON CONFLICT(user_id) DO UPDATE SET
+                 tickets = excluded.tickets,
+                 hangman_last_played = excluded.hangman_last_played,
+                 discord_username = excluded.discord_username,
+                 updated_at = excluded.updated_at`,
+            [userId, newTickets, now.toISOString(), username, now.toISOString()]
         );
-        newCount = updated?.ticket_count ?? 1;
-    } catch (rpcError) {
-        console.error('Ticket increment error:', rpcError);
+    } catch (upsertError) {
+        console.error('Ticket increment error:', upsertError);
         return { awarded: false, reason: 'error' };
     }
 
-    // Upsert cooldown record
-    try {
-        await db.query(
-            `INSERT INTO ${h.tables.GAMES_COOLDOWNS}
-             (discord_id, discord_username, game_type, last_win_at, notified_reset, updated_at)
-             VALUES (?, ?, ?, ?, 0, ?)
-             ON CONFLICT(discord_id, game_type) DO UPDATE SET
-                discord_username = excluded.discord_username,
-                last_win_at = excluded.last_win_at,
-                notified_reset = 0,
-                updated_at = excluded.updated_at`,
-            [userId, username, GAME_TYPE, now.toISOString(), now.toISOString()]
-        );
-    } catch (upsertError) {
-        console.error('Cooldown upsert error:', upsertError);
-    }
-
-    return { awarded: true, newCount };
+    return { awarded: true, newCount: newTickets };
 }
 
 async function getCooldownRemaining(userId) {
     try {
         const row = await db.query(
-            `SELECT last_win_at FROM ${h.tables.GAMES_COOLDOWNS}
-             WHERE discord_id = ? AND game_type = ?`,
-            [userId, GAME_TYPE],
+            `SELECT hangman_last_played FROM ${h.tables.GAMES_USER_DATA} WHERE user_id = ?`,
+            [userId],
             true
         );
-        if (!row?.last_win_at) return 0;
+        if (!row?.hangman_last_played) return 0;
 
-        const lastWin = new Date(row.last_win_at);
+        const lastPlayed = new Date(row.hangman_last_played);
         const now = new Date();
-        const hoursSince = (now - lastWin) / (1000 * 60 * 60);
+        const hoursSince = (now - lastPlayed) / (1000 * 60 * 60);
         if (hoursSince >= COOLDOWN_HOURS) return 0;
 
         return Math.floor((COOLDOWN_HOURS - hoursSince) * 60);
@@ -142,34 +117,8 @@ async function startHangmanGame(interaction) {
 
     const confettiEmoji = h.releaseEmojis?.CONFETTI || '🎉';
 
-    // Check cooldown reset
-    try {
-        const cooldownRow = await db.query(
-            `SELECT last_win_at, notified_reset FROM ${h.tables.GAMES_COOLDOWNS}
-             WHERE discord_id = ? AND game_type = ?`,
-            [interaction.user.id, GAME_TYPE],
-            true
-        );
-
-        if (cooldownRow && !cooldownRow.notified_reset) {
-            const lastWin = new Date(cooldownRow.last_win_at);
-            const hoursSince = (Date.now() - lastWin.getTime()) / (1000 * 60 * 60);
-            if (hoursSince >= COOLDOWN_HOURS) {
-                await interaction.followUp({
-                    content: `${confettiEmoji} Your **Hangman** ticket cooldown has reset! You can now earn another ticket by winning a game.`,
-                    flags: MessageFlags.Ephemeral
-                });
-                await db.query(
-                    `UPDATE ${h.tables.GAMES_COOLDOWNS}
-                     SET notified_reset = 1, updated_at = ?
-                     WHERE discord_id = ? AND game_type = ?`,
-                    [new Date().toISOString(), interaction.user.id, GAME_TYPE]
-                );
-            }
-        }
-    } catch (err) {
-        console.error('Cooldown reset check error:', err);
-    }
+    // (Optional) We no longer check for cooldown reset notification via separate table.
+    // If needed, we could add a simple check and notify, but we'll keep it minimal.
 
     const item = words[Math.floor(Math.random() * words.length)];
     const word = item.word;
