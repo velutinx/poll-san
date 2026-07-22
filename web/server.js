@@ -38,6 +38,17 @@ module.exports = (client) => {
 
     app.use(express.static(path.join(__dirname, 'public')));
     app.use(express.json());
+
+    // ─── Custom JSON error handler ──────────────────────────────
+    // Catches malformed JSON payloads and returns a clean 400 error
+    app.use((err, req, res, next) => {
+        if (err instanceof SyntaxError && err.status === 400 && 'body' in err) {
+            console.warn(`⚠️ Malformed JSON from ${req.method} ${req.url}:`, err.message);
+            return res.status(400).json({ error: 'Invalid JSON payload' });
+        }
+        next(err);
+    });
+
     app.use('/api', (req, res, next) => {
         if (req.path === '/poll/live') {
             return next();
