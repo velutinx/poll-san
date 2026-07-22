@@ -271,39 +271,44 @@ urls: {
     CLOUDFLARE_D1_WORKER: 'https://database-one-time-setup.velutinx.workers.dev'
 },
 
-    // ==================== CLOUDFLARE D1 TABLES ====================
-    tables: {
-        // Games
-        GAMES_COOLDOWNS: 'games_cooldowns',
-        GAMES_MUDAE_CLAIMS: 'games_mudae_claims',
-        GAMES_PURCHASES: 'games_purchases',
-        GAMES_TRIVIA_DAILY: 'games_trivia_daily',
-        GAMES_TRIVIA_SESSIONS: 'games_trivia_sessions',
-        GAMES_USER_DATA: 'games_user_data',
-        GAMES_WORDLE: 'games_wordle',
+// ==================== CLOUDFLARE D1 TABLES ====================
+tables: {
+    // Games
+    GAMES_COOLDOWNS: 'games_cooldowns',
+    GAMES_MUDAE_CLAIMS: 'games_mudae_claims',
+    GAMES_PURCHASES: 'games_purchases',
+    GAMES_TRIVIA_DAILY: 'games_trivia_daily',
+    GAMES_TRIVIA_SESSIONS: 'games_trivia_sessions',
+    GAMES_USER_DATA: 'games_user_data',
+    GAMES_WORDLE: 'games_wordle',
 
-        // Purchases
-        MEMBER_MESSAGE_LOG: 'purchase_member_message_log',
-        MEMBERSHIPS: 'purchase_memberships',
-        PRICE_KEYS: 'purchase_price_keys',
-        PRICE_TIERS: 'purchase_price_tiers',
-        SUCCESSS: 'purchase_success',
+    // ─── NEW: Redeem feature tables ─────────────────────────────
+    GAMES_CHARACTER_REQUESTS: 'games_character_requests',
+    GAMES_CHARACTER_SUGGESTIONS: 'games_character_suggestions',
+    GAMES_VOTE_BOOSTS: 'games_vote_boosts',
 
-        // Poll
-        POLL_AUTO_RESUME: 'poll_auto_resume',
-        POLL_VOTES_FINAL: 'poll_votes_final',
-        POLL_VOTING_DISCORD: 'poll_voting_discord',
-        POLL_VOTING_WEBSITE: 'poll_voting_website',
-        PURCHASE_MEMBERSHIP_ANTIQUITY: 'purchase_membership_antiquity',
+    // Purchases
+    MEMBER_MESSAGE_LOG: 'purchase_member_message_log',
+    MEMBERSHIPS: 'purchase_memberships',
+    PRICE_KEYS: 'purchase_price_keys',
+    PRICE_TIERS: 'purchase_price_tiers',
+    SUCCESSS: 'purchase_success',
 
-        // Settings & others
-        GIVEAWAYS: 'settings_giveaways',
-        GIVEAWAY_BLACKLIST: 'settings_giveaway_blacklist',
-        MAIN_QUEUE: 'settings_main_queue',
-        SERVER_SETTINGS: 'settings_server_settings',
-        SYNC_STATE: 'settings_sync_state',
-        USER_XP: 'settings_user_xp'
-    },
+    // Poll
+    POLL_AUTO_RESUME: 'poll_auto_resume',
+    POLL_VOTES_FINAL: 'poll_votes_final',
+    POLL_VOTING_DISCORD: 'poll_voting_discord',
+    POLL_VOTING_WEBSITE: 'poll_voting_website',
+    PURCHASE_MEMBERSHIP_ANTIQUITY: 'purchase_membership_antiquity',
+
+    // Settings & others
+    GIVEAWAYS: 'settings_giveaways',
+    GIVEAWAY_BLACKLIST: 'settings_giveaway_blacklist',
+    MAIN_QUEUE: 'settings_main_queue',
+    SERVER_SETTINGS: 'settings_server_settings',
+    SYNC_STATE: 'settings_sync_state',
+    USER_XP: 'settings_user_xp'
+},
 
     // ==================== REDEEM STORE ====================
     redeem: {
