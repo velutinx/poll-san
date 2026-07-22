@@ -134,10 +134,31 @@ async function batchQuery(queries) {
     );
 }
 
+async function transaction(queries) {
+    if (!queries || queries.length === 0) return [];
+
+    // Start transaction
+    await query('BEGIN TRANSACTION');
+
+    try {
+        const results = [];
+        for (const q of queries) {
+            const result = await query(q.sql, q.params || []);
+            results.push(result);
+        }
+        await query('COMMIT');
+        return results;
+    } catch (err) {
+        await query('ROLLBACK');
+        throw err;
+    }
+}
+
 module.exports = {
     query,
     upsert,
     batchInsertOrReplace,
     deleteIn,
     batchQuery,
+    transaction,
 };
