@@ -16,8 +16,25 @@ const NUDITY_THRESHOLD = 0.3;
 const MASS_SCAN_THRESHOLD = 0.3;
 const SCAN_DELAY_MS = 2000;
 const MONTHLY_CREDITS = 2000;
-const PROMPT_HOURS = [14, 16, 18];
 const NSFW_TIMEOUT_MS = 15000;
+
+// ─── Configurable prompt hours (UTC) via environment ────────────
+const DEFAULT_PROMPT_HOURS = [14, 16, 18];
+let PROMPT_HOURS = DEFAULT_PROMPT_HOURS;
+
+if (process.env.MONTHLY_SCAN_PROMPT_HOURS) {
+    try {
+        const parsed = process.env.MONTHLY_SCAN_PROMPT_HOURS.split(',').map(Number);
+        if (parsed.every(n => !isNaN(n) && n >= 0 && n <= 23)) {
+            PROMPT_HOURS = parsed;
+            console.log(`[AvatarScan] Using custom prompt hours (UTC): ${PROMPT_HOURS.join(', ')}`);
+        } else {
+            console.warn('[AvatarScan] Invalid MONTHLY_SCAN_PROMPT_HOURS, using defaults:', DEFAULT_PROMPT_HOURS);
+        }
+    } catch (e) {
+        console.warn('[AvatarScan] Error parsing MONTHLY_SCAN_PROMPT_HOURS, using defaults');
+    }
+}
 
 // Safe timeout helper (avoids 32‑bit overflow)
 const MAX_TIMEOUT = 2147483647;
@@ -566,40 +583,44 @@ async function sendMonthlyPrompt(client) {
     );
 
     await owner.send({ embeds: [embed], components: [row] });
-    const today = new Date().toISOString().slice(0, 10);
-    await setSetting('monthly_scan_prompt_day', today);
+    // Note: caller will update the prompt day/hour after sending
 }
 
+// ─── Fixed monthly scan prompt check using UTC ───────────────────
 async function checkMonthlyScanPrompt(client) {
     const now = new Date();
-    const year = now.getFullYear();
-    const month = now.getMonth();
-    const date = now.getDate();
+    const utcYear = now.getUTCFullYear();
+    const utcMonth = now.getUTCMonth();      // 0-indexed
+    const utcDate = now.getUTCDate();
+    const utcHours = now.getUTCHours();
 
-    const lastDay = new Date(year, month + 1, 0).getDate();
-    const oneDayBeforeLast = lastDay - 1;
+    // Last day of the current month in UTC
+    const lastDayOfMonth = new Date(utcYear, utcMonth + 1, 0).getUTCDate();
+    const oneDayBeforeLast = lastDayOfMonth - 1;
 
-    const todayStr = now.toISOString().slice(0, 10);
-    const gmt7Hour = (now.getUTCHours() - 7 + 24) % 24;
+    const todayStr = now.toISOString().slice(0, 10); // YYYY-MM-DD
+    const alreadyPromptedToday = await getSetting('monthly_scan_prompt_day') === todayStr;
+    const alreadyAccepted = await getSetting('monthly_scan_accepted') === 'true';
 
-    if (date === oneDayBeforeLast) {
-        const alreadyPromptedToday = await getSetting('monthly_scan_prompt_day') === todayStr;
-        const alreadyAccepted = await getSetting('monthly_scan_accepted') === 'true';
+    // ─── Day before last day ──────────────────────────────────────
+    if (utcDate === oneDayBeforeLast) {
         if (!alreadyPromptedToday && !alreadyAccepted) {
             await sendMonthlyPrompt(client);
+            await setSetting('monthly_scan_prompt_day', todayStr);
         }
         return;
     }
 
-    if (date === lastDay) {
-        const alreadyAccepted = await getSetting('monthly_scan_accepted') === 'true';
+    // ─── Last day of month ──────────────────────────────────────
+    if (utcDate === lastDayOfMonth) {
         if (alreadyAccepted) return;
 
-        if (PROMPT_HOURS.includes(gmt7Hour)) {
+        if (PROMPT_HOURS.includes(utcHours)) {
             const lastPromptHour = await getSetting('monthly_scan_last_prompt_hour');
-            if (lastPromptHour !== gmt7Hour.toString()) {
+            if (lastPromptHour !== utcHours.toString()) {
                 await sendMonthlyPrompt(client);
-                await setSetting('monthly_scan_last_prompt_hour', gmt7Hour.toString());
+                await setSetting('monthly_scan_last_prompt_hour', utcHours.toString());
+                await setSetting('monthly_scan_prompt_day', todayStr);
             }
         }
     }
@@ -836,7 +857,6 @@ function init(client) {
             try {
                 if (await shouldRunMassScanToday()) {
                     await markMassScanDoneToday();
-                    // console.log('[MassScan] Daily free mass scan marked for today. Starting scan...');
                     await scanAllMembersWithFreeAPI(client);
                 }
             } catch (err) {
