@@ -183,7 +183,7 @@ async function handleRedeemSeries(interaction, index) {
 
     try {
         await db.query(
-            `INSERT INTO games_character_requests (user_id, username, series)
+            `INSERT INTO ${helpers.tables.GAMES_CHARACTER_REQUESTS} (user_id, username, series)
              VALUES (?, ?, ?)`,
             [userId, interaction.user.tag, selectedSeries]
         );
@@ -261,7 +261,7 @@ async function handleRedeemVoteBoost(interaction) {
     let newExpiresAt;
     try {
         const existing = await db.query(
-            `SELECT id, expires_at FROM games_vote_boosts
+            `SELECT id, expires_at FROM ${helpers.tables.GAMES_VOTE_BOOSTS}
              WHERE user_id = ? AND expires_at > ?`,
             [userId, now.toISOString()],
             true
@@ -272,7 +272,7 @@ async function handleRedeemVoteBoost(interaction) {
             currentExpiry.setDate(currentExpiry.getDate() + helpers.redeem.voteBoostDurationDays);
             newExpiresAt = currentExpiry.toISOString();
             await db.query(
-                `UPDATE games_vote_boosts SET expires_at = ?, username = ? WHERE id = ?`,
+                `UPDATE ${helpers.tables.GAMES_VOTE_BOOSTS} SET expires_at = ?, username = ? WHERE id = ?`,
                 [newExpiresAt, interaction.user.tag, existing.id]
             );
         } else {
@@ -280,7 +280,7 @@ async function handleRedeemVoteBoost(interaction) {
                 now.getTime() + helpers.redeem.voteBoostDurationDays * 24 * 60 * 60 * 1000
             ).toISOString();
             await db.query(
-                `INSERT INTO games_vote_boosts (user_id, username, expires_at) VALUES (?, ?, ?)`,
+                `INSERT INTO ${helpers.tables.GAMES_VOTE_BOOSTS} (user_id, username, expires_at) VALUES (?, ?, ?)`,
                 [userId, interaction.user.tag, newExpiresAt]
             );
         }
@@ -375,7 +375,7 @@ async function handleSuggestModalSubmit(interaction) {
 
     try {
         await db.query(
-            `INSERT INTO games_character_suggestions (user_id, username, character_name, series)
+            `INSERT INTO ${helpers.tables.GAMES_CHARACTER_SUGGESTIONS} (user_id, username, character_name, series)
              VALUES (?, ?, ?, ?)`,
             [userId, interaction.user.tag, characterName, series]
         );
