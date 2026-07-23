@@ -379,7 +379,7 @@ const sentMessage = await webhook.send({
 
       const isSoon = setSize.toUpperCase() === 'XX';
       const suffixStr = suffix ? ` — ${suffix}` : '';
-      const newTitle = `[${series.toUpperCase()}] ${charName} — Pack #${pack}${suffixStr}${isSoon ? ' — SOON' : ''}`;
+      const newTitle = `[${series}] ${charName} — Pack #${pack}${suffixStr}${isSoon ? ' — SOON' : ''}`;
 
       await thread.setName(newTitle);
 
@@ -466,7 +466,7 @@ const sentMessage = await webhook.send({
       const forumChannel = await guild.channels.fetch(SUPPORTER_FORUM_ID);
 
       const suffixStr = suffix ? ` — ${suffix}` : '';
-      const threadTitle = `[${series.toUpperCase()}] ${charName} — Pack #${pack}${suffixStr}`;
+      const threadTitle = `[${series}] ${charName} — Pack #${pack}${suffixStr}`;
       
       const messageBody = `${SUPPORTER_RELEASE_HEADER}
 ${roleMention || ''}
