@@ -315,82 +315,87 @@ async function loadPostData() {
 }
 
 async function loadSupporterEditData() {
-    const drop = document.getElementById('supporterEditDropdown');
-    const postId = drop.value;
-    const post = window.globalSupporterPosts.find(p => p.id === postId);
-    if (!post) return;
+  const drop = document.getElementById('supporterEditDropdown');
+  const postId = drop.value;
+  const post = window.globalSupporterPosts.find(p => p.id === postId);
+  if (!post) return;
+  const basePreviewSelect = document.getElementById('supporterPostSelect');
+  const hasBasePreview = basePreviewSelect && basePreviewSelect.value !== '';
+  const title = post.name;
+  const titleRegex = /\[(.*?)\] (.*?) — (?:Pack #)?(\d+)(?: — (.*))?$/i;
+  const titleMatch = title.match(titleRegex);
 
-    const title = post.name;
-    const titleRegex = /\[(.*?)\] (.*?) — (?:Pack #)?(\d+)(?: — (.*))?$/i;
-    const titleMatch = title.match(titleRegex);
-
-    if (titleMatch) {
-        document.getElementById('supSeries').value = titleMatch[1];
-        let fullName = titleMatch[2];
-        document.getElementById('supName').value = fullName.replace(/♀️|♂️|:female_sign:|:male_sign:/g, "").trim();
-        document.getElementById('supPack').value = titleMatch[3];
-        const suffix = titleMatch[4] || '';
-        const suffixSelect = document.getElementById('supSuffix');
-        const option = Array.from(suffixSelect.options).find(opt => opt.value === suffix);
-        suffixSelect.value = option ? suffix : '';
+  if (titleMatch) {
+    if (!hasBasePreview) {
+      document.getElementById('supSeries').value = titleMatch[1];
+      let fullName = titleMatch[2];
+      document.getElementById('supName').value = fullName.replace(/♀️|♂️|:female_sign:|:male_sign:/g, "").trim();
+      document.getElementById('supPack').value = titleMatch[3];
+      const suffix = titleMatch[4] || '';
+      const suffixSelect = document.getElementById('supSuffix');
+      const option = Array.from(suffixSelect.options).find(opt => opt.value === suffix);
+      suffixSelect.value = option ? suffix : '';
     }
+  }
 
-    const appliedTags = post.applied_tags || [];
-    const config = await getConfig();
-    const femaleTag = config.tagIds.supporter_female;
-    const maleTags = config.tagIds.supporter_male;
-    const genderSelect = document.getElementById('supGender');
+  const appliedTags = post.applied_tags || [];
+  const config = await getConfig();
+  const femaleTag = config.tagIds.supporter_female;
+  const maleTags = config.tagIds.supporter_male;
+  const genderSelect = document.getElementById('supGender');
 
+  if (hasBasePreview && genderSelect.value !== '') {
+  } else {
     if (appliedTags.includes(femaleTag)) {
-        genderSelect.value = ':female_sign:';
+      genderSelect.value = ':female_sign:';
     } else if (maleTags.some(tag => appliedTags.includes(tag))) {
-        genderSelect.value = ':male_sign:';
+      genderSelect.value = ':male_sign:';
     } else {
-        if (title.includes('♀️')) genderSelect.value = ':female_sign:';
-        else if (title.includes('♂️')) genderSelect.value = ':male_sign:';
-        else genderSelect.value = ':male_sign:';
+      if (title.includes('♀️')) genderSelect.value = ':female_sign:';
+      else if (title.includes('♂️')) genderSelect.value = ':male_sign:';
+      else genderSelect.value = ':male_sign:';
+    }
+  }
+
+  try {
+    const res = await fetch(`/api/get-post-content?id=${postId}`);
+    const data = await res.json();
+    const content = data.content || "";
+    const sizeMatch = content.match(/Set size:\s*(\d+)/i);
+    if (sizeMatch) document.getElementById('supSize').value = sizeMatch[1];
+
+    let megaUrl = data.megaLink || "";
+    if (!megaUrl) {
+      const downloadMatch = content.match(/📥\s*Download:\s*(https:\/\/mega\.nz\/[^\s>]+)/i);
+      if (downloadMatch) {
+        megaUrl = downloadMatch[1];
+      } else {
+        const urlMatch = content.match(/https:\/\/mega\.nz\/[^\s>]+/i);
+        if (urlMatch) megaUrl = urlMatch[0];
+      }
     }
 
-    try {
-        const res = await fetch(`/api/get-post-content?id=${postId}`);
-        const data = await res.json();
-        const content = data.content || "";
-
-        const sizeMatch = content.match(/Set size:\s*(\d+)/i);
-        if (sizeMatch) document.getElementById('supSize').value = sizeMatch[1];
-
-        let megaUrl = data.megaLink || "";
-        if (!megaUrl) {
-            const downloadMatch = content.match(/📥\s*Download:\s*(https:\/\/mega\.nz\/[^\s>]+)/i);
-            if (downloadMatch) {
-                megaUrl = downloadMatch[1];
-            } else {
-                const urlMatch = content.match(/https:\/\/mega\.nz\/[^\s>]+/i);
-                if (urlMatch) megaUrl = urlMatch[0];
-            }
-        }
-
-if (megaUrl) {
-    megaUrl = megaUrl.replace(/[)\]},.]+$/, '');
-    megaUrl = megaUrl.replace(/\)$/, '');
-    document.getElementById('supDownload').value = megaUrl.replace(/[<>*]/g, '').trim();
-}
-
-        const imageContainer = document.getElementById('supporter-existing-images');
-        imageContainer.innerHTML = '';
-        if (data.attachments && data.attachments.length > 0) {
-            data.attachments.forEach(att => {
-                const img = document.createElement('img');
-                img.src = att.url;
-                img.style.cssText = "width:140px; height:140px; object-fit:cover; border-radius:6px; margin:5px;";
-                imageContainer.appendChild(img);
-            });
-        } else {
-            imageContainer.innerHTML = '<p style="color:#94a3b8; width:100%; text-align:center;">No images in this post</p>';
-        }
-    } catch (e) {
-        console.error("Error loading supporter post:", e);
+    if (megaUrl) {
+      megaUrl = megaUrl.replace(/[)\]},.]+$/, '');
+      megaUrl = megaUrl.replace(/\)$/, '');
+      document.getElementById('supDownload').value = megaUrl.replace(/[<>*]/g, '').trim();
     }
+
+    const imageContainer = document.getElementById('supporter-existing-images');
+    imageContainer.innerHTML = '';
+    if (data.attachments && data.attachments.length > 0) {
+      data.attachments.forEach(att => {
+        const img = document.createElement('img');
+        img.src = att.url;
+        img.style.cssText = "width:140px; height:140px; object-fit:cover; border-radius:6px; margin:5px;";
+        imageContainer.appendChild(img);
+      });
+    } else {
+      imageContainer.innerHTML = '<p style="color:#94a3b8; width:100%; text-align:center;">No images in this post</p>';
+    }
+  } catch (e) {
+    console.error("Error loading supporter post:", e);
+  }
 }
 
 async function loadSupporterPostData() {
@@ -398,7 +403,6 @@ async function loadSupporterPostData() {
     const postId = drop.value;
     const post = window.globalForumPosts.find(p => p.id === postId);
     if (!post) return;
-
     const title = post.name;
     const titleRegex = /\[(.*?)\] (.*?) — (?:Pack #)?(\d+)(?: — (.*))?$/i;
     const titleMatch = title.match(titleRegex);
