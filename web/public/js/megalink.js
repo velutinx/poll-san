@@ -34,18 +34,22 @@ function generateFilenameFromPost() {
     }
 
     const title = post.name;
+    // Regex: [Series] Name — Pack #123 (optional suffix like "— Poll")
     const regex = /\[(.*?)\] (.*?) — (?:Pack #)?(\d+)/i;
     const match = title.match(regex);
     if (match) {
-        const series = match[1].trim().toUpperCase();
+        // Use series as-is (preserve case and punctuation)
+        const series = match[1].trim();   // <-- FIXED: no .toUpperCase()
         const name = match[2].replace(/♀️|♂️|:female_sign:|:male_sign:/g, '').trim();
         const pack = match[3];
         const filename = `[Pack ${pack}] ${name} - ${series}.zip`;
         document.getElementById('mega-filename').value = filename;
         console.log(`Generated filename: ${filename}`);
     } else {
-        document.getElementById('mega-filename').value = title + '.zip';
-        console.log(`Fallback filename: ${title}.zip`);
+        // Fallback: use entire title, strip "— Poll" or "— Request" if present
+        let fallback = title.replace(/ — (?:Poll|Request)$/, '').trim();
+        document.getElementById('mega-filename').value = fallback + '.zip';
+        console.log(`Fallback filename: ${fallback}.zip`);
     }
 }
 
@@ -98,7 +102,6 @@ async function uploadToMega() {
     xhr.upload.onprogress = (e) => {
         if (e.lengthComputable) {
             progressBar.value = (e.loaded / e.total) * 100;
-            // Removed console.log for each progress update.
         }
     };
 
