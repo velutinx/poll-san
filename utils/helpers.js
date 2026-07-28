@@ -268,7 +268,7 @@ urls: {
     PATREON_LOGO: 'https://www.velutinx.com/images/LogoPatreon.png',
     KOFI_LOGO: 'https://www.velutinx.com/images/LogoKoFi.png',
     PAYPAL_LOGO: 'https://www.velutinx.com/images/LogoPaypal.png',
-    CLOUDFLARE_D1_WORKER: 'https://database-one-time-setup.velutinx.workers.dev'
+    CLOUDFLARE_D1_WORKER: process.env.CLOUDFLARE_D1_WORKER || 'https://database-one-time-setup.velutinx.workers.dev'
 },
 
 // ==================== CLOUDFLARE D1 TABLES ====================
