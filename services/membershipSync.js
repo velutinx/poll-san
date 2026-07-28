@@ -2,14 +2,13 @@
 
 const db = require('./database');
 const h = require('../utils/helpers');
-const fetch = require('node-fetch'); // or use global fetch
 
 const TIER_ROLES = h.weights.tierMapping;
 const SUPPORTER_ROLE = h.ids.roles.supporter;
 const CREATOR_ROLE = h.ids.roles.creator;
 const MEMBER_ROLE = h.ids.roles.member;
 
-const WORKER_URL = process.env.CLOUDFLARE_D1_WORKER || 'https://database-one-time-setup.velutinx.workers.dev';
+const SYNC_STATE_WORKER_URL = h.urls.CLOUDFLARE_D1_WORKER;
 
 const MESSAGES = {
   en: {
