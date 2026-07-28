@@ -49,19 +49,20 @@ async function getLanguageForOrder(orderId) {
   }
 }
 
+// ─── Check if welcome DM was already sent ──────────────────────────
 async function hasMessageBeenSent(discordId, orderId) {
   try {
     const row = await db.query(
-      `SELECT id FROM ${h.tables.MEMBER_MESSAGE_LOG}
+      `SELECT welcome_sent FROM ${h.tables.MEMBERSHIPS}
        WHERE discord_id = ? AND order_id = ?
        LIMIT 1`,
       [discordId, orderId],
       true
     );
-    return !!row;
+    return row?.welcome_sent === 1;
   } catch (err) {
-    console.error('[MembershipSync] Failed to check message sent status:', err.message);
-    return true;
+    console.error('[MembershipSync] Failed to check welcome_sent:', err.message);
+    return true; // Assume sent on error to avoid duplicates
   }
 }
 
@@ -112,16 +113,29 @@ async function sendDM(member, content, lang) {
   }
 }
 
+async function markWelcomeSent(discordId, orderId) {
+  try {
+    await db.query(
+      `UPDATE ${h.tables.MEMBERSHIPS}
+       SET welcome_sent = 1
+       WHERE discord_id = ? AND order_id = ?`,
+      [discordId, orderId]
+    );
+  } catch (err) {
+    console.error('[MembershipSync] Failed to mark welcome_sent:', err.message);
+  }
+}
+
 async function sendMembershipMessage(client, discordId, membership) {
   const tier = membership.tier;
   const expiresAt = new Date(membership.expires_at);
   const orderId = membership.order_id;
 
-  const tierNames = { 1: 'Bronze', 2: 'Copper', 3: 'Silver', 4: 'Gold', 5: 'Platinum' };
-  const tierName = tierNames[tier] || `Tier ${tier}`;
-
   const alreadySent = await hasMessageBeenSent(discordId, orderId);
   if (alreadySent) return;
+
+  const tierNames = { 1: 'Bronze', 2: 'Copper', 3: 'Silver', 4: 'Gold', 5: 'Platinum' };
+  const tierName = tierNames[tier] || `Tier ${tier}`;
 
   const lang = await getLanguageForOrder(orderId);
   const t = MESSAGES[lang] || MESSAGES.en;
@@ -145,6 +159,7 @@ async function sendMembershipMessage(client, discordId, membership) {
   } catch (err) {
     if (err.code === 10007 || err.message.includes('Unknown Member')) {
       console.log(`[MembershipSync] Member ${discordId} not in guild, marking as sent.`);
+      await markWelcomeSent(discordId, orderId);
       await recordMessageSent(
         discordId,
         orderId,
@@ -164,6 +179,7 @@ async function sendMembershipMessage(client, discordId, membership) {
   const result = await sendDM(member, message, lang);
 
   if (result.success) {
+    await markWelcomeSent(discordId, orderId);
     await recordMessageSent(
       discordId,
       orderId,
@@ -175,6 +191,7 @@ async function sendMembershipMessage(client, discordId, membership) {
     );
   } else if (result.permanentFailure) {
     console.log(`[MembershipSync] Permanent DM failure for ${discordId} (${discordName}), marking as sent.`);
+    await markWelcomeSent(discordId, orderId);
     await recordMessageSent(
       discordId,
       orderId,
@@ -494,17 +511,21 @@ async function syncMembershipRoles(client) {
       }
     }
 
-    // ─── Send welcome DMs ────────────────────────────────
-    for (const [discordId, membership] of userBestMembership.entries()) {
+    // ─── Send welcome DMs ONLY for new members ────────────
+    for (const discordId of newIds) {
+      const membership = userBestMembership.get(discordId);
+      if (!membership) continue;
+
       try {
         const member = await guild.members.fetch(discordId).catch(() => null);
         if (member && member.roles.cache.has(CREATOR_ROLE)) {
-          console.log(`[MembershipSync] Skipping DM and role sync for Creator ${member.user.tag} (${discordId})`);
+          console.log(`[MembershipSync] Skipping DM for Creator ${member.user.tag} (${discordId})`);
           continue;
         }
       } catch (err) {
         console.warn(`[MembershipSync] Could not check Creator role for ${discordId}, proceeding anyway`);
       }
+
       await sendMembershipMessage(client, discordId, membership);
       await new Promise(res => setTimeout(res, 500));
     }
