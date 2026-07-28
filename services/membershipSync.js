@@ -652,9 +652,7 @@ async function syncMembershipRoles(client) {
     if (changesMade) {
       await storeCurrentFullState(currentFullState);
       await storeCurrentActiveSet(currentActiveIds);
-      console.log('[MembershipSync] ✅ State updated in KV due to changes.');
     } else {
-      console.log('[MembershipSync] ⏭️ No changes detected, skipping KV state update.');
     }
 
   } catch (err) {
