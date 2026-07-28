@@ -2,11 +2,14 @@
 
 const db = require('./database');
 const h = require('../utils/helpers');
+const fetch = require('node-fetch'); // or use global fetch
 
 const TIER_ROLES = h.weights.tierMapping;
 const SUPPORTER_ROLE = h.ids.roles.supporter;
 const CREATOR_ROLE = h.ids.roles.creator;
 const MEMBER_ROLE = h.ids.roles.member;
+
+const WORKER_URL = process.env.CLOUDFLARE_D1_WORKER || 'https://database-one-time-setup.velutinx.workers.dev';
 
 const MESSAGES = {
   en: {
@@ -255,71 +258,59 @@ async function sendRequestTierWebhook(client, discordId, membership) {
   }
 }
 
-// ─── New: Get full previous state (map of discordId -> membership) ──
+// ─── KV State helpers (via HTTP) ──────────────────────────────
+
 async function getPreviousFullState() {
   try {
-    const row = await db.query(
-      `SELECT value FROM ${h.tables.SYNC_STATE} WHERE key = 'active_members_full'`,
-      [],
-      true
-    );
-    if (row && row.value) {
-      return JSON.parse(row.value);
-    }
-    return {};
+    const res = await fetch(`${SYNC_STATE_WORKER_URL}/api/sync-state/active-members-full`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    return data.state || {};
   } catch (err) {
-    console.error('[MembershipSync] Failed to fetch previous full state:', err.message);
+    console.error('[MembershipSync] Failed to fetch full state from KV:', err.message);
     return {};
   }
 }
 
-// ─── New: Store full current state ──────────────────────────────────
 async function storeCurrentFullState(state) {
-  const json = JSON.stringify(state);
   try {
-    await db.query(
-      `INSERT INTO ${h.tables.SYNC_STATE} (key, value)
-       VALUES ('active_members_full', ?)
-       ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
-      [json]
-    );
+    const res = await fetch(`${SYNC_STATE_WORKER_URL}/api/sync-state/active-members-full`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ state })
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
   } catch (err) {
-    console.error('[MembershipSync] Failed to store full state:', err.message);
+    console.error('[MembershipSync] Failed to store full state in KV:', err.message);
   }
 }
 
-// ─── Keep existing functions for backward compatibility ──────────
 async function getLastActiveSet() {
   try {
-    const row = await db.query(
-      `SELECT value FROM ${h.tables.SYNC_STATE} WHERE key = 'active_members'`,
-      [],
-      true
-    );
-    if (row && row.value) {
-      const parsed = JSON.parse(row.value);
-      return new Set(parsed.ids || []);
-    }
-    return new Set();
+    const res = await fetch(`${SYNC_STATE_WORKER_URL}/api/sync-state/active-members`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    return new Set(data.ids || []);
   } catch (err) {
-    console.error('[MembershipSync] Failed to fetch sync state:', err.message);
+    console.error('[MembershipSync] Failed to fetch active set from KV:', err.message);
     return new Set();
   }
 }
 
 async function storeCurrentActiveSet(ids) {
-  const json = JSON.stringify({ ids: Array.from(ids), updated_at: new Date().toISOString() });
   try {
-    await db.query(
-      `INSERT INTO ${h.tables.SYNC_STATE} (key, value)
-       VALUES ('active_members', ?)
-       ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
-      [json]
-    );
+    const res = await fetch(`${SYNC_STATE_WORKER_URL}/api/sync-state/active-members`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids: Array.from(ids) })
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
   } catch (err) {
-    console.error('[MembershipSync] Failed to store sync state:', err.message);
+    console.error('[MembershipSync] Failed to store active set in KV:', err.message);
   }
 }
+
+// ─── Duplicate warning timestamps (still in D1) ────────────────
 
 const DUPLICATE_WARNING_KEY = 'duplicate_warning_last_sent';
 
@@ -330,10 +321,7 @@ async function getDuplicateWarningTimestamps() {
       [DUPLICATE_WARNING_KEY],
       true
     );
-    if (row && row.value) {
-      return JSON.parse(row.value);
-    }
-    return {};
+    return row?.value ? JSON.parse(row.value) : {};
   } catch (err) {
     console.error('[DuplicateWarning] Failed to fetch timestamps:', err.message);
     return {};
@@ -352,6 +340,8 @@ async function storeDuplicateWarningTimestamps(timestamps) {
     console.error('[DuplicateWarning] Failed to store timestamps:', err.message);
   }
 }
+
+// ─── Duplicate warning logic ──────────────────────────────────
 
 async function checkAndWarnDuplicateMemberships(client, activeMemberships) {
   const websiteMemberships = activeMemberships.filter(m => m.source === 'website');
@@ -421,6 +411,8 @@ async function checkAndWarnDuplicateMemberships(client, activeMemberships) {
   }
 }
 
+// ─── Main sync function ──────────────────────────────────────
+
 async function syncMembershipRoles(client) {
   let changesMade = false;
 
@@ -443,7 +435,6 @@ async function syncMembershipRoles(client) {
       return;
     }
 
-    // Build current state: highest tier per user
     const userBestMembership = new Map();
     for (const membership of activeMemberships) {
       const discordId = membership.discord_id;
@@ -456,12 +447,12 @@ async function syncMembershipRoles(client) {
     const currentFullState = Object.fromEntries(userBestMembership);
     const currentActiveIds = new Set(Object.keys(currentFullState));
 
-    // ─── Load previous full state ──────────────────────────────────
+    // ─── Load previous full state from KV ──────────────────
     const previousFullState = await getPreviousFullState();
     const previousActiveIds = new Set(Object.keys(previousFullState));
 
-    // ─── Diff: new, changed, removed ──────────────────────────────
-    const toUpsert = []; // new or updated
+    // ─── Diff ──────────────────────────────────────────────
+    const toUpsert = [];
     const toDelete = [];
 
     for (const [discordId, membership] of Object.entries(currentFullState)) {
@@ -481,7 +472,7 @@ async function syncMembershipRoles(client) {
 
     const newIds = [...currentActiveIds].filter(id => !previousActiveIds.has(id));
 
-    // ─── Log new members ──────────────────────────────────────────
+    // ─── Log new members ──────────────────────────────────
     const guild = await client.guilds.fetch(process.env.GUILD_ID);
     const tagMap = new Map();
     for (const discordId of currentActiveIds) {
@@ -504,8 +495,7 @@ async function syncMembershipRoles(client) {
       }
     }
 
-    // ─── Send welcome DMs only for new or updated (but we send for all active) ──
-    // Keep existing behavior: send DM for every active user (already checks if sent)
+    // ─── Send welcome DMs ────────────────────────────────
     for (const [discordId, membership] of userBestMembership.entries()) {
       try {
         const member = await guild.members.fetch(discordId).catch(() => null);
@@ -520,7 +510,7 @@ async function syncMembershipRoles(client) {
       await new Promise(res => setTimeout(res, 500));
     }
 
-    // ─── Apply changes (only for diff) ──────────────────────────────
+    // ─── Apply changes (only if there are diffs) ────────
     if (toUpsert.length > 0) {
       const stmt = `
         INSERT INTO ${h.tables.MEMBERSHIPS}
@@ -566,7 +556,7 @@ async function syncMembershipRoles(client) {
       changesMade = true;
     }
 
-    // ─── Role assignment for active users ───────────────────────────
+    // ─── Role assignment ──────────────────────────────────
     for (const [discordId, membership] of userBestMembership.entries()) {
       const member = await guild.members.fetch(discordId).catch(() => null);
       if (!member) continue;
@@ -598,7 +588,7 @@ async function syncMembershipRoles(client) {
       }
     }
 
-    // ─── Clean up inactive users (roles) ─────────────────────────────
+    // ─── Clean up inactive users (roles) ──────────────────
     for (const discordId of toDelete) {
       try {
         const member = await guild.members.fetch(discordId).catch(() => null);
@@ -638,9 +628,14 @@ async function syncMembershipRoles(client) {
       }
     }
 
-    // ─── Store new full state ──────────────────────────────────────
-    await storeCurrentFullState(currentFullState);
-    await storeCurrentActiveSet(currentActiveIds);
+    // ─── Store new full state in KV only if changes were made ──
+    if (changesMade) {
+      await storeCurrentFullState(currentFullState);
+      await storeCurrentActiveSet(currentActiveIds);
+      console.log('[MembershipSync] ✅ State updated in KV due to changes.');
+    } else {
+      console.log('[MembershipSync] ⏭️ No changes detected, skipping KV state update.');
+    }
 
   } catch (err) {
     console.error('[MembershipSync] Fatal error:', err.message);
