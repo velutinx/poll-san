@@ -122,37 +122,66 @@ async function sendGhostPingToFreeMembers(client, guild, packInfo, threadId) {
 }
 
 // Add isRequest to your parameters
-async function markQueueCompleted(client, characterName, isRequest) { 
+async function markQueueCompleted(client, characterName, isRequest) {
   try {
-    let queue = await getQueue(); //
+    let queue = await getQueue();
 
-    queue = queue.map(item => { //
-      if (typeof item === 'string') { //[cite: 2]
-        return { text: item, checked: false, slashed: false, slashedAt: null }; //[cite: 2]
+    // Normalize queue items
+    queue = queue.map(item => {
+      if (typeof item === 'string') {
+        return { text: item, checked: false, slashed: false, slashedAt: null };
       }
-      return { //[cite: 2]
-        text: item.text || item, //[cite: 2]
-        checked: !!item.checked, //[cite: 2]
-        slashed: !!item.slashed, //[cite: 2]
-        slashedAt: item.slashedAt || null //[cite: 2]
+      return {
+        text: item.text || item,
+        checked: !!item.checked,
+        slashed: !!item.slashed,
+        slashedAt: item.slashedAt || null
       };
     });
 
+    // Clean a text string: remove gender emojis (both Unicode and custom)
+    function cleanText(text) {
+      if (!text) return '';
+      return text
+        .replace(/^[•:blank:diamond]?\s*/, '')           // remove list markers
+        .replace(/^[:]?male_sign[:]?\s*/, '')            // remove :male_sign:
+        .replace(/^[:]?female_sign[:]?\s*/, '')          // remove :female_sign:
+        .replace(/^[♂♀]️?\s*/, '')                       // remove Unicode gender symbols
+        .replace(/^[:]?blank[:]?\s*/, '')                // remove :blank:
+        .replace(/^[:]?diamond[:]?\s*/, '')              // remove :diamond:
+        .trim();
+    }
+
     let found = false;
     const updatedQueue = queue.map(item => {
-      const itemName = item.text.replace(/^[•:blank:diamond]?\s*/, '').replace(/^[♂♀]️?\s*/, '').trim();
+      const itemName = cleanText(item.text);
       if (itemName.toLowerCase() === characterName.toLowerCase()) {
         found = true;
         item.slashed = true;
         item.slashedAt = new Date().toISOString();
-        
-        item.checked = isRequest; 
+        item.checked = isRequest;
       }
       return item;
     });
 
     if (!found) {
       console.log(`[Queue] Character "${characterName}" not found – skipping update.`);
+      // Try a looser match: check if characterName is anywhere in the text
+      for (const item of updatedQueue) {
+        const cleanItem = cleanText(item.text);
+        if (cleanItem.toLowerCase().includes(characterName.toLowerCase())) {
+          found = true;
+          item.slashed = true;
+          item.slashedAt = new Date().toISOString();
+          item.checked = isRequest;
+          console.log(`[Queue] Found "${characterName}" in "${item.text}" – slashed.`);
+          break;
+        }
+      }
+    }
+
+    if (!found) {
+      console.log(`[Queue] Still not found after loose match.`);
       return;
     }
 
