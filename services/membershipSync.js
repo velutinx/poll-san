@@ -326,34 +326,30 @@ async function storeCurrentActiveSet(ids) {
   }
 }
 
-// ─── Duplicate warning timestamps (still in D1) ────────────────
-
-const DUPLICATE_WARNING_KEY = 'duplicate_warning_last_sent';
+// ─── NEW: Duplicate warning timestamps (stored in KV) ──────────
 
 async function getDuplicateWarningTimestamps() {
   try {
-    const row = await db.query(
-      `SELECT value FROM ${h.tables.SYNC_STATE} WHERE key = ?`,
-      [DUPLICATE_WARNING_KEY],
-      true
-    );
-    return row?.value ? JSON.parse(row.value) : {};
+    const res = await fetch(`${SYNC_STATE_WORKER_URL}/api/sync-state/duplicate-warning-timestamps`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    return data.timestamps || {};
   } catch (err) {
-    console.error('[DuplicateWarning] Failed to fetch timestamps:', err.message);
+    console.error('[DuplicateWarning] Failed to fetch timestamps from KV:', err.message);
     return {};
   }
 }
 
 async function storeDuplicateWarningTimestamps(timestamps) {
   try {
-    await db.query(
-      `INSERT INTO ${h.tables.SYNC_STATE} (key, value)
-       VALUES (?, ?)
-       ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
-      [DUPLICATE_WARNING_KEY, JSON.stringify(timestamps)]
-    );
+    const res = await fetch(`${SYNC_STATE_WORKER_URL}/api/sync-state/duplicate-warning-timestamps`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ timestamps })
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
   } catch (err) {
-    console.error('[DuplicateWarning] Failed to store timestamps:', err.message);
+    console.error('[DuplicateWarning] Failed to store timestamps in KV:', err.message);
   }
 }
 
