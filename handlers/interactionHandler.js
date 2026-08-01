@@ -19,34 +19,27 @@ const { handleCheckinClaim } = require('../services/checkinHandler');
 
 module.exports = async function handleInteraction(interaction) {
     try {
-if (interaction.isChatInputCommand()) {
-    switch (interaction.commandName) {
-        case 'level': await require('../commands/level')(interaction); break;
-        case 'giveaway': await require('../commands/giveaway').execute(interaction); break;
-        case 'post_slots_ui': await require('../commands/admin/post-slots-ui').execute(interaction); break;
-        case 'post_hangman_ui': await require('../commands/admin/post-hangman-ui').execute(interaction); break;
-        case 'post_verify_ui': await require('../commands/admin/post-verify-ui').execute(interaction); break;
-        case 'post_checkin_ui': await require('../commands/admin/post-checkin-ui').execute(interaction); break;
-        case 'post_cointoss_ui': await require('../commands/admin/post-cointoss-ui').execute(interaction); break;
-        case 'post_redeem_ui': await require('../commands/admin/post-redeem-ui').execute(interaction); break;
-        // ─── NEW ────────────────────────────────────────────────
-        case 'resend_giveaway':
-            await require('../commands/admin/resend-giveaway').execute(interaction);
-            break;
-        default: break;
-    }
-}
+        if (interaction.isChatInputCommand()) {
+            switch (interaction.commandName) {
+                case 'level': require('../commands/level')(interaction); break;
+                case 'giveaway': await giveawayCommand.execute(interaction); break;
+                case 'post_slots_ui': await require('../commands/admin/post-slots-ui').execute(interaction); break;
+                case 'post_hangman_ui': await require('../commands/admin/post-hangman-ui').execute(interaction); break;
+                case 'post_verify_ui': await require('../commands/admin/post-verify-ui').execute(interaction); break;
+                case 'post_checkin_ui': await require('../commands/admin/post-checkin-ui').execute(interaction); break;
+                case 'post_cointoss_ui': await require('../commands/admin/post-cointoss-ui').execute(interaction); break;
+                case 'post_redeem_ui': await require('../commands/admin/post-redeem-ui').execute(interaction); break;
+                default: break;
+            }
+        }
         else if (interaction.isUserContextMenuCommand() && interaction.commandName === 'View Level') {
             require('../commands/level')(interaction);
         }
         else if (interaction.isButton()) {
-            // 🎁 Prioritize giveaway button – no permissions check
 if (interaction.customId === 'enter_giveaway') {
-    await giveawayCommand.handleGiveawayButton(interaction);   // ✅ correct
+    await giveawayCommand.handleGiveawayButton(interaction);
     return;
 }
-
-            // All other buttons
             switch (interaction.customId) {
                 case 'shop_buy_confirm': await handleShopPurchase(interaction); break;
                 case 'slots_bet_1': await handleSlotsBet(interaction, 1); break;
@@ -67,7 +60,6 @@ if (interaction.customId === 'enter_giveaway') {
                         const index = parseInt(interaction.customId.split('_')[2]);
                         await handleRedeemSeries(interaction, index);
                     }
-                    // No fallback for giveaway button – it's already handled above
                 }
             }
         }
