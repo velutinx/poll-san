@@ -1,4 +1,5 @@
 // events/ready.js
+
 const db = require('../services/database');
 const { runPollInterval } = require('../services/pollService');
 const { cleanRoles } = require('../services/roleCleaner');
@@ -10,7 +11,6 @@ const h = require('../utils/helpers');
 const initChannelCleaner = require('../handlers/channelCleaner');
 const initMudaeMessageHandler = require('../handlers/mudaeMessageHandler');
 const { cleanupExpiredMemberships } = require('../services/membershipCleanup');
-
 const {
   REST,
   Routes,
@@ -21,7 +21,6 @@ const {
 } = require('discord.js');
 
 module.exports = async (c) => {
-  // Start dashboard
   try {
     const dashboardModule = await import('../web/server.js');
     const startDashboard = dashboardModule.default || dashboardModule;
@@ -30,7 +29,6 @@ module.exports = async (c) => {
     console.error('❌ Failed to start dashboard:', err.message);
   }
 
-  // Register slash commands
   const commandsData = [
     new SlashCommandBuilder().setName('level').setDescription('Shows your current XP/level').toJSON(),
     new ContextMenuCommandBuilder().setName('View Level').setType(ApplicationCommandType.User).toJSON(),
@@ -40,8 +38,7 @@ module.exports = async (c) => {
     require('../commands/admin/post-verify-ui').data.toJSON(),
     require('../commands/admin/post-checkin-ui').data.toJSON(),
     require('../commands/admin/post-cointoss-ui').data.toJSON(),
-    require('../commands/admin/post-redeem-ui').data.toJSON(),
-    require('../commands/admin/resend-giveaway').data.toJSON(),
+    require('../commands/admin/post-redeem-ui').data.toJSON()
   ];
 
   const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
@@ -50,24 +47,19 @@ module.exports = async (c) => {
       Routes.applicationGuildCommands(process.env.CLIENT_ID, process.env.GUILD_ID),
       { body: commandsData }
     );
-    // console.log('✅ Slash commands registered');
   } catch (err) {
     console.error('❌ Failed to sync commands:', err);
   }
 
-  // ─── Clean roles periodically (offloaded) ───
   const guild = c.guilds.cache.get(process.env.GUILD_ID);
   if (guild) {    setImmediate(() => cleanRoles(guild).catch(err => console.error('Initial cleanRoles error:', err)));  }
   setInterval(() => {
     const activeGuild = c.guilds.cache.get(process.env.GUILD_ID);
     if (activeGuild) {      setImmediate(() => cleanRoles(activeGuild).catch(err => console.error('cleanRoles interval error:', err)));    }  }, 3600000);
-
-  // ─── Membership sync (offloaded) ───
   setImmediate(() => {    syncMembershipRoles(c).catch(err => console.error('[MembershipSync] Initial sync failed:', err));  });
   setInterval(() => {    setImmediate(() => {      syncMembershipRoles(c).catch(err => console.error('[MembershipSync] Sync error:', err.message || err));    });  }, 300000);
   setInterval(() => {    setImmediate(() => {      checkAndNotifyCooldowns(c).catch(err => console.error('Cooldown notifier error:', err));    });  }, 300000);
   setInterval(() => {    setImmediate(() => {      processEndOfDayAwards(c).catch(err => console.error('Trivia end-of-day awards error:', err));    });  }, 3600000);
-
   const hangmanChannelId = h.games.hangman.channelId;
   const hangmanWhitelist = h.whitelistedMessages[hangmanChannelId] || [];
   initChannelCleaner(c, hangmanChannelId, hangmanWhitelist);
