@@ -366,19 +366,17 @@ async function endGiveaway(messageId, client) {
 
         const winners = [firstWinner, secondWinner, thirdWinner].filter(Boolean);
 
-        // ─── Announce winners ─────────────────────────────────────────
-        const { left, right } = h.getTwoRandomPresents();
-        let announcement = `${releaseEmojis?.CONFETTI || '🎉'} Giveaway ended! Winners:\n`;
-        if (winners.length > 0) {
-            const emojis = ['🥇', '🥈', '🥉'];
-            winners.forEach((id, index) => {
-                announcement += `${emojis[index] || '🏅'} <@${id}>`;
-                if (blacklistIds.includes(id)) announcement += ' (blacklisted - 3rd place)';
-                announcement += '\n';
-            });
-        } else {
-            announcement = 'No winners could be selected. 😢';
-        }
+// ─── Announce winners ─────────────────────────────────────────
+const { left, right } = h.getTwoRandomPresents();
+let announcement = `${releaseEmojis?.CONFETTI || '🎉'} Giveaway ended! Winners:\n`;
+if (winners.length > 0) {
+    const emojis = ['🥇', '🥈', '🥉'];
+    winners.forEach((id, index) => {
+        announcement += `${emojis[index] || '🏅'} <@${id}>\n`;
+    });
+} else {
+    announcement = 'No winners could be selected. 😢';
+}
 
         await webhook.send({
             content: announcement,
