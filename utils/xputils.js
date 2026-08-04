@@ -1,10 +1,8 @@
-// poll-san/utils/xputils.js
-
-require('dotenv').config({ quiet: true });
+// utils/xputils.js
 const { MessageFlags } = require('discord.js');
 const { weights, releaseEmojis } = require('./helpers');
 const h = require('./helpers');
-const db = require('../services/database');   // D1 client
+const db = require('../services/database');
 
 const XP_MIN_CHARS = 5;
 
@@ -14,30 +12,62 @@ const LEVEL_THRESHOLDS = Array.from({ length: 26 }, (_, index) =>
 
 const XP_CHANNEL_ID = h.ids.channels.xp_channel;
 
-const XPLib = {
-  getLevel(messages) {
-    for (let i = LEVEL_THRESHOLDS.length - 1; i > 0; i--) {
-      if (messages >= LEVEL_THRESHOLDS[i]) return i;
+// ─── In‑memory cache ──────────────────────────────────────────────
+const xpCache = new Map(); // key: `${userId}:${guildId}` -> { total_messages, level }
+const pendingUpdates = new Map(); // key: `${userId}:${guildId}` -> increment count
+let flushTimer = null;
+const FLUSH_INTERVAL_MS = 10000; // 10 seconds
+const BATCH_THRESHOLD = 5; // flush after 5 messages from same user
+
+// ─── Helper: get level from messages ─────────────────────────────
+function getLevel(messages) {
+  for (let i = LEVEL_THRESHOLDS.length - 1; i > 0; i--) {
+    if (messages >= LEVEL_THRESHOLDS[i]) return i;
+  }
+  return 0;
+}
+
+// ─── Schedule a flush ─────────────────────────────────────────────
+function scheduleFlush() {
+  if (flushTimer) clearTimeout(flushTimer);
+  flushTimer = setTimeout(async () => {
+    flushTimer = null;
+    await flushUpdates();
+  }, FLUSH_INTERVAL_MS);
+}
+
+// ─── Flush pending updates to D1 ──────────────────────────────────
+async function flushUpdates() {
+  if (pendingUpdates.size === 0) return;
+
+  const updates = Array.from(pendingUpdates.entries());
+  pendingUpdates.clear();
+
+  for (const [key, increment] of updates) {
+    const [userId, guildId] = key.split(':');
+
+    // Get current from cache (or D1 if missing)
+    let current = xpCache.get(key);
+    if (!current) {
+      try {
+        const row = await db.query(
+          `SELECT total_messages, level FROM ${h.tables.USER_XP} WHERE user_id = ? AND guild_id = ?`,
+          [userId, guildId],
+          true
+        );
+        current = row ? { total_messages: row.total_messages, level: row.level } : { total_messages: 0, level: 0 };
+      } catch (_) {
+        current = { total_messages: 0, level: 0 };
+      }
+      xpCache.set(key, current);
     }
-    return 0;
-  },
 
-  async updateXP(message) {
-    if (message.author.bot || !message.guild || message.content.length < XP_MIN_CHARS) return;
+    const newTotal = current.total_messages + increment;
+    const newLevel = getLevel(newTotal);
+    const oldLevel = current.level;
 
+    // Update D1
     try {
-      // Fetch current XP row
-      const current = await db.query(
-        `SELECT total_messages, level FROM ${h.tables.USER_XP} WHERE user_id = ? AND guild_id = ?`,
-        [message.author.id, message.guild.id],
-        true
-      );
-
-      const total = (current?.total_messages ?? 0) + 1;
-      const oldLevel = current?.level ?? 0;
-      const newLevel = this.getLevel(total);
-
-      // Upsert the XP data
       await db.query(
         `INSERT INTO ${h.tables.USER_XP} (user_id, guild_id, total_messages, level, discord_username)
          VALUES (?, ?, ?, ?, ?)
@@ -45,66 +75,98 @@ const XPLib = {
            total_messages = excluded.total_messages,
            level = excluded.level,
            discord_username = excluded.discord_username`,
-        [message.author.id, message.guild.id, total, newLevel, message.author.username]
+        [userId, guildId, newTotal, newLevel, ''] // username updated separately
       );
+    } catch (err) {
+      console.error('[XP Flush Error]', err.message);
+      continue;
+    }
 
-      // Level‑up notification via webhook
-      if (newLevel > oldLevel) {
-        const totalBonus = (newLevel * weights.xpFactor).toFixed(2);
-        const s = releaseEmojis.SPARKLES;
+    // Update cache
+    const newData = { total_messages: newTotal, level: newLevel };
+    xpCache.set(key, newData);
 
-        const xpChannel = message.guild.channels.cache.get(XP_CHANNEL_ID);
-        if (!xpChannel) return;
-
-        try {
-          const hooks = await xpChannel.fetchWebhooks();
-          let levelingWebhook = hooks.find(w => w.name === 'Leveling');
-          if (!levelingWebhook) {
-            levelingWebhook = await xpChannel.createWebhook({
-              name: 'Leveling',
-              avatar: h.urls.LOGO_URL
-            });
-          }
-
-          await levelingWebhook.send({
-            content: `<@${message.author.id}> ${s} **Level Up!** ${s}\n` +
-                     `You reached **Level ${newLevel}**!\n` +
-                     `Your vote bonus is now **+${totalBonus}**.`,
-            allowedMentions: { users: [message.author.id] },
-            username: 'Leveling',
-            avatarURL: h.urls.LOGO_URL,
-            flags: [MessageFlags.SuppressNotifications]
-          });
-        } catch (webhookErr) {
-          console.error('Level‑up webhook error:', webhookErr);
+    // Level-up notification
+    if (newLevel > oldLevel) {
+      // We'll emit an event that the main bot can listen to
+      if (global._xpLevelUpCallbacks) {
+        for (const cb of global._xpLevelUpCallbacks) {
+          try {
+            cb({ userId, guildId, oldLevel, newLevel, newTotal });
+          } catch (e) {}
         }
       }
-    } catch (err) {
-      console.error('[XP Update Error]', err.message);
+    }
+  }
+}
+
+// ─── Force flush (exposed for periodic safety) ────────────────────
+async function forceFlush() {
+  if (flushTimer) {
+    clearTimeout(flushTimer);
+    flushTimer = null;
+  }
+  await flushUpdates();
+}
+
+// ─── Register level‑up callback ──────────────────────────────────
+function onLevelUp(callback) {
+  if (!global._xpLevelUpCallbacks) global._xpLevelUpCallbacks = [];
+  global._xpLevelUpCallbacks.push(callback);
+}
+
+// ─── Public API ──────────────────────────────────────────────────
+const XPLib = {
+  // ─── Update XP (called on every message) ──────────────────────
+  async updateXP(message) {
+    if (message.author.bot || !message.guild || message.content.length < XP_MIN_CHARS) return;
+
+    const userId = message.author.id;
+    const guildId = message.guild.id;
+    const key = `${userId}:${guildId}`;
+
+    // Increment pending counter
+    if (!pendingUpdates.has(key)) {
+      pendingUpdates.set(key, 0);
+    }
+    pendingUpdates.set(key, pendingUpdates.get(key) + 1);
+
+    // If threshold reached, flush immediately
+    if (pendingUpdates.get(key) >= BATCH_THRESHOLD) {
+      await forceFlush();
+    } else {
+      scheduleFlush();
     }
   },
 
+  // ─── Get user stats (level, messages, bonus) ──────────────────
   async getUserStats(userId, guildId) {
-    try {
-      const row = await db.query(
-        `SELECT level, total_messages FROM ${h.tables.USER_XP} WHERE user_id = ? AND guild_id = ?`,
-        [userId, guildId],
-        true
-      );
-
-      const level = row?.level ?? 0;
-      const messages = row?.total_messages ?? 0;
-
-      return {
-        level,
-        messages,
-        bonus: (level * weights.xpFactor).toFixed(2)
-      };
-    } catch (err) {
-      console.error('[XP Get Stats Error]', err.message);
-      return { level: 0, messages: 0, bonus: '0.00' };
+    const key = `${userId}:${guildId}`;
+    let data = xpCache.get(key);
+    if (!data) {
+      try {
+        const row = await db.query(
+          `SELECT level, total_messages FROM ${h.tables.USER_XP} WHERE user_id = ? AND guild_id = ?`,
+          [userId, guildId],
+          true
+        );
+        data = row ? { total_messages: row.total_messages, level: row.level } : { total_messages: 0, level: 0 };
+        xpCache.set(key, data);
+      } catch (_) {
+        data = { total_messages: 0, level: 0 };
+      }
     }
-  }
+
+    return {
+      level: data.level || 0,
+      messages: data.total_messages || 0,
+      bonus: ((data.level || 0) * weights.xpFactor).toFixed(2),
+    };
+  },
+
+  // ─── Expose flush for manual call ─────────────────────────────
+  flush: forceFlush,
+  onLevelUp,
 };
 
 module.exports = XPLib;
