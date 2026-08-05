@@ -2,6 +2,69 @@
 const h = require('../../utils/helpers');
 const db = require('../../services/database');
 const { EmbedBuilder } = require('discord.js');
+const GIVEAWAY_KV_PREFIX = 'giveaway:';
+function getEntrantsKey(messageId) {
+    return `${GIVEAWAY_KV_PREFIX}${messageId}:entrants`;
+}
+
+function getGiveawayKey(messageId) {
+    return `${GIVEAWAY_KV_PREFIX}${messageId}:data`;
+}
+
+function getKv(client) {
+    return client?.kv || null;
+}
+
+async function getEntrants(messageId, client) {
+    const kv = getKv(client);
+    if (kv) {
+        try {
+            const cached = await kv.get(getEntrantsKey(messageId), 'json');
+            if (cached) {
+                console.log(`✅ [API] Entrants for ${messageId} served from KV.`);
+                return cached;
+            }
+        } catch (err) {
+            console.warn('KV read failed, falling back to D1:', err.message);
+        }
+    }
+    const row = await db.query(
+        `SELECT entrants FROM ${h.tables.GIVEAWAYS} WHERE message_id = ?`,
+        [messageId],
+        true
+    );
+    return row ? JSON.parse(row.entrants || '[]') : [];
+}
+
+async function setEntrants(messageId, entrants, client) {
+    const kv = getKv(client);
+    const entrantsJson = JSON.stringify(entrants);
+    await db.query(
+        `UPDATE ${h.tables.GIVEAWAYS} SET entrants = ? WHERE message_id = ?`,
+        [entrantsJson, messageId]
+    );
+    if (kv) {
+        try {
+            await kv.put(getEntrantsKey(messageId), entrantsJson, { expirationTtl: 3600 });
+            console.log(`✅ [API] Entrants for ${messageId} stored in KV.`);
+        } catch (err) {
+            console.warn('KV write failed:', err.message);
+        }
+    }
+}
+
+async function invalidateGiveawayCache(messageId, client) {
+    const kv = getKv(client);
+    if (kv) {
+        try {
+            await kv.delete(getEntrantsKey(messageId));
+            await kv.delete(getGiveawayKey(messageId));
+            console.log(`🗑️ [API] Giveaway ${messageId} cache invalidated.`);
+        } catch (err) {
+            console.warn('KV delete failed:', err.message);
+        }
+    }
+}
 
 function parseCharacterList(pollList) {
     if (!pollList) return [];
@@ -9,7 +72,6 @@ function parseCharacterList(pollList) {
     return lines.map(line => line.trim().replace(/:female_sign:|:male_sign:/g, m => m === ':female_sign:' ? '♀️' : '♂️'));
 }
 
-// Helper to get or create the "Giveaway" webhook
 async function getGiveawayWebhook(channel) {
     let webhook = (await channel.fetchWebhooks()).find(w => w.name === 'Giveaway');
     if (!webhook) {
@@ -21,7 +83,6 @@ async function getGiveawayWebhook(channel) {
     return webhook;
 }
 
-// ─── Helper: get blacklist IDs ──────────────────────────────────────
 async function getBlacklistIds() {
     const rows = await db.query(
         `SELECT user_id FROM ${h.tables.GIVEAWAY_BLACKLIST}`
@@ -31,9 +92,6 @@ async function getBlacklistIds() {
 
 module.exports = function setupGiveawayRoutes(app, client, getGuildMembers) {
 
-    // ────────────────────────────────────────────────
-    // GET active giveaway and entrants with full details
-    // ────────────────────────────────────────────────
     app.get('/api/giveaway/active', async (req, res) => {
         try {
             const now = new Date().toUTCString();
@@ -50,7 +108,6 @@ module.exports = function setupGiveawayRoutes(app, client, getGuildMembers) {
                 return res.json({ active: false });
             }
 
-            // ---------- REMINDER LOGIC (≤24h left, only once) ----------
             const endTimeDate = new Date(giveaway.end_time);
             const nowDate = new Date();
             const msLeft = endTimeDate - nowDate;
@@ -76,13 +133,10 @@ module.exports = function setupGiveawayRoutes(app, client, getGuildMembers) {
                     console.error('Failed to send giveaway reminder:', reminderErr);
                 }
             }
-            // ------------------------------------------------------------
 
             const guild = await client.guilds.fetch(process.env.GUILD_ID);
-            const entrants = JSON.parse(giveaway.entrants || '[]');
+            const entrants = await getEntrants(giveaway.message_id, client);
             const entrantsDetails = [];
-
-            // Get active poll data for vote info
             const activePoll = await db.query(
                 `SELECT poll_list FROM ${h.tables.POLL_AUTO_RESUME}
                  ORDER BY id DESC
@@ -95,7 +149,6 @@ module.exports = function setupGiveawayRoutes(app, client, getGuildMembers) {
                 characterList = parseCharacterList(activePoll.poll_list);
             }
 
-            // Get votes for current poll
             const votes = await db.query(
                 `SELECT user_id, option_id FROM ${h.tables.POLL_VOTING_DISCORD}
                  WHERE poll_id = ?`,
@@ -113,11 +166,8 @@ module.exports = function setupGiveawayRoutes(app, client, getGuildMembers) {
                 }
             }
 
-            // Fetch blacklist IDs
             const blacklistIds = await getBlacklistIds();
             const blacklistSet = new Set(blacklistIds);
-
-            // Build entrants details with live member data
             for (const userId of entrants) {
                 let member = null;
                 let leftServer = false;
@@ -170,9 +220,6 @@ module.exports = function setupGiveawayRoutes(app, client, getGuildMembers) {
         }
     });
 
-    // ────────────────────────────────────────────────
-    // POST – Adjust giveaway end time by hours (+/-)
-    // ────────────────────────────────────────────────
     app.post('/api/giveaway/adjust-time', async (req, res) => {
         const { hours } = req.body;
         if (typeof hours !== 'number' || isNaN(hours)) {
@@ -218,9 +265,6 @@ module.exports = function setupGiveawayRoutes(app, client, getGuildMembers) {
         }
     });
 
-    // ────────────────────────────────────────────────
-    // POST – Remove a user from the active giveaway
-    // ────────────────────────────────────────────────
     app.post('/api/giveaway/remove', async (req, res) => {
         const { userId } = req.body;
         if (!userId) return res.status(400).json({ error: 'Missing userId' });
@@ -239,24 +283,21 @@ module.exports = function setupGiveawayRoutes(app, client, getGuildMembers) {
                 return res.status(404).json({ error: 'No active giveaway found' });
             }
 
-            let entrants = JSON.parse(giveaway.entrants || '[]');
+            // ─── Get current entrants (from KV or D1) ────────────────
+            let entrants = await getEntrants(giveaway.message_id, client);
             if (!entrants.includes(userId)) {
                 return res.status(400).json({ error: 'User is not in this giveaway' });
             }
 
             entrants = entrants.filter(id => id !== userId);
-            await db.query(
-                `UPDATE ${h.tables.GIVEAWAYS} SET entrants = ? WHERE message_id = ?`,
-                [JSON.stringify(entrants), giveaway.message_id]
-            );
 
-            // Remove poll vote – safe, does nothing if no vote exists
+            await setEntrants(giveaway.message_id, entrants, client);
             await db.query(
                 `DELETE FROM ${h.tables.POLL_VOTING_DISCORD}
                  WHERE user_id = ? AND poll_id = ?`,
                 [userId, 'character_poll_new']
             );
-
+            await invalidateGiveawayCache(giveaway.message_id, client);
             res.json({ success: true, message: `Removed ${userId} from giveaway and deleted their poll votes` });
         } catch (err) {
             console.error('Giveaway remove error:', err);
@@ -264,9 +305,6 @@ module.exports = function setupGiveawayRoutes(app, client, getGuildMembers) {
         }
     });
 
-    // ────────────────────────────────────────────────
-    // GET – Blacklist
-    // ────────────────────────────────────────────────
     app.get('/api/giveaway/blacklist', async (req, res) => {
         try {
             const rows = await db.query(
@@ -281,9 +319,6 @@ module.exports = function setupGiveawayRoutes(app, client, getGuildMembers) {
         }
     });
 
-    // ────────────────────────────────────────────────
-    // POST – Add to blacklist
-    // ────────────────────────────────────────────────
     app.post('/api/giveaway/blacklist/add', async (req, res) => {
         const { userId, discordTag } = req.body;
         if (!userId || !discordTag) {
@@ -302,9 +337,6 @@ module.exports = function setupGiveawayRoutes(app, client, getGuildMembers) {
         }
     });
 
-    // ────────────────────────────────────────────────
-    // POST – Remove from blacklist
-    // ────────────────────────────────────────────────
     app.post('/api/giveaway/blacklist/remove', async (req, res) => {
         const { userId } = req.body;
         if (!userId) {
