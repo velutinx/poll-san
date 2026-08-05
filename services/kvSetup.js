@@ -8,7 +8,6 @@ async function setupKv(client, env = null) {
         const binding = env?.POLL_KV || client.env?.POLL_KV;
         if (binding) {
             kvClient = binding;
-            console.log('✅ KV client attached via Cloudflare binding (POLL_KV).');
         } else {
             const kvRestUrl = process.env.CLOUDFLARE_KV_REST_URL;
             const kvRestToken = process.env.CLOUDFLARE_KV_REST_TOKEN;
@@ -40,7 +39,6 @@ async function setupKv(client, env = null) {
                         return res.ok;
                     }
                 };
-                console.log('✅ KV client attached via REST API fallback.');
             } else {
                 console.warn('⚠️ No KV binding or REST URL provided – KV features disabled.');
                 kvClient = null;
