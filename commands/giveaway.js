@@ -15,14 +15,77 @@ const fs = require('fs').promises;
 const { colors, releaseEmojis } = require('../utils/helpers');
 const h = require('../utils/helpers');
 const db = require('../services/database');
-
 const activeGiveaways = new Map();
 const giveawaySessions = new Map();
 const GIVEAWAY_IMAGE_URL = process.env.GIVEAWAY_IMAGE_URL;
 const USE_HOSTED_IMAGE = !!GIVEAWAY_IMAGE_URL;
 const MAX_TIMEOUT = 2147483647;
 
-// ─── Helper: fetch blacklist IDs ──────────────────────────────────────
+const GIVEAWAY_KV_PREFIX = 'giveaway:';
+
+function getEntrantsKey(messageId) {
+    return `${GIVEAWAY_KV_PREFIX}${messageId}:entrants`;
+}
+
+function getGiveawayKey(messageId) {
+    return `${GIVEAWAY_KV_PREFIX}${messageId}:data`;
+}
+
+function getKv(client) {
+    return client?.kv || null;
+}
+
+async function getEntrants(messageId, client) {
+    const kv = getKv(client);
+    if (kv) {
+        try {
+            const cached = await kv.get(getEntrantsKey(messageId), 'json');
+            if (cached) {
+                console.log(`✅ Entrants for ${messageId} served from KV.`);
+                return cached;
+            }
+        } catch (err) {
+            console.warn('KV read failed, falling back to D1:', err.message);
+        }
+    }
+    const row = await db.query(
+        `SELECT entrants FROM ${h.tables.GIVEAWAYS} WHERE message_id = ?`,
+        [messageId],
+        true
+    );
+    return row ? JSON.parse(row.entrants || '[]') : [];
+}
+
+async function setEntrants(messageId, entrants, client) {
+    const kv = getKv(client);
+    const entrantsJson = JSON.stringify(entrants);
+    await db.query(
+        `UPDATE ${h.tables.GIVEAWAYS} SET entrants = ? WHERE message_id = ?`,
+        [entrantsJson, messageId]
+    );
+    if (kv) {
+        try {
+            await kv.put(getEntrantsKey(messageId), entrantsJson, { expirationTtl: 3600 });
+            console.log(`✅ Entrants for ${messageId} stored in KV.`);
+        } catch (err) {
+            console.warn('KV write failed:', err.message);
+        }
+    }
+}
+
+async function invalidateGiveawayCache(messageId, client) {
+    const kv = getKv(client);
+    if (kv) {
+        try {
+            await kv.delete(getEntrantsKey(messageId));
+            await kv.delete(getGiveawayKey(messageId));
+            console.log(`🗑️ Giveaway ${messageId} cache invalidated.`);
+        } catch (err) {
+            console.warn('KV delete failed:', err.message);
+        }
+    }
+}
+
 async function getBlacklistIds() {
     const rows = await db.query(
         `SELECT user_id FROM ${h.tables.GIVEAWAY_BLACKLIST}`
@@ -50,7 +113,6 @@ async function getGiveawayWebhook(channel) {
     return webhook;
 }
 
-// ─── Main command ──────────────────────────────────────────────────────
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('giveaway')
@@ -206,8 +268,6 @@ module.exports = {
     }
 };
 
-// ─── Helper functions ──────────────────────────────────────────────────
-
 function parseDuration(str) {
     const match = str.match(/^(\d+)([dhm])$/i);
     if (!match) return null;
@@ -217,7 +277,6 @@ function parseDuration(str) {
     return value * multipliers[unit];
 }
 
-// ─── Button handler ────────────────────────────────────────────────────
 async function handleGiveawayButton(interaction) {
     if (!interaction.isButton() || interaction.customId !== 'enter_giveaway') return;
 
@@ -225,6 +284,7 @@ async function handleGiveawayButton(interaction) {
 
     const userId = interaction.user.id;
     const messageId = interaction.message.id;
+    const client = interaction.client;
 
     let giveaway = activeGiveaways.get(messageId);
     
@@ -243,10 +303,29 @@ async function handleGiveawayButton(interaction) {
         const timeLeft = endTime - Date.now();
         let timeoutId = null;
         if (timeLeft > 0) {
-            timeoutId = safeTimeout(() => endGiveaway(messageId, interaction.client), timeLeft);
+            timeoutId = safeTimeout(() => endGiveaway(messageId, client), timeLeft);
         } else {
-            await endGiveaway(messageId, interaction.client);
+            await endGiveaway(messageId, client);
             return interaction.editReply('This giveaway has already ended.');
+        }
+
+        let entrantsArray = [];
+        const kv = getKv(client);
+        if (kv) {
+            try {
+                const cached = await kv.get(getEntrantsKey(messageId), 'json');
+                if (cached) {
+                    entrantsArray = cached;
+                    console.log(`✅ Entrants for ${messageId} loaded from KV.`);
+                } else {
+                    entrantsArray = JSON.parse(row.entrants || '[]');
+                }
+            } catch (err) {
+                console.warn('KV read failed, using D1 entrants:', err.message);
+                entrantsArray = JSON.parse(row.entrants || '[]');
+            }
+        } else {
+            entrantsArray = JSON.parse(row.entrants || '[]');
         }
 
         giveaway = {
@@ -257,7 +336,7 @@ async function handleGiveawayButton(interaction) {
             endTime,
             winnersCount: row.winners_count,
             prize: row.prize,
-            entrants: new Set(JSON.parse(row.entrants || '[]')),
+            entrants: new Set(entrantsArray),
             ended: false,
             timeoutId
         };
@@ -273,13 +352,10 @@ async function handleGiveawayButton(interaction) {
     }
 
     giveaway.entrants.add(userId);
-    const entrantsJson = JSON.stringify(Array.from(giveaway.entrants));
+    const entrantsArray = Array.from(giveaway.entrants);
 
     try {
-        await db.query(
-            `UPDATE ${h.tables.GIVEAWAYS} SET entrants = ? WHERE message_id = ?`,
-            [entrantsJson, messageId]
-        );
+        await setEntrants(messageId, entrantsArray, client);
         return interaction.editReply(`${releaseEmojis?.getRandomVerify?.() || '✅'} You entered the giveaway!`);
     } catch (error) {
         console.error('Failed to update entrants:', error);
@@ -288,7 +364,6 @@ async function handleGiveawayButton(interaction) {
     }
 }
 
-// ─── End giveaway with blacklist logic ──────────────────────────────
 async function endGiveaway(messageId, client) {
     const giveaway = activeGiveaways.get(messageId);
     if (!giveaway || giveaway.ended) return;
@@ -313,6 +388,7 @@ async function endGiveaway(messageId, client) {
             [messageId]
         );
 
+        await invalidateGiveawayCache(messageId, client);
         const channel = await client.channels.fetch(row.channel_id);
         const webhook = await getGiveawayWebhook(channel);
         const message = await channel.messages.fetch(messageId);
@@ -336,12 +412,9 @@ async function endGiveaway(messageId, client) {
             return;
         }
 
-        // ─── Blacklist logic ──────────────────────────────────────────
         const blacklistIds = await getBlacklistIds();
         const nonBlacklisted = entrantsArray.filter(id => !blacklistIds.includes(id));
         const blacklistedEntrants = entrantsArray.filter(id => blacklistIds.includes(id));
-
-        // 1st winner – must be non-blacklisted
         let firstWinner = null;
         let remaining = [...nonBlacklisted];
         if (remaining.length > 0) {
@@ -349,14 +422,12 @@ async function endGiveaway(messageId, client) {
             firstWinner = remaining.splice(idx, 1)[0];
         }
 
-        // 2nd winner – must be non-blacklisted
         let secondWinner = null;
         if (remaining.length > 0) {
             const idx = Math.floor(Math.random() * remaining.length);
             secondWinner = remaining.splice(idx, 1)[0];
         }
 
-        // 3rd winner – can be any remaining (including blacklisted)
         const allRemaining = [...remaining, ...blacklistedEntrants];
         let thirdWinner = null;
         if (allRemaining.length > 0) {
@@ -366,17 +437,16 @@ async function endGiveaway(messageId, client) {
 
         const winners = [firstWinner, secondWinner, thirdWinner].filter(Boolean);
 
-// ─── Announce winners ─────────────────────────────────────────
-const { left, right } = h.getTwoRandomPresents();
-let announcement = `${releaseEmojis?.CONFETTI || '🎉'} Giveaway ended! Winners:\n`;
-if (winners.length > 0) {
-    const emojis = ['🥇', '🥈', '🥉'];
-    winners.forEach((id, index) => {
-        announcement += `${emojis[index] || '🏅'} <@${id}>\n`;
-    });
-} else {
-    announcement = 'No winners could be selected. 😢';
-}
+        const { left, right } = h.getTwoRandomPresents();
+        let announcement = `${releaseEmojis?.CONFETTI || '🎉'} Giveaway ended! Winners:\n`;
+        if (winners.length > 0) {
+            const emojis = ['🥇', '🥈', '🥉'];
+            winners.forEach((id, index) => {
+                announcement += `${emojis[index] || '🏅'} <@${id}>\n`;
+            });
+        } else {
+            announcement = 'No winners could be selected. 😢';
+        }
 
         await webhook.send({
             content: announcement,
@@ -384,7 +454,6 @@ if (winners.length > 0) {
             avatar: h.urls.LOGO_URL
         });
 
-        // ─── Update embed ─────────────────────────────────────────────
         const oldEmbed = message.embeds[0];
         const endedTitle = `${row.prize} Giveaway Ended ${releaseEmojis?.CONFETTI || '🎉'}`;
         const newEmbed = EmbedBuilder.from(oldEmbed)
@@ -407,7 +476,6 @@ if (winners.length > 0) {
     }
 }
 
-// ─── Restore giveaways on startup ──────────────────────────────────────
 async function restoreGiveaways(client) {
     try {
         const rows = await db.query(
@@ -422,6 +490,11 @@ async function restoreGiveaways(client) {
             const endTime = new Date(g.end_time).getTime();
             const timeLeft = endTime - Date.now();
 
+            const entrantsArray = JSON.parse(g.entrants || '[]');
+            await setEntrants(g.message_id, entrantsArray, client).catch(err => {
+                console.warn(`Failed to warm KV for giveaway ${g.message_id}:`, err.message);
+            });
+
             if (timeLeft <= 0) {
                 console.log(`Giveaway ${g.message_id} - ${g.prize} already ended, processing now.`);
                 await endGiveaway(g.message_id, client);
@@ -435,7 +508,7 @@ async function restoreGiveaways(client) {
                     endTime,
                     winnersCount: g.winners_count,
                     prize: g.prize,
-                    entrants: new Set(JSON.parse(g.entrants || '[]')),
+                    entrants: new Set(entrantsArray),
                     ended: false,
                     timeoutId,
                     imageUrl: USE_HOSTED_IMAGE ? GIVEAWAY_IMAGE_URL : null
@@ -448,7 +521,6 @@ async function restoreGiveaways(client) {
     }
 }
 
-// ─── Exports ──────────────────────────────────────────────────────────
 module.exports.handleGiveawayButton = handleGiveawayButton;
 module.exports.restoreGiveaways = restoreGiveaways;
 module.exports.getBlacklistIds = getBlacklistIds;
