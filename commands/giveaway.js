@@ -41,7 +41,6 @@ async function getEntrants(messageId, client) {
         try {
             const cached = await kv.get(getEntrantsKey(messageId), 'json');
             if (cached) {
-                console.log(`✅ Entrants for ${messageId} served from KV.`);
                 return cached;
             }
         } catch (err) {
@@ -66,7 +65,6 @@ async function setEntrants(messageId, entrants, client) {
     if (kv) {
         try {
             await kv.put(getEntrantsKey(messageId), entrantsJson, { expirationTtl: 3600 });
-            console.log(`✅ Entrants for ${messageId} stored in KV.`);
         } catch (err) {
             console.warn('KV write failed:', err.message);
         }
