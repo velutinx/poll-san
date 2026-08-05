@@ -1,12 +1,10 @@
 // services/pollService.js
+
 const db = require('./database');
 const h = require('../utils/helpers');
-
 const CURRENT_POLL_ID = 'character_poll_new';
 const UPDATE_INTERVAL = h.POLL_UPDATE_INTERVAL_MS || 30000;
-
 let activePollTimer = null;
-
 let pollCache = {
     results: null,
     timestamp: 0,
@@ -14,9 +12,52 @@ let pollCache = {
 };
 const CACHE_TTL_MS = 60000;
 
-// ──────────────────────────────────────────────────────────────
-// getPollResults – simplified with separate queries + caching
-// ──────────────────────────────────────────────────────────────
+let pollKv = null;
+const KV_CACHE_KEY = 'poll_results_cache';
+const KV_CACHE_TTL = 60;
+
+function setPollKv(kv) {
+    pollKv = kv;
+}
+
+async function queryWithRetry(sql, params = [], method = 'all', maxRetries = 3) {
+    let lastError;
+    let delay = 500;
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+            const result = await db.query(sql, params, method === 'first' ? true : false);
+            if (method === 'first') {
+                return result;
+            }
+            return result;
+        } catch (err) {
+            lastError = err;
+            const msg = err.message || '';
+            if (msg.includes('timeout') || msg.includes('reset') || msg.includes('storage operation')) {
+                console.log(`⚠️ D1 ${method} error (attempt ${attempt}), retrying in ${delay}ms...`);
+                await new Promise(resolve => setTimeout(resolve, delay));
+                delay *= 2;
+                continue;
+            }
+            throw err;
+        }
+    }
+    throw lastError;
+}
+
+async function invalidatePollCache() {
+    pollCache.results = null;
+    pollCache.timestamp = 0;
+    if (pollKv) {
+        try {
+            await pollKv.delete(KV_CACHE_KEY);
+            console.log(`🗑️ Poll KV cache invalidated.`);
+        } catch (err) {
+            console.warn('Failed to delete poll KV cache:', err.message);
+        }
+    }
+}
+
 async function getPollResults(message, characters) {
     const now = Date.now();
 
@@ -24,44 +65,54 @@ async function getPollResults(message, characters) {
         return pollCache.results;
     }
 
+    if (pollKv) {
+        try {
+            const cached = await pollKv.get(KV_CACHE_KEY, 'json');
+            if (cached && cached.results && (now - cached.timestamp) < KV_CACHE_TTL * 1000) {
+                pollCache.results = cached.results;
+                pollCache.timestamp = now;
+                console.log('✅ Served poll results from KV cache.');
+                return cached.results;
+            }
+        } catch (err) {
+            console.warn('KV cache read failed, falling back to D1:', err.message);
+        }
+    }
+
     try {
-        // 1. Fetch Discord scores (weighted sum)
-        const discordRows = await db.query(
+        const discordRows = await queryWithRetry(
             `SELECT option_id, COALESCE(SUM(weight), 0) as score
              FROM ${h.tables.POLL_VOTING_DISCORD}
              WHERE poll_id = ?
              GROUP BY option_id`,
-            [CURRENT_POLL_ID]
+            [CURRENT_POLL_ID],
+            'all'
         );
 
-        // 2. Fetch website vote counts
-        const websiteRows = await db.query(
+        const websiteRows = await queryWithRetry(
             `SELECT option_id, COUNT(*) as count
              FROM ${h.tables.POLL_VOTING_WEBSITE}
              WHERE poll_id = ?
              GROUP BY option_id`,
-            [CURRENT_POLL_ID]
+            [CURRENT_POLL_ID],
+            'all'
         );
 
-        // 3. Fetch winners (already selected)
-        const winnerRows = await db.query(
+        const winnerRows = await queryWithRetry(
             `SELECT option_id
              FROM ${h.tables.POLL_VOTES_FINAL}
              WHERE poll_id = ? AND selected_at IS NOT NULL`,
-            [CURRENT_POLL_ID]
+            [CURRENT_POLL_ID],
+            'all'
         );
 
         const discordMap = {};
         discordRows.forEach(r => { discordMap[r.option_id] = parseFloat(r.score) || 0; });
-
         const websiteMap = {};
         websiteRows.forEach(r => { websiteMap[r.option_id] = parseInt(r.count, 10) || 0; });
-
         const winnerSet = new Set(winnerRows.map(r => r.option_id));
-
         const displayResults = [];
         const rawDataForDB = [];
-
         for (let i = 0; i < characters.length; i++) {
             const optionId = i + 1;
             const discordScore = discordMap[optionId] || 0;
@@ -86,9 +137,10 @@ async function getPollResults(message, characters) {
             });
         }
 
-        const currentRows = await db.query(
+        const currentRows = await queryWithRetry(
             `SELECT option_id, score FROM ${h.tables.POLL_VOTES_FINAL} WHERE poll_id = ?`,
-            [CURRENT_POLL_ID]
+            [CURRENT_POLL_ID],
+            'all'
         );
         const currentScores = {};
         currentRows.forEach(r => { currentScores[r.option_id] = r.score; });
@@ -105,7 +157,6 @@ async function getPollResults(message, characters) {
             }
         }
 
-        // ─── BATCH UPSERT: replace individual queries with a single batch ───
         if (changed && rawDataForDB.length > 0) {
             const columns = ['poll_id', 'option_id', 'character_name', 'score', 'selected_at'];
             const valuesArray = rawDataForDB.map(row => [
@@ -124,6 +175,15 @@ async function getPollResults(message, characters) {
         pollCache.timestamp = now;
         pollCache.lastError = null;
 
+        if (pollKv) {
+            pollKv.put(KV_CACHE_KEY, JSON.stringify({
+                results: resultString,
+                timestamp: now
+            }), { expirationTtl: KV_CACHE_TTL }).catch(err => {
+                console.warn('Failed to store poll results in KV:', err.message);
+            });
+        }
+
         return resultString;
 
     } catch (err) {
@@ -131,24 +191,32 @@ async function getPollResults(message, characters) {
         pollCache.lastError = err;
 
         if (pollCache.results) {
-            console.log('[PollCache] Returning stale results due to error');
+            console.log('[PollCache] Returning stale in‑memory results due to error.');
             return pollCache.results;
+        }
+
+        if (pollKv) {
+            try {
+                const stale = await pollKv.get(KV_CACHE_KEY, 'json');
+                if (stale && stale.results) {
+                    console.log('[PollCache] Returning stale KV results due to error.');
+                    pollCache.results = stale.results;
+                    pollCache.timestamp = Date.now();
+                    return stale.results;
+                }
+            } catch (_) {}
         }
 
         return "Error loading results...";
     }
 }
 
-// ──────────────────────────────────────────────────────────────
-// Other functions (with improved error handling)
-// ──────────────────────────────────────────────────────────────
-
 async function generateMessageContent(endTime, resultsText, characters, isEnded = false) {
     const e = h.releaseEmojis;
     const randomDownArrow = e.DOWN_ARROWS[Math.floor(Math.random() * e.DOWN_ARROWS.length)];
 
-    const header = isEnded 
-        ? `🛑 **Poll Ended**\n\n` 
+    const header = isEnded
+        ? `🛑 **Poll Ended**\n\n`
         : `${e.HOURGLASS} Time remaining: **${h.formatTime(endTime - Date.now())}**\n\n`;
 
     const body = resultsText || characters.map((char, i) => {
@@ -183,10 +251,10 @@ async function getFinalPollMessageContent(pollList) {
 }
 
 async function updateArrowMessage(pollMessage) {
-    const pollRecord = await db.query(
+    const pollRecord = await queryWithRetry(
         `SELECT arrow_message_id FROM ${h.tables.POLL_AUTO_RESUME} WHERE message_id = ?`,
         [pollMessage.id],
-        true
+        'first'
     );
     if (!pollRecord?.arrow_message_id) return;
 
@@ -236,28 +304,17 @@ function runPollInterval(pollMessage, endTime, characters) {
 
             if (isFinished) {
                 forceStopPoll();
-                await db.query(
-                    `DELETE FROM ${h.tables.POLL_AUTO_RESUME} WHERE message_id = ?`,
-                    [pollMessage.id]
-                );
-                await db.query(
-                    `DELETE FROM ${h.tables.POLL_VOTING_DISCORD} WHERE poll_id = 'character_poll_new'`
-                );
-                await db.query(
-                    `DELETE FROM ${h.tables.POLL_VOTING_WEBSITE} WHERE poll_id = 'character_poll_new'`
-                );
-                await db.query(
-                    `DELETE FROM ${h.tables.POLL_VOTES_FINAL} WHERE poll_id = 'character_poll_new'`
-                );
+                await db.query(`DELETE FROM ${h.tables.POLL_AUTO_RESUME} WHERE message_id = ?`, [pollMessage.id]);
+                await db.query(`DELETE FROM ${h.tables.POLL_VOTING_DISCORD} WHERE poll_id = 'character_poll_new'`);
+                await db.query(`DELETE FROM ${h.tables.POLL_VOTING_WEBSITE} WHERE poll_id = 'character_poll_new'`);
+                await db.query(`DELETE FROM ${h.tables.POLL_VOTES_FINAL} WHERE poll_id = 'character_poll_new'`);
+                await invalidatePollCache();
             }
         } catch (e) {
             if (e.code === 10008 || e.message?.includes('Unknown Message')) {
                 console.warn('[PollInterval] Poll message gone – stopping interval.');
                 forceStopPoll();
-                await db.query(
-                    `DELETE FROM ${h.tables.POLL_AUTO_RESUME} WHERE message_id = ?`,
-                    [pollMessage.id]
-                ).catch(() => {});
+                await db.query(`DELETE FROM ${h.tables.POLL_AUTO_RESUME} WHERE message_id = ?`, [pollMessage.id]).catch(() => {});
             } else {
                 console.error('[PollInterval] Error (will retry):', e.message);
             }
@@ -285,5 +342,7 @@ module.exports = {
     runPollInterval,
     getFinalPollMessageContent,
     forceStopPoll,
-    refreshPollMessage
+    refreshPollMessage,
+    setPollKv,
+    invalidatePollCache,
 };
