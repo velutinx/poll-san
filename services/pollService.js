@@ -71,7 +71,6 @@ async function getPollResults(message, characters) {
             if (cached && cached.results && (now - cached.timestamp) < KV_CACHE_TTL * 1000) {
                 pollCache.results = cached.results;
                 pollCache.timestamp = now;
-                console.log('✅ Served poll results from KV cache.');
                 return cached.results;
             }
         } catch (err) {
@@ -189,9 +188,7 @@ async function getPollResults(message, characters) {
     } catch (err) {
         console.error("Error calculating poll results:", err);
         pollCache.lastError = err;
-
         if (pollCache.results) {
-            console.log('[PollCache] Returning stale in‑memory results due to error.');
             return pollCache.results;
         }
 
