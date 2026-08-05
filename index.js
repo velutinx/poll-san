@@ -22,7 +22,7 @@ const {
     Events
 } = require('discord.js');
 
-const { runPollInterval } = require('./services/pollService');
+const { runPollInterval, setPollKv, invalidatePollCache } = require('./services/pollService');
 const { cleanRoles } = require('./services/roleCleaner');
 const XPLib = require('./utils/xputils');
 const { syncMembershipRoles } = require('./services/membershipSync');
@@ -34,6 +34,8 @@ const initMudaeMessageHandler = require('./handlers/mudaeMessageHandler');
 const h = require('./utils/helpers');
 const initChannelCleaner = require('./handlers/channelCleaner');
 const triviaGuessEvent = require('./events/triviaGuess');
+const { setupKv } = require('./services/kvSetup'); // NEW
+
 function getFn(mod, name) {
     if (typeof mod === 'function') return mod;
     if (mod && typeof mod.default === 'function') return mod.default;
@@ -48,6 +50,7 @@ const guildMemberRemoveEvent  = getFn(require('./events/guildMemberPollRemove'),
 const roleUpdateRecalcEvent   = getFn(require('./events/roleUpdateRecalc'), 'roleUpdateRecalc');
 const handleInteraction       = getFn(require('./handlers/interactionHandler'), 'interactionHandler');
 const roleManager = require('./events/roleManager');
+
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
@@ -58,8 +61,19 @@ const client = new Client({
     ],
     partials: [Partials.Message, Partials.Reaction, Partials.User]
 });
+
 client.setMaxListeners(20);
-client.once(Events.ClientReady, (c) => require('./events/ready')(c));
+
+// ─── Ready event ──────────────────────────────────────────────────
+client.once(Events.ClientReady, async (c) => {
+    // 1. Set up KV (poll + giveaway cache)
+    await setupKv(c, c.env);
+
+    // 2. Load the rest of the bot
+    await require('./events/ready')(c);
+});
+
+// ─── Event listeners ─────────────────────────────────────────────
 client.on(Events.InteractionCreate, handleInteraction);
 client.on(Events.GuildMemberAdd, guildMemberAddEvent);
 client.on(Events.GuildMemberAdd, verification.execute);
@@ -74,6 +88,8 @@ client.on(Events.GuildMemberUpdate, roleUpdateRecalcEvent);
 client.on(Events.MessageCreate, (message) => { handleTriviaMessage(message).catch(err => console.error('Trivia handler error:', err)); });
 client.on(Events.MessageCreate, async (message) => { await XPLib.updateXP(message); });
 client.on(Events.MessageCreate, triviaGuessEvent);
+
+// ─── Global error handlers ──────────────────────────────────────
 client.on('error', console.error);
 process.on('unhandledRejection', (reason) => {
     if (reason instanceof Error && reason.cause?.code === 'UND_ERR_CONNECT_TIMEOUT' && reason.message.includes('fetch failed')) {
@@ -82,6 +98,7 @@ process.on('unhandledRejection', (reason) => {
     console.error(reason);
 });
 
+// ─── Cleanup and avatar scanner ────────────────────────────────
 const { startCleanup } = require('./services/redeemHandler');
 startCleanup();
 require('./features/avatarScanner').init(client);
