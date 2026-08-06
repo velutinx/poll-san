@@ -1,43 +1,27 @@
 // services/database.js
 const h = require('../utils/helpers');
-
 const WORKER_URL = h.urls.CLOUDFLARE_D1_WORKER;
-const MAX_RETRIES = 3;
-const RETRY_DELAY_MS = 2000;
-const REQUEST_TIMEOUT_MS = 60000;
-
+const MAX_RETRIES = 5;
+const RETRY_DELAY_MS = 1000;
+const REQUEST_TIMEOUT_MS = 90000;
 async function query(sql, params = [], single = false) {
-    if (
-        !WORKER_URL ||
-        WORKER_URL ===
-            "https://your-worker-name.your-subdomain.workers.dev"
-    ) {
-        throw new Error(
-            "CLOUDFLARE_D1_WORKER is not configured. Set it in helpers.js urls."
-        );
+    if (!WORKER_URL || WORKER_URL === "https://your-worker-name.your-subdomain.workers.dev") {
+        throw new Error("CLOUDFLARE_D1_WORKER is not configured.");
     }
 
     let lastError = null;
+    let delay = RETRY_DELAY_MS;
 
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
         const controller = new AbortController();
-        const timeoutId = setTimeout(
-            () => controller.abort(),
-            REQUEST_TIMEOUT_MS
-        );
-
+        const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
         const startTime = Date.now();
 
         try {
             const res = await fetch(`${WORKER_URL}/query`, {
                 method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                },
-                body: JSON.stringify({
-                    sql,
-                    params,
-                }),
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ sql, params }),
                 signal: controller.signal,
             });
 
@@ -45,59 +29,39 @@ async function query(sql, params = [], single = false) {
 
             if (!res.ok) {
                 const text = await res.text();
-                throw new Error(
-                    `D1 Worker error (${res.status}): ${text}`
-                );
+                throw new Error(`D1 Worker error (${res.status}): ${text}`);
             }
 
             const data = await res.json();
-
-            if (data.error) {
-                throw new Error(`D1 query error: ${data.error}`);
-            }
+            if (data.error) throw new Error(`D1 query error: ${data.error}`);
 
             if (elapsed > 5000) {
-                console.log(
-                    `[Database] Slow query (${elapsed}ms, attempt ${attempt}): ${sql.substring(
-                        0,
-                        100
-                    )}`
-                );
+                console.log(`[Database] Slow query (${elapsed}ms, attempt ${attempt}): ${sql.substring(0, 100)}`);
             }
 
-            return single
-                ? data.results?.[0] ?? null
-                : data.results ?? [];
+            return single ? data.results?.[0] ?? null : data.results ?? [];
+
         } catch (err) {
             lastError = err;
-
-            if (attempt === MAX_RETRIES) {
-                const elapsed = Date.now() - startTime;
-                console.error(`[Database] Query failed after ${MAX_RETRIES} attempts:`);
-                console.error({
-                    errorName: err.name,
-                    message: err.message,
-                    elapsed,
-                    sql:
-                        sql.length > 200
-                            ? sql.substring(0, 200) + "..."
-                            : sql,
-                    params,
-                });
+            clearTimeout(timeoutId);
+            const msg = err.message || '';
+            if (msg.includes('timeout') || msg.includes('reset') || msg.includes('storage operation')) {
+                if (attempt < MAX_RETRIES) {
+                    const jitter = Math.random() * 500;
+                    const wait = (delay * attempt) + jitter;
+                    console.log(`⚠️ D1 timeout (attempt ${attempt}), retrying in ${wait}ms...`);
+                    await new Promise(resolve => setTimeout(resolve, wait));
+                    continue;
+                }
             }
 
-            if (attempt < MAX_RETRIES) {
-                const jitter = Math.random() * 500;
-                const delay = (RETRY_DELAY_MS * attempt) + jitter;
-                await new Promise((resolve) =>
-                    setTimeout(resolve, delay)
-                );
-            }
+            break;
         } finally {
             clearTimeout(timeoutId);
         }
     }
 
+    console.error(`[Database] Query failed after ${MAX_RETRIES} attempts:`, lastError.message);
     throw lastError;
 }
 
@@ -108,9 +72,7 @@ async function upsert(table, columns, values, single = false) {
 }
 
 async function batchInsertOrReplace(table, columns, valuesArray) {
-    if (!valuesArray || valuesArray.length === 0) {
-        return { results: [] };
-    }
+    if (!valuesArray || valuesArray.length === 0) return { results: [] };
     const placeholders = columns.map(() => '?').join(', ');
     const valueGroups = valuesArray.map(vals => `(${vals.map(() => '?').join(', ')})`).join(', ');
     const sql = `INSERT OR REPLACE INTO ${table} (${columns.join(', ')}) VALUES ${valueGroups}`;
@@ -119,9 +81,7 @@ async function batchInsertOrReplace(table, columns, valuesArray) {
 }
 
 async function deleteIn(table, column, values) {
-    if (!values || values.length === 0) {
-        return { results: [] };
-    }
+    if (!values || values.length === 0) return { results: [] };
     const placeholders = values.map(() => '?').join(', ');
     const sql = `DELETE FROM ${table} WHERE ${column} IN (${placeholders})`;
     return query(sql, values);
@@ -129,17 +89,12 @@ async function deleteIn(table, column, values) {
 
 async function batchQuery(queries) {
     if (!queries || queries.length === 0) return [];
-    return Promise.all(
-        queries.map(q => query(q.sql, q.params || []))
-    );
+    return Promise.all(queries.map(q => query(q.sql, q.params || [])));
 }
 
 async function transaction(queries) {
     if (!queries || queries.length === 0) return [];
-
-    // Start transaction
     await query('BEGIN TRANSACTION');
-
     try {
         const results = [];
         for (const q of queries) {
