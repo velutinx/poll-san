@@ -2,15 +2,12 @@
 
 const db = require('./database');
 const h = require('../utils/helpers');
-
 const TIER_ROLES = h.weights.tierMapping;
 const SUPPORTER_ROLE = h.ids.roles.supporter;
 const CREATOR_ROLE = h.ids.roles.creator;
 const MEMBER_ROLE = h.ids.roles.member;
 const UNVERIFIED_ROLE = h.ids.roles.unverified;
-
 const SYNC_STATE_WORKER_URL = h.urls.CLOUDFLARE_D1_WORKER;
-
 const MESSAGES = {
   en: {
     welcome_tier1: `${h.releaseEmojis.CONFETTI} Welcome to the {tierName} tier!\nYour membership is active until **{expiryDate}**.\n\nFeel free to explore the packs on **[this channel](https://discord.com/channels/1401446104498700358/1465937644394512516)** and **[join the server](https://discord.gg/XF363uYfSh)** if you haven't.\n\nPlease message DM Velutinx if you have any questions.`,
@@ -412,6 +409,8 @@ async function checkAndWarnDuplicateMemberships(client, activeMemberships) {
   }
 }
 
+// ─── Main sync function ──────────────────────────────────────
+
 async function syncMembershipRoles(client) {
   let changesMade = false;
 
@@ -625,6 +624,8 @@ async function syncMembershipRoles(client) {
     try {
       const allMembers = await guild.members.fetch();
       let rolelessCount = 0;
+      let delay = 1000;
+      
       for (const [, member] of allMembers) {
         if (member.user.bot) continue;
         if (member.roles.cache.has(CREATOR_ROLE)) continue;
@@ -633,13 +634,32 @@ async function syncMembershipRoles(client) {
         const hasMember = member.roles.cache.has(MEMBER_ROLE);
         const hasUnverified = member.roles.cache.has(UNVERIFIED_ROLE);
 
-        if (!hasSupporter) {
-          if (!hasMember && !hasUnverified) {
+        if (!hasSupporter && !hasMember && !hasUnverified) {
+          try {
             await member.roles.add(MEMBER_ROLE);
             changesMade = true;
             rolelessCount++;
             console.log(`[MembershipSync] Added Member to ${member.user.tag} (was roleless)`);
+          } catch (addErr) {
+            if (addErr.code === 429) {
+              const retryAfter = addErr.retryAfter || 5;
+              console.warn(`[MembershipSync] Rate limited while adding Member to ${member.user.tag}, waiting ${retryAfter}s...`);
+              await new Promise(resolve => setTimeout(resolve, retryAfter * 1000 + 500));
+              try {
+                await member.roles.add(MEMBER_ROLE);
+                changesMade = true;
+                rolelessCount++;
+                console.log(`[MembershipSync] Added Member to ${member.user.tag} (was roleless) after rate limit wait.`);
+              } catch (retryErr) {
+                console.error(`[MembershipSync] Failed to add Member to ${member.user.tag} after retry:`, retryErr.message);
+              }
+            } else {
+              console.error(`[MembershipSync] Failed to add Member to ${member.user.tag}:`, addErr.message);
+            }
           }
+          
+          await new Promise(resolve => setTimeout(resolve, delay));
+          delay = Math.min(delay + 200, 3000); // Gradually increase delay up to 3s
         }
       }
       if (rolelessCount > 0) {
