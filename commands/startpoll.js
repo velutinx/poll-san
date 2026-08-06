@@ -52,22 +52,23 @@ module.exports = async (interaction) => {
         autoArchiveDuration: 1440
     });
 
+    // ───── Send initial reminder (right away) – no embed from Discord link ─────
     const initialWebhook = await (async () => {
         const hooks = await channel.fetchWebhooks();
         let wh = hooks.find(w => w.name === 'Poll Reminder');
         if (!wh) wh = await channel.createWebhook({ name: 'Poll Reminder', avatar: h.urls.LOGO_URL });
         return wh;
     })();
-    
-    const alertEmoji = h.releaseEmojis?.ALERT || '⚠️';
+    const speechEmoji = '💬';
     const dmLink = `<https://discord.com/users/${h.ids.users.Velutinx}>`;
     const initialReminderMsg = await initialWebhook.send({
-        content: `${alertEmoji} Remember to message **[DM Velutinx](${dmLink})** with suggestions for next week's poll! All suggestions must be sent before **Friday**.`,
+        content: `${speechEmoji} Remember to message **[DM Velutinx](${dmLink})** with suggestions for next week's poll! All suggestions must be sent before **Friday**.`,
         username: 'Poll Reminder',
         avatarURL: h.urls.LOGO_URL,
         flags: [1 << 12]
     });
 
+    // ───── Send the up‑arrow message and store its ID ─────
     const upArrows = releaseEmojis.UP_ARROWS || [];
     const randomUpArrow = upArrows.length ? upArrows[Math.floor(Math.random() * upArrows.length)] : '⬆️';
     const arrowMsg = await webhook.send({
@@ -90,8 +91,10 @@ module.exports = async (interaction) => {
         console.error("❌ D1 Error:", dbError.message);
     }
 
+    // Populate final scores table immediately so dashboard shows characters
     await getPollResults(pollMessage, characters);
 
+    // Start the dynamic reminder system (handles last‑day reminder and deletes initial one)
     const { startPollReminders } = require('../services/pollReminders');
     await startPollReminders(channel, pollMessage.id, endTimeISO, interaction.client);
 
