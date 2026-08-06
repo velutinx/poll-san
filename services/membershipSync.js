@@ -7,6 +7,7 @@ const TIER_ROLES = h.weights.tierMapping;
 const SUPPORTER_ROLE = h.ids.roles.supporter;
 const CREATOR_ROLE = h.ids.roles.creator;
 const MEMBER_ROLE = h.ids.roles.member;
+const UNVERIFIED_ROLE = h.ids.roles.unverified;
 
 const SYNC_STATE_WORKER_URL = h.urls.CLOUDFLARE_D1_WORKER;
 
@@ -49,7 +50,6 @@ async function getLanguageForOrder(orderId) {
   }
 }
 
-// ─── Check if welcome DM was already sent ──────────────────────────
 async function hasMessageBeenSent(discordId, orderId) {
   try {
     const row = await db.query(
@@ -62,7 +62,7 @@ async function hasMessageBeenSent(discordId, orderId) {
     return row?.welcome_sent === 1;
   } catch (err) {
     console.error('[MembershipSync] Failed to check welcome_sent:', err.message);
-    return true; // Assume sent on error to avoid duplicates
+    return true;
   }
 }
 
@@ -130,19 +130,14 @@ async function sendMembershipMessage(client, discordId, membership) {
   const tier = membership.tier;
   const expiresAt = new Date(membership.expires_at);
   const orderId = membership.order_id;
-
   const alreadySent = await hasMessageBeenSent(discordId, orderId);
   if (alreadySent) return;
-
   const tierNames = { 1: 'Bronze', 2: 'Copper', 3: 'Silver', 4: 'Gold', 5: 'Platinum' };
   const tierName = tierNames[tier] || `Tier ${tier}`;
-
   const lang = await getLanguageForOrder(orderId);
   const t = MESSAGES[lang] || MESSAGES.en;
-
   const OWNER_ID = h.ids.users.Velutinx;
   const ownerDmLink = `[DM Velutinx](https://discord.com/users/${OWNER_ID})`;
-
   const messageTemplate = (tier === 1) ? t.welcome_tier1 : t.welcome_tier2_5;
   const currentMonth = new Date().toLocaleString(lang, { month: 'long' });
 
@@ -274,8 +269,6 @@ async function sendRequestTierWebhook(client, discordId, membership) {
   }
 }
 
-// ─── KV State helpers (via HTTP) ──────────────────────────────
-
 async function getPreviousFullState() {
   try {
     const res = await fetch(`${SYNC_STATE_WORKER_URL}/api/sync-state/active-members-full`);
@@ -326,8 +319,6 @@ async function storeCurrentActiveSet(ids) {
   }
 }
 
-// ─── NEW: Duplicate warning timestamps (stored in KV) ──────────
-
 async function getDuplicateWarningTimestamps() {
   try {
     const res = await fetch(`${SYNC_STATE_WORKER_URL}/api/sync-state/duplicate-warning-timestamps`);
@@ -352,8 +343,6 @@ async function storeDuplicateWarningTimestamps(timestamps) {
     console.error('[DuplicateWarning] Failed to store timestamps in KV:', err.message);
   }
 }
-
-// ─── Duplicate warning logic ──────────────────────────────────
 
 async function checkAndWarnDuplicateMemberships(client, activeMemberships) {
   const websiteMemberships = activeMemberships.filter(m => m.source === 'website');
@@ -423,8 +412,6 @@ async function checkAndWarnDuplicateMemberships(client, activeMemberships) {
   }
 }
 
-// ─── Main sync function ──────────────────────────────────────
-
 async function syncMembershipRoles(client) {
   let changesMade = false;
 
@@ -458,12 +445,8 @@ async function syncMembershipRoles(client) {
 
     const currentFullState = Object.fromEntries(userBestMembership);
     const currentActiveIds = new Set(Object.keys(currentFullState));
-
-    // ─── Load previous full state from KV ──────────────────
     const previousFullState = await getPreviousFullState();
     const previousActiveIds = new Set(Object.keys(previousFullState));
-
-    // ─── Diff ──────────────────────────────────────────────
     const toUpsert = [];
     const toDelete = [];
 
@@ -484,7 +467,6 @@ async function syncMembershipRoles(client) {
 
     const newIds = [...currentActiveIds].filter(id => !previousActiveIds.has(id));
 
-    // ─── Log new members ──────────────────────────────────
     const guild = await client.guilds.fetch(process.env.GUILD_ID);
     const tagMap = new Map();
     for (const discordId of currentActiveIds) {
@@ -507,7 +489,6 @@ async function syncMembershipRoles(client) {
       }
     }
 
-    // ─── Send welcome DMs ONLY for new members ────────────
     for (const discordId of newIds) {
       const membership = userBestMembership.get(discordId);
       if (!membership) continue;
@@ -526,7 +507,6 @@ async function syncMembershipRoles(client) {
       await new Promise(res => setTimeout(res, 500));
     }
 
-    // ─── Apply changes (only if there are diffs) ────────
     if (toUpsert.length > 0) {
       const stmt = `
         INSERT INTO ${h.tables.MEMBERSHIPS}
@@ -572,7 +552,6 @@ async function syncMembershipRoles(client) {
       changesMade = true;
     }
 
-    // ─── Role assignment ──────────────────────────────────
     for (const [discordId, membership] of userBestMembership.entries()) {
       const member = await guild.members.fetch(discordId).catch(() => null);
       if (!member) continue;
@@ -604,7 +583,6 @@ async function syncMembershipRoles(client) {
       }
     }
 
-    // ─── Clean up inactive users (roles) ──────────────────
     for (const discordId of toDelete) {
       try {
         const member = await guild.members.fetch(discordId).catch(() => null);
@@ -644,11 +622,36 @@ async function syncMembershipRoles(client) {
       }
     }
 
-    // ─── Store new full state in KV only if changes were made ──
+    try {
+      const allMembers = await guild.members.fetch();
+      let rolelessCount = 0;
+      for (const [, member] of allMembers) {
+        if (member.user.bot) continue;
+        if (member.roles.cache.has(CREATOR_ROLE)) continue;
+
+        const hasSupporter = member.roles.cache.has(SUPPORTER_ROLE);
+        const hasMember = member.roles.cache.has(MEMBER_ROLE);
+        const hasUnverified = member.roles.cache.has(UNVERIFIED_ROLE);
+
+        if (!hasSupporter) {
+          if (!hasMember && !hasUnverified) {
+            await member.roles.add(MEMBER_ROLE);
+            changesMade = true;
+            rolelessCount++;
+            console.log(`[MembershipSync] Added Member to ${member.user.tag} (was roleless)`);
+          }
+        }
+      }
+      if (rolelessCount > 0) {
+        console.log(`[MembershipSync] ✅ Fixed ${rolelessCount} roleless users.`);
+      }
+    } catch (enforceErr) {
+      console.error('[MembershipSync] Failed to enforce roleless fix:', enforceErr.message);
+    }
+
     if (changesMade) {
       await storeCurrentFullState(currentFullState);
       await storeCurrentActiveSet(currentActiveIds);
-    } else {
     }
 
   } catch (err) {
