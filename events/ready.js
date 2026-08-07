@@ -3,7 +3,7 @@
 const db = require('../services/database');
 const { runPollInterval } = require('../services/pollService');
 const { cleanRoles } = require('../services/roleCleaner');
-const { syncMembershipRoles } = require('../services/membershipSync');
+const { syncMembershipRoles, enforceRolesForAllMembers } = require('../services/membershipSync');
 const giveawayCommand = require('../commands/giveaway');
 const { checkAndNotifyCooldowns } = require('../services/cooldownNotifier');
 const { processEndOfDayAwards } = require('../services/triviaJanitor');
@@ -21,11 +21,9 @@ const {
   MessageFlags
 } = require('discord.js');
 
-// ─── Import XP manager ──────────────────────────────────────────
 const XPLib = require('../utils/xputils');
 
 module.exports = async (c) => {
-  // ─── Start dashboard ──────────────────────────────────────────
   try {
     const dashboardModule = await import('../web/server.js');
     const startDashboard = dashboardModule.default || dashboardModule;
@@ -34,7 +32,6 @@ module.exports = async (c) => {
     console.error('❌ Failed to start dashboard:', err.message);
   }
 
-  // ─── Register slash commands ──────────────────────────────────
   const commandsData = [
     new SlashCommandBuilder().setName('level').setDescription('Shows your current XP/level').toJSON(),
     new ContextMenuCommandBuilder().setName('View Level').setType(ApplicationCommandType.User).toJSON(),
@@ -53,12 +50,10 @@ module.exports = async (c) => {
       Routes.applicationGuildCommands(process.env.CLIENT_ID, process.env.GUILD_ID),
       { body: commandsData }
     );
-    // console.log('✅ Slash commands registered');
   } catch (err) {
     console.error('❌ Failed to sync commands:', err);
   }
 
-  // ─── Clean roles periodically (offloaded) ────────────────────
   const guild = c.guilds.cache.get(process.env.GUILD_ID);
   if (guild) {
     setImmediate(() => cleanRoles(guild).catch(err => console.error('Initial cleanRoles error:', err)));
@@ -70,11 +65,6 @@ module.exports = async (c) => {
     }
   }, 3600000);
 
-const { enforceRolesForAllMembers } = require('../services/membershipSync');
-setTimeout(() => enforceRolesForAllMembers(c), 30000);
-setInterval(() => enforceRolesForAllMembers(c), 60 * 60 * 1000);
-  
-  // ─── Membership sync (offloaded) ─────────────────────────────
   setImmediate(() => {
     syncMembershipRoles(c).catch(err => console.error('[MembershipSync] Initial sync failed:', err));
   });
@@ -84,26 +74,22 @@ setInterval(() => enforceRolesForAllMembers(c), 60 * 60 * 1000);
     });
   }, 300000);
 
-  // ─── Cooldown notifier ──────────────────────────────────────
   setInterval(() => {
     setImmediate(() => {
       checkAndNotifyCooldowns(c).catch(err => console.error('Cooldown notifier error:', err));
     });
   }, 300000);
 
-  // ─── Trivia end‑of‑day awards ──────────────────────────────
   setInterval(() => {
     setImmediate(() => {
       processEndOfDayAwards(c).catch(err => console.error('Trivia end-of-day awards error:', err));
     });
   }, 3600000);
 
-  // ─── Channel cleaner for Hangman ────────────────────────────
   const hangmanChannelId = h.games.hangman.channelId;
   const hangmanWhitelist = h.whitelistedMessages[hangmanChannelId] || [];
   initChannelCleaner(c, hangmanChannelId, hangmanWhitelist);
 
-  // ─── Resume active polls ─────────────────────────────────────
   try {
     const now = new Date().toISOString();
     const activePolls = await db.query(
@@ -129,19 +115,16 @@ setInterval(() => enforceRolesForAllMembers(c), 60 * 60 * 1000);
     console.error('Failed to fetch active polls:', err);
   }
 
-  // ─── Restore giveaways ──────────────────────────────────────
   const { restoreGiveaways } = require('../commands/giveaway');
   setImmediate(() => {
     restoreGiveaways(c).catch(console.error);
   });
 
-  // ─── Restore poll reminders ──────────────────────────────────
   const { restorePollReminders } = require('../services/pollReminders');
   setImmediate(() => {
     restorePollReminders(c).catch(console.error);
   });
 
-  // ─── Membership cleanup ─────────────────────────────────────
   setImmediate(() => {
     cleanupExpiredMemberships(c).catch(err => console.error('Initial membership cleanup failed:', err));
   });
@@ -151,13 +134,17 @@ setInterval(() => enforceRolesForAllMembers(c), 60 * 60 * 1000);
     });
   }, 24 * 60 * 60 * 1000);
 
-  // ─── Mudae message handler ──────────────────────────────────
   initMudaeMessageHandler(c);
 
-  // ──────────────────────────────────────────────────────────────
-  // ─── XP Level‑up callback (runs after D1 flush) ─────────────
-  // ──────────────────────────────────────────────────────────────
-  XPLib.onLevelUp(async ({ userId, guildId, oldLevel, newLevel, newTotal }) => {
+  setTimeout(() => {
+    enforceRolesForAllMembers(c).catch(err => console.error('[Ready] Initial role enforcement error:', err));
+  }, 30000);
+
+  setInterval(() => {
+    enforceRolesForAllMembers(c).catch(err => console.error('[Ready] Periodic role enforcement error:', err));
+  }, 60 * 60 * 1000);
+
+    XPLib.onLevelUp(async ({ userId, guildId, oldLevel, newLevel, newTotal }) => {
     const guild = c.guilds.cache.get(guildId);
     if (!guild) return;
     const member = await guild.members.fetch(userId).catch(() => null);
@@ -190,7 +177,6 @@ setInterval(() => enforceRolesForAllMembers(c), 60 * 60 * 1000);
     }
   });
 
-  // ─── XP periodic flush (safety) ──────────────────────────────
   setInterval(() => {
     XPLib.flush().catch(err => console.error('[XP Flush] Error:', err));
   }, 30000);
