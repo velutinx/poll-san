@@ -54,41 +54,63 @@ module.exports = async (c) => {
     console.error('❌ Failed to sync commands:', err);
   }
 
+  // ─────────────────────────────────────────────────────────────────
+  // STAGGERED STARTUP TASKS (Prevents Opcode 8 / Rate Limit Crash)
+  // ─────────────────────────────────────────────────────────────────
+
   const guild = c.guilds.cache.get(process.env.GUILD_ID);
-  if (guild) {
-    setImmediate(() => cleanRoles(guild).catch(err => console.error('Initial cleanRoles error:', err)));
-  }
+
+  // 1. Clean roles 5 seconds after boot
+  setTimeout(() => {
+    if (guild) {
+      cleanRoles(guild).catch(err => console.error('Initial cleanRoles error:', err));
+    }
+  }, 5000);
+
   setInterval(() => {
     const activeGuild = c.guilds.cache.get(process.env.GUILD_ID);
     if (activeGuild) {
-      setImmediate(() => cleanRoles(activeGuild).catch(err => console.error('cleanRoles interval error:', err)));
+      cleanRoles(activeGuild).catch(err => console.error('cleanRoles interval error:', err));
     }
   }, 3600000);
 
-setTimeout(() => {
-  syncMembershipRoles(c).catch(err => console.error(err));
-}, 15000); // Wait 15 seconds after boot
+  // 2. Sync Membership Roles 15 seconds after boot
+  setTimeout(() => {
+    syncMembershipRoles(c).catch(err => console.error('[MembershipSync] Initial error:', err));
+  }, 15000);
+  
+  setInterval(() => {
+    syncMembershipRoles(c).catch(err => console.error('[MembershipSync] Sync error:', err.message || err));
+  }, 300000);
 
-setTimeout(() => {
-  enforceRolesForAllMembers(c).catch(err => console.error(err));
-}, 60000);
+  // 3. Enforce Roles 30 seconds after boot
+  setTimeout(() => {
+    enforceRolesForAllMembers(c).catch(err => console.error('[Ready] Initial role enforcement error:', err));
+  }, 30000);
 
   setInterval(() => {
-    setImmediate(() => {
-      checkAndNotifyCooldowns(c).catch(err => console.error('Cooldown notifier error:', err));
-    });
+    enforceRolesForAllMembers(c).catch(err => console.error('[Ready] Periodic role enforcement error:', err));
+  }, 60 * 60 * 1000);
+
+  // ─────────────────────────────────────────────────────────────────
+  // OTHER BACKGROUND SERVICES
+  // ─────────────────────────────────────────────────────────────────
+
+  setInterval(() => {
+    checkAndNotifyCooldowns(c).catch(err => console.error('Cooldown notifier error:', err));
   }, 300000);
 
   setInterval(() => {
-    setImmediate(() => {
-      processEndOfDayAwards(c).catch(err => console.error('Trivia end-of-day awards error:', err));
-    });
+    processEndOfDayAwards(c).catch(err => console.error('Trivia end-of-day awards error:', err));
   }, 3600000);
 
   const hangmanChannelId = h.games.hangman.channelId;
   const hangmanWhitelist = h.whitelistedMessages[hangmanChannelId] || [];
   initChannelCleaner(c, hangmanChannelId, hangmanWhitelist);
 
+  // ─────────────────────────────────────────────────────────────────
+  // POLL RESUMPTION (With Buffer to prevent 503 Service Unavailable)
+  // ─────────────────────────────────────────────────────────────────
   try {
     const now = new Date().toISOString();
     const activePolls = await db.query(
@@ -104,7 +126,12 @@ setTimeout(() => {
             .split(/(?=:female_sign:|:male_sign:|♀️|♂️)/)
             .map(s => s.trim())
             .filter(s => s.length > 0);
+            
           runPollInterval(pollMsg, new Date(poll.ends_at).getTime(), characters);
+          
+          // DELAY: Wait 2.5 seconds before hitting the API for the next poll
+          await new Promise(resolve => setTimeout(resolve, 2500));
+          
         } catch (e) {
           console.error(`Failed to resume poll ${poll.message_id}:`, e.message);
         }
@@ -114,36 +141,33 @@ setTimeout(() => {
     console.error('Failed to fetch active polls:', err);
   }
 
+  // ─────────────────────────────────────────────────────────────────
+  // RESTORE CACHES & CLEANUPS
+  // ─────────────────────────────────────────────────────────────────
   const { restoreGiveaways } = require('../commands/giveaway');
-  setImmediate(() => {
+  setTimeout(() => {
     restoreGiveaways(c).catch(console.error);
-  });
+  }, 10000); // 10s stagger
 
   const { restorePollReminders } = require('../services/pollReminders');
-  setImmediate(() => {
+  setTimeout(() => {
     restorePollReminders(c).catch(console.error);
-  });
+  }, 12000); // 12s stagger
 
-  setImmediate(() => {
+  setTimeout(() => {
     cleanupExpiredMemberships(c).catch(err => console.error('Initial membership cleanup failed:', err));
-  });
+  }, 20000); // 20s stagger
+
   setInterval(() => {
-    setImmediate(() => {
-      cleanupExpiredMemberships(c).catch(err => console.error('Scheduled membership cleanup failed:', err));
-    });
+    cleanupExpiredMemberships(c).catch(err => console.error('Scheduled membership cleanup failed:', err));
   }, 24 * 60 * 60 * 1000);
 
   initMudaeMessageHandler(c);
 
-  setTimeout(() => {
-    enforceRolesForAllMembers(c).catch(err => console.error('[Ready] Initial role enforcement error:', err));
-  }, 30000);
-
-  setInterval(() => {
-    enforceRolesForAllMembers(c).catch(err => console.error('[Ready] Periodic role enforcement error:', err));
-  }, 60 * 60 * 1000);
-
-    XPLib.onLevelUp(async ({ userId, guildId, oldLevel, newLevel, newTotal }) => {
+  // ─────────────────────────────────────────────────────────────────
+  // LEVELING WEBHOOK HANDLER
+  // ─────────────────────────────────────────────────────────────────
+  XPLib.onLevelUp(async ({ userId, guildId, oldLevel, newLevel, newTotal }) => {
     const guild = c.guilds.cache.get(guildId);
     if (!guild) return;
     const member = await guild.members.fetch(userId).catch(() => null);
