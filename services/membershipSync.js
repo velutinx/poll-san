@@ -2,12 +2,18 @@
 
 const db = require('./database');
 const h = require('../utils/helpers');
+
 const TIER_ROLES = h.weights.tierMapping;
 const SUPPORTER_ROLE = h.ids.roles.supporter;
 const CREATOR_ROLE = h.ids.roles.creator;
 const MEMBER_ROLE = h.ids.roles.member;
 const UNVERIFIED_ROLE = h.ids.roles.unverified;
 const SYNC_STATE_WORKER_URL = h.urls.CLOUDFLARE_D1_WORKER;
+
+// ─── Cooldown for enforcement loop ──────────────────────────────
+let lastEnforcementRun = 0;
+const ENFORCEMENT_COOLDOWN = 5 * 60 * 1000; // 5 minutes
+
 const MESSAGES = {
   en: {
     welcome_tier1: `${h.releaseEmojis.CONFETTI} Welcome to the {tierName} tier!\nYour membership is active until **{expiryDate}**.\n\nFeel free to explore the packs on **[this channel](https://discord.com/channels/1401446104498700358/1465937644394512516)** and **[join the server](https://discord.gg/XF363uYfSh)** if you haven't.\n\nPlease message DM Velutinx if you have any questions.`,
@@ -621,52 +627,65 @@ async function syncMembershipRoles(client) {
       }
     }
 
-    try {
-      const allMembers = await guild.members.fetch();
-      let rolelessCount = 0;
-      let delay = 1000;
-      
-      for (const [, member] of allMembers) {
-        if (member.user.bot) continue;
-        if (member.roles.cache.has(CREATOR_ROLE)) continue;
+    // ─── ENFORCE: No user should be roleless (with cooldown and rate limit protection) ──────────
+    const currentTime = Date.now();
+    if (currentTime - lastEnforcementRun >= ENFORCEMENT_COOLDOWN) {
+      try {
+        const allMembers = await guild.members.fetch();
+        let rolelessCount = 0;
+        let delay = 1000;
+        
+        for (const [, member] of allMembers) {
+          if (member.user.bot) continue;
+          if (member.roles.cache.has(CREATOR_ROLE)) continue;
 
-        const hasSupporter = member.roles.cache.has(SUPPORTER_ROLE);
-        const hasMember = member.roles.cache.has(MEMBER_ROLE);
-        const hasUnverified = member.roles.cache.has(UNVERIFIED_ROLE);
+          const hasSupporter = member.roles.cache.has(SUPPORTER_ROLE);
+          const hasMember = member.roles.cache.has(MEMBER_ROLE);
+          const hasUnverified = member.roles.cache.has(UNVERIFIED_ROLE);
 
-        if (!hasSupporter && !hasMember && !hasUnverified) {
-          try {
-            await member.roles.add(MEMBER_ROLE);
-            changesMade = true;
-            rolelessCount++;
-            console.log(`[MembershipSync] Added Member to ${member.user.tag} (was roleless)`);
-          } catch (addErr) {
-            if (addErr.code === 429) {
-              const retryAfter = addErr.retryAfter || 5;
-              console.warn(`[MembershipSync] Rate limited while adding Member to ${member.user.tag}, waiting ${retryAfter}s...`);
-              await new Promise(resolve => setTimeout(resolve, retryAfter * 1000 + 500));
-              try {
-                await member.roles.add(MEMBER_ROLE);
-                changesMade = true;
-                rolelessCount++;
-                console.log(`[MembershipSync] Added Member to ${member.user.tag} (was roleless) after rate limit wait.`);
-              } catch (retryErr) {
-                console.error(`[MembershipSync] Failed to add Member to ${member.user.tag} after retry:`, retryErr.message);
+          if (!hasSupporter && !hasMember && !hasUnverified) {
+            try {
+              await member.roles.add(MEMBER_ROLE);
+              changesMade = true;
+              rolelessCount++;
+              console.log(`[MembershipSync] Added Member to ${member.user.tag} (was roleless)`);
+            } catch (addErr) {
+              if (addErr.code === 429) {
+                const retryAfter = addErr.retryAfter || 5;
+                console.warn(`[MembershipSync] Rate limited while adding Member to ${member.user.tag}, waiting ${retryAfter}s...`);
+                await new Promise(resolve => setTimeout(resolve, retryAfter * 1000 + 500));
+                try {
+                  await member.roles.add(MEMBER_ROLE);
+                  changesMade = true;
+                  rolelessCount++;
+                  console.log(`[MembershipSync] Added Member to ${member.user.tag} (was roleless) after rate limit wait.`);
+                } catch (retryErr) {
+                  console.error(`[MembershipSync] Failed to add Member to ${member.user.tag} after retry:`, retryErr.message);
+                }
+              } else {
+                console.error(`[MembershipSync] Failed to add Member to ${member.user.tag}:`, addErr.message);
               }
-            } else {
-              console.error(`[MembershipSync] Failed to add Member to ${member.user.tag}:`, addErr.message);
             }
+            
+            await new Promise(resolve => setTimeout(resolve, delay));
+            delay = Math.min(delay + 200, 3000); // Gradually increase delay up to 3s
           }
-          
-          await new Promise(resolve => setTimeout(resolve, delay));
-          delay = Math.min(delay + 200, 3000); // Gradually increase delay up to 3s
+        }
+        if (rolelessCount > 0) {
+          console.log(`[MembershipSync] ✅ Fixed ${rolelessCount} roleless users.`);
+        }
+        // Update last run time even if no roleless users found (cooldown applied)
+        lastEnforcementRun = currentTime;
+      } catch (enforceErr) {
+        // Only log if not a rate limit error, do NOT update lastEnforcementRun so it retries soon
+        if (!enforceErr.message?.includes('rate limited')) {
+          console.error('[MembershipSync] Enforcement error:', enforceErr.message);
+        }
+        // If rate limited, we don't update lastEnforcementRun, so it will retry next sync
+        if (enforceErr.message?.includes('rate limited')) {
+          console.warn('[MembershipSync] Enforcement rate limited, will retry next sync.');
         }
       }
-      if (rolelessCount > 0) {
-        console.log(`[MembershipSync] ✅ Fixed ${rolelessCount} roleless users.`);
-      }
-    } catch (enforceErr) {
-      console.error('[MembershipSync] Failed to enforce roleless fix:', enforceErr.message);
     }
 
     if (changesMade) {
