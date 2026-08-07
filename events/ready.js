@@ -86,7 +86,7 @@ module.exports = async (c) => {
   // 3. Enforce Roles 30 seconds after boot
   setTimeout(() => {
     enforceRolesForAllMembers(c).catch(err => console.error('[Ready] Initial role enforcement error:', err));
-  }, 30000);
+  }, 120000);
 
   setInterval(() => {
     enforceRolesForAllMembers(c).catch(err => console.error('[Ready] Periodic role enforcement error:', err));
