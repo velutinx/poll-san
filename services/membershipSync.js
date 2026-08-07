@@ -53,7 +53,7 @@ async function getLanguageForOrder(orderId) {
 async function hasMessageBeenSent(discordId, orderId) {
   try {
     const row = await db.query(
-      `SELECT welcome_sent FROM ${h.tables.MEMBERSHIPS}
+      `SELECT welcome_sent FROM memberships
        WHERE discord_id = ? AND order_id = ?
        LIMIT 1`,
       [discordId, orderId],
@@ -116,7 +116,7 @@ async function sendDM(member, content, lang) {
 async function markWelcomeSent(discordId, orderId) {
   try {
     await db.query(
-      `UPDATE ${h.tables.MEMBERSHIPS}
+      `UPDATE memberships
        SET welcome_sent = 1
        WHERE discord_id = ? AND order_id = ?`,
       [discordId, orderId]
@@ -421,7 +421,7 @@ async function syncMembershipRoles(client) {
     const activeMemberships = await db.query(
       `SELECT discord_id, tier, expires_at, order_id, updated_at, months,
               recurring, plan_id, status, source, discord_tag
-       FROM ${h.tables.MEMBERSHIPS}
+       FROM memberships
        WHERE expires_at > ?`,
       [now]
     );
@@ -505,7 +505,7 @@ async function syncMembershipRoles(client) {
 
     if (toUpsert.length > 0) {
       const stmt = `
-        INSERT INTO ${h.tables.MEMBERSHIPS}
+        INSERT INTO memberships
         (discord_id, tier, order_id, updated_at, expires_at, months, recurring, plan_id, status, source, discord_tag)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(discord_id) DO UPDATE SET
@@ -542,7 +542,7 @@ async function syncMembershipRoles(client) {
     if (toDelete.length > 0) {
       const placeholders = toDelete.map(() => '?').join(',');
       await db.query(
-        `DELETE FROM ${h.tables.MEMBERSHIPS} WHERE discord_id IN (${placeholders})`,
+        `DELETE FROM memberships WHERE discord_id IN (${placeholders})`,
         toDelete
       );
       changesMade = true;
