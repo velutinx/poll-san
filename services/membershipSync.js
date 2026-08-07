@@ -639,7 +639,6 @@ async function enforceRolesForAllMembers(client) {
     let fixedCount = 0;
     let delay = 1000;
 
-
     for (const [, member] of members) {
       if (member.user.bot) continue;
       if (member.roles.cache.has(CREATOR_ROLE)) continue;
@@ -675,13 +674,12 @@ async function enforceRolesForAllMembers(client) {
     }
 
     if (fixedCount > 0) {
-    } else {
+      console.log(`[MembershipSync] Fixed roles for ${fixedCount} members.`);
     }
   } catch (err) {
     console.error('[MembershipSync] Full enforcement scan failed:', err.message);
     if (err.message?.includes('rate limited')) {
-      console.warn('[MembershipSync] Full scan rate limited, will retry next cycle.');
-      lastEnforcementRun = 0;
+      console.warn('[MembershipSync] Full scan rate limited, will respect the cooldown before retrying.');
     }
   }
 }
