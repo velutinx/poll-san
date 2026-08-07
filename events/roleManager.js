@@ -1,5 +1,6 @@
 // events/roleManager.js
 const h = require('../utils/helpers');
+const { enforceRolesForMember } = require('../services/membershipSync'); // 🔥 imported
 const SUPPORTER_ROLE = h.ids.roles.supporter;
 const MEMBER_ROLE = h.ids.roles.member;
 const UNVERIFIED_ROLE = h.ids.roles.unverified;
@@ -28,6 +29,9 @@ async function enforceRoles(member) {
         console.log(`[RoleManager] Removed Member from ${member.user.tag} (Supporter present)`);
         changes = true;
     }
+
+    // 🔥 Real‑time fix: ensure no user is roleless (give Member if needed)
+    await enforceRolesForMember(member);
 
     return changes;
 }
