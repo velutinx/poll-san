@@ -65,14 +65,13 @@ module.exports = async (c) => {
     }
   }, 3600000);
 
-  setImmediate(() => {
-    syncMembershipRoles(c).catch(err => console.error('[MembershipSync] Initial sync failed:', err));
-  });
-  setInterval(() => {
-    setImmediate(() => {
-      syncMembershipRoles(c).catch(err => console.error('[MembershipSync] Sync error:', err.message || err));
-    });
-  }, 300000);
+setTimeout(() => {
+  syncMembershipRoles(c).catch(err => console.error(err));
+}, 15000); // Wait 15 seconds after boot
+
+setTimeout(() => {
+  enforceRolesForAllMembers(c).catch(err => console.error(err));
+}, 60000);
 
   setInterval(() => {
     setImmediate(() => {
