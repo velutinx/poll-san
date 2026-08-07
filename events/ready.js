@@ -70,6 +70,10 @@ module.exports = async (c) => {
     }
   }, 3600000);
 
+const { enforceRolesForAllMembers } = require('../services/membershipSync');
+setTimeout(() => enforceRolesForAllMembers(c), 30000);
+setInterval(() => enforceRolesForAllMembers(c), 60 * 60 * 1000);
+  
   // ─── Membership sync (offloaded) ─────────────────────────────
   setImmediate(() => {
     syncMembershipRoles(c).catch(err => console.error('[MembershipSync] Initial sync failed:', err));
