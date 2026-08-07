@@ -10,10 +10,11 @@ const MEMBER_ROLE = h.ids.roles.member;
 const UNVERIFIED_ROLE = h.ids.roles.unverified;
 const SYNC_STATE_WORKER_URL = h.urls.CLOUDFLARE_D1_WORKER;
 
-// ─── Cooldown for enforcement loop ──────────────────────────────
+// ─── Cooldown for full enforcement scan ──────────────────────────
 let lastEnforcementRun = 0;
-const ENFORCEMENT_COOLDOWN = 5 * 60 * 1000; // 5 minutes
+const ENFORCEMENT_COOLDOWN = 60 * 60 * 1000; // 60 minutes
 
+// ─── Messages (unchanged) ──────────────────────────────────────────
 const MESSAGES = {
   en: {
     welcome_tier1: `${h.releaseEmojis.CONFETTI} Welcome to the {tierName} tier!\nYour membership is active until **{expiryDate}**.\n\nFeel free to explore the packs on **[this channel](https://discord.com/channels/1401446104498700358/1465937644394512516)** and **[join the server](https://discord.gg/XF363uYfSh)** if you haven't.\n\nPlease message DM Velutinx if you have any questions.`,
@@ -415,8 +416,7 @@ async function checkAndWarnDuplicateMemberships(client, activeMemberships) {
   }
 }
 
-// ─── Main sync function ──────────────────────────────────────
-
+// ─── Main sync function (only supporter/tier roles) ───────────────
 async function syncMembershipRoles(client) {
   let changesMade = false;
 
@@ -483,21 +483,20 @@ async function syncMembershipRoles(client) {
       }
     }
 
-    if (newIds.length > 0) {
-      for (const discordId of newIds) {
-        try {
-          const member = await guild.members.fetch(discordId).catch(() => null);
-          const tier = userBestMembership.get(discordId).tier;
-          const tag = member ? member.user.tag : 'Unknown';
-          console.log(`[MembershipSync] NEW ACTIVE MEMBER: ${tag} (${discordId}) - Tier ${tier}`);
-        } catch (err) {}
-      }
+    // Log new members
+    for (const discordId of newIds) {
+      try {
+        const member = await guild.members.fetch(discordId).catch(() => null);
+        const tier = userBestMembership.get(discordId).tier;
+        const tag = member ? member.user.tag : 'Unknown';
+        console.log(`[MembershipSync] NEW ACTIVE MEMBER: ${tag} (${discordId}) - Tier ${tier}`);
+      } catch (err) {}
     }
 
+    // Send welcome DMs
     for (const discordId of newIds) {
       const membership = userBestMembership.get(discordId);
       if (!membership) continue;
-
       try {
         const member = await guild.members.fetch(discordId).catch(() => null);
         if (member && member.roles.cache.has(CREATOR_ROLE)) {
@@ -507,11 +506,11 @@ async function syncMembershipRoles(client) {
       } catch (err) {
         console.warn(`[MembershipSync] Could not check Creator role for ${discordId}, proceeding anyway`);
       }
-
       await sendMembershipMessage(client, discordId, membership);
       await new Promise(res => setTimeout(res, 500));
     }
 
+    // Upsert / delete memberships
     if (toUpsert.length > 0) {
       const stmt = `
         INSERT INTO ${h.tables.MEMBERSHIPS}
@@ -557,6 +556,7 @@ async function syncMembershipRoles(client) {
       changesMade = true;
     }
 
+    // ─── Apply supporter / tier roles ──────────────────────────────
     for (const [discordId, membership] of userBestMembership.entries()) {
       const member = await guild.members.fetch(discordId).catch(() => null);
       if (!member) continue;
@@ -574,12 +574,10 @@ async function syncMembershipRoles(client) {
         await member.roles.add(targetRoleId);
         changesMade = true;
       }
-
       if (!hasSupporter) {
         await member.roles.add(SUPPORTER_ROLE);
         changesMade = true;
       }
-
       for (const roleId of Object.values(TIER_ROLES)) {
         if (roleId !== targetRoleId && currentRoleIds.includes(roleId)) {
           await member.roles.remove(roleId);
@@ -588,6 +586,7 @@ async function syncMembershipRoles(client) {
       }
     }
 
+    // ─── Clean up inactive users (remove supporter/tier roles, add Member) ──
     for (const discordId of toDelete) {
       try {
         const member = await guild.members.fetch(discordId).catch(() => null);
@@ -617,7 +616,7 @@ async function syncMembershipRoles(client) {
             changesMade = true;
           }
         }
-
+        // Ensure they have Member (the enforcement loop will also do this, but we do it here too)
         if (!member.roles.cache.has(MEMBER_ROLE)) {
           await member.roles.add(MEMBER_ROLE);
           changesMade = true;
@@ -627,67 +626,7 @@ async function syncMembershipRoles(client) {
       }
     }
 
-    // ─── ENFORCE: No user should be roleless (with cooldown and rate limit protection) ──────────
-    const currentTime = Date.now();
-    if (currentTime - lastEnforcementRun >= ENFORCEMENT_COOLDOWN) {
-      try {
-        const allMembers = await guild.members.fetch();
-        let rolelessCount = 0;
-        let delay = 1000;
-        
-        for (const [, member] of allMembers) {
-          if (member.user.bot) continue;
-          if (member.roles.cache.has(CREATOR_ROLE)) continue;
-
-          const hasSupporter = member.roles.cache.has(SUPPORTER_ROLE);
-          const hasMember = member.roles.cache.has(MEMBER_ROLE);
-          const hasUnverified = member.roles.cache.has(UNVERIFIED_ROLE);
-
-          if (!hasSupporter && !hasMember && !hasUnverified) {
-            try {
-              await member.roles.add(MEMBER_ROLE);
-              changesMade = true;
-              rolelessCount++;
-              console.log(`[MembershipSync] Added Member to ${member.user.tag} (was roleless)`);
-            } catch (addErr) {
-              if (addErr.code === 429) {
-                const retryAfter = addErr.retryAfter || 5;
-                console.warn(`[MembershipSync] Rate limited while adding Member to ${member.user.tag}, waiting ${retryAfter}s...`);
-                await new Promise(resolve => setTimeout(resolve, retryAfter * 1000 + 500));
-                try {
-                  await member.roles.add(MEMBER_ROLE);
-                  changesMade = true;
-                  rolelessCount++;
-                  console.log(`[MembershipSync] Added Member to ${member.user.tag} (was roleless) after rate limit wait.`);
-                } catch (retryErr) {
-                  console.error(`[MembershipSync] Failed to add Member to ${member.user.tag} after retry:`, retryErr.message);
-                }
-              } else {
-                console.error(`[MembershipSync] Failed to add Member to ${member.user.tag}:`, addErr.message);
-              }
-            }
-            
-            await new Promise(resolve => setTimeout(resolve, delay));
-            delay = Math.min(delay + 200, 3000); // Gradually increase delay up to 3s
-          }
-        }
-        if (rolelessCount > 0) {
-          console.log(`[MembershipSync] ✅ Fixed ${rolelessCount} roleless users.`);
-        }
-        // Update last run time even if no roleless users found (cooldown applied)
-        lastEnforcementRun = currentTime;
-      } catch (enforceErr) {
-        // Only log if not a rate limit error, do NOT update lastEnforcementRun so it retries soon
-        if (!enforceErr.message?.includes('rate limited')) {
-          console.error('[MembershipSync] Enforcement error:', enforceErr.message);
-        }
-        // If rate limited, we don't update lastEnforcementRun, so it will retry next sync
-        if (enforceErr.message?.includes('rate limited')) {
-          console.warn('[MembershipSync] Enforcement rate limited, will retry next sync.');
-        }
-      }
-    }
-
+    // ─── Store state ──────────────────────────────────────────────────
     if (changesMade) {
       await storeCurrentFullState(currentFullState);
       await storeCurrentActiveSet(currentActiveIds);
@@ -698,4 +637,107 @@ async function syncMembershipRoles(client) {
   }
 }
 
-module.exports = { syncMembershipRoles };
+// ─── NEW: Slow, rate‑limited enforcement scan for ALL members ────
+async function enforceRolesForAllMembers(client) {
+  const now = Date.now();
+  if (now - lastEnforcementRun < ENFORCEMENT_COOLDOWN) {
+    console.log('[MembershipSync] Full enforcement scan skipped (cooldown active).');
+    return;
+  }
+  lastEnforcementRun = now;
+
+  try {
+    const guild = await client.guilds.fetch(process.env.GUILD_ID);
+    const members = await guild.members.fetch();
+    let fixedCount = 0;
+    let delay = 1000; // start with 1s delay
+
+    console.log(`[MembershipSync] Starting full enforcement scan (${members.size} members)...`);
+
+    for (const [, member] of members) {
+      if (member.user.bot) continue;
+      if (member.roles.cache.has(CREATOR_ROLE)) continue;
+
+      const hasSupporter = member.roles.cache.has(SUPPORTER_ROLE);
+      const hasMember = member.roles.cache.has(MEMBER_ROLE);
+      const hasUnverified = member.roles.cache.has(UNVERIFIED_ROLE);
+
+      if (!hasSupporter && !hasMember && !hasUnverified) {
+        try {
+          await member.roles.add(MEMBER_ROLE);
+          fixedCount++;
+          console.log(`[MembershipSync] Added Member to ${member.user.tag} (was roleless)`);
+        } catch (addErr) {
+          if (addErr.code === 429) {
+            const retryAfter = addErr.retryAfter || 5;
+            console.warn(`[MembershipSync] Rate limited, waiting ${retryAfter}s...`);
+            await new Promise(resolve => setTimeout(resolve, retryAfter * 1000 + 500));
+            try {
+              await member.roles.add(MEMBER_ROLE);
+              fixedCount++;
+              console.log(`[MembershipSync] Added Member to ${member.user.tag} (was roleless) after wait.`);
+            } catch (retryErr) {
+              console.error(`[MembershipSync] Failed to add Member to ${member.user.tag} after retry:`, retryErr.message);
+            }
+          } else {
+            console.error(`[MembershipSync] Failed to add Member to ${member.user.tag}:`, addErr.message);
+          }
+        }
+        // Delay between operations
+        await new Promise(resolve => setTimeout(resolve, delay));
+        delay = Math.min(delay + 200, 3000);
+      }
+    }
+
+    if (fixedCount > 0) {
+      console.log(`[MembershipSync] ✅ Full enforcement scan fixed ${fixedCount} roleless users.`);
+    } else {
+      console.log('[MembershipSync] Full enforcement scan completed – no issues found.');
+    }
+  } catch (err) {
+    console.error('[MembershipSync] Full enforcement scan failed:', err.message);
+    // If rate limited, we don't update lastEnforcementRun, so it retries next time
+    if (err.message?.includes('rate limited')) {
+      console.warn('[MembershipSync] Full scan rate limited, will retry next cycle.');
+      lastEnforcementRun = 0; // reset cooldown so it tries again
+    }
+  }
+}
+
+// ─── Real‑time role fix for a single user ──────────────────────────
+async function enforceRolesForMember(member) {
+  if (member.user.bot) return;
+  if (member.roles.cache.has(CREATOR_ROLE)) return;
+
+  const hasSupporter = member.roles.cache.has(SUPPORTER_ROLE);
+  const hasMember = member.roles.cache.has(MEMBER_ROLE);
+  const hasUnverified = member.roles.cache.has(UNVERIFIED_ROLE);
+
+  if (!hasSupporter && !hasMember && !hasUnverified) {
+    try {
+      await member.roles.add(MEMBER_ROLE);
+      console.log(`[MembershipSync] Real‑time fix: Added Member to ${member.user.tag}`);
+    } catch (err) {
+      if (err.code === 429) {
+        const retryAfter = err.retryAfter || 5;
+        console.warn(`[MembershipSync] Real‑time fix rate limited, waiting ${retryAfter}s...`);
+        await new Promise(resolve => setTimeout(resolve, retryAfter * 1000 + 500));
+        try {
+          await member.roles.add(MEMBER_ROLE);
+          console.log(`[MembershipSync] Real‑time fix: Added Member to ${member.user.tag} (after wait)`);
+        } catch (retryErr) {
+          console.error(`[MembershipSync] Real‑time fix failed for ${member.user.tag}:`, retryErr.message);
+        }
+      } else {
+        console.error(`[MembershipSync] Real‑time fix failed for ${member.user.tag}:`, err.message);
+      }
+    }
+  }
+}
+
+// ─── Exports ──────────────────────────────────────────────────────────
+module.exports = {
+  syncMembershipRoles,
+  enforceRolesForAllMembers,
+  enforceRolesForMember
+};
