@@ -684,33 +684,118 @@ async function enforceRolesForAllMembers(client) {
   }
 }
 
+// ─── Helper: add a role with retry on 429 ──────────────────────────
+async function addRoleWithRetry(member, roleId, maxAttempts = 3) {
+  let attempts = 0;
+  while (attempts < maxAttempts) {
+    try {
+      await member.roles.add(roleId);
+      return;
+    } catch (err) {
+      if (err.code === 429) {
+        const wait = (err.retryAfter || 2) * 1000 + 500;
+        console.warn(`[RateLimit] Waiting ${wait}ms before retrying add role ${roleId} for ${member.id}`);
+        await new Promise(resolve => setTimeout(resolve, wait));
+        attempts++;
+      } else {
+        throw err;
+      }
+    }
+  }
+  console.error(`[enforceRolesForMember] Failed to add role ${roleId} after ${maxAttempts} attempts`);
+}
+
+// ─── Helper: remove a role with retry on 429 ────────────────────────
+async function removeRoleWithRetry(member, roleId, maxAttempts = 3) {
+  let attempts = 0;
+  while (attempts < maxAttempts) {
+    try {
+      await member.roles.remove(roleId);
+      return;
+    } catch (err) {
+      if (err.code === 429) {
+        const wait = (err.retryAfter || 2) * 1000 + 500;
+        console.warn(`[RateLimit] Waiting ${wait}ms before retrying remove role ${roleId} for ${member.id}`);
+        await new Promise(resolve => setTimeout(resolve, wait));
+        attempts++;
+      } else {
+        throw err;
+      }
+    }
+  }
+  console.error(`[enforceRolesForMember] Failed to remove role ${roleId} after ${maxAttempts} attempts`);
+}
+
+// ─── ENHANCED: enforce roles for a single member (real‑time) ──────
 async function enforceRolesForMember(member) {
   if (member.user.bot) return;
   if (member.roles.cache.has(CREATOR_ROLE)) return;
 
+  const now = new Date().toISOString();
+
+  // 1. Check for active membership in the database
+  let activeMembership = null;
+  try {
+    activeMembership = await db.query(
+      `SELECT tier FROM purchase_memberships
+       WHERE discord_id = ? AND expires_at > ? AND status = 'ACTIVE'
+       ORDER BY tier DESC
+       LIMIT 1`,
+      [member.id, now],
+      true  // single row
+    );
+  } catch (err) {
+    console.error('[enforceRolesForMember] DB query error:', err.message);
+  }
+
+  // 2. If active membership exists → restore the correct tier + Supporter
+  if (activeMembership) {
+    const tier = activeMembership.tier;
+    const tierRoleId = h.weights.tierMapping[String(tier)];
+    if (!tierRoleId) {
+      console.warn(`[enforceRolesForMember] No role mapping for tier ${tier}`);
+      return;
+    }
+
+    const hasTierRole = member.roles.cache.has(tierRoleId);
+    const hasSupporter = member.roles.cache.has(SUPPORTER_ROLE);
+    const hasMember = member.roles.cache.has(MEMBER_ROLE);
+    const hasUnverified = member.roles.cache.has(UNVERIFIED_ROLE);
+
+    // If already has correct roles, nothing to do
+    if (hasTierRole && hasSupporter && !hasMember && !hasUnverified) {
+      return;
+    }
+
+    // Build lists of roles to add/remove
+    const addRoles = [];
+    const removeRoles = [];
+
+    if (!hasTierRole) addRoles.push(tierRoleId);
+    if (!hasSupporter) addRoles.push(SUPPORTER_ROLE);
+    if (hasMember) removeRoles.push(MEMBER_ROLE);
+    if (hasUnverified) removeRoles.push(UNVERIFIED_ROLE);
+
+    // Execute operations with retry/backoff
+    for (const roleId of addRoles) {
+      await addRoleWithRetry(member, roleId);
+    }
+    for (const roleId of removeRoles) {
+      await removeRoleWithRetry(member, roleId);
+    }
+
+    console.log(`[enforceRolesForMember] Restored tier ${tier} roles for ${member.user.tag} (${member.id})`);
+    return; // done
+  }
+
+  // 3. No active membership → ensure they have at least Member (if no other roles)
   const hasSupporter = member.roles.cache.has(SUPPORTER_ROLE);
   const hasMember = member.roles.cache.has(MEMBER_ROLE);
   const hasUnverified = member.roles.cache.has(UNVERIFIED_ROLE);
 
   if (!hasSupporter && !hasMember && !hasUnverified) {
-    try {
-      await member.roles.add(MEMBER_ROLE);
-      console.log(`[MembershipSync] Real‑time fix: Added Member to ${member.user.tag}`);
-    } catch (err) {
-      if (err.code === 429) {
-        const retryAfter = err.retryAfter || 5;
-        console.warn(`[MembershipSync] Real‑time fix rate limited, waiting ${retryAfter}s...`);
-        await new Promise(resolve => setTimeout(resolve, retryAfter * 1000 + 500));
-        try {
-          await member.roles.add(MEMBER_ROLE);
-          console.log(`[MembershipSync] Real‑time fix: Added Member to ${member.user.tag} (after wait)`);
-        } catch (retryErr) {
-          console.error(`[MembershipSync] Real‑time fix failed for ${member.user.tag}:`, retryErr.message);
-        }
-      } else {
-        console.error(`[MembershipSync] Real‑time fix failed for ${member.user.tag}:`, err.message);
-      }
-    }
+    await addRoleWithRetry(member, MEMBER_ROLE);
+    console.log(`[enforceRolesForMember] Added Member to ${member.user.tag} (no membership)`);
   }
 }
 
