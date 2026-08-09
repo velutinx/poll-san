@@ -54,13 +54,8 @@ module.exports = async (c) => {
     console.error('❌ Failed to sync commands:', err);
   }
 
-  // ─────────────────────────────────────────────────────────────────
-  // STAGGERED STARTUP TASKS (Prevents Opcode 8 / Rate Limit Crash)
-  // ─────────────────────────────────────────────────────────────────
-
   const guild = c.guilds.cache.get(process.env.GUILD_ID);
 
-  // 1. Clean roles 5 seconds after boot
   setTimeout(() => {
     if (guild) {
       cleanRoles(guild).catch(err => console.error('Initial cleanRoles error:', err));
@@ -78,17 +73,13 @@ module.exports = async (c) => {
     syncMembershipRoles(c).catch(err => console.error('[MembershipSync] Initial error:', err));
   }, 15000);
   
-setInterval(() => {
+  setInterval(() => {
     syncMembershipRoles(c).catch(err => console.error('[MembershipSync] Sync error:', err));
-}, 12 * 60 * 60 * 1000);
-
-  setTimeout(() => {
-    enforceRolesForAllMembers(c).catch(err => console.error('[Ready] Initial role enforcement error:', err));
-  }, 120000);
+  }, 12 * 60 * 60 * 1000);
 
   setInterval(() => {
     enforceRolesForAllMembers(c).catch(err => console.error('[Ready] Periodic role enforcement error:', err));
-  }, 60 * 60 * 1000);
+  }, 24 * 60 * 60 * 1000);
 
   setInterval(() => {
     checkAndNotifyCooldowns(c).catch(err => console.error('Cooldown notifier error:', err));
@@ -150,7 +141,6 @@ setInterval(() => {
   }, 24 * 60 * 60 * 1000);
 
   initMudaeMessageHandler(c);
-
 
   XPLib.onLevelUp(async ({ userId, guildId, oldLevel, newLevel, newTotal }) => {
     const guild = c.guilds.cache.get(guildId);
