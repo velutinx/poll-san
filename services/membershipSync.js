@@ -9,8 +9,7 @@ const MEMBER_ROLE = h.ids.roles.member;
 const UNVERIFIED_ROLE = h.ids.roles.unverified;
 const SYNC_STATE_WORKER_URL = h.urls.CLOUDFLARE_D1_WORKER;
 let lastEnforcementRun = 0;
-const ENFORCEMENT_COOLDOWN = 60 * 60 * 1000;
-
+const ENFORCEMENT_COOLDOWN = 12 * 60 * 60 * 1000;
 const MESSAGES = {
   en: {
     welcome_tier1: `${h.releaseEmojis.CONFETTI} Welcome to the {tierName} tier!\nYour membership is active until **{expiryDate}**.\n\nFeel free to explore the packs on **[this channel](https://discord.com/channels/1401446104498700358/1465937644394512516)** and **[join the server](https://discord.gg/XF363uYfSh)** if you haven't.\n\nPlease message DM Velutinx if you have any questions.`,
@@ -684,7 +683,6 @@ async function enforceRolesForAllMembers(client) {
   }
 }
 
-// ─── Helper: add a role with retry on 429 ──────────────────────────
 async function addRoleWithRetry(member, roleId, maxAttempts = 3) {
   let attempts = 0;
   while (attempts < maxAttempts) {
@@ -705,7 +703,6 @@ async function addRoleWithRetry(member, roleId, maxAttempts = 3) {
   console.error(`[enforceRolesForMember] Failed to add role ${roleId} after ${maxAttempts} attempts`);
 }
 
-// ─── Helper: remove a role with retry on 429 ────────────────────────
 async function removeRoleWithRetry(member, roleId, maxAttempts = 3) {
   let attempts = 0;
   while (attempts < maxAttempts) {
@@ -726,14 +723,12 @@ async function removeRoleWithRetry(member, roleId, maxAttempts = 3) {
   console.error(`[enforceRolesForMember] Failed to remove role ${roleId} after ${maxAttempts} attempts`);
 }
 
-// ─── ENHANCED: enforce roles for a single member (real‑time) ──────
 async function enforceRolesForMember(member) {
   if (member.user.bot) return;
   if (member.roles.cache.has(CREATOR_ROLE)) return;
 
   const now = new Date().toISOString();
 
-  // 1. Check for active membership in the database
   let activeMembership = null;
   try {
     activeMembership = await db.query(
@@ -742,13 +737,12 @@ async function enforceRolesForMember(member) {
        ORDER BY tier DESC
        LIMIT 1`,
       [member.id, now],
-      true  // single row
+      true
     );
   } catch (err) {
     console.error('[enforceRolesForMember] DB query error:', err.message);
   }
 
-  // 2. If active membership exists → restore the correct tier + Supporter
   if (activeMembership) {
     const tier = activeMembership.tier;
     const tierRoleId = h.weights.tierMapping[String(tier)];
@@ -762,12 +756,10 @@ async function enforceRolesForMember(member) {
     const hasMember = member.roles.cache.has(MEMBER_ROLE);
     const hasUnverified = member.roles.cache.has(UNVERIFIED_ROLE);
 
-    // If already has correct roles, nothing to do
     if (hasTierRole && hasSupporter && !hasMember && !hasUnverified) {
       return;
     }
 
-    // Build lists of roles to add/remove
     const addRoles = [];
     const removeRoles = [];
 
@@ -776,7 +768,6 @@ async function enforceRolesForMember(member) {
     if (hasMember) removeRoles.push(MEMBER_ROLE);
     if (hasUnverified) removeRoles.push(UNVERIFIED_ROLE);
 
-    // Execute operations with retry/backoff
     for (const roleId of addRoles) {
       await addRoleWithRetry(member, roleId);
     }
@@ -785,10 +776,9 @@ async function enforceRolesForMember(member) {
     }
 
     console.log(`[enforceRolesForMember] Restored tier ${tier} roles for ${member.user.tag} (${member.id})`);
-    return; // done
+    return;
   }
 
-  // 3. No active membership → ensure they have at least Member (if no other roles)
   const hasSupporter = member.roles.cache.has(SUPPORTER_ROLE);
   const hasMember = member.roles.cache.has(MEMBER_ROLE);
   const hasUnverified = member.roles.cache.has(UNVERIFIED_ROLE);
