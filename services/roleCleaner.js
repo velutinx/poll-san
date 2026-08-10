@@ -20,7 +20,6 @@ async function cleanRoles(guild) {
                 try {
                     await member.roles.remove(rolesToRemove);
                     removedCount += rolesToRemove.size;
-                    console.log(`✅ Removed ${rolesToRemove.size} restricted role(s) from ${member.user.tag}`);
                 } catch (err) {
                     console.error(`❌ Failed to remove roles from ${member.user.tag}:`, err.message);
                 }
@@ -34,7 +33,6 @@ async function cleanRoles(guild) {
                 await new Promise(resolve => setTimeout(resolve, DELAY_MS));
             }
         }
-        console.log(`✅ Role cleanup finished. Processed ${processed} members, removed ${removedCount} restricted roles.`);
     } catch (err) {
         console.error("Error in role cleaner service:", err);
     }
