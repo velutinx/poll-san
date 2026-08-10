@@ -5,7 +5,6 @@ const BATCH_SIZE = 10;
 const BATCH_PAUSE_MS = 1000;
 async function cleanRoles(guild) {
     try {
-        console.log(`🧹 Starting role cleanup for guild: ${guild.name}`);
         const members = await guild.members.fetch();
         const TARGET_ROLES = ids.roles.restricted;
         const CREATOR_ROLE = ids.roles.creator;
