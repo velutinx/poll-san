@@ -1,5 +1,5 @@
 // services/membershipSync.js
-// Enhanced with real‑time role correction and mutex to prevent rate limits
+// Enhanced with real‑time role correction, retry logic, and safe fallback
 
 const db = require('./database');
 const h = require('../utils/helpers');
@@ -9,6 +9,32 @@ const CREATOR_ROLE = h.ids.roles.creator;
 const MEMBER_ROLE = h.ids.roles.member;
 const UNVERIFIED_ROLE = h.ids.roles.unverified;
 const SYNC_STATE_WORKER_URL = h.urls.CLOUDFLARE_D1_WORKER;
+
+// ─── Retry helper for D1 queries ──────────────────────────────────────
+async function queryWithRetry(sql, params = [], method = 'all', maxRetries = 3) {
+  let lastError;
+  let delay = 500;
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      // `db.query` already supports single vs. multiple via the third parameter
+      // We'll use the same signature: db.query(sql, params, single)
+      const single = (method === 'first');
+      const result = await db.query(sql, params, single);
+      return result;
+    } catch (err) {
+      lastError = err;
+      const msg = err.message || '';
+      if (msg.includes('timeout') || msg.includes('reset') || msg.includes('storage operation')) {
+        console.log(`⚠️ D1 ${method} error (attempt ${attempt}), retrying in ${delay}ms...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+        delay *= 2;
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw lastError;
+}
 
 // Cooldown for the full scan (safety net) – not used automatically, but kept for manual calls
 let lastEnforcementRun = 0;
@@ -43,10 +69,11 @@ function formatDate(date) {
 async function getLanguageForOrder(orderId) {
   if (!orderId) return 'en';
   try {
-    const row = await db.query(
+    const row = await queryWithRetry(
       `SELECT language FROM ${h.tables.SUCCESSS} WHERE paypal_token = ?`,
       [orderId],
-      true
+      'first',
+      2
     );
     if (!row) return 'en';
     return row.language || 'en';
@@ -58,12 +85,13 @@ async function getLanguageForOrder(orderId) {
 
 async function hasMessageBeenSent(discordId, orderId) {
   try {
-    const row = await db.query(
+    const row = await queryWithRetry(
       `SELECT welcome_sent FROM memberships
        WHERE discord_id = ? AND order_id = ?
        LIMIT 1`,
       [discordId, orderId],
-      true
+      'first',
+      2
     );
     return row?.welcome_sent === 1;
   } catch (err) {
@@ -230,10 +258,11 @@ async function sendRequestTierWebhook(client, discordId, membership) {
 
   let email = 'unknown';
   try {
-    const emailRow = await db.query(
+    const emailRow = await queryWithRetry(
       `SELECT paypal_email FROM ${h.tables.SUCCESSS} WHERE paypal_token = ?`,
       [orderId],
-      true
+      'first',
+      2
     );
     if (emailRow) email = emailRow.paypal_email;
   } catch (err) {
@@ -418,27 +447,38 @@ async function checkAndWarnDuplicateMemberships(client, activeMemberships) {
   }
 }
 
+// ─── MAIN SYNC (with retry and safe abort) ──────────────────────────
 async function syncMembershipRoles(client) {
   let changesMade = false;
 
   try {
     const now = new Date().toISOString();
 
-    const activeMemberships = await db.query(
-      `SELECT discord_id, tier, expires_at, order_id, updated_at, months,
-              recurring, plan_id, status, source, discord_tag
-       FROM memberships
-       WHERE expires_at > ?`,
-      [now]
-    );
-
-    await checkAndWarnDuplicateMemberships(client, activeMemberships);
-
-    if (!activeMemberships || activeMemberships.length === 0) {
-      await storeCurrentActiveSet(new Set());
-      await storeCurrentFullState({});
+    // 🔥 Use retry – if it fails or returns empty, abort to protect roles
+    let activeMemberships;
+    try {
+      activeMemberships = await queryWithRetry(
+        `SELECT discord_id, tier, expires_at, order_id, updated_at, months,
+                recurring, plan_id, status, source, discord_tag
+         FROM memberships
+         WHERE expires_at > ?`,
+        [now],
+        'all',
+        3 // retry up to 3 times
+      );
+    } catch (err) {
+      console.error('[MembershipSync] ❌ Failed to fetch active memberships after retries:', err.message);
+      // DO NOT proceed – return early to avoid mass role removals
       return;
     }
+
+    // 🔥 If the result is empty (or falsy), log and abort – don't remove roles
+    if (!activeMemberships || activeMemberships.length === 0) {
+      console.warn('[MembershipSync] ⚠️ No active memberships found – likely a DB timeout or genuinely none. Aborting sync to preserve roles.');
+      return;
+    }
+
+    await checkAndWarnDuplicateMemberships(client, activeMemberships);
 
     const userBestMembership = new Map();
     for (const membership of activeMemberships) {
@@ -673,27 +713,29 @@ async function removeRoleWithRetry(member, roleId, maxAttempts = 3) {
   console.error(`[enforceRolesForMember] Failed to remove role ${roleId} after ${maxAttempts} attempts`);
 }
 
-// ─── ENHANCED REAL‑TIME ROLE FIX ──────────────────────────────────────
+// ─── ENHANCED REAL‑TIME ROLE FIX (with safe DB error handling) ──────
 async function enforceRolesForMember(member) {
   if (member.user.bot) return;
   if (member.roles.cache.has(CREATOR_ROLE)) return;
 
   const now = new Date().toISOString();
 
-  // 1. Check for active membership in the database
+  // 1. Check for active membership in the database – use retry, but if it fails, do nothing
   let activeMembership = null;
   try {
-    activeMembership = await db.query(
+    activeMembership = await queryWithRetry(
       `SELECT tier FROM purchase_memberships
        WHERE discord_id = ? AND expires_at > ? AND status = 'ACTIVE'
        ORDER BY tier DESC
        LIMIT 1`,
       [member.id, now],
-      true  // single row
+      'first',
+      2 // retry once
     );
   } catch (err) {
-    console.error('[enforceRolesForMember] DB query error:', err.message);
-    // If DB fails, fall back to adding Member if roleless (original behaviour)
+    console.error(`[enforceRolesForMember] ❌ DB query failed for ${member.id}:`, err.message);
+    // 🔥 DO NOT make any role changes – return immediately
+    return;
   }
 
   // 2. If active membership exists → restore the correct tier + Supporter
@@ -732,7 +774,7 @@ async function enforceRolesForMember(member) {
       await removeRoleWithRetry(member, roleId);
     }
 
-    console.log(`[enforceRolesForMember] Restored tier ${tier} roles for ${member.user.tag} (${member.id})`);
+    console.log(`[enforceRolesForMember] ✅ Restored tier ${tier} roles for ${member.user.tag} (${member.id})`);
     return; // done
   }
 
@@ -743,7 +785,7 @@ async function enforceRolesForMember(member) {
 
   if (!hasSupporter && !hasMember && !hasUnverified) {
     await addRoleWithRetry(member, MEMBER_ROLE);
-    console.log(`[enforceRolesForMember] Added Member to ${member.user.tag} (no membership)`);
+    console.log(`[enforceRolesForMember] ➕ Added Member to ${member.user.tag} (no membership)`);
   }
 }
 
