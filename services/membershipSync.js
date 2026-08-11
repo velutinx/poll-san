@@ -16,8 +16,6 @@ async function queryWithRetry(sql, params = [], method = 'all', maxRetries = 3) 
   let delay = 500;
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
-      // `db.query` already supports single vs. multiple via the third parameter
-      // We'll use the same signature: db.query(sql, params, single)
       const single = (method === 'first');
       const result = await db.query(sql, params, single);
       return result;
@@ -86,7 +84,7 @@ async function getLanguageForOrder(orderId) {
 async function hasMessageBeenSent(discordId, orderId) {
   try {
     const row = await queryWithRetry(
-      `SELECT welcome_sent FROM memberships
+      `SELECT welcome_sent FROM ${h.tables.MEMBERSHIPS}
        WHERE discord_id = ? AND order_id = ?
        LIMIT 1`,
       [discordId, orderId],
@@ -150,7 +148,7 @@ async function sendDM(member, content, lang) {
 async function markWelcomeSent(discordId, orderId) {
   try {
     await db.query(
-      `UPDATE memberships
+      `UPDATE ${h.tables.MEMBERSHIPS}
        SET welcome_sent = 1
        WHERE discord_id = ? AND order_id = ?`,
       [discordId, orderId]
@@ -460,7 +458,7 @@ async function syncMembershipRoles(client) {
       activeMemberships = await queryWithRetry(
         `SELECT discord_id, tier, expires_at, order_id, updated_at, months,
                 recurring, plan_id, status, source, discord_tag
-         FROM memberships
+         FROM ${h.tables.MEMBERSHIPS}   -- <-- FIXED: uses the correct table name
          WHERE expires_at > ?`,
         [now],
         'all',
@@ -468,13 +466,12 @@ async function syncMembershipRoles(client) {
       );
     } catch (err) {
       console.error('[MembershipSync] ❌ Failed to fetch active memberships after retries:', err.message);
-      // DO NOT proceed – return early to avoid mass role removals
       return;
     }
 
-    // 🔥 If the result is empty (or falsy), log and abort – don't remove roles
+    // 🔥 If the result is empty, log and abort – don't remove roles
     if (!activeMemberships || activeMemberships.length === 0) {
-      console.warn('[MembershipSync] ⚠️ No active memberships found – likely a DB timeout or genuinely none. Aborting sync to preserve roles.');
+      console.warn('[MembershipSync] ⚠️ No active memberships found – aborting sync to preserve roles.');
       return;
     }
 
@@ -551,7 +548,7 @@ async function syncMembershipRoles(client) {
 
     if (toUpsert.length > 0) {
       const stmt = `
-        INSERT INTO memberships
+        INSERT INTO ${h.tables.MEMBERSHIPS}
         (discord_id, tier, order_id, updated_at, expires_at, months, recurring, plan_id, status, source, discord_tag)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(discord_id) DO UPDATE SET
@@ -588,7 +585,7 @@ async function syncMembershipRoles(client) {
     if (toDelete.length > 0) {
       const placeholders = toDelete.map(() => '?').join(',');
       await db.query(
-        `DELETE FROM memberships WHERE discord_id IN (${placeholders})`,
+        `DELETE FROM ${h.tables.MEMBERSHIPS} WHERE discord_id IN (${placeholders})`,
         toDelete
       );
       changesMade = true;
@@ -724,7 +721,7 @@ async function enforceRolesForMember(member) {
   let activeMembership = null;
   try {
     activeMembership = await queryWithRetry(
-      `SELECT tier FROM purchase_memberships
+      `SELECT tier FROM ${h.tables.MEMBERSHIPS}
        WHERE discord_id = ? AND expires_at > ? AND status = 'ACTIVE'
        ORDER BY tier DESC
        LIMIT 1`,
@@ -752,12 +749,10 @@ async function enforceRolesForMember(member) {
     const hasMember = member.roles.cache.has(MEMBER_ROLE);
     const hasUnverified = member.roles.cache.has(UNVERIFIED_ROLE);
 
-    // Already correct?
     if (hasTierRole && hasSupporter && !hasMember && !hasUnverified) {
       return;
     }
 
-    // Build lists of roles to add/remove
     const addRoles = [];
     const removeRoles = [];
 
@@ -766,7 +761,6 @@ async function enforceRolesForMember(member) {
     if (hasMember) removeRoles.push(MEMBER_ROLE);
     if (hasUnverified) removeRoles.push(UNVERIFIED_ROLE);
 
-    // Execute operations with retry/backoff
     for (const roleId of addRoles) {
       await addRoleWithRetry(member, roleId);
     }
@@ -774,8 +768,7 @@ async function enforceRolesForMember(member) {
       await removeRoleWithRetry(member, roleId);
     }
 
-    console.log(`[enforceRolesForMember] ✅ Restored tier ${tier} roles for ${member.user.tag} (${member.id})`);
-    return; // done
+    return;
   }
 
   // 3. No active membership → ensure they have at least Member (if no other roles)
@@ -785,7 +778,6 @@ async function enforceRolesForMember(member) {
 
   if (!hasSupporter && !hasMember && !hasUnverified) {
     await addRoleWithRetry(member, MEMBER_ROLE);
-    console.log(`[enforceRolesForMember] ➕ Added Member to ${member.user.tag} (no membership)`);
   }
 }
 
