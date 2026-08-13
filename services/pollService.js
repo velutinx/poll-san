@@ -33,7 +33,8 @@ async function queryWithRetry(sql, params = [], method = 'all', maxRetries = 3) 
         } catch (err) {
             lastError = err;
             const msg = err.message || '';
-            if (msg.includes('timeout') || msg.includes('reset') || msg.includes('storage operation')) {
+            if (msg.includes('timeout') || msg.includes('reset') || msg.includes('storage operation') ||
+                msg.includes('ECONNRESET') || msg.includes('fetch failed') || err.name === 'AbortError') {
                 console.log(`⚠️ D1 ${method} error (attempt ${attempt}), retrying in ${delay}ms...`);
                 await new Promise(resolve => setTimeout(resolve, delay));
                 delay *= 2;
@@ -55,6 +56,20 @@ async function invalidatePollCache() {
         } catch (err) {
             console.warn('Failed to delete poll KV cache:', err.message);
         }
+    }
+}
+
+async function isPollActive(messageId) {
+    try {
+        const row = await db.query(
+            `SELECT message_id FROM ${h.tables.POLL_AUTO_RESUME} WHERE message_id = ? AND ends_at > datetime('now')`,
+            [messageId],
+            true
+        );
+        return !!row;
+    } catch (err) {
+        console.warn(`[PollService] Failed to check poll active status for ${messageId}:`, err.message);
+        return false; // Assume inactive on error to stop the interval
     }
 }
 
@@ -281,6 +296,14 @@ function runPollInterval(pollMessage, endTime, characters) {
     forceStopPoll();
 
     activePollTimer = setInterval(async () => {
+        // ─── Check if the poll is still active before doing any work ──────
+        const active = await isPollActive(pollMessage.id);
+        if (!active) {
+            console.log(`[PollInterval] Poll ${pollMessage.id} is no longer active. Stopping interval.`);
+            forceStopPoll();
+            return;
+        }
+
         const now = Date.now();
         const isFinished = now >= endTime;
 
