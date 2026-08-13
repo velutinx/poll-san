@@ -1,9 +1,11 @@
 // services/database.js
 const h = require('../utils/helpers');
 const WORKER_URL = h.urls.CLOUDFLARE_D1_WORKER;
+
 const MAX_RETRIES = 5;
 const RETRY_DELAY_MS = 1000;
 const REQUEST_TIMEOUT_MS = 90000;
+
 async function query(sql, params = [], single = false) {
     if (!WORKER_URL || WORKER_URL === "https://your-worker-name.your-subdomain.workers.dev") {
         throw new Error("CLOUDFLARE_D1_WORKER is not configured.");
@@ -44,18 +46,34 @@ async function query(sql, params = [], single = false) {
         } catch (err) {
             lastError = err;
             clearTimeout(timeoutId);
+
             const msg = err.message || '';
-            if (msg.includes('timeout') || msg.includes('reset') || msg.includes('storage operation')) {
+
+            // ─── Detect retryable errors ──────────────────────────────────
+            const isRetryable =
+                msg.includes('timeout') ||
+                msg.includes('reset') ||
+                msg.includes('storage operation') ||
+                msg.includes('ECONNRESET') ||
+                msg.includes('fetch failed') ||
+                err.name === 'AbortError' ||
+                msg.includes('connect') ||
+                msg.includes('network');
+
+            if (isRetryable) {
                 if (attempt < MAX_RETRIES) {
                     const jitter = Math.random() * 500;
                     const wait = (delay * attempt) + jitter;
-                    console.log(`⚠️ D1 timeout (attempt ${attempt}), retrying in ${wait}ms...`);
+                    console.log(`⚠️ D1 ${msg.includes('ECONNRESET') ? 'network' : 'query'} error (attempt ${attempt}/${MAX_RETRIES}), retrying in ${wait}ms...`);
                     await new Promise(resolve => setTimeout(resolve, wait));
+                    // Exponential backoff (cap at 30s)
+                    delay = Math.min(delay * 1.5, 30000);
                     continue;
                 }
+            } else {
+                // Non‑retryable error – break and throw
+                break;
             }
-
-            break;
         } finally {
             clearTimeout(timeoutId);
         }
