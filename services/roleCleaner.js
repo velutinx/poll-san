@@ -12,7 +12,6 @@ async function cleanRoles(guild) {
     }
     isRunning = true;
     try {
-        console.log(`🧹 Starting role cleanup for guild: ${guild.name}`);
         const members = await guild.members.fetch();
         const TARGET_ROLES = ids.roles.restricted;
         const CREATOR_ROLE = ids.roles.creator;
@@ -26,7 +25,6 @@ async function cleanRoles(guild) {
                 membersToProcess.push({ member, rolesToRemove });
             }
         }
-        console.log(`[RoleCleaner] Found ${membersToProcess.length} members with restricted roles (out of ${members.size} total).`);
 
         if (membersToProcess.length === 0) {
             return;
