@@ -21,12 +21,16 @@ async function getOrCreateWebhook(channel, name) {
 }
 
 async function managePollReminders(channel, pollMessageId, endTimeISO, client) {
-  const now = Date.now();
-  const endTime = new Date(endTimeISO).getTime();
+  const now = new Date();
+  const nowUTC = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  const endTime = new Date(endTimeISO);
   const remainingHours = (endTime - now) / (1000 * 60 * 60);
 
+  // Only act if poll ends on Saturday (per your poll logic)
+  if (endTime.getUTCDay() !== 6) return;
+
   const poll = await db.query(
-    `SELECT reminder_message_id, reminder_48h_sent, initial_reminder_id
+    `SELECT reminder_48h_sent, initial_reminder_id, reminder_message_id
      FROM ${h.tables.POLL_AUTO_RESUME}
      WHERE message_id = ?`,
     [pollMessageId],
@@ -34,82 +38,97 @@ async function managePollReminders(channel, pollMessageId, endTimeISO, client) {
   );
   if (!poll) return;
 
-  const reminderMsgId = poll.reminder_message_id;
-  const reminderSent = poll.reminder_48h_sent === 1;
   const initialReminderId = poll.initial_reminder_id;
+  let reminder48hSent = poll.reminder_48h_sent === 1;
+  let reminderFridaySent = poll.reminder_friday_sent === 1;
 
-  // ---- Post last‑day reminder when 48h <= remaining <= 48h+1h ----
-  if (remainingHours <= 48 && remainingHours > 24 && !reminderSent) {
-    // Delete any stale reminder first
-    if (reminderMsgId) {
-      try {
-        const old = await channel.messages.fetch(reminderMsgId).catch(() => null);
-        if (old) await old.delete();
-      } catch (e) {}
-    }
+  // ─── Get the current day in UTC ──────────────────────────────────
+  const day = now.getUTCDay(); // 0 = Sunday, 4 = Thursday, 5 = Friday
+  const todayStr = now.toISOString().slice(0, 10);
 
-    // Delete the initial reminder (posted right after poll creation)
-    if (initialReminderId) {
-      try {
-        const initialMsg = await channel.messages.fetch(initialReminderId).catch(() => null);
-        if (initialMsg) {
-          await initialMsg.delete();
-          console.log(`[PollReminders] Deleted initial reminder ${initialReminderId} for poll ${pollMessageId}`);
-        }
-      } catch (e) {
-        console.warn(`[PollReminders] Could not delete initial reminder:`, e.message);
-      }
-    }
-
-    // ✅ FIX: Use the correct webhook and override username/avatar
-    const webhook = await getOrCreateWebhook(channel, 'Poll Reminder');
-    const roleMention = `<@&${GIVEAWAY_ROLE_ID}>`;
-    
-    // ✅ FIX: Use animated ALERT emoji with hardcoded fallback
-    const alertEmoji = h.releaseEmojis?.ALERT || '<a:alert:1493698480034676736>';
-    
-    // ✅ FIX: Use text link instead of mention for DM Velutinx
-    const dmLink = `<https://discord.com/users/${h.ids.users.Velutinx}>`;
-    const reminderContent = `${alertEmoji} **Last day for poll suggestions!** ${roleMention}\n` +
-      `Please send your character suggestions for next week's poll via DM to **[DM Velutinx](${dmLink})** before Friday.`;
-
+  // ─── Helper: send a reminder via webhook ────────────────────────
+  async function sendReminder(content, username = 'Poll Reminder') {
+    const webhook = await getOrCreateWebhook(channel, username);
     const sent = await webhook.send({
-      content: reminderContent,
+      content,
       allowedMentions: { parse: [] },
       flags: [1 << 12],
-      username: 'Poll Reminder',      // ✅ Explicitly set
-      avatarURL: h.urls.LOGO_URL      // ✅ Explicitly set
+      username,
+      avatarURL: h.urls.LOGO_URL
     });
+    return sent;
+  }
 
+  // ─── Delete a message by ID ──────────────────────────────────────
+  async function deleteMessage(messageId) {
+    if (!messageId) return;
+    try {
+      const msg = await channel.messages.fetch(messageId).catch(() => null);
+      if (msg) await msg.delete();
+    } catch (e) {
+      // ignore
+    }
+  }
+
+  const alertEmoji = h.releaseEmojis?.ALERT || '<a:alert:1493698480034676736>';
+  const dmLink = `<https://discord.com/users/${h.ids.users.Velutinx}>`;
+  const roleMention = `<@&${GIVEAWAY_ROLE_ID}>`;
+
+  // ─── THURSDAY: "Last day for poll suggestions" ──────────────────
+  if (day === 4 && !reminder48hSent && remainingHours <= 72 && remainingHours > 24) {
+    // Delete initial reminder
+    if (initialReminderId) {
+      await deleteMessage(initialReminderId);
+    }
+
+    const content = `${alertEmoji} **Last day for poll suggestions!** ${roleMention}\n` +
+      `Please send your character suggestions for next week's poll via DM to **[DM Velutinx](${dmLink})** before Friday.`;
+
+    const sent = await sendReminder(content);
     await db.query(
       `UPDATE ${h.tables.POLL_AUTO_RESUME}
-       SET reminder_message_id = ?, reminder_48h_sent = 1
+       SET reminder_48h_sent = 1, reminder_message_id = ?
        WHERE message_id = ?`,
       [sent.id, pollMessageId]
     );
-    console.log(`[PollReminders] Posted 48h reminder for poll ${pollMessageId}`);
+    console.log(`[PollReminders] Posted Thursday reminder for poll ${pollMessageId}`);
   }
-  // ---- Delete last‑day reminder when remaining <= 24h OR poll ended ----
-  else if ((remainingHours <= 24 || remainingHours <= 0) && reminderMsgId) {
-    try {
-      const msg = await channel.messages.fetch(reminderMsgId).catch(() => null);
-      if (msg) await msg.delete();
-    } catch (e) {}
+
+  // ─── FRIDAY: "Last chance – poll suggestions close tonight!" ──
+  if (day === 5 && !reminderFridaySent && remainingHours <= 48 && remainingHours > 0) {
+    // Delete the Thursday reminder (if it exists) to avoid clutter
+    if (poll.reminder_message_id) {
+      await deleteMessage(poll.reminder_message_id);
+    }
+
+    const content = `${alertEmoji} **Reminder: poll suggestions close tonight!**\n` +
+      `Last chance to DM **[DM Velutinx](${dmLink})** with your picks.`;
+
+    const sent = await sendReminder(content);
     await db.query(
       `UPDATE ${h.tables.POLL_AUTO_RESUME}
-       SET reminder_message_id = NULL, reminder_48h_sent = 0
+       SET reminder_friday_sent = 1, reminder_message_id = ?
+       WHERE message_id = ?`,
+      [sent.id, pollMessageId]
+    );
+    console.log(`[PollReminders] Posted Friday reminder for poll ${pollMessageId}`);
+  }
+
+  // ─── After poll ends, clean up ──────────────────────────────────
+  if (remainingHours <= 0) {
+    if (poll.reminder_message_id) {
+      await deleteMessage(poll.reminder_message_id);
+    }
+    if (poll.initial_reminder_id) {
+      await deleteMessage(poll.initial_reminder_id);
+    }
+    await db.query(
+      `UPDATE ${h.tables.POLL_AUTO_RESUME}
+       SET reminder_message_id = NULL, reminder_48h_sent = 0, reminder_friday_sent = 0
        WHERE message_id = ?`,
       [pollMessageId]
     );
-    console.log(`[PollReminders] Deleted last‑day reminder for poll ${pollMessageId}`);
-  }
-  // ---- If time was extended past 48h, reset the reminder flag ----
-  else if (remainingHours > 48 && reminderSent) {
-    await db.query(
-      `UPDATE ${h.tables.POLL_AUTO_RESUME} SET reminder_48h_sent = 0 WHERE message_id = ?`,
-      [pollMessageId]
-    );
-    console.log(`[PollReminders] Reset reminder flag for poll ${pollMessageId} (time extended)`);
+    console.log(`[PollReminders] Cleaned up reminders for poll ${pollMessageId}`);
   }
 }
 
@@ -119,6 +138,7 @@ async function startPollReminders(channel, pollMessageId, endTimeISO, client) {
     activeIntervals.delete(pollMessageId);
   }
 
+  // Run immediately on start
   await managePollReminders(channel, pollMessageId, endTimeISO, client);
 
   const interval = setInterval(async () => {
