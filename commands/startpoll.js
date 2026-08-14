@@ -59,8 +59,11 @@ module.exports = async (interaction) => {
         if (!wh) wh = await channel.createWebhook({ name: 'Poll Reminder', avatar: h.urls.LOGO_URL });
         return wh;
     })();
-    const speechEmoji = '💬';
+    
+    // FETCH THE ANIMATED EMOJI INSTEAD OF '💬'
+    const speechEmoji = releaseEmojis.SPEECH || '<a:speech:1506709601758744828>';
     const dmLink = `<https://discord.com/users/${h.ids.users.Velutinx}>`;
+    
     const initialReminderMsg = await initialWebhook.send({
         content: `${speechEmoji} Remember to message **[DM Velutinx](${dmLink})** with suggestions for next week's poll! All suggestions must be sent before **Friday**.`,
         username: 'Poll Reminder',
@@ -95,8 +98,9 @@ module.exports = async (interaction) => {
     await getPollResults(pollMessage, characters);
 
     // Start the dynamic reminder system (handles last‑day reminder and deletes initial one)
-    const { startPollReminders } = require('../services/pollReminders');
-    await startPollReminders(channel, pollMessage.id, endTimeISO, interaction.client);
+    // COMMENTED OUT to let the Cloudflare Worker handle the logic and prevent conflicts
+    // const { startPollReminders } = require('../services/pollReminders');
+    // await startPollReminders(channel, pollMessage.id, endTimeISO, interaction.client);
 
     await Promise.all(reactIds.map(id =>
         pollMessage.react(id).catch(e => console.error(`Reaction Error (${id}):`, e.message))
