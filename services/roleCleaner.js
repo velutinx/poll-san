@@ -1,16 +1,12 @@
 // services/roleCleaner.js
+
 const { ids } = require('../utils/helpers');
-
-// ─── Mutex to prevent concurrent runs ──────────────────────────────
 let isRunning = false;
-
-// ─── Configuration ───────────────────────────────────────────────────
-const DELAY_MS = 1000;                 // 1 second between members
-const BATCH_SIZE = 2;                  // 2 members per batch
-const BATCH_PAUSE_MS = 3000;           // 3 second pause after each batch
+const DELAY_MS = 1000;
+const BATCH_SIZE = 2;
+const BATCH_PAUSE_MS = 3000;
 const MAX_FETCH_RETRIES = 3;
 const MAX_MEMBER_RETRIES = 3;
-
 async function fetchMembersWithRetry(guild) {
     let lastError;
     let delay = 2000;
@@ -25,7 +21,6 @@ async function fetchMembersWithRetry(guild) {
                 await new Promise(resolve => setTimeout(resolve, wait));
                 continue;
             }
-            // If not rate limit, retry with delay
             if (attempt < MAX_FETCH_RETRIES) {
                 console.warn(`[RoleCleaner] Member fetch attempt ${attempt} failed: ${err.message}, retrying in ${delay}ms...`);
                 await new Promise(resolve => setTimeout(resolve, delay));
@@ -37,18 +32,13 @@ async function fetchMembersWithRetry(guild) {
     }
     throw lastError || new Error('Failed to fetch members after retries');
 }
-
 async function cleanRoles(guild) {
-    // ─── Prevent concurrent runs ────────────────────────────────────
     if (isRunning) {
         console.log('[RoleCleaner] ⏭️ Skipping – already running.');
         return;
     }
     isRunning = true;
-
     try {
-        
-        // ─── Fetch members with retry ──────────────────────────────
         let members;
         try {
             members = await fetchMembersWithRetry(guild);
@@ -56,33 +46,24 @@ async function cleanRoles(guild) {
             console.error('[RoleCleaner] ❌ Failed to fetch members after retries:', err.message);
             return;
         }
-
         const TARGET_ROLES = ids.roles.restricted;
         const CREATOR_ROLE = ids.roles.creator;
-        
-        // ─── Pre‑filter: only process members who actually have restricted roles ──
         const membersToProcess = [];
         for (const [, member] of members) {
             if (member.user.bot) continue;
             if (member.roles.cache.has(CREATOR_ROLE)) continue;
-            
             const rolesToRemove = member.roles.cache.filter(role => TARGET_ROLES.includes(role.id));
             if (rolesToRemove.size > 0) {
                 membersToProcess.push({ member, rolesToRemove });
             }
         }
-
-        console.log(`[RoleCleaner] Found ${membersToProcess.length} members with restricted roles (out of ${members.size} total).`);
-
         if (membersToProcess.length === 0) {
             return;
         }
-
         let processed = 0;
         let removedCount = 0;
         let batchCounter = 0;
         let errors = 0;
-
         for (const { member, rolesToRemove } of membersToProcess) {
             let removed = false;
             for (let attempt = 1; attempt <= MAX_MEMBER_RETRIES; attempt++) {
@@ -110,8 +91,6 @@ async function cleanRoles(guild) {
 
             processed++;
             batchCounter++;
-
-            // ─── Batch pause ──────────────────────────────────────────
             if (batchCounter >= BATCH_SIZE) {
                 await new Promise(resolve => setTimeout(resolve, BATCH_PAUSE_MS));
                 batchCounter = 0;
@@ -119,13 +98,10 @@ async function cleanRoles(guild) {
                 await new Promise(resolve => setTimeout(resolve, DELAY_MS));
             }
         }
-
-
     } catch (err) {
         console.error("[RoleCleaner] ❌ Fatal error:", err);
     } finally {
         isRunning = false;
     }
 }
-
 module.exports = { cleanRoles };
