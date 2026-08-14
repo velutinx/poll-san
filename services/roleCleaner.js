@@ -47,7 +47,6 @@ async function cleanRoles(guild) {
     isRunning = true;
 
     try {
-        console.log(`🧹 Starting role cleanup for guild: ${guild.name}`);
         
         // ─── Fetch members with retry ──────────────────────────────
         let members;
@@ -76,7 +75,6 @@ async function cleanRoles(guild) {
         console.log(`[RoleCleaner] Found ${membersToProcess.length} members with restricted roles (out of ${members.size} total).`);
 
         if (membersToProcess.length === 0) {
-            console.log('[RoleCleaner] ✅ No restricted roles found – nothing to do.');
             return;
         }
 
@@ -92,7 +90,6 @@ async function cleanRoles(guild) {
                     await member.roles.remove(rolesToRemove);
                     removedCount += rolesToRemove.size;
                     removed = true;
-                    console.log(`✅ Removed ${rolesToRemove.size} restricted role(s) from ${member.user.tag}`);
                     break;
                 } catch (err) {
                     if (err.code === 429) {
@@ -123,7 +120,6 @@ async function cleanRoles(guild) {
             }
         }
 
-        console.log(`✅ Role cleanup finished. Processed ${processed} members, removed ${removedCount} restricted roles. Errors: ${errors}`);
 
     } catch (err) {
         console.error("[RoleCleaner] ❌ Fatal error:", err);
