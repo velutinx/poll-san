@@ -1,5 +1,6 @@
 // services/membershipSync.js
 // Enhanced with real‑time role correction, retry logic, and safe fallback
+// MODIFIED: Added 4‑day grace period (cutoff = now - 4 days)
 
 const db = require('./database');
 const h = require('../utils/helpers');
@@ -450,7 +451,8 @@ async function syncMembershipRoles(client) {
   let changesMade = false;
 
   try {
-    const now = new Date().toISOString();
+    // 🔥 GRACE PERIOD: Consider members active for 4 extra days after expiry
+    const cutoff = new Date(Date.now() - 4 * 24 * 60 * 60 * 1000).toISOString();
 
     // 🔥 Use retry – if it fails or returns empty, abort to protect roles
     let activeMemberships;
@@ -458,9 +460,9 @@ async function syncMembershipRoles(client) {
       activeMemberships = await queryWithRetry(
         `SELECT discord_id, tier, expires_at, order_id, updated_at, months,
                 recurring, plan_id, status, source, discord_tag
-         FROM ${h.tables.MEMBERSHIPS}   -- <-- FIXED: uses the correct table name
+         FROM ${h.tables.MEMBERSHIPS}
          WHERE expires_at > ?`,
-        [now],
+        [cutoff],
         'all',
         3 // retry up to 3 times
       );
@@ -715,7 +717,8 @@ async function enforceRolesForMember(member) {
   if (member.user.bot) return;
   if (member.roles.cache.has(CREATOR_ROLE)) return;
 
-  const now = new Date().toISOString();
+  // 🔥 GRACE PERIOD: Consider member active for 4 extra days after expiry
+  const cutoff = new Date(Date.now() - 4 * 24 * 60 * 60 * 1000).toISOString();
 
   // 1. Check for active membership in the database – use retry, but if it fails, do nothing
   let activeMembership = null;
@@ -725,7 +728,7 @@ async function enforceRolesForMember(member) {
        WHERE discord_id = ? AND expires_at > ? AND status = 'ACTIVE'
        ORDER BY tier DESC
        LIMIT 1`,
-      [member.id, now],
+      [member.id, cutoff],
       'first',
       2 // retry once
     );
