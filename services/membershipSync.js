@@ -1,7 +1,6 @@
 // services/membershipSync.js
-// Enhanced with real‑time role correction, retry logic, and safe fallback
-// MODIFIED: Added 4‑day grace period (cutoff = now - 4 days)
 
+const { ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const db = require('./database');
 const h = require('../utils/helpers');
 const TIER_ROLES = h.weights.tierMapping;
@@ -10,8 +9,9 @@ const CREATOR_ROLE = h.ids.roles.creator;
 const MEMBER_ROLE = h.ids.roles.member;
 const UNVERIFIED_ROLE = h.ids.roles.unverified;
 const SYNC_STATE_WORKER_URL = h.urls.CLOUDFLARE_D1_WORKER;
+const ADMIN_CHANNEL_ID = h.ids.channels.admin_channel;
+const MESSAGING_TABLE = h.tables.PURCHASE_MESSAGING || 'purchase_messaging';
 
-// ─── Retry helper for D1 queries ──────────────────────────────────────
 async function queryWithRetry(sql, params = [], method = 'all', maxRetries = 3) {
   let lastError;
   let delay = 500;
@@ -35,11 +35,9 @@ async function queryWithRetry(sql, params = [], method = 'all', maxRetries = 3) 
   throw lastError;
 }
 
-// Cooldown for the full scan (safety net) – not used automatically, but kept for manual calls
 let lastEnforcementRun = 0;
 const ENFORCEMENT_COOLDOWN = 12 * 60 * 60 * 1000; // 12 hours
 
-// Mutex to prevent concurrent full scans
 let isEnforcing = false;
 
 const MESSAGES = {
@@ -446,15 +444,124 @@ async function checkAndWarnDuplicateMemberships(client, activeMemberships) {
   }
 }
 
-// ─── MAIN SYNC (with retry and safe abort) ──────────────────────────
+async function shouldNotifyAdmin(discordId, tier) {
+  if (tier < 2) return false;
+
+  const row = await db.query(
+    `SELECT action, last_notified_at FROM ${MESSAGING_TABLE}
+     WHERE discord_id = ? AND tier = ?`,
+    [discordId, tier],
+    true
+  );
+
+  if (!row) return true;
+
+  if (row.action === 'ignored') return false;
+
+  const last = new Date(row.last_notified_at);
+  const now = new Date();
+  const daysSince = (now - last) / (1000 * 60 * 60 * 24);
+  return daysSince > 24; // cooldown ~1 month
+}
+
+async function recordMessagingAction(discordId, tier, action) {
+  await db.query(
+    `INSERT OR REPLACE INTO ${MESSAGING_TABLE}
+     (discord_id, tier, action, last_notified_at)
+     VALUES (?, ?, ?, CURRENT_TIMESTAMP)`,
+    [discordId, tier, action]
+  );
+}
+
+async function notifyAdminWithButtons(client, discordId, tier, membership) {
+  const adminChannel = await client.channels.fetch(ADMIN_CHANNEL_ID);
+  const webhook = await getWebsiteWebhook(adminChannel);
+
+  const user = await client.users.fetch(discordId).catch(() => null);
+  const userTag = user ? user.tag : discordId;
+
+  const embed = {
+    color: 0x00aaff,
+    title: '📨 Membership DM Approval Needed',
+    description: `**User:** ${userTag} (${discordId})\n**Tier:** ${h.weights.tierNames[tier] || tier}\n**Expires:** ${new Date(membership.expires_at).toLocaleDateString()}`,
+    fields: [
+      { name: 'Source', value: membership.source || 'unknown', inline: true },
+      { name: 'Order ID', value: membership.order_id || 'N/A', inline: true }
+    ],
+    timestamp: new Date().toISOString()
+  };
+
+  const row = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`membership_message_${discordId}_${tier}`)
+      .setLabel('💬 Message')
+      .setStyle(ButtonStyle.Success),
+    new ButtonBuilder()
+      .setCustomId(`membership_ignore_${discordId}_${tier}`)
+      .setLabel('🚫 Ignore')
+      .setStyle(ButtonStyle.Danger)
+  );
+
+  await webhook.send({
+    embeds: [embed],
+    components: [row],
+    username: 'Membership Manager',
+    avatarURL: h.urls.LOGO_URL
+  });
+}
+
+async function processMembershipMessaging(client, userBestMembership) {
+  const processed = new Set();
+
+  for (const [discordId, membership] of userBestMembership.entries()) {
+    if (processed.has(discordId)) continue;
+    const tier = membership.tier;
+
+    if (!(await shouldNotifyAdmin(discordId, tier))) continue;
+
+    await notifyAdminWithButtons(client, discordId, tier, membership);
+    processed.add(discordId);
+  }
+}
+
+async function handleMessageButton(interaction, discordId, tier) {
+  await interaction.deferUpdate();
+  const client = interaction.client;
+
+  const membership = await db.query(
+    `SELECT * FROM ${h.tables.MEMBERSHIPS}
+     WHERE discord_id = ? AND tier = ? ORDER BY expires_at DESC LIMIT 1`,
+    [discordId, tier],
+    true
+  );
+  if (!membership) {
+    return interaction.followUp({ content: 'Membership not found.', ephemeral: true });
+  }
+
+  await sendMembershipMessage(client, discordId, membership);
+  await recordMessagingAction(discordId, tier, 'messaged');
+
+  await interaction.editReply({
+    content: `✅ DM sent to <@${discordId}> and recorded as "messaged".`,
+    components: []
+  });
+}
+
+async function handleIgnoreButton(interaction, discordId, tier) {
+  await interaction.deferUpdate();
+  await recordMessagingAction(discordId, tier, 'ignored');
+  await interaction.editReply({
+    content: `🚫 Ignored <@${discordId}> for tier ${tier}. No future notifications for this tier.`,
+    components: []
+  });
+}
+
 async function syncMembershipRoles(client) {
   let changesMade = false;
 
   try {
-    // 🔥 GRACE PERIOD: Consider members active for 4 extra days after expiry
-    const cutoff = new Date(Date.now() - 4 * 24 * 60 * 60 * 1000).toISOString();
+    const now = new Date().toISOString();
 
-    // 🔥 Use retry – if it fails or returns empty, abort to protect roles
     let activeMemberships;
     try {
       activeMemberships = await queryWithRetry(
@@ -462,16 +569,15 @@ async function syncMembershipRoles(client) {
                 recurring, plan_id, status, source, discord_tag
          FROM ${h.tables.MEMBERSHIPS}
          WHERE expires_at > ?`,
-        [cutoff],
+        [now],
         'all',
-        3 // retry up to 3 times
+        3
       );
     } catch (err) {
       console.error('[MembershipSync] ❌ Failed to fetch active memberships after retries:', err.message);
       return;
     }
 
-    // 🔥 If the result is empty, log and abort – don't remove roles
     if (!activeMemberships || activeMemberships.length === 0) {
       console.warn('[MembershipSync] ⚠️ No active memberships found – aborting sync to preserve roles.');
       return;
@@ -510,6 +616,8 @@ async function syncMembershipRoles(client) {
       }
     }
 
+    await processMembershipMessaging(client, userBestMembership);
+
     const newIds = [...currentActiveIds].filter(id => !previousActiveIds.has(id));
 
     const guild = await client.guilds.fetch(process.env.GUILD_ID);
@@ -523,30 +631,6 @@ async function syncMembershipRoles(client) {
       }
     }
 
-    for (const discordId of newIds) {
-      try {
-        const member = await guild.members.fetch(discordId).catch(() => null);
-        const tier = userBestMembership.get(discordId).tier;
-        const tag = member ? member.user.tag : 'Unknown';
-        console.log(`[MembershipSync] NEW ACTIVE MEMBER: ${tag} (${discordId}) - Tier ${tier}`);
-      } catch (err) {}
-    }
-
-    for (const discordId of newIds) {
-      const membership = userBestMembership.get(discordId);
-      if (!membership) continue;
-      try {
-        const member = await guild.members.fetch(discordId).catch(() => null);
-        if (member && member.roles.cache.has(CREATOR_ROLE)) {
-          console.log(`[MembershipSync] Skipping DM for Creator ${member.user.tag} (${discordId})`);
-          continue;
-        }
-      } catch (err) {
-        console.warn(`[MembershipSync] Could not check Creator role for ${discordId}, proceeding anyway`);
-      }
-      await sendMembershipMessage(client, discordId, membership);
-      await new Promise(res => setTimeout(res, 500));
-    }
 
     if (toUpsert.length > 0) {
       const stmt = `
@@ -670,7 +754,6 @@ async function syncMembershipRoles(client) {
   }
 }
 
-// ─── Helper: add a role with retry on 429 ──────────────────────────
 async function addRoleWithRetry(member, roleId, maxAttempts = 3) {
   let attempts = 0;
   while (attempts < maxAttempts) {
@@ -691,7 +774,6 @@ async function addRoleWithRetry(member, roleId, maxAttempts = 3) {
   console.error(`[enforceRolesForMember] Failed to add role ${roleId} after ${maxAttempts} attempts`);
 }
 
-// ─── Helper: remove a role with retry on 429 ────────────────────────
 async function removeRoleWithRetry(member, roleId, maxAttempts = 3) {
   let attempts = 0;
   while (attempts < maxAttempts) {
@@ -712,15 +794,12 @@ async function removeRoleWithRetry(member, roleId, maxAttempts = 3) {
   console.error(`[enforceRolesForMember] Failed to remove role ${roleId} after ${maxAttempts} attempts`);
 }
 
-// ─── ENHANCED REAL‑TIME ROLE FIX (with safe DB error handling) ──────
 async function enforceRolesForMember(member) {
   if (member.user.bot) return;
   if (member.roles.cache.has(CREATOR_ROLE)) return;
 
-  // 🔥 GRACE PERIOD: Consider member active for 4 extra days after expiry
-  const cutoff = new Date(Date.now() - 4 * 24 * 60 * 60 * 1000).toISOString();
+  const now = new Date().toISOString();
 
-  // 1. Check for active membership in the database – use retry, but if it fails, do nothing
   let activeMembership = null;
   try {
     activeMembership = await queryWithRetry(
@@ -728,17 +807,15 @@ async function enforceRolesForMember(member) {
        WHERE discord_id = ? AND expires_at > ? AND status = 'ACTIVE'
        ORDER BY tier DESC
        LIMIT 1`,
-      [member.id, cutoff],
+      [member.id, now],
       'first',
-      2 // retry once
+      2
     );
   } catch (err) {
     console.error(`[enforceRolesForMember] ❌ DB query failed for ${member.id}:`, err.message);
-    // 🔥 DO NOT make any role changes – return immediately
     return;
   }
 
-  // 2. If active membership exists → restore the correct tier + Supporter
   if (activeMembership) {
     const tier = activeMembership.tier;
     const tierRoleId = h.weights.tierMapping[String(tier)];
@@ -774,7 +851,6 @@ async function enforceRolesForMember(member) {
     return;
   }
 
-  // 3. No active membership → ensure they have at least Member (if no other roles)
   const hasSupporter = member.roles.cache.has(SUPPORTER_ROLE);
   const hasMember = member.roles.cache.has(MEMBER_ROLE);
   const hasUnverified = member.roles.cache.has(UNVERIFIED_ROLE);
@@ -784,7 +860,6 @@ async function enforceRolesForMember(member) {
   }
 }
 
-// ─── FULL SCAN (SAFETY NET) – rarely needed, now with mutex ──────
 async function enforceRolesForAllMembers(client) {
   if (isEnforcing) {
     console.log('[MembershipSync] Full enforcement already running, skipping.');
@@ -854,5 +929,7 @@ async function enforceRolesForAllMembers(client) {
 module.exports = {
   syncMembershipRoles,
   enforceRolesForAllMembers,
-  enforceRolesForMember
+  enforceRolesForMember,
+  handleMessageButton,
+  handleIgnoreButton
 };
