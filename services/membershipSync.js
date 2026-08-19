@@ -447,7 +447,28 @@ async function checkAndWarnDuplicateMemberships(client, activeMemberships) {
   }
 }
 
-// ─── NEW: Messaging approval helpers ──────────────────────────────────
+// ─── Helper: get member display name and tag ──────────────────────
+async function getMemberInfo(client, discordId) {
+  let displayName = discordId;
+  let userTag = discordId;
+  try {
+    const guild = await client.guilds.fetch(process.env.GUILD_ID);
+    const member = await guild.members.fetch(discordId);
+    if (member) {
+      displayName = member.displayName; // nickname or username
+      userTag = member.user.tag;
+    }
+  } catch (_) {
+    const user = await client.users.fetch(discordId).catch(() => null);
+    if (user) {
+      displayName = user.username;
+      userTag = user.tag;
+    }
+  }
+  return { displayName, userTag };
+}
+
+// ─── Messaging approval helpers ──────────────────────────────────
 async function shouldNotifyAdmin(discordId, tier) {
   if (tier < 2) return false; // bronze never triggers
 
@@ -468,12 +489,12 @@ async function shouldNotifyAdmin(discordId, tier) {
   return daysSince > 24; // cooldown ~1 month
 }
 
-async function recordMessagingAction(discordId, discordTag, tier, action, source = null, orderId = null) {
+async function recordMessagingAction(discordId, discordTag, discordName, tier, action, source = null, orderId = null) {
   await db.query(
     `INSERT OR REPLACE INTO ${MESSAGING_TABLE}
-     (discord_id, discord_tag, tier, action, last_notified_at, source, order_id)
-     VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, ?, ?)`,
-    [discordId, discordTag, tier, action, source, orderId]
+     (discord_id, discord_tag, discord_name, tier, action, last_notified_at, source, order_id)
+     VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?, ?)`,
+    [discordId, discordTag, discordName, tier, action, source, orderId]
   );
 }
 
@@ -481,8 +502,7 @@ async function notifyAdminWithButtons(client, discordId, tier, membership) {
   const adminChannel = await client.channels.fetch(ADMIN_CHANNEL_ID);
   const webhook = await getWebsiteWebhook(adminChannel);
 
-  const user = await client.users.fetch(discordId).catch(() => null);
-  const userTag = user ? user.tag : discordId;
+  const { displayName, userTag } = await getMemberInfo(client, discordId);
 
   const tierNames = { 1: 'Bronze', 2: 'Copper', 3: 'Silver', 4: 'Gold', 5: 'Platinum' };
   const tierName = tierNames[tier] || `Tier ${tier}`;
@@ -490,7 +510,7 @@ async function notifyAdminWithButtons(client, discordId, tier, membership) {
   const embed = {
     color: 0x00aaff,
     title: '📨 Membership DM Approval Needed',
-    description: `**User:** ${userTag} (${discordId})\n**Tier:** ${tierName}\n**Expires:** ${new Date(membership.expires_at).toLocaleDateString()}`,
+    description: `**User:** ${displayName} (${discordId})\n**Tier:** ${tierName}\n**Expires:** ${new Date(membership.expires_at).toLocaleDateString()}`,
     fields: [
       { name: 'Source', value: membership.source || 'unknown', inline: true },
       { name: 'Order ID', value: membership.order_id || 'N/A', inline: true }
@@ -547,18 +567,13 @@ async function handleMessageButton(interaction, discordId, tier) {
     return interaction.followUp({ content: 'Membership not found.', ephemeral: true });
   }
 
-  // Get discord tag
-  let discordTag = null;
-  try {
-    const user = await client.users.fetch(discordId);
-    discordTag = user.tag;
-  } catch (_) {}
+  const { displayName, userTag } = await getMemberInfo(client, discordId);
 
   await sendMembershipMessage(client, discordId, membership);
-  await recordMessagingAction(discordId, discordTag, tier, 'messaged', membership.source, membership.order_id);
+  await recordMessagingAction(discordId, userTag, displayName, tier, 'messaged', membership.source, membership.order_id);
 
   await interaction.editReply({
-    content: `✅ DM sent to <@${discordId}> and recorded as "messaged".`,
+    content: `✅ DM sent to @${displayName} and recorded as "messaged".`,
     components: []
   });
 }
@@ -567,14 +582,8 @@ async function handleIgnoreButton(interaction, discordId, tier) {
   await interaction.deferUpdate();
   const client = interaction.client;
 
-  // Get discord tag
-  let discordTag = null;
-  try {
-    const user = await client.users.fetch(discordId);
-    discordTag = user.tag;
-  } catch (_) {}
+  const { displayName, userTag } = await getMemberInfo(client, discordId);
 
-  // Get membership to store source/order_id
   const membership = await db.query(
     `SELECT source, order_id FROM ${h.tables.MEMBERSHIPS}
      WHERE discord_id = ? AND tier = ? ORDER BY expires_at DESC LIMIT 1`,
@@ -584,7 +593,8 @@ async function handleIgnoreButton(interaction, discordId, tier) {
 
   await recordMessagingAction(
     discordId,
-    discordTag,
+    userTag,
+    displayName,
     tier,
     'ignored',
     membership?.source || null,
@@ -594,7 +604,7 @@ async function handleIgnoreButton(interaction, discordId, tier) {
   const tierNames = { 1: 'Bronze', 2: 'Copper', 3: 'Silver', 4: 'Gold', 5: 'Platinum' };
   const tierName = tierNames[tier] || `Tier ${tier}`;
   await interaction.editReply({
-    content: `🚫 Ignored <@${discordId}> for tier ${tierName}. No future notifications for this tier.`,
+    content: `🚫 Ignored @${displayName} for tier ${tierName}. No future notifications for this tier.`,
     components: []
   });
 }
@@ -661,7 +671,7 @@ async function syncMembershipRoles(client) {
       }
     }
 
-    // ─── NEW: Process messaging approval for all active members ──────
+    // ─── Process messaging approval for all active members ──────
     await processMembershipMessaging(client, userBestMembership);
 
     // ─── Continue with role sync and DB updates ──────────────────────
@@ -909,7 +919,6 @@ async function enforceRolesForMember(member) {
   }
 }
 
-// ─── FULL SCAN (SAFETY NET) – rarely needed, now with mutex ──────
 async function enforceRolesForAllMembers(client) {
   if (isEnforcing) {
     console.log('[MembershipSync] Full enforcement already running, skipping.');
