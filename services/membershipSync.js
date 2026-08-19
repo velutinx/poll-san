@@ -12,6 +12,7 @@ const SYNC_STATE_WORKER_URL = h.urls.CLOUDFLARE_D1_WORKER;
 const ADMIN_CHANNEL_ID = h.ids.channels.admin_channel;
 const MESSAGING_TABLE = h.tables.PURCHASE_MESSAGING || 'purchase_messaging';
 
+// ─── Retry helper for D1 queries ──────────────────────────────────────
 async function queryWithRetry(sql, params = [], method = 'all', maxRetries = 3) {
   let lastError;
   let delay = 500;
@@ -35,9 +36,11 @@ async function queryWithRetry(sql, params = [], method = 'all', maxRetries = 3) 
   throw lastError;
 }
 
+// Cooldown for the full scan (safety net) – not used automatically, but kept for manual calls
 let lastEnforcementRun = 0;
 const ENFORCEMENT_COOLDOWN = 12 * 60 * 60 * 1000; // 12 hours
 
+// Mutex to prevent concurrent full scans
 let isEnforcing = false;
 
 const MESSAGES = {
@@ -444,8 +447,9 @@ async function checkAndWarnDuplicateMemberships(client, activeMemberships) {
   }
 }
 
+// ─── NEW: Messaging approval helpers ──────────────────────────────────
 async function shouldNotifyAdmin(discordId, tier) {
-  if (tier < 2) return false;
+  if (tier < 2) return false; // bronze never triggers
 
   const row = await db.query(
     `SELECT action, last_notified_at FROM ${MESSAGING_TABLE}
@@ -464,12 +468,12 @@ async function shouldNotifyAdmin(discordId, tier) {
   return daysSince > 24; // cooldown ~1 month
 }
 
-async function recordMessagingAction(discordId, tier, action) {
+async function recordMessagingAction(discordId, discordTag, tier, action, source = null, orderId = null) {
   await db.query(
     `INSERT OR REPLACE INTO ${MESSAGING_TABLE}
-     (discord_id, tier, action, last_notified_at)
-     VALUES (?, ?, ?, CURRENT_TIMESTAMP)`,
-    [discordId, tier, action]
+     (discord_id, discord_tag, tier, action, last_notified_at, source, order_id)
+     VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, ?, ?)`,
+    [discordId, discordTag, tier, action, source, orderId]
   );
 }
 
@@ -480,10 +484,13 @@ async function notifyAdminWithButtons(client, discordId, tier, membership) {
   const user = await client.users.fetch(discordId).catch(() => null);
   const userTag = user ? user.tag : discordId;
 
+  const tierNames = { 1: 'Bronze', 2: 'Copper', 3: 'Silver', 4: 'Gold', 5: 'Platinum' };
+  const tierName = tierNames[tier] || `Tier ${tier}`;
+
   const embed = {
     color: 0x00aaff,
     title: '📨 Membership DM Approval Needed',
-    description: `**User:** ${userTag} (${discordId})\n**Tier:** ${h.weights.tierNames[tier] || tier}\n**Expires:** ${new Date(membership.expires_at).toLocaleDateString()}`,
+    description: `**User:** ${userTag} (${discordId})\n**Tier:** ${tierName}\n**Expires:** ${new Date(membership.expires_at).toLocaleDateString()}`,
     fields: [
       { name: 'Source', value: membership.source || 'unknown', inline: true },
       { name: 'Order ID', value: membership.order_id || 'N/A', inline: true }
@@ -510,6 +517,7 @@ async function notifyAdminWithButtons(client, discordId, tier, membership) {
   });
 }
 
+// ─── Process all active memberships for messaging ───────────────────
 async function processMembershipMessaging(client, userBestMembership) {
   const processed = new Set();
 
@@ -524,6 +532,7 @@ async function processMembershipMessaging(client, userBestMembership) {
   }
 }
 
+// ─── Handlers for button interactions (exported) ──────────────────
 async function handleMessageButton(interaction, discordId, tier) {
   await interaction.deferUpdate();
   const client = interaction.client;
@@ -538,8 +547,15 @@ async function handleMessageButton(interaction, discordId, tier) {
     return interaction.followUp({ content: 'Membership not found.', ephemeral: true });
   }
 
+  // Get discord tag
+  let discordTag = null;
+  try {
+    const user = await client.users.fetch(discordId);
+    discordTag = user.tag;
+  } catch (_) {}
+
   await sendMembershipMessage(client, discordId, membership);
-  await recordMessagingAction(discordId, tier, 'messaged');
+  await recordMessagingAction(discordId, discordTag, tier, 'messaged', membership.source, membership.order_id);
 
   await interaction.editReply({
     content: `✅ DM sent to <@${discordId}> and recorded as "messaged".`,
@@ -549,19 +565,48 @@ async function handleMessageButton(interaction, discordId, tier) {
 
 async function handleIgnoreButton(interaction, discordId, tier) {
   await interaction.deferUpdate();
-  await recordMessagingAction(discordId, tier, 'ignored');
+  const client = interaction.client;
+
+  // Get discord tag
+  let discordTag = null;
+  try {
+    const user = await client.users.fetch(discordId);
+    discordTag = user.tag;
+  } catch (_) {}
+
+  // Get membership to store source/order_id
+  const membership = await db.query(
+    `SELECT source, order_id FROM ${h.tables.MEMBERSHIPS}
+     WHERE discord_id = ? AND tier = ? ORDER BY expires_at DESC LIMIT 1`,
+    [discordId, tier],
+    true
+  );
+
+  await recordMessagingAction(
+    discordId,
+    discordTag,
+    tier,
+    'ignored',
+    membership?.source || null,
+    membership?.order_id || null
+  );
+
+  const tierNames = { 1: 'Bronze', 2: 'Copper', 3: 'Silver', 4: 'Gold', 5: 'Platinum' };
+  const tierName = tierNames[tier] || `Tier ${tier}`;
   await interaction.editReply({
-    content: `🚫 Ignored <@${discordId}> for tier ${tier}. No future notifications for this tier.`,
+    content: `🚫 Ignored <@${discordId}> for tier ${tierName}. No future notifications for this tier.`,
     components: []
   });
 }
 
+// ─── MAIN SYNC (with retry and safe abort) ──────────────────────────
 async function syncMembershipRoles(client) {
   let changesMade = false;
 
   try {
     const now = new Date().toISOString();
 
+    // 🔥 Use retry – if it fails or returns empty, abort to protect roles
     let activeMemberships;
     try {
       activeMemberships = await queryWithRetry(
@@ -616,8 +661,10 @@ async function syncMembershipRoles(client) {
       }
     }
 
+    // ─── NEW: Process messaging approval for all active members ──────
     await processMembershipMessaging(client, userBestMembership);
 
+    // ─── Continue with role sync and DB updates ──────────────────────
     const newIds = [...currentActiveIds].filter(id => !previousActiveIds.has(id));
 
     const guild = await client.guilds.fetch(process.env.GUILD_ID);
@@ -630,7 +677,6 @@ async function syncMembershipRoles(client) {
         tagMap.set(discordId, null);
       }
     }
-
 
     if (toUpsert.length > 0) {
       const stmt = `
@@ -754,6 +800,7 @@ async function syncMembershipRoles(client) {
   }
 }
 
+// ─── Helper: add a role with retry on 429 ──────────────────────────
 async function addRoleWithRetry(member, roleId, maxAttempts = 3) {
   let attempts = 0;
   while (attempts < maxAttempts) {
@@ -774,6 +821,7 @@ async function addRoleWithRetry(member, roleId, maxAttempts = 3) {
   console.error(`[enforceRolesForMember] Failed to add role ${roleId} after ${maxAttempts} attempts`);
 }
 
+// ─── Helper: remove a role with retry on 429 ────────────────────────
 async function removeRoleWithRetry(member, roleId, maxAttempts = 3) {
   let attempts = 0;
   while (attempts < maxAttempts) {
@@ -794,6 +842,7 @@ async function removeRoleWithRetry(member, roleId, maxAttempts = 3) {
   console.error(`[enforceRolesForMember] Failed to remove role ${roleId} after ${maxAttempts} attempts`);
 }
 
+// ─── ENHANCED REAL‑TIME ROLE FIX (with safe DB error handling) ──────
 async function enforceRolesForMember(member) {
   if (member.user.bot) return;
   if (member.roles.cache.has(CREATOR_ROLE)) return;
@@ -860,6 +909,7 @@ async function enforceRolesForMember(member) {
   }
 }
 
+// ─── FULL SCAN (SAFETY NET) – rarely needed, now with mutex ──────
 async function enforceRolesForAllMembers(client) {
   if (isEnforcing) {
     console.log('[MembershipSync] Full enforcement already running, skipping.');
