@@ -36,7 +36,6 @@ module.exports = async function handleInteraction(interaction) {
             require('../commands/level')(interaction);
         }
         else if (interaction.isButton()) {
-            // ─── NEW: Membership message/ignore buttons ───────────────────
             if (interaction.customId.startsWith('membership_message_')) {
                 const parts = interaction.customId.split('_');
                 const discordId = parts[2];      // third part
@@ -53,13 +52,11 @@ module.exports = async function handleInteraction(interaction) {
                 return;
             }
 
-            // ─── Existing giveaway button ──────────────────────────────────
             if (interaction.customId === 'enter_giveaway') {
                 await giveawayCommand.handleGiveawayButton(interaction);
                 return;
             }
 
-            // ─── All other buttons (exact matches) ──────────────────────
             switch (interaction.customId) {
                 case 'shop_buy_confirm': await handleShopPurchase(interaction); break;
                 case 'slots_bet_1': await handleSlotsBet(interaction, 1); break;
@@ -76,7 +73,6 @@ module.exports = async function handleInteraction(interaction) {
                 case 'redeem_suggest_character': await handleRedeemSuggestCharacter(interaction); break;
                 case 'redeem_cancel': await handleRedeemCancel(interaction); break;
                 default: {
-                    // ─── Redeem series buttons (dynamic) ────────────────
                     if (interaction.customId.startsWith('redeem_series_')) {
                         const index = parseInt(interaction.customId.split('_')[2]);
                         await handleRedeemSeries(interaction, index);
