@@ -469,6 +469,9 @@ async function getMemberInfo(client, discordId) {
 }
 
 // ─── Messaging approval helpers ──────────────────────────────────
+
+const TIER_NAMES = { 1: 'Bronze', 2: 'Copper', 3: 'Silver', 4: 'Gold', 5: 'Platinum' };
+
 async function shouldNotifyAdmin(discordId, tier) {
   if (tier < 2) return false; // bronze never triggers
 
@@ -489,12 +492,12 @@ async function shouldNotifyAdmin(discordId, tier) {
   return daysSince > 24; // cooldown ~1 month
 }
 
-async function recordMessagingAction(discordId, discordTag, discordName, tier, action, source = null, orderId = null) {
+async function recordMessagingAction(discordId, discordTag, discordName, tier, tierName, action, source = null, orderId = null) {
   await db.query(
     `INSERT OR REPLACE INTO ${MESSAGING_TABLE}
-     (discord_id, discord_tag, discord_name, tier, action, last_notified_at, source, order_id)
-     VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?, ?)`,
-    [discordId, discordTag, discordName, tier, action, source, orderId]
+     (discord_id, discord_tag, discord_name, tier, tier_name, action, last_notified_at, source, order_id)
+     VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?, ?)`,
+    [discordId, discordTag, discordName, tier, tierName, action, source, orderId]
   );
 }
 
@@ -504,8 +507,7 @@ async function notifyAdminWithButtons(client, discordId, tier, membership) {
 
   const { displayName, userTag } = await getMemberInfo(client, discordId);
 
-  const tierNames = { 1: 'Bronze', 2: 'Copper', 3: 'Silver', 4: 'Gold', 5: 'Platinum' };
-  const tierName = tierNames[tier] || `Tier ${tier}`;
+  const tierName = TIER_NAMES[tier] || `Tier ${tier}`;
 
   const embed = {
     color: 0x00aaff,
@@ -568,9 +570,10 @@ async function handleMessageButton(interaction, discordId, tier) {
   }
 
   const { displayName, userTag } = await getMemberInfo(client, discordId);
+  const tierName = TIER_NAMES[tier] || `Tier ${tier}`;
 
   await sendMembershipMessage(client, discordId, membership);
-  await recordMessagingAction(discordId, userTag, displayName, tier, 'messaged', membership.source, membership.order_id);
+  await recordMessagingAction(discordId, userTag, displayName, tier, tierName, 'messaged', membership.source, membership.order_id);
 
   await interaction.editReply({
     content: `✅ DM sent to @${displayName} and recorded as "messaged".`,
@@ -583,6 +586,7 @@ async function handleIgnoreButton(interaction, discordId, tier) {
   const client = interaction.client;
 
   const { displayName, userTag } = await getMemberInfo(client, discordId);
+  const tierName = TIER_NAMES[tier] || `Tier ${tier}`;
 
   const membership = await db.query(
     `SELECT source, order_id FROM ${h.tables.MEMBERSHIPS}
@@ -596,13 +600,12 @@ async function handleIgnoreButton(interaction, discordId, tier) {
     userTag,
     displayName,
     tier,
+    tierName,
     'ignored',
     membership?.source || null,
     membership?.order_id || null
   );
 
-  const tierNames = { 1: 'Bronze', 2: 'Copper', 3: 'Silver', 4: 'Gold', 5: 'Platinum' };
-  const tierName = tierNames[tier] || `Tier ${tier}`;
   await interaction.editReply({
     content: `🚫 Ignored @${displayName} for tier ${tierName}. No future notifications for this tier.`,
     components: []
@@ -919,6 +922,7 @@ async function enforceRolesForMember(member) {
   }
 }
 
+// ─── FULL SCAN (SAFETY NET) – rarely needed, now with mutex ──────
 async function enforceRolesForAllMembers(client) {
   if (isEnforcing) {
     console.log('[MembershipSync] Full enforcement already running, skipping.');
