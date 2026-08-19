@@ -476,7 +476,7 @@ async function shouldNotifyAdmin(discordId, tier) {
   if (tier < 2) return false; // bronze never triggers
 
   const row = await db.query(
-    `SELECT action, last_notified_at FROM ${MESSAGING_TABLE}
+    `SELECT action FROM ${MESSAGING_TABLE}
      WHERE discord_id = ? AND tier = ?`,
     [discordId, tier],
     true
@@ -484,12 +484,10 @@ async function shouldNotifyAdmin(discordId, tier) {
 
   if (!row) return true;
 
-  if (row.action === 'ignored') return false;
+  // Once messaged or ignored, never ask again for this tier
+  if (row.action === 'ignored' || row.action === 'messaged') return false;
 
-  const last = new Date(row.last_notified_at);
-  const now = new Date();
-  const daysSince = (now - last) / (1000 * 60 * 60 * 24);
-  return daysSince > 24; // cooldown ~1 month
+  return true;
 }
 
 async function recordMessagingAction(discordId, discordTag, discordName, tier, tierName, action, source = null, orderId = null) {
