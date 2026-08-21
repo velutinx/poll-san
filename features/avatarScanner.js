@@ -368,101 +368,127 @@ async function processMember(client, member, threshold = NUDITY_THRESHOLD, skipC
     }
 }
 async function scanAllMembersWithFreeAPI(client) {
-    const guild = client.guilds.cache.first();
-    if (!guild) return;
-    const fetchMembers = async () => {
-        let attempts = 0;
-        while (attempts < 3) {
-            try {
-                return await guild.members.fetch();
-            } catch (err) {
-                if (err.name === 'GatewayRateLimitError' && err.data?.retry_after) {
-                    const waitMs = (err.data.retry_after + 0.5) * 1000;
-                    await new Promise(resolve => setTimeout(resolve, waitMs));
-                    attempts++;
-                } else {
-                    throw err;
-                }
-            }
-        }
-        throw new Error('Failed to fetch members after 3 retries');
-    };
-    let members;
-    try {
-        members = await fetchMembers();
-    } catch (err) {
-        console.error('[MassScan] Could not fetch members, aborting scan:', err.message);
-        throw err;
-    }
-    const memberArray = [...members.values()];
-    let scanned = 0;
-    let flagged = 0;
-    console.log(`[MassScan] Starting scan of ${memberArray.length} members...`);
-    for (const member of memberArray) {
-        if (member.user.bot) continue;
-        const avatarUrl = member.displayAvatarURL({ dynamic: true, size: 1024 });
-        if (!avatarUrl || avatarUrl.includes('discord.com/assets/')) continue;
-        const ignoredEntry = await dbGetIgnoredUser(member.id);
-        if (ignoredEntry && ignoredEntry.avatar_hash === getAvatarHash(member)) continue;
-        try {
-            const nsfwCheckersResult = await scanWithNSFWCheckers(avatarUrl);
-            const score = nsfwCheckersResult?.score ?? null;
-            if (score !== null && score >= MASS_SCAN_THRESHOLD) {
-                console.log(`[MassScan] Flagged (free): ${member.user.tag} (score: ${score.toFixed(2)})`);
-                await alertOwner(client, member, null, nsfwCheckersResult, {
-                    isFlagged: true,
-                    includeCredits: false,
-                    extraText: '🔍 **Mass scan (free API only)**'
-                });
-                flagged++;
-            }
-        } catch (err) {
-            console.error(`[MassScan] Error scanning ${member.user.tag}:`, err.message);
-        }
-        scanned++;
-        if (scanned < memberArray.length) {
-            await new Promise(resolve => setTimeout(resolve, SCAN_DELAY_MS));
-        }
-    }
-    console.log(`[MassScan] Finished scanning ${scanned} members, flagged ${flagged}.`);
-}
-async function performMonthlyScan(client) {
-    const guild = client.guilds.cache.first();
-    if (!guild) return;
-    const members = await guild.members.fetch();
-    const memberArray = [...members.values()];
-    let scanned = 0;
-    let flagged = 0;
-    const creditsBefore = await getCreditsRemaining();
-    for (const member of memberArray) {
-        if (member.user.bot) continue;
-        const avatarUrl = member.displayAvatarURL({ dynamic: true, size: 1024 });
-        if (!avatarUrl || avatarUrl.includes('discord.com/assets/')) continue;
+  const guild = client.guilds.cache.first();
+  if (!guild) return;
 
-        const ignoredEntry = await dbGetIgnoredUser(member.id);
-        if (ignoredEntry && ignoredEntry.avatar_hash === getAvatarHash(member)) continue;
-        try {
-            const sightResult = await scanWithSightengine(avatarUrl);
-            const nudity = getSightNudityScore(sightResult);
-            if (nudity >= 0.3) {
-                console.log(`[MonthlyScan] Flagged: ${member.user.tag} (nudity: ${nudity.toFixed(2)})`);
-                await alertOwner(client, member, sightResult, null, {
-                    isFlagged: true,
-                    extraText: '🔍 **Monthly Sightengine scan**'
-                });
-                flagged++;
-            }
-        } catch (err) {
-            console.error(`[MonthlyScan] Error scanning ${member.user.tag}:`, err.message);
+  const fetchMembers = async () => {
+    let attempts = 0;
+    while (attempts < 3) {
+      try {
+        return await guild.members.fetch();
+      } catch (err) {
+        if (err.name === 'GatewayRateLimitError' && err.data?.retry_after) {
+          const waitMs = (err.data.retry_after + 0.5) * 1000;
+          await new Promise(resolve => setTimeout(resolve, waitMs));
+          attempts++;
+        } else {
+          throw err;
         }
-        scanned++;
-        if (scanned < memberArray.length) {
-            await new Promise(resolve => setTimeout(resolve, SCAN_DELAY_MS));
-        }
+      }
     }
-    const creditsAfter = await getCreditsRemaining();
-    const used = creditsBefore - creditsAfter;
-    return { scanned, flagged, used };
+    throw new Error('Failed to fetch members after 3 retries');
+  };
+
+  let members;
+  try {
+    members = await fetchMembers();
+  } catch (err) {
+    console.error('[MassScan] Could not fetch members, aborting scan:', err.message);
+    throw err;
+  }
+
+  const memberArray = [...members.values()];
+  let scanned = 0;
+  let flagged = 0;
+
+  for (const member of memberArray) {
+    if (member.user.bot) continue;
+
+    const avatarUrl = member.displayAvatarURL({ dynamic: true, size: 1024 });
+    if (!avatarUrl || avatarUrl.includes('discord.com/assets/')) continue;
+
+    const ignoredEntry = await dbGetIgnoredUser(member.id);
+    if (ignoredEntry && ignoredEntry.avatar_hash === getAvatarHash(member)) continue;
+
+    try {
+      const nsfwCheckersResult = await scanWithNSFWCheckers(avatarUrl);
+      const score = nsfwCheckersResult?.score ?? null;
+      if (score !== null && score >= MASS_SCAN_THRESHOLD) {
+        console.log(`[MassScan] Flagged (free): ${member.user.tag} (score: ${score.toFixed(2)})`);
+        await alertOwner(client, member, null, nsfwCheckersResult, {
+          isFlagged: true,
+          includeCredits: false,
+          extraText: '🔍 **Mass scan (free API only)**'
+        });
+        flagged++;
+      }
+    } catch (err) {
+      console.error(`[MassScan] Error scanning ${member.user.tag}:`, err.message);
+    }
+
+    scanned++;
+    if (scanned < memberArray.length) {
+      await new Promise(resolve => setTimeout(resolve, SCAN_DELAY_MS));
+    }
+  }
+
+  // Only log if flagged > 0
+  if (flagged > 0) {
+    console.log(`[MassScan] Finished scanning ${scanned} members, flagged ${flagged}.`);
+  }
+}
+
+// ─── Monthly Sightengine scan (prompted by owner) ──────────────────
+async function performMonthlyScan(client) {
+  const guild = client.guilds.cache.first();
+  if (!guild) return;
+
+  const members = await guild.members.fetch();
+  const memberArray = [...members.values()];
+  let scanned = 0;
+  let flagged = 0;
+
+  const creditsBefore = await getCreditsRemaining();
+
+  for (const member of memberArray) {
+    if (member.user.bot) continue;
+
+    const avatarUrl = member.displayAvatarURL({ dynamic: true, size: 1024 });
+    if (!avatarUrl || avatarUrl.includes('discord.com/assets/')) continue;
+
+    const ignoredEntry = await dbGetIgnoredUser(member.id);
+    if (ignoredEntry && ignoredEntry.avatar_hash === getAvatarHash(member)) continue;
+
+    try {
+      const sightResult = await scanWithSightengine(avatarUrl);
+      const nudity = getSightNudityScore(sightResult);
+      if (nudity >= 0.3) {
+        console.log(`[MonthlyScan] Flagged: ${member.user.tag} (nudity: ${nudity.toFixed(2)})`);
+        await alertOwner(client, member, sightResult, null, {
+          isFlagged: true,
+          extraText: '🔍 **Monthly Sightengine scan**'
+        });
+        flagged++;
+      }
+    } catch (err) {
+      console.error(`[MonthlyScan] Error scanning ${member.user.tag}:`, err.message);
+    }
+
+    scanned++;
+    if (scanned < memberArray.length) {
+      await new Promise(resolve => setTimeout(resolve, SCAN_DELAY_MS));
+    }
+  }
+
+  const creditsAfter = await getCreditsRemaining();
+  const used = creditsBefore - creditsAfter;
+
+  // Only log if flagged > 0
+  if (flagged > 0) {
+    console.log(`[MonthlyScan] Finished scanning ${scanned} members, flagged ${flagged}. Used ${used} credits.`);
+  }
+
+  return { scanned, flagged, used };
 }
 async function shouldRunMassScanToday() {
     const lastScanDate = await getSetting('mass_scan_free_date');
