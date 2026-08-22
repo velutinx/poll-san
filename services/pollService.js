@@ -10,22 +10,14 @@ let pollCache = {
     timestamp: 0,
     lastError: null,
 };
-const CACHE_TTL_MS = 30000; // 30 seconds (was 10s)
+const CACHE_TTL_MS = 30000; // 30 seconds
 
-// ─── NEW: Cache for active poll status ──────────────────────────────
+// ─── Cache for active poll status ──────────────────────────────
 let activePollCache = {
     active: false,
     timestamp: 0,
 };
 const ACTIVE_POLL_CACHE_TTL = 30000; // 30 seconds
-
-let pollKv = null;
-const KV_CACHE_KEY = 'poll_results_cache';
-const KV_CACHE_TTL = 30;
-
-function setPollKv(kv) {
-    pollKv = kv;
-}
 
 async function queryWithRetry(sql, params = [], method = 'all', maxRetries = 3) {
     let lastError;
@@ -56,14 +48,7 @@ async function queryWithRetry(sql, params = [], method = 'all', maxRetries = 3) 
 async function invalidatePollCache() {
     pollCache.results = null;
     pollCache.timestamp = 0;
-    if (pollKv) {
-        try {
-            await pollKv.delete(KV_CACHE_KEY);
-            console.log(`🗑️ Poll KV cache invalidated.`);
-        } catch (err) {
-            console.warn('Failed to delete poll KV cache:', err.message);
-        }
-    }
+    // KV removal: no more pollKv.delete
 }
 
 async function isPollActive(messageId) {
@@ -84,7 +69,6 @@ async function isPollActive(messageId) {
         return active;
     } catch (err) {
         console.warn(`[PollService] Failed to check poll active status for ${messageId}:`, err.message);
-        // If cache is stale, return cached value if exists
         if (activePollCache.active !== undefined) {
             return activePollCache.active;
         }
@@ -95,25 +79,12 @@ async function isPollActive(messageId) {
 async function getPollResults(message, characters) {
     const now = Date.now();
 
+    // Use in‑memory cache only
     if (pollCache.results && (now - pollCache.timestamp) < CACHE_TTL_MS) {
         return pollCache.results;
     }
 
-    if (pollKv) {
-        try {
-            const cached = await pollKv.get(KV_CACHE_KEY, 'json');
-            if (cached && cached.results && (now - cached.timestamp) < KV_CACHE_TTL * 1000) {
-                pollCache.results = cached.results;
-                pollCache.timestamp = now;
-                return cached.results;
-            }
-        } catch (err) {
-            console.warn('KV cache read failed, falling back to D1:', err.message);
-        }
-    }
-
     try {
-        // ─── Added ORDER BY option_id ASC with LIMIT 12 (only 12 options) ──
         const discordRows = await queryWithRetry(
             `SELECT option_id, COALESCE(SUM(weight), 0) as score
              FROM ${h.tables.POLL_VOTING_DISCORD}
@@ -171,7 +142,7 @@ async function getPollResults(message, characters) {
             });
         }
 
-        // ─── Only update poll_votes_final if there are changes ──────────
+        // Update poll_votes_final only if changed
         const currentRows = await queryWithRetry(
             `SELECT option_id, score FROM ${h.tables.POLL_VOTES_FINAL} WHERE poll_id = ? ORDER BY option_id ASC LIMIT 12`,
             [CURRENT_POLL_ID],
@@ -193,7 +164,6 @@ async function getPollResults(message, characters) {
         }
 
         if (changed && rawDataForDB.length > 0) {
-            // Use batch upsert
             const columns = ['poll_id', 'option_id', 'character_name', 'score', 'selected_at'];
             const valuesArray = rawDataForDB.map(row => [
                 row.poll_id,
@@ -211,15 +181,6 @@ async function getPollResults(message, characters) {
         pollCache.timestamp = now;
         pollCache.lastError = null;
 
-        if (pollKv) {
-            pollKv.put(KV_CACHE_KEY, JSON.stringify({
-                results: resultString,
-                timestamp: now
-            }), { expirationTtl: KV_CACHE_TTL }).catch(err => {
-                console.warn('Failed to store poll results in KV:', err.message);
-            });
-        }
-
         return resultString;
 
     } catch (err) {
@@ -228,32 +189,12 @@ async function getPollResults(message, characters) {
         if (pollCache.results) {
             return pollCache.results;
         }
-
-        if (pollKv) {
-            try {
-                const stale = await pollKv.get(KV_CACHE_KEY, 'json');
-                if (stale && stale.results) {
-                    console.log('[PollCache] Returning stale KV results due to error.');
-                    pollCache.results = stale.results;
-                    pollCache.timestamp = Date.now();
-                    return stale.results;
-                }
-            } catch (_) {}
-        }
-
         return "Error loading results...";
     }
 }
 
-// ─── The rest of the file (generateMessageContent, runPollInterval, etc.) remains unchanged ──
-// But we'll add a LIMIT to the refresh query and increase interval.
-
-// In runPollInterval, we already have an interval of UPDATE_INTERVAL (which is 30s or 60s).
-// We'll increase the default to 60 seconds in helpers.js.
-
-// In refreshPollMessage, we use getPollResults which now caches for 30s.
-
-// Force stop function remains the same.
+// ─── The rest of the file (generateMessageContent, runPollInterval, etc.) unchanged ──
+// (Keep all functions below exactly as they are, except remove the `setPollKv` export)
 
 async function generateMessageContent(endTime, resultsText, characters, isEnded = false) {
     const e = h.releaseEmojis;
@@ -394,6 +335,6 @@ module.exports = {
     getFinalPollMessageContent,
     forceStopPoll,
     refreshPollMessage,
-    setPollKv,
+    // setPollKv removed
     invalidatePollCache,
 };
