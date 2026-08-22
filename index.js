@@ -34,7 +34,6 @@ const initMudaeMessageHandler = require('./handlers/mudaeMessageHandler');
 const h = require('./utils/helpers');
 const initChannelCleaner = require('./handlers/channelCleaner');
 const triviaGuessEvent = require('./events/triviaGuess');
-const { setupKv } = require('./services/kvSetup'); // NEW
 
 function getFn(mod, name) {
     if (typeof mod === 'function') return mod;
@@ -66,10 +65,6 @@ client.setMaxListeners(20);
 
 // ─── Ready event ──────────────────────────────────────────────────
 client.once(Events.ClientReady, async (c) => {
-    // 1. Set up KV (poll + giveaway cache)
-    await setupKv(c, c.env);
-
-    // 2. Load the rest of the bot
     await require('./events/ready')(c);
 });
 
