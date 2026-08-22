@@ -1,4 +1,4 @@
-// commands/giveaway.js
+// commands/giveaway.js – KV removed, uses in‑memory cache + D1
 
 const {
     SlashCommandBuilder,
@@ -15,73 +15,44 @@ const fs = require('fs').promises;
 const { colors, releaseEmojis } = require('../utils/helpers');
 const h = require('../utils/helpers');
 const db = require('../services/database');
+
 const activeGiveaways = new Map();
 const giveawaySessions = new Map();
 const GIVEAWAY_IMAGE_URL = process.env.GIVEAWAY_IMAGE_URL;
 const USE_HOSTED_IMAGE = !!GIVEAWAY_IMAGE_URL;
 const MAX_TIMEOUT = 2147483647;
 
-const GIVEAWAY_KV_PREFIX = 'giveaway:';
+// ─── In‑memory cache for giveaway entrants (replaces KV) ──────────
+const entrantsCache = new Map(); // key: messageId, value: { entrants, timestamp }
+const CACHE_TTL = 60000; // 60 seconds
 
-function getEntrantsKey(messageId) {
-    return `${GIVEAWAY_KV_PREFIX}${messageId}:entrants`;
-}
-
-function getGiveawayKey(messageId) {
-    return `${GIVEAWAY_KV_PREFIX}${messageId}:data`;
-}
-
-function getKv(client) {
-    return client?.kv || null;
-}
-
-async function getEntrants(messageId, client) {
-    const kv = getKv(client);
-    if (kv) {
-        try {
-            const cached = await kv.get(getEntrantsKey(messageId), 'json');
-            if (cached) {
-                return cached;
-            }
-        } catch (err) {
-            console.warn('KV read failed, falling back to D1:', err.message);
-        }
+async function getEntrants(messageId) {
+    const cached = entrantsCache.get(messageId);
+    if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+        return cached.entrants;
     }
     const row = await db.query(
         `SELECT entrants FROM ${h.tables.GIVEAWAYS} WHERE message_id = ?`,
         [messageId],
         true
     );
-    return row ? JSON.parse(row.entrants || '[]') : [];
+    const entrants = row ? JSON.parse(row.entrants || '[]') : [];
+    entrantsCache.set(messageId, { entrants, timestamp: Date.now() });
+    return entrants;
 }
 
-async function setEntrants(messageId, entrants, client) {
-    const kv = getKv(client);
+async function setEntrants(messageId, entrants) {
     const entrantsJson = JSON.stringify(entrants);
     await db.query(
         `UPDATE ${h.tables.GIVEAWAYS} SET entrants = ? WHERE message_id = ?`,
         [entrantsJson, messageId]
     );
-    if (kv) {
-        try {
-            await kv.put(getEntrantsKey(messageId), entrantsJson, { expirationTtl: 3600 });
-        } catch (err) {
-            console.warn('KV write failed:', err.message);
-        }
-    }
+    // Update cache
+    entrantsCache.set(messageId, { entrants, timestamp: Date.now() });
 }
 
-async function invalidateGiveawayCache(messageId, client) {
-    const kv = getKv(client);
-    if (kv) {
-        try {
-            await kv.delete(getEntrantsKey(messageId));
-            await kv.delete(getGiveawayKey(messageId));
-            console.log(`🗑️ Giveaway ${messageId} cache invalidated.`);
-        } catch (err) {
-            console.warn('KV delete failed:', err.message);
-        }
-    }
+function invalidateEntrantsCache(messageId) {
+    entrantsCache.delete(messageId);
 }
 
 async function getBlacklistIds() {
@@ -307,24 +278,8 @@ async function handleGiveawayButton(interaction) {
             return interaction.editReply('This giveaway has already ended.');
         }
 
-        let entrantsArray = [];
-        const kv = getKv(client);
-        if (kv) {
-            try {
-                const cached = await kv.get(getEntrantsKey(messageId), 'json');
-                if (cached) {
-                    entrantsArray = cached;
-                    console.log(`✅ Entrants for ${messageId} loaded from KV.`);
-                } else {
-                    entrantsArray = JSON.parse(row.entrants || '[]');
-                }
-            } catch (err) {
-                console.warn('KV read failed, using D1 entrants:', err.message);
-                entrantsArray = JSON.parse(row.entrants || '[]');
-            }
-        } else {
-            entrantsArray = JSON.parse(row.entrants || '[]');
-        }
+        // Get entrants from D1 (cache will be populated by getEntrants)
+        const entrantsArray = await getEntrants(messageId);
 
         giveaway = {
             messageId: row.message_id,
@@ -353,7 +308,7 @@ async function handleGiveawayButton(interaction) {
     const entrantsArray = Array.from(giveaway.entrants);
 
     try {
-        await setEntrants(messageId, entrantsArray, client);
+        await setEntrants(messageId, entrantsArray);
         return interaction.editReply(`${releaseEmojis?.getRandomVerify?.() || '✅'} You entered the giveaway!`);
     } catch (error) {
         console.error('Failed to update entrants:', error);
@@ -386,7 +341,9 @@ async function endGiveaway(messageId, client) {
             [messageId]
         );
 
-        await invalidateGiveawayCache(messageId, client);
+        // Invalidate cache
+        invalidateEntrantsCache(messageId);
+
         const channel = await client.channels.fetch(row.channel_id);
         const webhook = await getGiveawayWebhook(channel);
         const message = await channel.messages.fetch(messageId);
@@ -398,7 +355,7 @@ async function endGiveaway(messageId, client) {
             } catch (err) {}
         }
 
-        const entrantsArray = JSON.parse(row.entrants || '[]');
+        const entrantsArray = await getEntrants(messageId);
         const totalEntries = entrantsArray.length;
 
         if (totalEntries === 0) {
@@ -488,10 +445,8 @@ async function restoreGiveaways(client) {
             const endTime = new Date(g.end_time).getTime();
             const timeLeft = endTime - Date.now();
 
-            const entrantsArray = JSON.parse(g.entrants || '[]');
-            await setEntrants(g.message_id, entrantsArray, client).catch(err => {
-                console.warn(`Failed to warm KV for giveaway ${g.message_id}:`, err.message);
-            });
+            // Get entrants (this will populate cache)
+            const entrantsArray = await getEntrants(g.message_id);
 
             if (timeLeft <= 0) {
                 console.log(`Giveaway ${g.message_id} - ${g.prize} already ended, processing now.`);
