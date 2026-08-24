@@ -3,7 +3,8 @@
 const path = require('path');
 require('dotenv').config({ path: path.resolve(__dirname, '.env'), quiet: true });
 const { setGlobalDispatcher, Agent } = require('undici');
-
+const { initLogger } = require('./utils/logger');
+initLogger();
 setGlobalDispatcher(new Agent({
     connections: 100,
     keepAliveTimeout: 60000,
@@ -84,7 +85,6 @@ client.on(Events.MessageCreate, (message) => { handleTriviaMessage(message).catc
 client.on(Events.MessageCreate, async (message) => { await XPLib.updateXP(message); });
 client.on(Events.MessageCreate, triviaGuessEvent);
 
-// ─── Global error handlers ──────────────────────────────────────
 client.on('error', console.error);
 process.on('unhandledRejection', (reason) => {
     if (reason instanceof Error && reason.cause?.code === 'UND_ERR_CONNECT_TIMEOUT' && reason.message.includes('fetch failed')) {
@@ -93,7 +93,6 @@ process.on('unhandledRejection', (reason) => {
     console.error(reason);
 });
 
-// ─── Cleanup and avatar scanner ────────────────────────────────
 const { startCleanup } = require('./services/redeemHandler');
 startCleanup();
 require('./features/avatarScanner').init(client);
