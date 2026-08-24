@@ -615,9 +615,9 @@ async function syncMembershipRoles(client) {
   let changesMade = false;
 
   try {
-    const now = new Date().toISOString();
+    const GRACE_DAYS = 4;
+    const graceDate = new Date(Date.now() - GRACE_DAYS * 24 * 60 * 60 * 1000).toISOString();
 
-    // 🔥 Use retry – if it fails or returns empty, abort to protect roles
     let activeMemberships;
     try {
       activeMemberships = await queryWithRetry(
@@ -625,7 +625,7 @@ async function syncMembershipRoles(client) {
                 recurring, plan_id, status, source, discord_tag
          FROM ${h.tables.MEMBERSHIPS}
          WHERE expires_at > ?`,
-        [now],
+        [graceDate],
         'all',
         3
       );
