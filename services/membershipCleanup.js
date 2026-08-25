@@ -5,7 +5,7 @@ const h = require('../utils/helpers');
 async function cleanupExpiredMemberships(client) {
     try {
         const now = new Date();
-        const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+        const fourteenDaysAgo = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000);
 
         // Only clean memberships from 'website' source (skip patreon/subscribestar)
         const expired = await db.query(
