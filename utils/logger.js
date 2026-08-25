@@ -16,14 +16,14 @@ const IGNORE_PATTERNS = [
   /⏩ Duplicate/i,
   /⏭️ Skipping/i,
   /🔍 SQL:/i,
-  /\[Database\] Slow query \(\d+ms, attempt \d+\):/i, // <-- you want to see these, so don't ignore
-  // Add more as needed
+  // ─── NEW: Ignore queue addition messages ──────────────────
+  /\[Queue\] Added .* as premium\./i,
+  // Add more patterns here if needed
 ];
 
-// ─── In‑memory buffer to avoid flooding ──────────────────────────
 let logBuffer = [];
 let flushTimer = null;
-const FLUSH_INTERVAL = 2000; // ms
+const FLUSH_INTERVAL = 2000;
 const MAX_BUFFER_SIZE = 50;
 
 function shouldIgnore(message) {
@@ -60,11 +60,8 @@ function flushBuffer() {
 }
 
 function addLog(level, message) {
-  // Skip if whitelisted
   if (shouldIgnore(message)) return;
-
   logBuffer.push({ level, message, timestamp: new Date().toISOString() });
-
   if (logBuffer.length >= MAX_BUFFER_SIZE) {
     flushBuffer();
   } else if (!flushTimer) {
@@ -75,7 +72,6 @@ function addLog(level, message) {
   }
 }
 
-// ─── Override console methods ──────────────────────────────────
 function initLogger() {
   const originalLog = console.log;
   const originalWarn = console.warn;
@@ -99,7 +95,6 @@ function initLogger() {
     addLog('error', msg);
   };
 
-  // Also handle process uncaught exceptions and unhandled rejections
   process.on('uncaughtException', (err) => {
     addLog('error', `Uncaught Exception: ${err.message}\n${err.stack}`);
   });
@@ -108,7 +103,6 @@ function initLogger() {
     addLog('error', `Unhandled Rejection: ${reason}`);
   });
 
-  // Flush on exit
   process.on('exit', () => flushBuffer());
 }
 
