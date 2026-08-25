@@ -615,7 +615,8 @@ async function syncMembershipRoles(client) {
   let changesMade = false;
 
   try {
-    const GRACE_DAYS = 4;
+    // ─── Grace period extended to 10 days to cover PayPal retries ───
+    const GRACE_DAYS = 10;
     const graceDate = new Date(Date.now() - GRACE_DAYS * 24 * 60 * 60 * 1000).toISOString();
 
     let activeMemberships;
@@ -853,12 +854,14 @@ async function removeRoleWithRetry(member, roleId, maxAttempts = 3) {
   console.error(`[enforceRolesForMember] Failed to remove role ${roleId} after ${maxAttempts} attempts`);
 }
 
-// ─── ENHANCED REAL‑TIME ROLE FIX (with safe DB error handling) ──────
+// ─── ENHANCED REAL‑TIME ROLE FIX (with grace period) ──────────────
 async function enforceRolesForMember(member) {
   if (member.user.bot) return;
   if (member.roles.cache.has(CREATOR_ROLE)) return;
 
-  const now = new Date().toISOString();
+  // ─── Apply 10‑day grace period for real‑time enforcement ────────
+  const GRACE_DAYS = 10;
+  const graceDate = new Date(Date.now() - GRACE_DAYS * 24 * 60 * 60 * 1000).toISOString();
 
   let activeMembership = null;
   try {
@@ -867,7 +870,7 @@ async function enforceRolesForMember(member) {
        WHERE discord_id = ? AND expires_at > ? AND status = 'ACTIVE'
        ORDER BY tier DESC
        LIMIT 1`,
-      [member.id, now],
+      [member.id, graceDate],
       'first',
       2
     );
