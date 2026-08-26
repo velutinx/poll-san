@@ -3,7 +3,7 @@
 const db = require('./database');
 const h = require('../utils/helpers');
 const CURRENT_POLL_ID = 'character_poll_new';
-const UPDATE_INTERVAL = h.POLL_UPDATE_INTERVAL_MS || 30000;
+const UPDATE_INTERVAL = h.POLL_UPDATE_INTERVAL_MS || 60000;
 let activePollTimer = null;
 let pollCache = {
     results: null,
