@@ -38,8 +38,11 @@ function generateFilenameFromPost() {
     const regex = /\[(.*?)\] (.*?) — (?:Pack #)?(\d+)/i;
     const match = title.match(regex);
     if (match) {
-        // Use series as-is (preserve case and punctuation)
-        const series = match[1].trim();   // <-- FIXED: no .toUpperCase()
+        // Use series as-is (preserve case and punctuation) but sanitize slashes
+        let series = match[1].trim();
+        // --- FIX: replace '/' with a space and collapse multiple spaces ---
+        series = series.replace(/\//g, ' ').replace(/\s+/g, ' ').trim();
+
         const name = match[2].replace(/♀️|♂️|:female_sign:|:male_sign:/g, '').trim();
         const pack = match[3];
         const filename = `[Pack ${pack}] ${name} - ${series}.zip`;
