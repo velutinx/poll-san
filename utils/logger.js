@@ -17,14 +17,18 @@ const IGNORE_PATTERNS = [
   /🔍 SQL:/i,
   /\[Queue\] Added .* as premium\./i,
   /✅ Uploaded to Mega:/i,
+  // ─── NEW: Ignore RoleManager informational logs ──────────────
+  /\[RoleManager\] .*/i,
 ];
 let logBuffer = [];
 let flushTimer = null;
 const FLUSH_INTERVAL = 2000;
 const MAX_BUFFER_SIZE = 50;
+
 function shouldIgnore(message) {
   return IGNORE_PATTERNS.some(pattern => pattern.test(message));
 }
+
 async function sendLogsToWorker(logs) {
   if (!logs.length) return;
   try {
@@ -43,14 +47,17 @@ async function sendLogsToWorker(logs) {
       body: JSON.stringify(payload)
     });
   } catch (err) {
+    // Ignore
   }
 }
+
 function flushBuffer() {
   if (logBuffer.length === 0) return;
   const copy = [...logBuffer];
   logBuffer = [];
   sendLogsToWorker(copy);
 }
+
 function addLog(level, message) {
   if (shouldIgnore(message)) return;
   logBuffer.push({ level, message, timestamp: new Date().toISOString() });
@@ -63,31 +70,38 @@ function addLog(level, message) {
     }, FLUSH_INTERVAL);
   }
 }
+
 function initLogger() {
   const originalLog = console.log;
   const originalWarn = console.warn;
   const originalError = console.error;
+
   console.log = function(...args) {
     const msg = args.join(' ');
     originalLog(...args);
     addLog('info', msg);
   };
+
   console.warn = function(...args) {
     const msg = args.join(' ');
     originalWarn(...args);
     addLog('warn', msg);
   };
+
   console.error = function(...args) {
     const msg = args.join(' ');
     originalError(...args);
     addLog('error', msg);
   };
+
   process.on('uncaughtException', (err) => {
     addLog('error', `Uncaught Exception: ${err.message}\n${err.stack}`);
   });
+
   process.on('unhandledRejection', (reason) => {
     addLog('error', `Unhandled Rejection: ${reason}`);
   });
+
   process.on('exit', () => flushBuffer());
 }
 
