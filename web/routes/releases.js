@@ -14,6 +14,7 @@ const SERIES_NAME_MAP = {
   'RE-ZERO': 'Re:Zero',
   'STEINS-GATE': 'Steins;Gate',
   'FATE-GRAND-ORDER': 'Fate/Grand Order',
+  'FATE/GRAND ORDER': 'Fate Grand Order',
 };
 function getProperSeries(series) {
   const upper = series.toUpperCase();
