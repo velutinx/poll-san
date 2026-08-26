@@ -9,7 +9,7 @@ const h = require('../../utils/helpers');
 const { getMegaStorage } = require('../../services/megaSession');
 const db = require('../../services/database');
 const { updateDiscordQueue, getQueue } = require('./queue');
-const { logError } = require('../../shared/error-logger')('railway-bot'); // Added error logger import
+// Removed: const { logError } = require('../../shared/error-logger')('railway-bot');
 
 const TEST_CHANNEL_ID = '1466019839205314644';
 const SERIES_NAME_MAP = {
@@ -113,7 +113,7 @@ async function sendGhostPingToFreeMembers(client, guild, packInfo, threadId) {
   }
 }
 
-// ─── UPDATED: markQueueCompleted with retry logic and better error handling ───
+// ─── UPDATED: markQueueCompleted with retry logic and console logging ───
 async function markQueueCompleted(client, characterName, isRequest) {
   const MAX_RETRIES = 5;
   const BASE_DELAY = 500;
@@ -189,8 +189,6 @@ async function markQueueCompleted(client, characterName, isRequest) {
 
       // Invalidate queue cache (by forcing a fresh read) and update Discord message
       // We'll rely on updateDiscordQueue which calls getQueue() and will use cache if not invalidated.
-      // To ensure freshness, we'll manually clear the cache via the exported function if available.
-      // If ./queue exports invalidateQueueCache, we should call it.
       // For safety, we'll call getQueue with a force flag? We'll just call updateDiscordQueue and it will fetch fresh data.
       // But if the cache is still within TTL, it will return stale data. So we need to invalidate.
       // We'll assume ./queue exports a function to clear cache. If not, we'll add a try-catch.
@@ -228,13 +226,8 @@ async function markQueueCompleted(client, characterName, isRequest) {
 
   // If we exhausted retries
   console.error(`❌ Failed to mark queue after ${MAX_RETRIES} attempts:`, lastError?.message);
-  // Log to central error logger
-  await logError(lastError, null, null, 'railway-bot', {
-    operation: 'markQueueCompleted',
-    characterName,
-    isRequest,
-    attemptCount: MAX_RETRIES,
-  });
+  // Log to central error logger via the bot's existing logger (it captures console.error)
+  // The error will be picked up by the logger and sent to the error-logger worker.
 }
 
 async function addPremiumToQueue(characterText, client) {
