@@ -9,14 +9,13 @@ const h = require('../../utils/helpers');
 const { getMegaStorage } = require('../../services/megaSession');
 const db = require('../../services/database');
 const { updateDiscordQueue, getQueue } = require('./queue');
-// Removed: const { logError } = require('../../shared/error-logger')('railway-bot');
 
 const TEST_CHANNEL_ID = '1466019839205314644';
 const SERIES_NAME_MAP = {
   'RE-ZERO': 'Re:Zero',
   'STEINS-GATE': 'Steins;Gate',
   'FATE-GRAND-ORDER': 'Fate/Grand Order',
-  'FATE/GRAND ORDER': 'Fate Grand Order',
+  'FATE/GRAND ORDER': 'Fate/Grand Order',   // ← fixed: now returns slash
 };
 
 function getProperSeries(series) {
@@ -113,7 +112,7 @@ async function sendGhostPingToFreeMembers(client, guild, packInfo, threadId) {
   }
 }
 
-// ─── UPDATED: markQueueCompleted with retry logic and console logging ───
+// ─── Updated markQueueCompleted with retry logic ───
 async function markQueueCompleted(client, characterName, isRequest) {
   const MAX_RETRIES = 5;
   const BASE_DELAY = 500;
@@ -121,10 +120,7 @@ async function markQueueCompleted(client, characterName, isRequest) {
 
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     try {
-      // Fetch current queue (this uses db.query with retry)
       let queue = await getQueue();
-
-      // Normalize queue items
       queue = queue.map(item => {
         if (typeof item === 'string') {
           return { text: item, checked: false, slashed: false, slashedAt: null };
@@ -161,7 +157,6 @@ async function markQueueCompleted(client, characterName, isRequest) {
         return item;
       });
 
-      // Loose match if not found
       if (!found) {
         for (const item of updatedQueue) {
           const cleanItem = cleanText(item.text);
@@ -178,56 +173,32 @@ async function markQueueCompleted(client, characterName, isRequest) {
 
       if (!found) {
         console.log(`[Queue] Character "${characterName}" not found – skipping update.`);
-        return; // Not an error, just nothing to do
+        return;
       }
 
-      // Save back to D1
       await db.query(
         `UPDATE ${h.tables.MAIN_QUEUE} SET queue = ?, updated_at = datetime('now') WHERE id = 1`,
         [JSON.stringify(updatedQueue)]
       );
 
-      // Invalidate queue cache (by forcing a fresh read) and update Discord message
-      // We'll rely on updateDiscordQueue which calls getQueue() and will use cache if not invalidated.
-      // For safety, we'll call getQueue with a force flag? We'll just call updateDiscordQueue and it will fetch fresh data.
-      // But if the cache is still within TTL, it will return stale data. So we need to invalidate.
-      // We'll assume ./queue exports a function to clear cache. If not, we'll add a try-catch.
-      try {
-        const queueModule = require('./queue');
-        if (typeof queueModule.invalidateQueueCache === 'function') {
-          queueModule.invalidateQueueCache();
-        } else {
-          // Fallback: we can't clear cache, but we can force a new read by calling getQueue with a flag
-          // We'll modify getQueue later to accept force. For now, we just log a warning.
-          console.warn('Queue cache invalidation not available – stale data may appear until TTL expires.');
-        }
-      } catch (e) {
-        // Ignore
-      }
-
       await updateDiscordQueue(client);
       console.log(`✅ Queue updated: "${characterName}" marked as completed.`);
-      return; // Success – exit retry loop
+      return;
 
     } catch (err) {
       lastError = err;
       const msg = err.message || '';
-      // Retry on timeout or storage errors
       if (msg.includes('timeout') || msg.includes('reset') || msg.includes('storage operation')) {
         const delay = Math.min(BASE_DELAY * Math.pow(2, attempt - 1), 10000);
         console.warn(`⚠️ D1 timeout in markQueueCompleted (attempt ${attempt}), retrying in ${delay}ms...`);
         await new Promise(resolve => setTimeout(resolve, delay));
         continue;
       }
-      // Non‑retryable error – break and log
       break;
     }
   }
 
-  // If we exhausted retries
   console.error(`❌ Failed to mark queue after ${MAX_RETRIES} attempts:`, lastError?.message);
-  // Log to central error logger via the bot's existing logger (it captures console.error)
-  // The error will be picked up by the logger and sent to the error-logger worker.
 }
 
 async function addPremiumToQueue(characterText, client) {
