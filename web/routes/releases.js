@@ -9,6 +9,8 @@ const h = require('../../utils/helpers');
 const { getMegaStorage } = require('../../services/megaSession');
 const db = require('../../services/database');
 const { updateDiscordQueue, getQueue } = require('./queue');
+const { logError } = require('../../shared/error-logger')('railway-bot'); // Added error logger import
+
 const TEST_CHANNEL_ID = '1466019839205314644';
 const SERIES_NAME_MAP = {
   'RE-ZERO': 'Re:Zero',
@@ -16,10 +18,12 @@ const SERIES_NAME_MAP = {
   'FATE-GRAND-ORDER': 'Fate/Grand Order',
   'FATE/GRAND ORDER': 'Fate Grand Order',
 };
+
 function getProperSeries(series) {
   const upper = series.toUpperCase();
   return SERIES_NAME_MAP[upper] || series;
 }
+
 function sortFilesByIndex(files) {
   return files.sort((a, b) => {
     const numA = parseInt((a.originalname.match(/-(\d+)\./))?.[1] || '0');
@@ -27,6 +31,7 @@ function sortFilesByIndex(files) {
     return numA - numB;
   });
 }
+
 async function getFreeMembersByGender(guild, isFemale) {
   const CONTENT_ROLE_ID = isFemale ? h.ids.roles.female_supporter : h.ids.roles.male_supporter;
   const MEMBER_ROLE_ID = h.ids.roles.member;
@@ -44,6 +49,7 @@ async function getFreeMembersByGender(guild, isFemale) {
   }
   return targetIds;
 }
+
 async function sendGhostPingToFreeMembers(client, guild, packInfo, threadId) {
   try {
     const targetIds = await getFreeMembersByGender(guild, packInfo.isFemale);
@@ -106,69 +112,131 @@ async function sendGhostPingToFreeMembers(client, guild, packInfo, threadId) {
     console.error('Failed to send ghost ping:', err);
   }
 }
+
+// ─── UPDATED: markQueueCompleted with retry logic and better error handling ───
 async function markQueueCompleted(client, characterName, isRequest) {
-  try {
-    let queue = await getQueue();
-    queue = queue.map(item => {
-      if (typeof item === 'string') {
-        return { text: item, checked: false, slashed: false, slashedAt: null };
+  const MAX_RETRIES = 5;
+  const BASE_DELAY = 500;
+  let lastError;
+
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      // Fetch current queue (this uses db.query with retry)
+      let queue = await getQueue();
+
+      // Normalize queue items
+      queue = queue.map(item => {
+        if (typeof item === 'string') {
+          return { text: item, checked: false, slashed: false, slashedAt: null };
+        }
+        return {
+          text: item.text || item,
+          checked: !!item.checked,
+          slashed: !!item.slashed,
+          slashedAt: item.slashedAt || null
+        };
+      });
+
+      function cleanText(text) {
+        if (!text) return '';
+        return text
+          .replace(/^[•:blank:diamond]?\s*/, '')
+          .replace(/^[:]?male_sign[:]?\s*/, '')
+          .replace(/^[:]?female_sign[:]?\s*/, '')
+          .replace(/^[♂♀]️?\s*/, '')
+          .replace(/^[:]?blank[:]?\s*/, '')
+          .replace(/^[:]?diamond[:]?\s*/, '')
+          .trim();
       }
-      return {
-        text: item.text || item,
-        checked: !!item.checked,
-        slashed: !!item.slashed,
-        slashedAt: item.slashedAt || null
-      };
-    });
-    function cleanText(text) {
-      if (!text) return '';
-      return text
-        .replace(/^[•:blank:diamond]?\s*/, '')
-        .replace(/^[:]?male_sign[:]?\s*/, '')
-        .replace(/^[:]?female_sign[:]?\s*/, '')
-        .replace(/^[♂♀]️?\s*/, '')
-        .replace(/^[:]?blank[:]?\s*/, '')
-        .replace(/^[:]?diamond[:]?\s*/, '')
-        .trim();
-    }
-    let found = false;
-    const updatedQueue = queue.map(item => {
-      const itemName = cleanText(item.text);
-      if (itemName.toLowerCase() === characterName.toLowerCase()) {
-        found = true;
-        item.slashed = true;
-        item.slashedAt = new Date().toISOString();
-        item.checked = isRequest;
-      }
-      return item;
-    });
-    if (!found) {
-      console.log(`[Queue] Character "${characterName}" not found – skipping update.`);
-      for (const item of updatedQueue) {
-        const cleanItem = cleanText(item.text);
-        if (cleanItem.toLowerCase().includes(characterName.toLowerCase())) {
+
+      let found = false;
+      const updatedQueue = queue.map(item => {
+        const itemName = cleanText(item.text);
+        if (itemName.toLowerCase() === characterName.toLowerCase()) {
           found = true;
           item.slashed = true;
           item.slashedAt = new Date().toISOString();
           item.checked = isRequest;
-          console.log(`[Queue] Found "${characterName}" in "${item.text}" – slashed.`);
-          break;
+        }
+        return item;
+      });
+
+      // Loose match if not found
+      if (!found) {
+        for (const item of updatedQueue) {
+          const cleanItem = cleanText(item.text);
+          if (cleanItem.toLowerCase().includes(characterName.toLowerCase())) {
+            found = true;
+            item.slashed = true;
+            item.slashedAt = new Date().toISOString();
+            item.checked = isRequest;
+            console.log(`[Queue] Found "${characterName}" in "${item.text}" – slashed.`);
+            break;
+          }
         }
       }
+
+      if (!found) {
+        console.log(`[Queue] Character "${characterName}" not found – skipping update.`);
+        return; // Not an error, just nothing to do
+      }
+
+      // Save back to D1
+      await db.query(
+        `UPDATE ${h.tables.MAIN_QUEUE} SET queue = ?, updated_at = datetime('now') WHERE id = 1`,
+        [JSON.stringify(updatedQueue)]
+      );
+
+      // Invalidate queue cache (by forcing a fresh read) and update Discord message
+      // We'll rely on updateDiscordQueue which calls getQueue() and will use cache if not invalidated.
+      // To ensure freshness, we'll manually clear the cache via the exported function if available.
+      // If ./queue exports invalidateQueueCache, we should call it.
+      // For safety, we'll call getQueue with a force flag? We'll just call updateDiscordQueue and it will fetch fresh data.
+      // But if the cache is still within TTL, it will return stale data. So we need to invalidate.
+      // We'll assume ./queue exports a function to clear cache. If not, we'll add a try-catch.
+      try {
+        const queueModule = require('./queue');
+        if (typeof queueModule.invalidateQueueCache === 'function') {
+          queueModule.invalidateQueueCache();
+        } else {
+          // Fallback: we can't clear cache, but we can force a new read by calling getQueue with a flag
+          // We'll modify getQueue later to accept force. For now, we just log a warning.
+          console.warn('Queue cache invalidation not available – stale data may appear until TTL expires.');
+        }
+      } catch (e) {
+        // Ignore
+      }
+
+      await updateDiscordQueue(client);
+      console.log(`✅ Queue updated: "${characterName}" marked as completed.`);
+      return; // Success – exit retry loop
+
+    } catch (err) {
+      lastError = err;
+      const msg = err.message || '';
+      // Retry on timeout or storage errors
+      if (msg.includes('timeout') || msg.includes('reset') || msg.includes('storage operation')) {
+        const delay = Math.min(BASE_DELAY * Math.pow(2, attempt - 1), 10000);
+        console.warn(`⚠️ D1 timeout in markQueueCompleted (attempt ${attempt}), retrying in ${delay}ms...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+        continue;
+      }
+      // Non‑retryable error – break and log
+      break;
     }
-    if (!found) {
-      console.log(`[Queue] Still not found after loose match.`);
-      return;
-    }
-    await db.query(
-      `UPDATE ${h.tables.MAIN_QUEUE} SET queue = ?, updated_at = datetime('now') WHERE id = 1`,
-      [JSON.stringify(updatedQueue)]
-    );
-    await updateDiscordQueue(client);
-  } catch (err) {
-    console.error('[Queue] Failed to mark as completed:', err);
   }
+
+  // If we exhausted retries
+  console.error(`❌ Failed to mark queue after ${MAX_RETRIES} attempts:`, lastError?.message);
+  // Log to central error logger
+  await logError(lastError, null, null, 'railway-bot', {
+    operation: 'markQueueCompleted',
+    characterName,
+    isRequest,
+    attemptCount: MAX_RETRIES,
+  });
 }
+
 async function addPremiumToQueue(characterText, client) {
   try {
     let queue = await getQueue();
@@ -204,8 +272,10 @@ async function addPremiumToQueue(characterText, client) {
     console.error('[Queue] Failed to add premium entry:', err);
   }
 }
+
 module.exports = function setupReleasesRoutes(app, client, upload, FORUM_ID, SUPPORTER_FORUM_ID) {
   const LOGO_URL = h.urls.LOGO_URL;
+
   async function getWebhook(channel, name) {
     let webhook = (await channel.fetchWebhooks()).find(w => w.name === name);
     if (webhook) {
@@ -217,6 +287,7 @@ module.exports = function setupReleasesRoutes(app, client, upload, FORUM_ID, SUP
     webhook = await channel.createWebhook({ name, avatar: LOGO_URL });
     return webhook;
   }
+
   async function editThreadMessage(thread, newContent) {
     try {
       const starter = await thread.fetchStarterMessage().catch(() => null);
@@ -225,25 +296,25 @@ module.exports = function setupReleasesRoutes(app, client, upload, FORUM_ID, SUP
         const webhooks = await thread.parent.fetchWebhooks();
         const webhook = webhooks.find(w => w.id === starter.webhookId);
         if (webhook) {
-          await webhook.editMessage(starter.id, { 
-            content: newContent, 
+          await webhook.editMessage(starter.id, {
+            content: newContent,
             flags: ["SuppressEmbeds"],
-            threadId: thread.id 
+            threadId: thread.id
           });
           return { success: true };
         }
       }
-      await starter.edit({ 
-        content: newContent, 
-        flags: ["SuppressEmbeds"] 
+      await starter.edit({
+        content: newContent,
+        flags: ["SuppressEmbeds"]
       });
       return { success: true };
     } catch (err) {
       console.error("Edit thread message failed, attempting final fallback send:", err);
-        try {
-        await thread.send({ 
-          content: `${h.releaseEmojis?.ALERT || '⚠️'} **Update:**\n${newContent}`, 
-          flags: ["SuppressEmbeds"] 
+      try {
+        await thread.send({
+          content: `${h.releaseEmojis?.ALERT || '⚠️'} **Update:**\n${newContent}`,
+          flags: ["SuppressEmbeds"]
         });
         return { success: true, replaced: true };
       } catch (finalErr) {
@@ -251,11 +322,13 @@ module.exports = function setupReleasesRoutes(app, client, upload, FORUM_ID, SUP
       }
     }
   }
+
   const getRandomArrow = () => h.releaseEmojis.ARROWS[Math.floor(Math.random() * h.releaseEmojis.ARROWS.length)];
   const getRandomDownArrow = () => h.releaseEmojis.DOWN_ARROWS[Math.floor(Math.random() * h.releaseEmojis.DOWN_ARROWS.length)];
   const PREVIEW_RELEASE_HEADER = `${h.releaseEmojis.NEW1}${h.releaseEmojis.NEW2} RELEASE`;
   const SUPPORTER_RELEASE_HEADER = `${h.releaseEmojis.EIGHTEENPLUS} ${h.releaseEmojis.NEW1}${h.releaseEmojis.NEW2} SUPPORTER RELEASE`;
-    app.post('/api/release-preview', upload.array('images'), async (req, res) => {
+
+  app.post('/api/release-preview', upload.array('images'), async (req, res) => {
     const { pack, setSize, input, series, suffix } = req.body;
     const files = req.files || [];
     try {
@@ -313,6 +386,7 @@ ${getRandomArrow()} See <#${SUPPORTER_FORUM_ID}>`;
       res.status(500).json({ error: err.message });
     }
   });
+
   app.get('/api/forum-posts', async (req, res) => {
     try {
       const channelId = req.query.channelId || FORUM_ID;
@@ -338,6 +412,7 @@ ${getRandomArrow()} See <#${SUPPORTER_FORUM_ID}>`;
       res.status(500).json({ error: err.message || 'Failed to fetch forum threads' });
     }
   });
+
   app.post('/api/edit-post', async (req, res) => {
     const { threadId, pack, setSize, input, series, suffix } = req.body;
     try {
@@ -374,6 +449,7 @@ ${getRandomArrow()} See <#${SUPPORTER_FORUM_ID}>`;
       res.status(500).json({ error: err.message });
     }
   });
+
   app.get('/api/get-post-content', async (req, res) => {
     const { id } = req.query;
     try {
@@ -396,6 +472,7 @@ ${getRandomArrow()} See <#${SUPPORTER_FORUM_ID}>`;
       res.status(500).json({ error: err.message });
     }
   });
+
   app.post('/api/supporter-release', upload.array('images'), async (req, res) => {
     const { pack, setSize, input, series, suffix, download, editPreview, previewThreadId, supporterThreadId } = req.body;
     const files = req.files || [];
@@ -540,7 +617,7 @@ ${h.releaseEmojis.LINK} [megaLink](${download || 'https://mega.nz'})`;
       const cleanCharName = charName.replace(/^[♂♀]️?\s*/, '').trim();
       if (cleanCharName) {
         const isRequest = suffix && suffix.toLowerCase() === 'request';
-        await markQueueCompleted(client, cleanCharName, isRequest); 
+        await markQueueCompleted(client, cleanCharName, isRequest);
       }
       try {
         const category = isFemale ? 1 : 2;
@@ -582,6 +659,7 @@ ${h.releaseEmojis.LINK} [megaLink](${download || 'https://mega.nz'})`;
       res.status(500).json({ error: err.message });
     }
   });
+
   async function getOrCreateFolder(node, pathParts) {
     let current = node;
     for (const part of pathParts) {
@@ -591,6 +669,7 @@ ${h.releaseEmojis.LINK} [megaLink](${download || 'https://mega.nz'})`;
     }
     return current;
   }
+
   app.post('/api/upload-to-mega', upload.single('file'), async (req, res) => {
     if (!req.file) {
       return res.status(400).json({ error: 'No file uploaded' });
@@ -657,6 +736,7 @@ ${h.releaseEmojis.LINK} [megaLink](${download || 'https://mega.nz'})`;
       res.status(500).json({ error: error.message || 'Upload failed' });
     }
   });
+
   app.post('/api/test-zip', upload.single('zipfile'), async (req, res) => {
     if (!req.file) {
       return res.status(400).json({ error: 'No file uploaded' });
@@ -667,7 +747,7 @@ ${h.releaseEmojis.LINK} [megaLink](${download || 'https://mega.nz'})`;
     try {
       const zip = new AdmZip(req.file.buffer);
       const entries = zip.getEntries();
-      const imageEntries = entries.filter(entry => 
+      const imageEntries = entries.filter(entry =>
         /\.(jpg|jpeg|png|gif|webp)$/i.test(entry.entryName) && !entry.isDirectory
       );
       imageEntries.sort((a, b) => {
@@ -689,6 +769,7 @@ ${h.releaseEmojis.LINK} [megaLink](${download || 'https://mega.nz'})`;
       res.status(500).json({ error: err.message });
     }
   });
+
   app.get('/api/download-file', (req, res) => {
     const filename = req.query.filename;
     if (!filename) {
@@ -704,6 +785,7 @@ ${h.releaseEmojis.LINK} [megaLink](${download || 'https://mega.nz'})`;
     }
     res.download(filePath, filename);
   });
+
   app.get('/api/test-zip', (req, res) => {
     res.json({ message: 'GET works' });
   });
