@@ -17,7 +17,8 @@ async function checkAndNotifyCooldowns(client) {
              FROM ${h.tables.GAMES_COOLDOWNS}
              WHERE game_type = ?
                AND notified_reset = 0
-               AND last_win_at < ?`,
+               AND last_win_at < ?
+             LIMIT 100`, // ← ADDED LIMIT to prevent full table scan
             [GAME_TYPE, cutoff.toISOString()]
         );
     } catch (err) {
