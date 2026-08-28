@@ -15,7 +15,7 @@ const SERIES_NAME_MAP = {
   'RE-ZERO': 'Re:Zero',
   'STEINS-GATE': 'Steins;Gate',
   'FATE-GRAND-ORDER': 'Fate/Grand Order',
-  'FATE/GRAND ORDER': 'Fate/Grand Order',   // ← fixed: now returns slash
+  'FATE/GRAND ORDER': 'Fate/Grand Order',
 };
 
 function getProperSeries(series) {
@@ -351,6 +351,7 @@ ${getRandomArrow()} See <#${SUPPORTER_FORUM_ID}>`;
     }
   });
 
+  // ─── UPDATED: GET /api/forum-posts – now fetches archived threads too ───
   app.get('/api/forum-posts', async (req, res) => {
     try {
       const channelId = req.query.channelId || FORUM_ID;
@@ -359,17 +360,37 @@ ${getRandomArrow()} See <#${SUPPORTER_FORUM_ID}>`;
       if (!forumChannel.isThreadOnly()) {
         return res.status(400).json({ error: "Channel is not a forum" });
       }
-      const threads = await forumChannel.threads.fetchActive();
-      const postList = threads.threads.map(t => ({
+
+      // ─── Fetch active threads (limit 100) ──────────────────────
+      const activeThreads = await forumChannel.threads.fetchActive({ limit: 100 });
+      let threadList = [...activeThreads.threads.values()];
+
+      // ─── Fetch archived public threads ──────────────────────────
+      try {
+        const archivedPublic = await forumChannel.threads.fetchArchived({ type: 'public', limit: 100 });
+        threadList = threadList.concat([...archivedPublic.threads.values()]);
+      } catch (e) { /* ignore */ }
+
+      // ─── Fetch archived private threads ──────────────────────────
+      try {
+        const archivedPrivate = await forumChannel.threads.fetchArchived({ type: 'private', limit: 100 });
+        threadList = threadList.concat([...archivedPrivate.threads.values()]);
+      } catch (e) { /* ignore */ }
+
+      // ─── Map to response format ────────────────────────────────────
+      const postList = threadList.map(t => ({
         id: t.id,
         name: t.name,
         applied_tags: Array.isArray(t.appliedTags) ? t.appliedTags : []
       }));
+
+      // ─── Sort by creation date descending (newest first) ──────────
       postList.sort((a, b) => {
         const aId = BigInt(a.id);
         const bId = BigInt(b.id);
-        return aId > bId ? -1 : aId < bId ? 1 : 0;
+        return aId < bId ? 1 : aId > bId ? -1 : 0;
       });
+
       res.json(postList);
     } catch (err) {
       console.error('Forum posts endpoint error:', err);
