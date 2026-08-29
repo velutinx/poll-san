@@ -1,4 +1,4 @@
-// commands/giveaway.js – KV removed, uses in‑memory cache + D1
+// commands/giveaway.js – with LIMIT 1 added to getEntrants query
 
 const {
     SlashCommandBuilder,
@@ -31,8 +31,9 @@ async function getEntrants(messageId) {
     if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
         return cached.entrants;
     }
+    // ─── ADDED LIMIT 1 for speed ──────────────────────────────────────
     const row = await db.query(
-        `SELECT entrants FROM ${h.tables.GIVEAWAYS} WHERE message_id = ?`,
+        `SELECT entrants FROM ${h.tables.GIVEAWAYS} WHERE message_id = ? LIMIT 1`,
         [messageId],
         true
     );
