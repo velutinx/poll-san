@@ -17,8 +17,9 @@ const IGNORE_PATTERNS = [
   /🔍 SQL:/i,
   /\[Queue\] Added .* as premium\./i,
   /✅ Uploaded to Mega:/i,
-  // ─── NEW: Ignore RoleManager informational logs ──────────────
   /\[RoleManager\] .*/i,
+  // ─── NEW: Ignore D1 retry attempts (only care about final failure) ──
+  /⚠️ D1 (query|network) error \(attempt \d\/\d\), retrying in .+ms/i,
 ];
 let logBuffer = [];
 let flushTimer = null;
