@@ -18,8 +18,9 @@ const IGNORE_PATTERNS = [
   /\[Queue\] Added .* as premium\./i,
   /✅ Uploaded to Mega:/i,
   /\[RoleManager\] .*/i,
-  // ─── NEW: Ignore D1 retry attempts (only care about final failure) ──
   /⚠️ D1 (query|network) error \(attempt \d\/\d\), retrying in .+ms/i,
+  /✅ D1:/i,
+  /D1: Recorded poll/i,
 ];
 let logBuffer = [];
 let flushTimer = null;
