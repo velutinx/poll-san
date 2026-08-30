@@ -735,6 +735,17 @@ function init(client) {
         }
     });
     client.on(Events.UserUpdate, onUserUpdate);
+
+    // ─── NEW: Remove flagged user from table when they leave ──────────
+    client.on(Events.GuildMemberRemove, async (member) => {
+        try {
+            await dbRemoveFlaggedUser(member.id);
+            console.log(`[AvatarScan] Removed flagged user ${member.user.tag} (${member.id}) on leave.`);
+        } catch (err) {
+            console.error(`[AvatarScan] Failed to remove flagged user ${member.id} on leave:`, err.message);
+        }
+    });
+
     client.once(Events.ClientReady, async () => {
         setTimeout(async () => {
             try {
