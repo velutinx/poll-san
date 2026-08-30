@@ -21,6 +21,10 @@ const IGNORE_PATTERNS = [
   /⚠️ D1 (query|network) error \(attempt \d\/\d\), retrying in .+ms/i,
   /✅ D1:/i,
   /D1: Recorded poll/i,
+  // ─── NEW: Ignore avatar scanner info logs ──────────────────────
+  /\[MonthlyScan\] .*/i,
+  /\[MassScan\] .*/i,
+  /\[AvatarScan\] .*/i,
 ];
 let logBuffer = [];
 let flushTimer = null;
