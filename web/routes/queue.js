@@ -33,22 +33,50 @@ function cleanExpiredQueue(queue) {
 }
 
 async function getQueue() {
-  const row = await db.query(
-    `SELECT queue FROM ${h.tables.MAIN_QUEUE} WHERE id = 1`,
-    [],
-    true
-  );
-  let raw = row ? JSON.parse(row.queue || '[]') : [];
-  let queue = normalizeQueue(raw);
-  const cleaned = cleanExpiredQueue(queue);
-  if (cleaned.length !== queue.length) {
-    queue = cleaned;
-    await db.query(
-      `UPDATE ${h.tables.MAIN_QUEUE} SET queue = ?, updated_at = datetime('now') WHERE id = 1`,
-      [JSON.stringify(queue)]
+  try {
+    const row = await db.query(
+      `SELECT queue FROM ${h.tables.MAIN_QUEUE} WHERE id = 1`,
+      [],
+      true
     );
+    let raw = row ? JSON.parse(row.queue || '[]') : [];
+    let queue = normalizeQueue(raw);
+    const cleaned = cleanExpiredQueue(queue);
+    if (cleaned.length !== queue.length) {
+      queue = cleaned;
+      await db.query(
+        `UPDATE ${h.tables.MAIN_QUEUE} SET queue = ?, updated_at = datetime('now') WHERE id = 1`,
+        [JSON.stringify(queue)]
+      );
+    }
+    return queue;
+  } catch (err) {
+    // ─── JSON Parse Error – recover ──────────────────────────────
+    console.error('❌ Failed to parse queue JSON. Resetting queue to empty array.');
+    // Log the raw data for debugging (first 500 chars)
+    try {
+      const row = await db.query(
+        `SELECT queue FROM ${h.tables.MAIN_QUEUE} WHERE id = 1`,
+        [],
+        true
+      );
+      console.error('📄 Invalid queue data (first 500 chars):', row?.queue?.substring(0, 500) || 'NULL');
+    } catch (_) {}
+    
+    // Reset queue to empty array
+    await db.query(
+      `UPDATE ${h.tables.MAIN_QUEUE} SET queue = '[]', updated_at = datetime('now') WHERE id = 1`,
+      []
+    );
+    
+    // Also reset the Discord message ID so it reposts
+    await db.query(
+      `UPDATE ${h.tables.MAIN_QUEUE} SET message_id = NULL WHERE id = 1`,
+      []
+    );
+    
+    return [];
   }
-  return queue;
 }
 
 async function updateDiscordQueue(client) {
