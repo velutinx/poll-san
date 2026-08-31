@@ -15,9 +15,9 @@ const IGNORE_PATTERNS = [
   /⏩ Duplicate/i,
   /⏭️ Skipping/i,
   /🔍 SQL:/i,
-  /\[Queue\] .*/i,                               // Queue info messages
-  /✅ Queue updated: .* marked as completed\./i, // Queue completed
-  /✅ Queue updated: .*/i,                        // Any queue update
+  /\[Queue\] .*/i,
+  /✅ Queue updated: .* marked as completed\./i,
+  /✅ Queue updated: .*/i,
   /✅ Uploaded to Mega:/i,
   /\[RoleManager\] .*/i,
   /⚠️ D1 (query|network) error \(attempt \d\/\d\), retrying in .+ms/i,
@@ -26,6 +26,7 @@ const IGNORE_PATTERNS = [
   /\[MonthlyScan\] .*/i,
   /\[MassScan\] .*/i,
   /\[AvatarScan\] .*/i,
+  /\[Database\] Slow query .*/i,
 ];
 let logBuffer = [];
 let flushTimer = null;
