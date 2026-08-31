@@ -15,13 +15,14 @@ const IGNORE_PATTERNS = [
   /⏩ Duplicate/i,
   /⏭️ Skipping/i,
   /🔍 SQL:/i,
-  /\[Queue\] Added .* as premium\./i,
+  /\[Queue\] .*/i,                               // Queue info messages
+  /✅ Queue updated: .* marked as completed\./i, // Queue completed
+  /✅ Queue updated: .*/i,                        // Any queue update
   /✅ Uploaded to Mega:/i,
   /\[RoleManager\] .*/i,
   /⚠️ D1 (query|network) error \(attempt \d\/\d\), retrying in .+ms/i,
   /✅ D1:/i,
   /D1: Recorded poll/i,
-  // ─── NEW: Ignore avatar scanner info logs ──────────────────────
   /\[MonthlyScan\] .*/i,
   /\[MassScan\] .*/i,
   /\[AvatarScan\] .*/i,
