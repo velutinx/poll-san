@@ -1,4 +1,4 @@
-// commands/giveaway.js – with LIMIT 1 added to getEntrants query
+// commands/giveaway.js – with LIMIT 1 added to getEntrants query, ORDER BY fix, and Unknown Message handling
 
 const {
     SlashCommandBuilder,
@@ -426,7 +426,16 @@ async function endGiveaway(messageId, client) {
         if (USE_HOSTED_IMAGE) newEmbed.setImage(GIVEAWAY_IMAGE_URL);
         else newEmbed.setImage(null);
 
-        await webhook.editMessage(message.id, { embeds: [newEmbed], components: [] });
+        // ─── Gracefully handle "Unknown Message" (code 10008) ──────────
+        try {
+            await webhook.editMessage(message.id, { embeds: [newEmbed], components: [] });
+        } catch (editErr) {
+            if (editErr.code === 10008) {
+                console.warn(`Giveaway message ${message.id} was already deleted – skipping edit.`);
+            } else {
+                console.error('Failed to edit giveaway message:', editErr);
+            }
+        }
     } catch (err) {
         console.error('Error ending giveaway:', err);
     }
@@ -436,7 +445,7 @@ async function restoreGiveaways(client) {
     try {
         const rows = await db.query(
             `SELECT * FROM ${h.tables.GIVEAWAYS} 
-             WHERE ended = 0 AND julianday(end_time) > julianday('now')`,
+             WHERE ended = 0 AND end_time > datetime('now')`,
             []
         );
 
