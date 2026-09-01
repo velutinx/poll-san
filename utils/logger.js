@@ -27,10 +27,12 @@ const IGNORE_PATTERNS = [
   /\[MassScan\] .*/i,
   /\[AvatarScan\] .*/i,
   /\[Database\] Slow query .*/i,
-  // ─── NEW: ignore queue/winner logs ──────────────────────────────
+  // ─── Queue/winner logs ──────────────────────────────────────────
   /📋 Added winner to queue:/i,
-  /📋 Added .* to queue/i,          // generic queue addition
-  /📋 .* to queue/i,                // any other queue info
+  /📋 Added .* to queue/i,
+  /📋 .* to queue/i,
+  // ─── Giveaway reminder logs ────────────────────────────────────
+  /✅ Reminder sent for giveaway/i,
 ];
 let logBuffer = [];
 let flushTimer = null;
