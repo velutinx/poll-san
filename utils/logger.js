@@ -27,11 +27,9 @@ const IGNORE_PATTERNS = [
   /\[MassScan\] .*/i,
   /\[AvatarScan\] .*/i,
   /\[Database\] Slow query .*/i,
-  // ─── Queue/winner logs ──────────────────────────────────────────
   /📋 Added winner to queue:/i,
   /📋 Added .* to queue/i,
   /📋 .* to queue/i,
-  // ─── Giveaway reminder logs ────────────────────────────────────
   /✅ Reminder sent for giveaway/i,
 ];
 let logBuffer = [];
@@ -46,14 +44,25 @@ function shouldIgnore(message) {
 async function sendLogsToWorker(logs) {
   if (!logs.length) return;
   try {
+    // Combine all logs into a single context
+    const context = {
+      logs: logs.map(({ level, message, stack, timestamp }) => ({
+        level,
+        message,
+        stack: stack || '',
+        timestamp,
+      })),
+    };
+    // For the main error, take the last non‑ignored log (or the first error)
+    const lastError = logs.find(l => l.level === 'error') || logs[logs.length - 1];
     const payload = {
       worker: 'railway-bot',
       timestamp: new Date().toISOString(),
-      error: logs.map(l => l.message).join('\n'),
-      stack: '',
+      error: lastError ? lastError.message : 'Unknown error',
+      stack: lastError ? lastError.stack || '' : '',
       url: '',
       method: '',
-      context: JSON.stringify({ logs, level: 'info' })
+      context: JSON.stringify(context),
     };
     await fetch(LOG_WORKER_URL, {
       method: 'POST',
@@ -72,9 +81,9 @@ function flushBuffer() {
   sendLogsToWorker(copy);
 }
 
-function addLog(level, message) {
+function addLog(level, message, stack = '') {
   if (shouldIgnore(message)) return;
-  logBuffer.push({ level, message, timestamp: new Date().toISOString() });
+  logBuffer.push({ level, message, stack, timestamp: new Date().toISOString() });
   if (logBuffer.length >= MAX_BUFFER_SIZE) {
     flushBuffer();
   } else if (!flushTimer) {
@@ -103,17 +112,30 @@ function initLogger() {
   };
 
   console.error = function(...args) {
-    const msg = args.join(' ');
+    // Capture the error object and stack
+    let msg = '';
+    let stack = '';
+    for (const arg of args) {
+      if (arg instanceof Error) {
+        msg += (arg.message || '') + ' ';
+        stack = arg.stack || '';
+      } else {
+        msg += String(arg) + ' ';
+      }
+    }
+    msg = msg.trim();
     originalError(...args);
-    addLog('error', msg);
+    addLog('error', msg, stack);
   };
 
   process.on('uncaughtException', (err) => {
-    addLog('error', `Uncaught Exception: ${err.message}\n${err.stack}`);
+    addLog('error', `Uncaught Exception: ${err.message}`, err.stack);
   });
 
   process.on('unhandledRejection', (reason) => {
-    addLog('error', `Unhandled Rejection: ${reason}`);
+    const msg = reason instanceof Error ? reason.message : String(reason);
+    const stack = reason instanceof Error ? reason.stack : '';
+    addLog('error', `Unhandled Rejection: ${msg}`, stack);
   });
 
   process.on('exit', () => flushBuffer());
