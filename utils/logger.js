@@ -31,6 +31,7 @@ const IGNORE_PATTERNS = [
   /📋 Added .* to queue/i,
   /📋 .* to queue/i,
   /✅ Reminder sent for giveaway/i,
+  /Starting giveaway ID:/i,          // ─── NEW ───
 ];
 let logBuffer = [];
 let flushTimer = null;
@@ -44,7 +45,6 @@ function shouldIgnore(message) {
 async function sendLogsToWorker(logs) {
   if (!logs.length) return;
   try {
-    // Combine all logs into a single context
     const context = {
       logs: logs.map(({ level, message, stack, timestamp }) => ({
         level,
@@ -53,7 +53,6 @@ async function sendLogsToWorker(logs) {
         timestamp,
       })),
     };
-    // For the main error, take the last non‑ignored log (or the first error)
     const lastError = logs.find(l => l.level === 'error') || logs[logs.length - 1];
     const payload = {
       worker: 'railway-bot',
@@ -112,7 +111,6 @@ function initLogger() {
   };
 
   console.error = function(...args) {
-    // Capture the error object and stack
     let msg = '';
     let stack = '';
     for (const arg of args) {
