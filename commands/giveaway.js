@@ -1,4 +1,4 @@
-// commands/giveaway.js – with LIMIT 1 added to getEntrants query, ORDER BY fix, and Unknown Message handling
+// commands/giveaway.js – with LIMIT 1, ORDER BY fix, and safety check for reminder deletion
 
 const {
     SlashCommandBuilder,
@@ -22,16 +22,15 @@ const GIVEAWAY_IMAGE_URL = process.env.GIVEAWAY_IMAGE_URL;
 const USE_HOSTED_IMAGE = !!GIVEAWAY_IMAGE_URL;
 const MAX_TIMEOUT = 2147483647;
 
-// ─── In‑memory cache for giveaway entrants (replaces KV) ──────────
-const entrantsCache = new Map(); // key: messageId, value: { entrants, timestamp }
-const CACHE_TTL = 60000; // 60 seconds
+// ─── In‑memory cache for giveaway entrants ──────────────────────────
+const entrantsCache = new Map();
+const CACHE_TTL = 60000;
 
 async function getEntrants(messageId) {
     const cached = entrantsCache.get(messageId);
     if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
         return cached.entrants;
     }
-    // ─── ADDED LIMIT 1 for speed ──────────────────────────────────────
     const row = await db.query(
         `SELECT entrants FROM ${h.tables.GIVEAWAYS} WHERE message_id = ? LIMIT 1`,
         [messageId],
@@ -48,7 +47,6 @@ async function setEntrants(messageId, entrants) {
         `UPDATE ${h.tables.GIVEAWAYS} SET entrants = ? WHERE message_id = ?`,
         [entrantsJson, messageId]
     );
-    // Update cache
     entrantsCache.set(messageId, { entrants, timestamp: Date.now() });
 }
 
@@ -279,7 +277,6 @@ async function handleGiveawayButton(interaction) {
             return interaction.editReply('This giveaway has already ended.');
         }
 
-        // Get entrants from D1 (cache will be populated by getEntrants)
         const entrantsArray = await getEntrants(messageId);
 
         giveaway = {
@@ -342,18 +339,29 @@ async function endGiveaway(messageId, client) {
             [messageId]
         );
 
-        // Invalidate cache
         invalidateEntrantsCache(messageId);
 
         const channel = await client.channels.fetch(row.channel_id);
         const webhook = await getGiveawayWebhook(channel);
         const message = await channel.messages.fetch(messageId);
 
+        // ─── Delete the reminder message if it exists and is different from the giveaway message ───
         if (row.reminder_message_id) {
-            try {
-                const reminderMsg = await channel.messages.fetch(row.reminder_message_id).catch(() => null);
-                if (reminderMsg) await reminderMsg.delete();
-            } catch (err) {}
+            if (row.reminder_message_id === messageId) {
+                console.warn(`⚠️ Skipping deletion of reminder message for giveaway ${messageId} because its ID matches the giveaway message ID. This indicates a data corruption.`);
+            } else {
+                try {
+                    const reminderMsg = await channel.messages.fetch(row.reminder_message_id).catch(() => null);
+                    if (reminderMsg) {
+                        await reminderMsg.delete();
+                        console.log(`🗑️ Deleted reminder message ${row.reminder_message_id} for giveaway ${messageId}`);
+                    } else {
+                        console.log(`ℹ️ Reminder message ${row.reminder_message_id} already deleted for giveaway ${messageId}`);
+                    }
+                } catch (err) {
+                    console.warn(`Failed to delete reminder message ${row.reminder_message_id}:`, err);
+                }
+            }
         }
 
         const entrantsArray = await getEntrants(messageId);
@@ -393,7 +401,6 @@ async function endGiveaway(messageId, client) {
 
         const winners = [firstWinner, secondWinner, thirdWinner].filter(Boolean);
 
-        const { left, right } = h.getTwoRandomPresents();
         let announcement = `${releaseEmojis?.CONFETTI || '🎉'} Giveaway ended! Winners:\n`;
         if (winners.length > 0) {
             const emojis = ['🥇', '🥈', '🥉'];
@@ -426,7 +433,6 @@ async function endGiveaway(messageId, client) {
         if (USE_HOSTED_IMAGE) newEmbed.setImage(GIVEAWAY_IMAGE_URL);
         else newEmbed.setImage(null);
 
-        // ─── Gracefully handle "Unknown Message" (code 10008) ──────────
         try {
             await webhook.editMessage(message.id, { embeds: [newEmbed], components: [] });
         } catch (editErr) {
@@ -455,7 +461,6 @@ async function restoreGiveaways(client) {
             const endTime = new Date(g.end_time).getTime();
             const timeLeft = endTime - Date.now();
 
-            // Get entrants (this will populate cache)
             const entrantsArray = await getEntrants(g.message_id);
 
             if (timeLeft <= 0) {
