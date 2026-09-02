@@ -401,7 +401,7 @@ async function endGiveaway(messageId, client) {
 
         const winners = [firstWinner, secondWinner, thirdWinner].filter(Boolean);
 
-        let announcement = `${releaseEmojis?.CONFETTI || '🎉'} Giveaway ended! Winners:\n`;
+        let announcement = `${releaseEmojis?.CONFETTI || '🎉'} Giveaway for ${row.prize} ended! Winners:\n`;
         if (winners.length > 0) {
             const emojis = ['🥇', '🥈', '🥉'];
             winners.forEach((id, index) => {
