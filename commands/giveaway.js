@@ -1,4 +1,4 @@
-// commands/giveaway.js – with LIMIT 1, ORDER BY fix, and safety check for reminder deletion
+// commands/giveaway.js
 
 const {
     SlashCommandBuilder,
@@ -15,17 +15,13 @@ const fs = require('fs').promises;
 const { colors, releaseEmojis } = require('../utils/helpers');
 const h = require('../utils/helpers');
 const db = require('../services/database');
-
 const activeGiveaways = new Map();
 const giveawaySessions = new Map();
 const GIVEAWAY_IMAGE_URL = process.env.GIVEAWAY_IMAGE_URL;
 const USE_HOSTED_IMAGE = !!GIVEAWAY_IMAGE_URL;
 const MAX_TIMEOUT = 2147483647;
-
-// ─── In‑memory cache for giveaway entrants ──────────────────────────
 const entrantsCache = new Map();
 const CACHE_TTL = 60000;
-
 async function getEntrants(messageId) {
     const cached = entrantsCache.get(messageId);
     if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
@@ -40,7 +36,6 @@ async function getEntrants(messageId) {
     entrantsCache.set(messageId, { entrants, timestamp: Date.now() });
     return entrants;
 }
-
 async function setEntrants(messageId, entrants) {
     const entrantsJson = JSON.stringify(entrants);
     await db.query(
@@ -49,18 +44,15 @@ async function setEntrants(messageId, entrants) {
     );
     entrantsCache.set(messageId, { entrants, timestamp: Date.now() });
 }
-
 function invalidateEntrantsCache(messageId) {
     entrantsCache.delete(messageId);
 }
-
 async function getBlacklistIds() {
     const rows = await db.query(
         `SELECT user_id FROM ${h.tables.GIVEAWAY_BLACKLIST}`
     );
     return rows.map(r => r.user_id);
 }
-
 function safeTimeout(callback, delayMs) {
     if (delayMs <= MAX_TIMEOUT) {
         return setTimeout(callback, delayMs);
@@ -69,7 +61,6 @@ function safeTimeout(callback, delayMs) {
         safeTimeout(callback, delayMs - MAX_TIMEOUT);
     }, MAX_TIMEOUT);
 }
-
 async function getGiveawayWebhook(channel) {
     let webhook = (await channel.fetchWebhooks()).find(w => w.name === 'Giveaway');
     if (!webhook) {
@@ -80,7 +71,6 @@ async function getGiveawayWebhook(channel) {
     }
     return webhook;
 }
-
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('giveaway')
@@ -98,23 +88,19 @@ module.exports = {
             option.setName('channel')
                 .setDescription('Channel to post the giveaway')
                 .setRequired(true)),
-
     async execute(interaction) {
         if (interaction.isButton() && interaction.customId === 'enter_giveaway') {
             return handleGiveawayButton(interaction);
         }
-
         if (!interaction.memberPermissions || !interaction.memberPermissions.has(PermissionsBitField.Flags.ManageGuild)) {
             return interaction.reply({
                 content: 'You need `Manage Server` permission to create giveaways.',
                 flags: [MessageFlags.Ephemeral]
             });
         }
-
         const durationStr = interaction.options.getString('duration');
         const prize = interaction.options.getString('prize');
         const channel = interaction.options.getChannel('channel');
-
         const durationMs = parseDuration(durationStr);
         if (!durationMs) {
             return interaction.reply({
@@ -122,10 +108,8 @@ module.exports = {
                 flags: [MessageFlags.Ephemeral]
             });
         }
-
         const winnersCount = 1;
         const endTime = new Date(Date.now() + durationMs);
-
         let imageUrl = null;
         let imageAttachment = null;
         if (USE_HOSTED_IMAGE) {
@@ -139,12 +123,9 @@ module.exports = {
                 console.warn('Using local file – image will appear as attachment AND in embed if set. Set GIVEAWAY_IMAGE_URL to avoid duplication.');
             } catch {}
         }
-
         const giveawayId = Date.now();
-
         const { left: leftBox, right: rightBox } = h.getTwoRandomPresents();
         const activeTitle = `${leftBox} ${prize} Giveaway ${rightBox}`;
-
         const embed = new EmbedBuilder()
             .setTitle(activeTitle)
             .setDescription(`${releaseEmojis?.CHAT || '💬'} Click the button below to join the giveaway! ${releaseEmojis?.CHAT || '💬'}`)
@@ -155,13 +136,10 @@ module.exports = {
             )
             .setColor(colors.giveaway)
             .setFooter({ text: `Giveaway ID: ${giveawayId}` });
-
         if (imageUrl) embed.setImage(imageUrl);
-
         const presentEmojiStr = h.getRandomPresent();
         const match = presentEmojiStr.match(/^<a?:(\w+):(\d+)>$/);
         const emojiData = match ? { name: match[1], id: match[2] } : { name: '🎁' };
-
         const row = new ActionRowBuilder()
             .addComponents(
                 new ButtonBuilder()
@@ -170,17 +148,14 @@ module.exports = {
                     .setStyle(ButtonStyle.Primary)
                     .setEmoji(emojiData)
             );
-
         const messageOptions = { embeds: [embed], components: [row] };
         if (imageAttachment) messageOptions.files = [imageAttachment];
-
         const webhook = await getGiveawayWebhook(channel);
         const giveawayMessage = await webhook.send({
             ...messageOptions,
             username: 'Giveaway',
             avatar: h.urls.LOGO_URL
         });
-
         try {
             const pingMessage = await webhook.send({
                 content: `${releaseEmojis?.CONFETTI || '🎉'} New giveaway! <@&1472273843665113139>`,
@@ -193,11 +168,8 @@ module.exports = {
         } catch (err) {
             console.error('Failed to send ghost ping:', err);
         }
-
         console.log(`Starting giveaway ID: ${giveawayId} - ${prize} for ${durationStr}`);
-
         const sqliteEndTime = endTime.toISOString().slice(0, 19).replace('T', ' ');
-
         try {
             await db.query(
                 `INSERT INTO ${h.tables.GIVEAWAYS} 
@@ -213,7 +185,6 @@ module.exports = {
                 avatar: h.urls.LOGO_URL
             });
         }
-
         const timeoutId = safeTimeout(() => endGiveaway(giveawayMessage.id, interaction.client), durationMs);
         activeGiveaways.set(giveawayMessage.id, {
             messageId: giveawayMessage.id,
@@ -228,14 +199,12 @@ module.exports = {
             imageUrl,
             timeoutId
         });
-
         await interaction.reply({
             content: `Giveaway created in ${channel}!`,
             flags: [MessageFlags.Ephemeral]
         });
     }
 };
-
 function parseDuration(str) {
     const match = str.match(/^(\d+)([dhm])$/i);
     if (!match) return null;
@@ -244,29 +213,22 @@ function parseDuration(str) {
     const multipliers = { d: 24 * 60 * 60 * 1000, h: 60 * 60 * 1000, m: 60 * 1000 };
     return value * multipliers[unit];
 }
-
 async function handleGiveawayButton(interaction) {
     if (!interaction.isButton() || interaction.customId !== 'enter_giveaway') return;
-
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-
     const userId = interaction.user.id;
     const messageId = interaction.message.id;
     const client = interaction.client;
-
     let giveaway = activeGiveaways.get(messageId);
-    
     if (!giveaway) {
         const row = await db.query(
             `SELECT * FROM ${h.tables.GIVEAWAYS} WHERE message_id = ? AND ended = 0`,
             [messageId],
             true
         );
-
         if (!row) {
             return interaction.editReply('This giveaway has already ended or does not exist.');
         }
-
         const endTime = new Date(row.end_time).getTime();
         const timeLeft = endTime - Date.now();
         let timeoutId = null;
@@ -276,9 +238,7 @@ async function handleGiveawayButton(interaction) {
             await endGiveaway(messageId, client);
             return interaction.editReply('This giveaway has already ended.');
         }
-
         const entrantsArray = await getEntrants(messageId);
-
         giveaway = {
             messageId: row.message_id,
             channelId: row.channel_id,
@@ -293,18 +253,14 @@ async function handleGiveawayButton(interaction) {
         };
         activeGiveaways.set(messageId, giveaway);
     }
-
     if (giveaway.ended) {
         return interaction.editReply('This giveaway has already ended.');
     }
-
     if (giveaway.entrants.has(userId)) {
         return interaction.editReply('You have already entered!');
     }
-
     giveaway.entrants.add(userId);
     const entrantsArray = Array.from(giveaway.entrants);
-
     try {
         await setEntrants(messageId, entrantsArray);
         return interaction.editReply(`${releaseEmojis?.getRandomVerify?.() || '✅'} You entered the giveaway!`);
@@ -314,38 +270,30 @@ async function handleGiveawayButton(interaction) {
         return interaction.editReply('Failed to enter giveaway due to a database error.');
     }
 }
-
 async function endGiveaway(messageId, client) {
     const giveaway = activeGiveaways.get(messageId);
     if (!giveaway || giveaway.ended) return;
     giveaway.ended = true;
     if (giveaway.timeoutId) clearTimeout(giveaway.timeoutId);
     activeGiveaways.delete(messageId);
-
     try {
         const row = await db.query(
             `SELECT * FROM ${h.tables.GIVEAWAYS} WHERE message_id = ?`,
             [messageId],
             true
         );
-
         if (!row) {
             console.error('Giveaway not found in database at end time:', messageId);
             return;
         }
-
         await db.query(
             `UPDATE ${h.tables.GIVEAWAYS} SET ended = 1 WHERE message_id = ?`,
             [messageId]
         );
-
         invalidateEntrantsCache(messageId);
-
         const channel = await client.channels.fetch(row.channel_id);
         const webhook = await getGiveawayWebhook(channel);
         const message = await channel.messages.fetch(messageId);
-
-        // ─── Delete the reminder message if it exists and is different from the giveaway message ───
         if (row.reminder_message_id) {
             if (row.reminder_message_id === messageId) {
                 console.warn(`⚠️ Skipping deletion of reminder message for giveaway ${messageId} because its ID matches the giveaway message ID. This indicates a data corruption.`);
@@ -363,10 +311,8 @@ async function endGiveaway(messageId, client) {
                 }
             }
         }
-
         const entrantsArray = await getEntrants(messageId);
         const totalEntries = entrantsArray.length;
-
         if (totalEntries === 0) {
             await webhook.send({
                 content: 'No one entered the giveaway. 😢',
@@ -375,7 +321,6 @@ async function endGiveaway(messageId, client) {
             });
             return;
         }
-
         const blacklistIds = await getBlacklistIds();
         const nonBlacklisted = entrantsArray.filter(id => !blacklistIds.includes(id));
         const blacklistedEntrants = entrantsArray.filter(id => blacklistIds.includes(id));
@@ -385,24 +330,21 @@ async function endGiveaway(messageId, client) {
             const idx = Math.floor(Math.random() * remaining.length);
             firstWinner = remaining.splice(idx, 1)[0];
         }
-
         let secondWinner = null;
         if (remaining.length > 0) {
             const idx = Math.floor(Math.random() * remaining.length);
             secondWinner = remaining.splice(idx, 1)[0];
         }
-
         const allRemaining = [...remaining, ...blacklistedEntrants];
         let thirdWinner = null;
         if (allRemaining.length > 0) {
             const idx = Math.floor(Math.random() * allRemaining.length);
             thirdWinner = allRemaining.splice(idx, 1)[0];
         }
-
         const winners = [firstWinner, secondWinner, thirdWinner].filter(Boolean);
-
         let announcement = `${releaseEmojis?.CONFETTI || '🎉'} Giveaway for ${row.prize} ended! Winners:\n`;
         if (winners.length > 0) {
+            announcement += `In case 🥇 fails to claim prize within 4 days, the reward will be passed to 🥈 and so on:\n`;
             const emojis = ['🥇', '🥈', '🥉'];
             winners.forEach((id, index) => {
                 announcement += `${emojis[index] || '🏅'} <@${id}>\n`;
@@ -410,13 +352,11 @@ async function endGiveaway(messageId, client) {
         } else {
             announcement = 'No winners could be selected. 😢';
         }
-
         await webhook.send({
             content: announcement,
             username: 'Giveaway',
             avatar: h.urls.LOGO_URL
         });
-
         const oldEmbed = message.embeds[0];
         const endedTitle = `${row.prize} Giveaway Ended ${releaseEmojis?.CONFETTI || '🎉'}`;
         const newEmbed = EmbedBuilder.from(oldEmbed)
@@ -429,10 +369,8 @@ async function endGiveaway(messageId, client) {
                 { name: 'Winner', value: `${row.winners_count}`, inline: true },
                 { name: 'Total Entries', value: `${totalEntries}`, inline: true }
             );
-
         if (USE_HOSTED_IMAGE) newEmbed.setImage(GIVEAWAY_IMAGE_URL);
         else newEmbed.setImage(null);
-
         try {
             await webhook.editMessage(message.id, { embeds: [newEmbed], components: [] });
         } catch (editErr) {
@@ -446,7 +384,6 @@ async function endGiveaway(messageId, client) {
         console.error('Error ending giveaway:', err);
     }
 }
-
 async function restoreGiveaways(client) {
     try {
         const rows = await db.query(
@@ -454,15 +391,11 @@ async function restoreGiveaways(client) {
              WHERE ended = 0 AND end_time > datetime('now')`,
             []
         );
-
         if (!rows || rows.length === 0) return;
-
         for (const g of rows) {
             const endTime = new Date(g.end_time).getTime();
             const timeLeft = endTime - Date.now();
-
             const entrantsArray = await getEntrants(g.message_id);
-
             if (timeLeft <= 0) {
                 console.log(`Giveaway ${g.message_id} - ${g.prize} already ended, processing now.`);
                 await endGiveaway(g.message_id, client);
@@ -488,7 +421,6 @@ async function restoreGiveaways(client) {
         console.error('Failed to restore giveaways:', err);
     }
 }
-
 module.exports.handleGiveawayButton = handleGiveawayButton;
 module.exports.restoreGiveaways = restoreGiveaways;
 module.exports.getBlacklistIds = getBlacklistIds;
