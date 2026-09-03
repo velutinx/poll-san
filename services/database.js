@@ -30,13 +30,10 @@ async function query(sql, params = [], single = false) {
         const key = getCacheKey(sql, params);
         const cached = avatarFlagCache.get(key);
         if (cached && Date.now() - cached.timestamp < AVATAR_CACHE_TTL) {
-            // Return cached result (ensure it matches the expected format)
             const result = cached.value;
             if (single) {
-                // If single is true, result should be an object (the row) or null
                 return result ?? null;
             } else {
-                // If array expected, wrap in array if needed
                 return result !== null && result !== undefined ? [result] : [];
             }
         }
@@ -59,6 +56,8 @@ async function query(sql, params = [], single = false) {
             });
 
             const elapsed = Date.now() - startTime;
+            // ─── Slow query log removed – user only wants to see failures ──
+            // (Failure is logged below after all retries)
 
             if (!res.ok) {
                 const text = await res.text();
@@ -67,10 +66,6 @@ async function query(sql, params = [], single = false) {
 
             const data = await res.json();
             if (data.error) throw new Error(`D1 query error: ${data.error}`);
-
-            if (elapsed > 5000) {
-                console.log(`[Database] Slow query (${elapsed}ms, attempt ${attempt}): ${sql.substring(0, 100)}`);
-            }
 
             const result = single ? data.results?.[0] ?? null : data.results ?? [];
 
@@ -130,7 +125,6 @@ function invalidateAvatarCache() {
 async function upsert(table, columns, values, single = false) {
     const placeholders = columns.map(() => '?').join(', ');
     const sql = `INSERT OR REPLACE INTO ${table} (${columns.join(', ')}) VALUES (${placeholders})`;
-    // Invalidate cache if table is avatar_flagged_settings
     if (table === 'avatar_flagged_settings') {
         invalidateAvatarCache();
     }
@@ -164,7 +158,6 @@ async function deleteIn(table, column, values) {
 // ─── batchQuery ──────────────────────────────────────────────────────
 async function batchQuery(queries) {
     if (!queries || queries.length === 0) return [];
-    // Invalidate cache if any query touches avatar_flagged_settings
     for (const q of queries) {
         const sql = (q.sql || '').trim().toLowerCase();
         if (sql.includes('avatar_flagged_settings') && (sql.includes('insert') || sql.includes('update') || sql.includes('delete'))) {
@@ -183,7 +176,6 @@ async function transaction(queries) {
         for (const q of queries) {
             const result = await query(q.sql, q.params || []);
             results.push(result);
-            // Invalidate cache if any query touches avatar_flagged_settings
             const sql = (q.sql || '').trim().toLowerCase();
             if (sql.includes('avatar_flagged_settings') && (sql.includes('insert') || sql.includes('update') || sql.includes('delete'))) {
                 invalidateAvatarCache();
@@ -204,5 +196,5 @@ module.exports = {
     deleteIn,
     batchQuery,
     transaction,
-    invalidateAvatarCache, // expose for manual invalidation if needed
+    invalidateAvatarCache,
 };
