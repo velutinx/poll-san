@@ -7,7 +7,8 @@ const {
     ButtonBuilder,
     ButtonStyle,
     PermissionsBitField,
-    AttachmentBuilder
+    AttachmentBuilder,
+    MessageFlags
 } = require('discord.js');
 const path = require('path');
 const fs = require('fs').promises;
@@ -90,7 +91,7 @@ function parseDuration(str) {
 async function handleGiveawayButton(interaction) {
     if (!interaction.isButton() || interaction.customId !== 'enter_giveaway') return;
     
-    await interaction.deferReply({ ephemeral: true });
+    await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
     
     const userId = interaction.user.id;
     const messageId = interaction.message.id;
@@ -358,7 +359,7 @@ module.exports = {
         if (!interaction.memberPermissions || !interaction.memberPermissions.has(PermissionsBitField.Flags.ManageGuild)) {
             return interaction.reply({
                 content: 'You need `Manage Server` permission to create giveaways.',
-                ephemeral: true
+                flags: [MessageFlags.Ephemeral]
             });
         }
         
@@ -370,7 +371,7 @@ module.exports = {
         if (!durationMs) {
             return interaction.reply({
                 content: 'Invalid duration format. Use e.g., `7d`, `12h`, `30m`.',
-                ephemeral: true
+                flags: [MessageFlags.Ephemeral]
             });
         }
         
@@ -479,7 +480,7 @@ module.exports = {
         
         await interaction.reply({
             content: `Giveaway created in ${channel}!`,
-            ephemeral: true
+            flags: [MessageFlags.Ephemeral]
         });
     },
 
