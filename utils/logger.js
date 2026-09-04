@@ -31,7 +31,9 @@ const IGNORE_PATTERNS = [
   /📋 Added .* to queue/i,
   /📋 .* to queue/i,
   /✅ Reminder sent for giveaway/i,
-  /Starting giveaway ID:/i,          // ─── NEW ───
+  /Starting giveaway ID:/i,
+  /✅ Reminder sent and stored for giveaway/i,
+  /✅ Reminder sent/i,
 ];
 let logBuffer = [];
 let flushTimer = null;
