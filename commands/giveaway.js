@@ -352,26 +352,35 @@ module.exports = {
                 .setRequired(true)),
                 
     async execute(interaction) {
-        if (interaction.isButton() && interaction.customId === 'enter_giveaway') {
-            return handleGiveawayButton(interaction);
+        // ⚠️ This function is only for slash commands; button interactions are handled separately.
+        // If for some reason a button reaches here, ignore it.
+        if (interaction.isButton()) {
+            // This should never happen, but just in case, delegate to the button handler.
+            if (interaction.customId === 'enter_giveaway') {
+                return handleGiveawayButton(interaction);
+            }
+            return;
         }
-        
+
+        // Permission check
         if (!interaction.memberPermissions || !interaction.memberPermissions.has(PermissionsBitField.Flags.ManageGuild)) {
             return interaction.reply({
                 content: 'You need `Manage Server` permission to create giveaways.',
                 flags: [MessageFlags.Ephemeral]
             });
         }
-        
+
+        // ─── 1. Defer reply immediately ──────────────────────────
+        await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
+
         const durationStr = interaction.options.getString('duration');
         const prize = interaction.options.getString('prize');
         const channel = interaction.options.getChannel('channel');
         const durationMs = parseDuration(durationStr);
         
         if (!durationMs) {
-            return interaction.reply({
-                content: 'Invalid duration format. Use e.g., `7d`, `12h`, `30m`.',
-                flags: [MessageFlags.Ephemeral]
+            return interaction.editReply({
+                content: 'Invalid duration format. Use e.g., `7d`, `12h`, `30m`.'
             });
         }
         
@@ -478,9 +487,9 @@ module.exports = {
             timeoutId
         });
         
-        await interaction.reply({
-            content: `Giveaway created in ${channel}!`,
-            flags: [MessageFlags.Ephemeral]
+        // ─── 2. Send final reply via editReply ──────────────────
+        await interaction.editReply({
+            content: `Giveaway created in ${channel}!`
         });
     },
 
