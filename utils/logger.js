@@ -34,6 +34,7 @@ const IGNORE_PATTERNS = [
   /Starting giveaway ID:/i,
   /✅ Reminder sent and stored for giveaway/i,
   /✅ Reminder sent/i,
+  /🗑️ Deleted reminder message .+ for giveaway .+/i,
 ];
 let logBuffer = [];
 let flushTimer = null;
