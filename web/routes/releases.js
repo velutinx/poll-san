@@ -485,14 +485,14 @@ ${getRandomArrow()} See <#${SUPPORTER_FORUM_ID}>`;
       const forumChannel = await guild.channels.fetch(SUPPORTER_FORUM_ID);
       const suffixStr = suffix ? ` — ${suffix}` : '';
       const threadTitle = `[${seriesTrimmed}] ${charName} — Pack #${pack}${suffixStr}`;
-      const messageBody = `${SUPPORTER_RELEASE_HEADER}
+const messageBody = `${SUPPORTER_RELEASE_HEADER}
 ${roleMention || ''}
 ━━━━━━━━━━━━━━
 Character: ${charName}
 Set size: ${setSize} images
 Content: Explicit (${h.releaseEmojis.EIGHTEEN})
 ${getRandomDownArrow()} Download:
-${h.releaseEmojis.LINK} [megaLink](${download || 'https://mega.nz'})`;
+${h.releaseEmojis.LINK} **[megaLink](${download || 'https://mega.nz'})**`;
       let supporterResult = {};
       if (supporterThreadId) {
         const thread = await client.channels.fetch(supporterThreadId);
