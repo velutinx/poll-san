@@ -35,6 +35,7 @@ const IGNORE_PATTERNS = [
   /✅ Reminder sent and stored for giveaway/i,
   /✅ Reminder sent/i,
   /🗑️ Deleted reminder message .+ for giveaway .+/i,
+  /\[PollReminders\] .*/i,   // ← NEW: ignore all PollReminders log messages
 ];
 let logBuffer = [];
 let flushTimer = null;
