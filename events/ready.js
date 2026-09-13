@@ -72,7 +72,7 @@ module.exports = async (c) => {
   setTimeout(() => {
     syncMembershipRoles(c).catch(err => console.error('[MembershipSync] Initial error:', err));
   }, 15000);
-  
+
   setInterval(() => {
     syncMembershipRoles(c).catch(err => console.error('[MembershipSync] Sync error:', err));
   }, 12 * 60 * 60 * 1000);
@@ -108,11 +108,11 @@ module.exports = async (c) => {
             .split(/(?=:female_sign:|:male_sign:|♀️|♂️)/)
             .map(s => s.trim())
             .filter(s => s.length > 0);
-            
+
           runPollInterval(pollMsg, new Date(poll.ends_at).getTime(), characters);
-          
+
           await new Promise(resolve => setTimeout(resolve, 2500));
-          
+
         } catch (e) {
           console.error(`Failed to resume poll ${poll.message_id}:`, e.message);
         }
@@ -126,11 +126,6 @@ module.exports = async (c) => {
   setTimeout(() => {
     restoreGiveaways(c).catch(console.error);
   }, 10000);
-
-  const { restorePollReminders } = require('../services/pollReminders');
-  setTimeout(() => {
-    restorePollReminders(c).catch(console.error);
-  }, 12000);
 
   setTimeout(() => {
     cleanupExpiredMemberships(c).catch(err => console.error('Initial membership cleanup failed:', err));
