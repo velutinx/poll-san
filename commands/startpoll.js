@@ -59,11 +59,11 @@ module.exports = async (interaction) => {
         if (!wh) wh = await channel.createWebhook({ name: 'Poll Reminder', avatar: h.urls.LOGO_URL });
         return wh;
     })();
-    
+
     // FETCH THE ANIMATED EMOJI INSTEAD OF '💬'
     const speechEmoji = releaseEmojis.SPEECH || '<a:speech:1506709601758744828>';
     const dmLink = `<https://discord.com/users/${h.ids.users.Velutinx}>`;
-    
+
     const initialReminderMsg = await initialWebhook.send({
         content: `${speechEmoji} Remember to message **[DM Velutinx](${dmLink})** with suggestions for next week's poll! All suggestions must be sent before **Friday**.`,
         username: 'Poll Reminder',
@@ -81,6 +81,52 @@ module.exports = async (interaction) => {
         avatarURL: h.urls.LOGO_URL,
         flags: [1 << 12]
     });
+
+    // ──────────────────────────────────────────────────────────────────
+    //  SELF-HEAL: wipe reminder state from the previous poll cycle
+    // ──────────────────────────────────────────────────────────────────
+    //  Cloudflare's `poll-reminder-worker` keeps its own bookkeeping in
+    //  the `poll_settings` table under these exact keys:
+    //      last_thursday_reminder, last_thursday_reminder_message_id,
+    //      last_friday_reminder,   last_friday_reminder_message_id,
+    //      saturday_cleanup
+    //
+    //  If a previous cycle's Saturday cleanup ever fails (cron miss,
+    //  network hiccup, message-already-deleted, etc.), the stale message
+    //  IDs and dates linger. The next poll then inherits them, and — as
+    //  you saw with the stuck Friday message — a stale Friday ID can
+    //  make the new cycle's cleanup try to delete the wrong message.
+    //
+    //  Wiping these keys here guarantees every new poll starts blank.
+    //  Wrapped in try/catch so a D1 hiccup can never block the poll
+    //  from launching.
+    // ──────────────────────────────────────────────────────────────────
+    try {
+        await db.query(
+            `DELETE FROM poll_settings WHERE key IN (
+                'last_thursday_reminder', 'last_thursday_reminder_message_id',
+                'last_friday_reminder',   'last_friday_reminder_message_id',
+                'saturday_cleanup'
+            )`
+        );
+        console.log('🧹 Cleared stale poll_settings reminder keys from previous cycle.');
+
+        // Reset vestigial reminder columns on any other active poll rows.
+        // Railway's own reminder system is disabled (see events/ready.js),
+        // so these columns are unused by the code — but leaving them
+        // zeroed keeps the D1 browser from showing stale state.
+        await db.query(
+            `UPDATE poll_auto_resume
+             SET reminder_message_id = NULL,
+                 reminder_48h_sent   = 0,
+                 reminder_friday_sent = 0
+             WHERE status = 'active'`
+        );
+        console.log('🧹 Reset reminder columns on active poll_auto_resume rows.');
+    } catch (cleanupErr) {
+        console.warn('⚠️ Poll reminder state cleanup failed (non-fatal):', cleanupErr.message);
+    }
+    // ──────────────────────────────────────────────────────────────────
 
     try {
         await db.query(
