@@ -138,15 +138,15 @@ module.exports = async (c) => {
   initMudaeMessageHandler(c);
 
   XPLib.onLevelUp(async ({ userId, guildId, oldLevel, newLevel, newTotal }) => {
-    const guild = c.guilds.cache.get(guildId);
-    if (!guild) return;
-    const member = await guild.members.fetch(userId).catch(() => null);
-    if (!member) return;
-
-    const xpChannel = guild.channels.cache.get(h.ids.channels.xp_channel);
-    if (!xpChannel) return;
-
     try {
+      const guild = c.guilds.cache.get(guildId);
+      if (!guild) return;
+      const member = await guild.members.fetch(userId).catch(() => null);
+      if (!member) return;
+
+      const xpChannel = guild.channels.cache.get(h.ids.channels.xp_channel);
+      if (!xpChannel) return;
+
       const hooks = await xpChannel.fetchWebhooks();
       let levelingWebhook = hooks.find(w => w.name === 'Leveling');
       if (!levelingWebhook) {
@@ -166,11 +166,15 @@ module.exports = async (c) => {
         flags: [MessageFlags.SuppressNotifications]
       });
     } catch (webhookErr) {
-      console.error('Level‑up webhook error:', webhookErr);
+      console.warn('[XP] Level-up webhook error (non-fatal):', webhookErr.message);
     }
   });
 
-  setInterval(() => {
-    XPLib.flush().catch(err => console.error('[XP Flush] Error:', err));
+  setInterval(async () => {
+    try {
+      await XPLib.flush();
+    } catch (err) {
+      console.warn('[XP Flush] Non-fatal error:', err.message);
+    }
   }, 30000);
 };
