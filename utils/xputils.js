@@ -28,11 +28,21 @@ function getLevel(messages) {
 }
 
 // ─── Schedule a flush ─────────────────────────────────────────────
+// FIX: wrapped in try/catch. The timer callback was previously a bare
+//      async function whose rejection had nowhere to go — any D1
+//      hiccup (ECONNRESET, timeout, storage operation) during the
+//      scheduled flush bubbled up as an unhandledRejection and killed
+//      the process. Now it logs a single warning and moves on; the
+//      next tick retries whatever is still in pendingUpdates.
 function scheduleFlush() {
   if (flushTimer) clearTimeout(flushTimer);
   flushTimer = setTimeout(async () => {
     flushTimer = null;
-    await flushUpdates();
+    try {
+      await flushUpdates();
+    } catch (err) {
+      console.warn('[XP] Scheduled flush failed (will retry next tick):', err.message);
+    }
   }, FLUSH_INTERVAL_MS);
 }
 
@@ -66,7 +76,17 @@ async function flushUpdates() {
     const newLevel = getLevel(newTotal);
     const oldLevel = current.level;
 
-    // Update D1
+    // ─── FIX: re-queue the increment on failure ─────────────────
+    //  Before this, a single ECONNRESET while writing one user's XP
+    //  aborted the entire flush loop (the increment was already
+    //  cleared from pendingUpdates, so the message count was lost).
+    //  The throw then propagated up to the caller and, when called
+    //  from a bare listener, became an unhandledRejection.
+    //
+    //  Now the increment is put back into pendingUpdates so the next
+    //  flush (or the scheduled tick) tries again, and the loop moves
+    //  on to the next user instead of throwing.
+    // ────────────────────────────────────────────────────────────
     try {
       await db.query(
         `INSERT INTO ${h.tables.USER_XP} (user_id, guild_id, total_messages, level, discord_username)
@@ -75,10 +95,12 @@ async function flushUpdates() {
            total_messages = excluded.total_messages,
            level = excluded.level,
            discord_username = excluded.discord_username`,
-        [userId, guildId, newTotal, newLevel, ''] // username updated separately
+        [userId, guildId, newTotal, newLevel, '']
       );
     } catch (err) {
-      console.error('[XP Flush Error]', err.message);
+      const prior = pendingUpdates.get(key) || 0;
+      pendingUpdates.set(key, prior + increment);
+      console.warn(`[XP] Flush failed for ${userId} (will retry): ${err.message}`);
       continue;
     }
 
@@ -88,12 +110,13 @@ async function flushUpdates() {
 
     // Level-up notification
     if (newLevel > oldLevel) {
-      // We'll emit an event that the main bot can listen to
       if (global._xpLevelUpCallbacks) {
         for (const cb of global._xpLevelUpCallbacks) {
           try {
             cb({ userId, guildId, oldLevel, newLevel, newTotal });
-          } catch (e) {}
+          } catch (e) {
+            console.warn('[XP] Level-up callback error:', e.message);
+          }
         }
       }
     }
@@ -131,9 +154,20 @@ const XPLib = {
     }
     pendingUpdates.set(key, pendingUpdates.get(key) + 1);
 
-    // If threshold reached, flush immediately
+    // If threshold reached, flush immediately.
+    // FIX: wrapped in its own try/catch. This is the exact line that
+    //      triggered the "TypeError: fetch failed { [cause]: ECONNRESET }"
+    //      crash — a user sent their 5th buffered message, forceFlush
+    //      tried to write to D1, the connection dropped, and the
+    //      rejection escaped the bare listener in index.js. Guarding
+    //      here keeps the counter intact and lets the next scheduled
+    //      flush pick it up.
     if (pendingUpdates.get(key) >= BATCH_THRESHOLD) {
-      await forceFlush();
+      try {
+        await forceFlush();
+      } catch (err) {
+        console.warn('[XP] forceFlush error (non-fatal):', err.message);
+      }
     } else {
       scheduleFlush();
     }
