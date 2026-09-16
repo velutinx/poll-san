@@ -1,4 +1,5 @@
 // utils/logger.js
+const util = require('util');
 
 const LOG_WORKER_URL = 'https://error-logger.velutinx.workers.dev/log';
 const IGNORE_PATTERNS = [
@@ -35,7 +36,7 @@ const IGNORE_PATTERNS = [
   /✅ Reminder sent and stored for giveaway/i,
   /✅ Reminder sent/i,
   /🗑️ Deleted reminder message .+ for giveaway .+/i,
-  /\[PollReminders\] .*/i,   // ← NEW: ignore all PollReminders log messages
+  /\[PollReminders\] .*/i,
 ];
 let logBuffer = [];
 let flushTimer = null;
@@ -115,29 +116,34 @@ function initLogger() {
   };
 
   console.error = function(...args) {
-    let msg = '';
-    let stack = '';
-    for (const arg of args) {
-      if (arg instanceof Error) {
-        msg += (arg.message || '') + ' ';
-        stack = arg.stack || '';
-      } else {
-        msg += String(arg) + ' ';
-      }
+    // 1. Get a short message for grouping on your website
+    let shortMsg = '';
+    const firstError = args.find(arg => arg instanceof Error);
+    if (firstError) {
+      shortMsg = firstError.message;
+    } else {
+      shortMsg = String(args[0]);
     }
-    msg = msg.trim();
+
+    // 2. Use util.format to get the EXACT text Node/Railway prints, including [cause]
+    const fullTrace = util.format(...args);
+
     originalError(...args);
-    addLog('error', msg, stack);
+    
+    // 3. Send shortMsg as the message, and fullTrace as the stack
+    addLog('error', shortMsg.trim(), fullTrace);
   };
 
   process.on('uncaughtException', (err) => {
-    addLog('error', `Uncaught Exception: ${err.message}`, err.stack);
+    // util.inspect prints the entire error object natively
+    const fullTrace = util.inspect(err, { depth: null });
+    addLog('error', `Uncaught Exception: ${err.message}`, fullTrace);
   });
 
   process.on('unhandledRejection', (reason) => {
-    const msg = reason instanceof Error ? reason.message : String(reason);
-    const stack = reason instanceof Error ? reason.stack : '';
-    addLog('error', `Unhandled Rejection: ${msg}`, stack);
+    const shortMsg = reason instanceof Error ? reason.message : String(reason);
+    const fullTrace = reason instanceof Error ? util.inspect(reason, { depth: null }) : String(reason);
+    addLog('error', `Unhandled Rejection: ${shortMsg}`, fullTrace);
   });
 
   process.on('exit', () => flushBuffer());
