@@ -1,4 +1,21 @@
-// this is poll-san/web/public/js/megalink.js
+// web/public/js/megalink.js
+
+function toAsciiFilename(name) {
+    if (!name) return name;
+
+    const extras = {
+        'ß': 'ss', 'Æ': 'AE', 'æ': 'ae', 'Œ': 'OE', 'œ': 'oe',
+        'Ø': 'O',  'ø': 'o',  'Å': 'A',  'å': 'a',
+        'Ð': 'D',  'ð': 'd',  'Þ': 'TH', 'þ': 'th',
+        'Ł': 'L',  'ł': 'l',  'Đ': 'D',  'đ': 'd',
+    };
+
+    return name
+        .replace(/\//g, ' ')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^\x00-\x7F]/g, c => extras[c] || '_');
+}
 
 function initMega() {
     const previewSelect = document.getElementById('supporterPostSelect');
@@ -34,26 +51,23 @@ function generateFilenameFromPost() {
     }
 
     const title = post.name;
-    // Regex: [Series] Name — Pack #123 (optional suffix like "— Poll")
     const regex = /\[(.*?)\] (.*?) — (?:Pack #)?(\d+)/i;
     const match = title.match(regex);
+    let friendly;
     if (match) {
-        // Use series as-is (preserve case and punctuation) but sanitize slashes
         let series = match[1].trim();
-        // --- FIX: replace '/' with a space and collapse multiple spaces ---
         series = series.replace(/\//g, ' ').replace(/\s+/g, ' ').trim();
-
         const name = match[2].replace(/♀️|♂️|:female_sign:|:male_sign:/g, '').trim();
         const pack = match[3];
-        const filename = `[Pack ${pack}] ${name} - ${series}.zip`;
-        document.getElementById('mega-filename').value = filename;
-        console.log(`Generated filename: ${filename}`);
+        friendly = `[Pack ${pack}] ${name} - ${series}.zip`;
     } else {
-        // Fallback: use entire title, strip "— Poll" or "— Request" if present
         let fallback = title.replace(/ — (?:Poll|Request)$/, '').trim();
-        document.getElementById('mega-filename').value = fallback + '.zip';
-        console.log(`Fallback filename: ${fallback}.zip`);
+        friendly = fallback + '.zip';
     }
+
+    const sanitized = toAsciiFilename(friendly);
+    document.getElementById('mega-filename').value = sanitized;
+    console.log(`Generated filename: ${friendly} → sanitized: ${sanitized}`);
 }
 
 function getCurrentMonth() {
@@ -85,14 +99,13 @@ async function uploadToMega() {
         return;
     }
 
+    finalFileName = toAsciiFilename(finalFileName);
     const currentMonth = getCurrentMonth();
     console.log(`Uploading file: ${finalFileName}, month folder: ${currentMonth}`);
-
     btn.disabled = true;
     status.innerText = '⏳ Uploading...';
     progressBar.style.display = 'block';
     progressBar.value = 0;
-
     const formData = new FormData();
     const renamedFile = new File([fileToUpload], finalFileName, { type: fileToUpload.type });
     formData.append('file', renamedFile);
