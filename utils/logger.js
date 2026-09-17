@@ -37,6 +37,21 @@ const IGNORE_PATTERNS = [
   /✅ Reminder sent/i,
   /🗑️ Deleted reminder message .+ for giveaway .+/i,
   /\[PollReminders\] .*/i,
+
+  // ─── MembershipSync routine info logs ─────────────────────────
+  //  These fire every 12h from the role-enforcement scan. They're
+  //  expected, benign, and drown out real errors if not filtered.
+  //  NOTE: we deliberately do NOT ignore all "[MembershipSync]" —
+  //  the sync code also emits real failures (❌ Failed to fetch…,
+  //  ❌ Error processing inactive user, ❌ Failed to send DM) that
+  //  should still surface in the error dashboard.
+  /\[MembershipSync\] Added Member to .+ \(was roleless\)/i,
+  /\[MembershipSync\] Fixed roles for \d+ members?\./i,
+  /\[MembershipSync\] Full enforcement scan skipped \(cooldown active\)\./i,
+  /\[MembershipSync\] Inactive user \d+ not found in guild, skipping\./i,
+  /\[MembershipSync\] Skipping role sync for Creator .+/i,
+  /\[MembershipSync\] Skipping inactive Creator .+ \(\d+\)/i,
+  /\[MembershipSync\] ✅ DM sent to .+ \(lang: .+\)/i,
 ];
 let logBuffer = [];
 let flushTimer = null;
@@ -129,7 +144,7 @@ function initLogger() {
     const fullTrace = util.format(...args);
 
     originalError(...args);
-    
+
     // 3. Send shortMsg as the message, and fullTrace as the stack
     addLog('error', shortMsg.trim(), fullTrace);
   };
