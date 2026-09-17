@@ -23,6 +23,45 @@ function getProperSeries(series) {
   return SERIES_NAME_MAP[upper] || series;
 }
 
+// ─────────────────────────────────────────────────────────────────────
+//  ASCII-safe filename for MEGA uploads ONLY
+// ─────────────────────────────────────────────────────────────────────
+//  MEGA is UTF-8 native, so `Pokémon.zip` uploads fine. But to avoid
+//  any future cross-system encoding surprises (NFC vs NFD, some NAS
+//  clients, older Windows shells, etc.) we strip diacritics before
+//  handing the filename to MEGA.
+//
+//  This ONLY affects the filename on MEGA. Everywhere else — Discord
+//  threads, website entries, DB rows, tweets, forum tags — the name
+//  stays exactly as the user typed it.
+//
+//  Examples:
+//    "Pokémon"  →  "Pokemon"
+//    "Café"     →  "Cafe"
+//    "Tōkyō"    →  "Tokyo"
+//    "Rías"     →  "Rias"
+//    "可愛い"   →  "___"       (non-Latin falls back to _)
+//
+//  To add a custom replacement, extend `extras` below.
+// ─────────────────────────────────────────────────────────────────────
+function toAsciiFilename(name) {
+  if (!name) return name;
+
+  // A few characters NFD doesn't decompose into a Latin base + accent.
+  const extras = {
+    'ß': 'ss', 'Æ': 'AE', 'æ': 'ae', 'Œ': 'OE', 'œ': 'oe',
+    'Ø': 'O',  'ø': 'o',  'Å': 'A',  'å': 'a',
+    'Ð': 'D',  'ð': 'd',  'Þ': 'TH', 'þ': 'th',
+    'Ł': 'L',  'ł': 'l',  'Đ': 'D',  'đ': 'd',
+  };
+
+  return name
+    .replace(/\//g, ' ')             // slashes are never valid in a filename
+    .normalize('NFD')                // é → e + combining acute
+    .replace(/[\u0300-\u036f]/g, '') // strip the combining marks
+    .replace(/[^\x00-\x7F]/g, c => extras[c] || '_'); // remaining non-ASCII
+}
+
 function sortFilesByIndex(files) {
   return files.sort((a, b) => {
     const numA = parseInt((a.originalname.match(/-(\d+)\./))?.[1] || '0');
@@ -665,7 +704,14 @@ ${h.releaseEmojis.LINK} **[megaLink](${download || 'https://mega.nz'})**`;
     if (req.file.size > 100 * 1024 * 1024) {
       return res.status(400).json({ error: 'File exceeds 100MB limit' });
     }
-    const desiredFileName = req.body.desiredName || req.file.originalname;
+
+    // ─── ASCII-safe filename for MEGA ONLY ─────────────────────────
+    //  The user's original filename (with é, á, ñ, etc.) is preserved
+    //  everywhere else — Discord posts, website rows, DB entries.
+    //  Only the file stored on MEGA gets the sanitized version.
+    const rawFileName = req.body.desiredName || req.file.originalname;
+    const desiredFileName = toAsciiFilename(rawFileName);
+
     const month = req.body.month;
     if (!month) return res.status(400).json({ error: 'Month folder not provided' });
     const yearShort = month.slice(-2);
@@ -685,6 +731,9 @@ ${h.releaseEmojis.LINK} **[megaLink](${download || 'https://mega.nz'})**`;
       });
       const megaLink = await uploadResult.link();
       console.log(`✅ Uploaded to Mega: ${megaLink}`);
+      if (rawFileName !== desiredFileName) {
+        console.log(`   (MEGA name sanitized: "${rawFileName}" → "${desiredFileName}")`);
+      }
       let localPath = null;
       if (req.body.downloadAfterUpload === 'true') {
         try {
@@ -713,7 +762,8 @@ ${h.releaseEmojis.LINK} **[megaLink](${download || 'https://mega.nz'})**`;
         success: true,
         link: megaLink,
         localPath: localPath,
-        fileName: desiredFileName
+        fileName: desiredFileName,
+        originalFileName: rawFileName,
       });
     } catch (error) {
       console.error('MEGA operation error:', error);
@@ -775,3 +825,8 @@ ${h.releaseEmojis.LINK} **[megaLink](${download || 'https://mega.nz'})**`;
     res.json({ message: 'GET works' });
   });
 };
+
+// ─────────────────────────────────────────────────────────────────────
+//  Export the helper so other modules (or the bot) can reuse it
+// ─────────────────────────────────────────────────────────────────────
+module.exports.toAsciiFilename = toAsciiFilename;
