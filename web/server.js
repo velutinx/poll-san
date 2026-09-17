@@ -11,6 +11,22 @@ const verifyRouter = require('./routes/verifyCallback');
 const API_TIMEOUT_MS = 60000;
 const SERVER_TIMEOUT_MS = 120000;
 
+function toAsciiFilename(name) {
+    if (!name) return name;
+    const extras = {
+        'ß': 'ss', 'Æ': 'AE', 'æ': 'ae', 'Œ': 'OE', 'œ': 'oe',
+        'Ø': 'O',  'ø': 'o',  'Å': 'A',  'å': 'a',
+        'Ð': 'D',  'ð': 'd',  'Þ': 'TH', 'þ': 'th',
+        'Ł': 'L',  'ł': 'l',  'Đ': 'D',  'đ': 'd',
+    };
+
+    return name
+        .replace(/\//g, ' ')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^\x00-\x7F]/g, c => extras[c] || '_');
+}
+
 module.exports = (client) => {
     const app = express();
     const PORT = process.env.PORT || 8080;
@@ -38,9 +54,6 @@ module.exports = (client) => {
 
     app.use(express.static(path.join(__dirname, 'public')));
     app.use(express.json());
-
-    // ─── Custom JSON error handler ──────────────────────────────
-    // Catches malformed JSON payloads and returns a clean 400 error
     app.use((err, req, res, next) => {
         if (err instanceof SyntaxError && err.status === 400 && 'body' in err) {
             console.warn(`⚠️ Malformed JSON from ${req.method} ${req.url}:`, err.message);
@@ -71,11 +84,12 @@ module.exports = (client) => {
 
     function findFile(node, name) {
         if (!node.children) return null;
+        const target = toAsciiFilename(name).toLowerCase();
         for (const child of node.children) {
             if (child.directory) {
                 const found = findFile(child, name);
                 if (found) return found;
-            } else if (child.name === name) {
+            } else if (toAsciiFilename(child.name).toLowerCase() === target) {
                 return child;
             }
         }
