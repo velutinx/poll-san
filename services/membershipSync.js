@@ -621,16 +621,15 @@ async function syncMembershipRoles(client) {
 
     let activeMemberships;
     try {
-      activeMemberships = await queryWithRetry(
-        `SELECT discord_id, tier, expires_at, order_id, updated_at, months,
-                recurring, plan_id, status, source, discord_tag
-         FROM ${h.tables.MEMBERSHIPS}
-         WHERE expires_at > ?`,
-        [graceDate],
-        'all',
-        3
-      );
-    } catch (err) {
+activeMemberships = await queryWithRetry(
+  `SELECT discord_id, tier, expires_at, order_id, updated_at, months,
+          recurring, plan_id, status, source, discord_tag
+   FROM ${h.tables.MEMBERSHIPS}
+   WHERE expires_at > ? AND tier > 0`,
+  [graceDate],
+  'all',
+  3
+); catch (err) {
       console.error('[MembershipSync] ❌ Failed to fetch active memberships after retries:', err.message);
       return;
     }
@@ -865,15 +864,15 @@ async function enforceRolesForMember(member) {
 
   let activeMembership = null;
   try {
-    activeMembership = await queryWithRetry(
-      `SELECT tier FROM ${h.tables.MEMBERSHIPS}
-       WHERE discord_id = ? AND expires_at > ? AND status = 'ACTIVE'
-       ORDER BY tier DESC
-       LIMIT 1`,
-      [member.id, graceDate],
-      'first',
-      2
-    );
+activeMembership = await queryWithRetry(
+  `SELECT tier FROM ${h.tables.MEMBERSHIPS}
+   WHERE discord_id = ? AND expires_at > ? AND status = 'ACTIVE' AND tier > 0
+   ORDER BY tier DESC
+   LIMIT 1`,
+  [member.id, graceDate],
+  'first',
+  2
+);
   } catch (err) {
     console.error(`[enforceRolesForMember] ❌ DB query failed for ${member.id}:`, err.message);
     return;
