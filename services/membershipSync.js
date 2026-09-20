@@ -4,6 +4,7 @@ const { ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const db = require('./database');
 const h = require('../utils/helpers');
 const TIER_ROLES = h.weights.tierMapping;
+const TIER_ROLE_IDS = Object.values(TIER_ROLES);
 const SUPPORTER_ROLE = h.ids.roles.supporter;
 const CREATOR_ROLE = h.ids.roles.creator;
 const MEMBER_ROLE = h.ids.roles.member;
@@ -11,6 +12,11 @@ const UNVERIFIED_ROLE = h.ids.roles.unverified;
 const SYNC_STATE_WORKER_URL = h.urls.CLOUDFLARE_D1_WORKER;
 const ADMIN_CHANNEL_ID = h.ids.channels.admin_channel;
 const MESSAGING_TABLE = h.tables.PURCHASE_MESSAGING || 'purchase_messaging';
+
+// Tier 0 = "Weekly Access (Sneak Peak)" on Patreon.
+// It is a paid membership but grants NO supporter role and NO tier role —
+// patrons on this tier are treated as regular members.
+const SNEAK_PEAK_TIER = 0;
 
 // ─── Retry helper for D1 queries ──────────────────────────────────────
 async function queryWithRetry(sql, params = [], method = 'all', maxRetries = 3) {
@@ -473,7 +479,7 @@ async function getMemberInfo(client, discordId) {
 const TIER_NAMES = { 1: 'Bronze', 2: 'Copper', 3: 'Silver', 4: 'Gold', 5: 'Platinum' };
 
 async function shouldNotifyAdmin(discordId, tier) {
-  if (tier < 2) return false; // bronze never triggers
+  if (tier < 2) return false; // bronze (and Sneak Peak) never triggers
 
   const row = await db.query(
     `SELECT action FROM ${MESSAGING_TABLE}
@@ -619,17 +625,22 @@ async function syncMembershipRoles(client) {
     const GRACE_DAYS = 10;
     const graceDate = new Date(Date.now() - GRACE_DAYS * 24 * 60 * 60 * 1000).toISOString();
 
+    // NOTE: We intentionally do NOT filter out tier 0 here. Tier 0
+    // (Patreon "Weekly Access (Sneak Peak)") is a real membership row
+    // that must stay in D1 and in the sync-state KV. It just doesn't
+    // grant any Discord role — which we handle below.
     let activeMemberships;
     try {
-activeMemberships = await queryWithRetry(
-  `SELECT discord_id, tier, expires_at, order_id, updated_at, months,
-          recurring, plan_id, status, source, discord_tag
-   FROM ${h.tables.MEMBERSHIPS}
-   WHERE expires_at > ? AND tier > 0`,
-  [graceDate],
-  'all',
-  3
-); catch (err) {
+      activeMemberships = await queryWithRetry(
+        `SELECT discord_id, tier, expires_at, order_id, updated_at, months,
+                recurring, plan_id, status, source, discord_tag
+         FROM ${h.tables.MEMBERSHIPS}
+         WHERE expires_at > ?`,
+        [graceDate],
+        'all',
+        3
+      );
+    } catch (err) {
       console.error('[MembershipSync] ❌ Failed to fetch active memberships after retries:', err.message);
       return;
     }
@@ -734,6 +745,7 @@ activeMemberships = await queryWithRetry(
       changesMade = true;
     }
 
+    // ─── Role sync loop ─────────────────────────────────────────────
     for (const [discordId, membership] of userBestMembership.entries()) {
       const member = await guild.members.fetch(discordId).catch(() => null);
       if (!member) continue;
@@ -743,9 +755,37 @@ activeMemberships = await queryWithRetry(
       }
 
       const currentRoleIds = member.roles.cache.map(r => r.id);
+      const hasSupporter = currentRoleIds.includes(SUPPORTER_ROLE);
+
+      // ─── Sneak Peak (tier 0): no tier role, no supporter role ──
+      //  Strip any lingering tier / supporter roles and ensure the
+      //  user has the base Member role. This also handles the case
+      //  of a downgrade from Archive (tier 1) → Sneak Peak (tier 0).
+      if (membership.tier === SNEAK_PEAK_TIER) {
+        let touched = false;
+
+        for (const roleId of TIER_ROLE_IDS) {
+          if (currentRoleIds.includes(roleId)) {
+            await member.roles.remove(roleId);
+            touched = true;
+          }
+        }
+        if (hasSupporter) {
+          await member.roles.remove(SUPPORTER_ROLE);
+          touched = true;
+        }
+        if (!member.roles.cache.has(MEMBER_ROLE)) {
+          await member.roles.add(MEMBER_ROLE);
+          touched = true;
+        }
+
+        if (touched) changesMade = true;
+        continue;
+      }
+
+      // ─── Normal paid tiers (1–5) ──────────────────────────────
       const targetRoleId = TIER_ROLES[membership.tier];
       const hasTargetRole = currentRoleIds.includes(targetRoleId);
-      const hasSupporter = currentRoleIds.includes(SUPPORTER_ROLE);
 
       if (!hasTargetRole && targetRoleId) {
         await member.roles.add(targetRoleId);
@@ -755,7 +795,7 @@ activeMemberships = await queryWithRetry(
         await member.roles.add(SUPPORTER_ROLE);
         changesMade = true;
       }
-      for (const roleId of Object.values(TIER_ROLES)) {
+      for (const roleId of TIER_ROLE_IDS) {
         if (roleId !== targetRoleId && currentRoleIds.includes(roleId)) {
           await member.roles.remove(roleId);
           changesMade = true;
@@ -776,12 +816,11 @@ activeMemberships = await queryWithRetry(
         }
 
         const currentRoleIds = member.roles.cache.map(r => r.id);
-        const tierRoleIds = Object.values(TIER_ROLES);
-        const hasTierRole = currentRoleIds.some(id => tierRoleIds.includes(id));
+        const hasTierRole = currentRoleIds.some(id => TIER_ROLE_IDS.includes(id));
         const hasSupporter = currentRoleIds.includes(SUPPORTER_ROLE);
 
         if (hasTierRole || hasSupporter) {
-          for (const roleId of tierRoleIds) {
+          for (const roleId of TIER_ROLE_IDS) {
             if (currentRoleIds.includes(roleId)) {
               await member.roles.remove(roleId);
               changesMade = true;
@@ -864,17 +903,42 @@ async function enforceRolesForMember(member) {
 
   let activeMembership = null;
   try {
-activeMembership = await queryWithRetry(
-  `SELECT tier FROM ${h.tables.MEMBERSHIPS}
-   WHERE discord_id = ? AND expires_at > ? AND status = 'ACTIVE' AND tier > 0
-   ORDER BY tier DESC
-   LIMIT 1`,
-  [member.id, graceDate],
-  'first',
-  2
-);
+    activeMembership = await queryWithRetry(
+      `SELECT tier FROM ${h.tables.MEMBERSHIPS}
+       WHERE discord_id = ? AND expires_at > ? AND status = 'ACTIVE'
+       ORDER BY tier DESC
+       LIMIT 1`,
+      [member.id, graceDate],
+      'first',
+      2
+    );
   } catch (err) {
     console.error(`[enforceRolesForMember] ❌ DB query failed for ${member.id}:`, err.message);
+    return;
+  }
+
+  const hasSupporter = member.roles.cache.has(SUPPORTER_ROLE);
+  const hasMember = member.roles.cache.has(MEMBER_ROLE);
+  const hasUnverified = member.roles.cache.has(UNVERIFIED_ROLE);
+  const currentRoleIds = member.roles.cache.map(r => r.id);
+
+  // ─── Sneak Peak (tier 0): strip tier + supporter roles, ensure member ──
+  //  Runs BEFORE the tierRoleId lookup, so tier 0 never triggers the
+  //  "No role mapping for tier 0" warning.
+  if (activeMembership && activeMembership.tier === SNEAK_PEAK_TIER) {
+    const removeRoles = [];
+    for (const roleId of TIER_ROLE_IDS) {
+      if (currentRoleIds.includes(roleId)) removeRoles.push(roleId);
+    }
+    if (hasSupporter)   removeRoles.push(SUPPORTER_ROLE);
+    if (hasUnverified)  removeRoles.push(UNVERIFIED_ROLE);
+
+    for (const roleId of removeRoles) {
+      await removeRoleWithRetry(member, roleId);
+    }
+    if (!hasMember) {
+      await addRoleWithRetry(member, MEMBER_ROLE);
+    }
     return;
   }
 
@@ -886,10 +950,7 @@ activeMembership = await queryWithRetry(
       return;
     }
 
-    const hasTierRole = member.roles.cache.has(tierRoleId);
-    const hasSupporter = member.roles.cache.has(SUPPORTER_ROLE);
-    const hasMember = member.roles.cache.has(MEMBER_ROLE);
-    const hasUnverified = member.roles.cache.has(UNVERIFIED_ROLE);
+    const hasTierRole = currentRoleIds.includes(tierRoleId);
 
     if (hasTierRole && hasSupporter && !hasMember && !hasUnverified) {
       return;
@@ -898,10 +959,10 @@ activeMembership = await queryWithRetry(
     const addRoles = [];
     const removeRoles = [];
 
-    if (!hasTierRole) addRoles.push(tierRoleId);
-    if (!hasSupporter) addRoles.push(SUPPORTER_ROLE);
-    if (hasMember) removeRoles.push(MEMBER_ROLE);
-    if (hasUnverified) removeRoles.push(UNVERIFIED_ROLE);
+    if (!hasTierRole)   addRoles.push(tierRoleId);
+    if (!hasSupporter)  addRoles.push(SUPPORTER_ROLE);
+    if (hasMember)      removeRoles.push(MEMBER_ROLE);
+    if (hasUnverified)  removeRoles.push(UNVERIFIED_ROLE);
 
     for (const roleId of addRoles) {
       await addRoleWithRetry(member, roleId);
@@ -913,10 +974,7 @@ activeMembership = await queryWithRetry(
     return;
   }
 
-  const hasSupporter = member.roles.cache.has(SUPPORTER_ROLE);
-  const hasMember = member.roles.cache.has(MEMBER_ROLE);
-  const hasUnverified = member.roles.cache.has(UNVERIFIED_ROLE);
-
+  // No active membership – ensure base Member role.
   if (!hasSupporter && !hasMember && !hasUnverified) {
     await addRoleWithRetry(member, MEMBER_ROLE);
   }
