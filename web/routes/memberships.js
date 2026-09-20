@@ -2,12 +2,24 @@
 
 const h = require('../../utils/helpers');
 const db = require('../../services/database');
+
 const LOGO_MAP = {
     'subscribestar': h.urls.SUBSCRIBESTAR_LOGO,
     'patreon': h.urls.PATREON_LOGO,
     'kofi': h.urls.KOFI_LOGO,
     'paypal': h.urls.PAYPAL_LOGO,
     'website': h.urls.PAYPAL_LOGO,
+};
+
+const SNEAK_PEAK_TIER = 0;
+
+const MEMBERSHIP_MAP = {
+    '0': { name: '⚡ Sneak Peak', color: '#a78bfa' },
+    '1': { name: '🥉 Bronze',     color: '#cd7f32' },
+    '2': { name: '✨ Copper',     color: '#b87333' },
+    '3': { name: '🥈 Silver',     color: '#c0c0c0' },
+    '4': { name: '🥇 Gold',       color: '#ffd700' },
+    '5': { name: '✨ Platinum',   color: '#e5e4e2' },
 };
 
 module.exports = function setupMembershipsRoute(app, client) {
@@ -73,6 +85,8 @@ module.exports = function setupMembershipsRoute(app, client) {
                 return res.status(400).json({ error: "Missing required fields" });
             }
 
+            const tierNum = parseInt(tier);
+
             const now = new Date();
             const expirationDate = new Date();
             expirationDate.setDate(now.getDate() + 30);
@@ -85,21 +99,25 @@ module.exports = function setupMembershipsRoute(app, client) {
                    order_id = excluded.order_id,
                    updated_at = excluded.updated_at,
                    expires_at = excluded.expires_at`,
-                [discordId, parseInt(tier), orderId, now.toISOString(), expirationDate.toISOString()]
+                [discordId, tierNum, orderId, now.toISOString(), expirationDate.toISOString()]
             );
 
-            try {
-                const guild = await client.guilds.fetch(process.env.GUILD_ID);
-                const member = await guild.members.fetch(discordId).catch(() => null);
-                if (member) {
-                    const roleId = h.weights.tierMapping[String(tier)];
-                    if (roleId && h.weights.tiers[roleId]) {
-                        await member.roles.add(roleId);
-                        console.log(`✅ Role added to ${member.user.tag}`);
+            if (tierNum !== SNEAK_PEAK_TIER) {
+                try {
+                    const guild = await client.guilds.fetch(process.env.GUILD_ID);
+                    const member = await guild.members.fetch(discordId).catch(() => null);
+                    if (member) {
+                        const roleId = h.weights.tierMapping[String(tierNum)];
+                        if (roleId && h.weights.tiers[roleId]) {
+                            await member.roles.add(roleId);
+                            console.log(`✅ Role added to ${member.user.tag}`);
+                        }
                     }
+                } catch (discordErr) {
+                    console.error('⚠️ Membership saved, but Discord role failed:', discordErr);
                 }
-            } catch (discordErr) {
-                console.error('⚠️ Membership saved, but Discord role failed:', discordErr);
+            } else {
+                console.log(`⏭️ Skipped role assignment for tier 0 (Sneak Peak) — Discord ID ${discordId}`);
             }
 
             res.json({ success: true });
