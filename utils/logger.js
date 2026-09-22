@@ -38,13 +38,6 @@ const IGNORE_PATTERNS = [
   /🗑️ Deleted reminder message .+ for giveaway .+/i,
   /\[PollReminders\] .*/i,
 
-  // ─── MembershipSync routine info logs ─────────────────────────
-  //  These fire every 12h from the role-enforcement scan. They're
-  //  expected, benign, and drown out real errors if not filtered.
-  //  NOTE: we deliberately do NOT ignore all "[MembershipSync]" —
-  //  the sync code also emits real failures (❌ Failed to fetch…,
-  //  ❌ Error processing inactive user, ❌ Failed to send DM) that
-  //  should still surface in the error dashboard.
   /\[MembershipSync\] Added Member to .+ \(was roleless\)/i,
   /\[MembershipSync\] Fixed roles for \d+ members?\./i,
   /\[MembershipSync\] Full enforcement scan skipped \(cooldown active\)\./i,
@@ -60,6 +53,25 @@ const MAX_BUFFER_SIZE = 50;
 
 function shouldIgnore(message) {
   return IGNORE_PATTERNS.some(pattern => pattern.test(message));
+}
+
+function isTransientNetworkError(err) {
+  if (!(err instanceof Error)) return false;
+  const causeCode = err.cause?.code;
+  if (
+    causeCode === 'UND_ERR_CONNECT_TIMEOUT' ||
+    causeCode === 'UND_ERR_SOCKET' ||
+    causeCode === 'ECONNRESET' ||
+    causeCode === 'ETIMEDOUT'
+  ) {
+    return true;
+  }
+
+  if (err.message && err.message.includes('fetch failed') &&
+      (err.message.includes('Connect Timeout') || err.message.includes('ECONNRESET'))) {
+    return true;
+  }
+  return false;
 }
 
 async function sendLogsToWorker(logs) {
@@ -150,12 +162,18 @@ function initLogger() {
   };
 
   process.on('uncaughtException', (err) => {
+
+    if (isTransientNetworkError(err)) return;
+
     // util.inspect prints the entire error object natively
     const fullTrace = util.inspect(err, { depth: null });
     addLog('error', `Uncaught Exception: ${err.message}`, fullTrace);
   });
 
   process.on('unhandledRejection', (reason) => {
+
+    if (isTransientNetworkError(reason)) return;
+
     const shortMsg = reason instanceof Error ? reason.message : String(reason);
     const fullTrace = reason instanceof Error ? util.inspect(reason, { depth: null }) : String(reason);
     addLog('error', `Unhandled Rejection: ${shortMsg}`, fullTrace);
