@@ -12,13 +12,7 @@ const UNVERIFIED_ROLE = h.ids.roles.unverified;
 const SYNC_STATE_WORKER_URL = h.urls.CLOUDFLARE_D1_WORKER;
 const ADMIN_CHANNEL_ID = h.ids.channels.admin_channel;
 const MESSAGING_TABLE = h.tables.PURCHASE_MESSAGING || 'purchase_messaging';
-
-// Tier 0 = "Weekly Access (Sneak Peak)" on Patreon.
-// It is a paid membership but grants NO supporter role and NO tier role —
-// patrons on this tier are treated as regular members.
 const SNEAK_PEAK_TIER = 0;
-
-// ─── Retry helper for D1 queries ──────────────────────────────────────
 async function queryWithRetry(sql, params = [], method = 'all', maxRetries = 3) {
   let lastError;
   let delay = 500;
@@ -41,14 +35,9 @@ async function queryWithRetry(sql, params = [], method = 'all', maxRetries = 3) 
   }
   throw lastError;
 }
-
-// Cooldown for the full scan (safety net) – not used automatically, but kept for manual calls
 let lastEnforcementRun = 0;
 const ENFORCEMENT_COOLDOWN = 12 * 60 * 60 * 1000; // 12 hours
-
-// Mutex to prevent concurrent full scans
 let isEnforcing = false;
-
 const MESSAGES = {
   en: {
     welcome_tier1: `${h.releaseEmojis.CONFETTI} Welcome to the {tierName} tier!\nYour membership is active until **{expiryDate}**.\n\nFeel free to explore the packs on **[this channel](https://discord.com/channels/1401446104498700358/1465937644394512516)** and **[join the server](https://discord.gg/XF363uYfSh)** if you haven't.\n\nPlease message DM Velutinx if you have any questions.`,
@@ -67,11 +56,9 @@ const MESSAGES = {
     welcome_tier2_5: `${h.releaseEmojis.CONFETTI} ¡Bienvenido al nivel {tierName}!\nTu membresía está activa hasta el **{expiryDate}**.\n\nExplora los packs en **[este canal](https://discord.com/channels/1401446104498700358/1465937644394512516)** y **[únete al servidor](https://discord.gg/XF363uYfSh)** si aún no lo has hecho.\n\nPara canjear tu solicitud del ciclo de facturación de {currentMonth}, envía un DM Velutinx.`
   }
 };
-
 function formatDate(date) {
   return date.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
 }
-
 async function getLanguageForOrder(orderId) {
   if (!orderId) return 'en';
   try {
@@ -88,7 +75,6 @@ async function getLanguageForOrder(orderId) {
     return 'en';
   }
 }
-
 async function hasMessageBeenSent(discordId, orderId) {
   try {
     const row = await queryWithRetry(
@@ -105,7 +91,6 @@ async function hasMessageBeenSent(discordId, orderId) {
     return true;
   }
 }
-
 async function recordMessageSent(
   discordId,
   orderId,
@@ -136,7 +121,6 @@ async function recordMessageSent(
     console.error('[MembershipSync] Failed to record message sent:', err.message);
   }
 }
-
 async function sendDM(member, content, lang) {
   try {
     await member.send({ content, flags: ["SuppressEmbeds"] });
@@ -152,7 +136,6 @@ async function sendDM(member, content, lang) {
     return { success: false, permanentFailure: false };
   }
 }
-
 async function markWelcomeSent(discordId, orderId) {
   try {
     await db.query(
@@ -165,7 +148,6 @@ async function markWelcomeSent(discordId, orderId) {
     console.error('[MembershipSync] Failed to mark welcome_sent:', err.message);
   }
 }
-
 async function sendMembershipMessage(client, discordId, membership) {
   const tier = membership.tier;
   const expiresAt = new Date(membership.expires_at);
@@ -180,13 +162,11 @@ async function sendMembershipMessage(client, discordId, membership) {
   const ownerDmLink = `[DM Velutinx](https://discord.com/users/${OWNER_ID})`;
   const messageTemplate = (tier === 1) ? t.welcome_tier1 : t.welcome_tier2_5;
   const currentMonth = new Date().toLocaleString(lang, { month: 'long' });
-
   let message = messageTemplate
     .replace('{tierName}', tierName)
     .replace('{expiryDate}', formatDate(expiresAt))
     .replace('{currentMonth}', currentMonth)
     .replace(/DM Velutinx/g, ownerDmLink);
-
   let member;
   try {
     const guild = await client.guilds.fetch(process.env.GUILD_ID);
@@ -209,10 +189,8 @@ async function sendMembershipMessage(client, discordId, membership) {
     console.error(`[MembershipSync] Could not fetch member ${discordId}:`, err.message);
     return;
   }
-
   const discordName = member.user.tag;
   const result = await sendDM(member, message, lang);
-
   if (result.success) {
     await markWelcomeSent(discordId, orderId);
     await recordMessageSent(
@@ -238,7 +216,6 @@ async function sendMembershipMessage(client, discordId, membership) {
     );
   }
 }
-
 async function getWebsiteWebhook(channel) {
   const webhooks = await channel.fetchWebhooks();
   let webhook = webhooks.find(w => w.name === 'Website Subscriber');
@@ -254,14 +231,11 @@ async function getWebsiteWebhook(channel) {
   }
   return webhook;
 }
-
 async function sendRequestTierWebhook(client, discordId, membership) {
   const tier = membership.tier;
   if (tier !== 2 && tier !== 3) return;
-
   const expiresAt = new Date(membership.expires_at);
   const orderId = membership.order_id;
-
   let email = 'unknown';
   try {
     const emailRow = await queryWithRetry(
@@ -274,7 +248,6 @@ async function sendRequestTierWebhook(client, discordId, membership) {
   } catch (err) {
     console.warn(`Could not fetch email for order ${orderId}:`, err.message);
   }
-
   let tag = 'Unknown';
   try {
     const guild = await client.guilds.fetch(process.env.GUILD_ID);
@@ -283,17 +256,14 @@ async function sendRequestTierWebhook(client, discordId, membership) {
   } catch (err) {
     console.warn(`Could not fetch member ${discordId}:`, err.message);
   }
-
   const tierNames = { 2: 'Copper', 3: 'Silver' };
   const tierDisplay = `Request (${tierNames[tier] || tier})`;
-
   const userLink = `[${tag}](https://discord.com/users/${discordId})`;
   const message = `${h.releaseEmojis.PIXELSKY} **New Request Member!**\n` +
                   `**Name:** ${userLink}\n` +
                   `**Email:** ${email}\n` +
                   `**Tier:** ${tierDisplay}\n` +
                   `**Expires on:** ${formatDate(expiresAt)}`;
-
   try {
     const adminChannel = await client.channels.fetch(h.ids.channels.admin_channel);
     const webhook = await getWebsiteWebhook(adminChannel);
@@ -309,7 +279,6 @@ async function sendRequestTierWebhook(client, discordId, membership) {
     console.error('Failed to send admin webhook:', webhookErr);
   }
 }
-
 async function getPreviousFullState() {
   try {
     const res = await fetch(`${SYNC_STATE_WORKER_URL}/api/sync-state/active-members-full`);
@@ -321,7 +290,6 @@ async function getPreviousFullState() {
     return {};
   }
 }
-
 async function storeCurrentFullState(state) {
   try {
     const res = await fetch(`${SYNC_STATE_WORKER_URL}/api/sync-state/active-members-full`, {
@@ -334,7 +302,6 @@ async function storeCurrentFullState(state) {
     console.error('[MembershipSync] Failed to store full state in KV:', err.message);
   }
 }
-
 async function getLastActiveSet() {
   try {
     const res = await fetch(`${SYNC_STATE_WORKER_URL}/api/sync-state/active-members`);
@@ -346,7 +313,6 @@ async function getLastActiveSet() {
     return new Set();
   }
 }
-
 async function storeCurrentActiveSet(ids) {
   try {
     const res = await fetch(`${SYNC_STATE_WORKER_URL}/api/sync-state/active-members`, {
@@ -359,7 +325,6 @@ async function storeCurrentActiveSet(ids) {
     console.error('[MembershipSync] Failed to store active set in KV:', err.message);
   }
 }
-
 async function getDuplicateWarningTimestamps() {
   try {
     const res = await fetch(`${SYNC_STATE_WORKER_URL}/api/sync-state/duplicate-warning-timestamps`);
@@ -371,7 +336,6 @@ async function getDuplicateWarningTimestamps() {
     return {};
   }
 }
-
 async function storeDuplicateWarningTimestamps(timestamps) {
   try {
     const res = await fetch(`${SYNC_STATE_WORKER_URL}/api/sync-state/duplicate-warning-timestamps`, {
@@ -384,7 +348,6 @@ async function storeDuplicateWarningTimestamps(timestamps) {
     console.error('[DuplicateWarning] Failed to store timestamps in KV:', err.message);
   }
 }
-
 async function checkAndWarnDuplicateMemberships(client, activeMemberships) {
   const websiteMemberships = activeMemberships.filter(m => m.source === 'website');
   if (websiteMemberships.length === 0) return;
@@ -394,20 +357,16 @@ async function checkAndWarnDuplicateMemberships(client, activeMemberships) {
     if (!userMemberships[m.discord_id]) userMemberships[m.discord_id] = [];
     userMemberships[m.discord_id].push(m);
   }
-
   const duplicates = {};
   for (const [discordId, memberships] of Object.entries(userMemberships)) {
     if (memberships.length > 1) {
       duplicates[discordId] = memberships;
     }
   }
-
   if (Object.keys(duplicates).length === 0) return;
-
   const timestamps = await getDuplicateWarningTimestamps();
   const now = Date.now();
   const COOLDOWN_MS = 24 * 60 * 60 * 1000;
-
   const toWarn = {};
   for (const [discordId, memberships] of Object.entries(duplicates)) {
     const last = timestamps[discordId] || 0;
@@ -415,12 +374,9 @@ async function checkAndWarnDuplicateMemberships(client, activeMemberships) {
       toWarn[discordId] = memberships;
     }
   }
-
   if (Object.keys(toWarn).length === 0) return;
-
   const adminChannel = await client.channels.fetch(h.ids.channels.admin_channel);
   const webhook = await getWebsiteWebhook(adminChannel);
-
   for (const [discordId, memberships] of Object.entries(toWarn)) {
     let userTag = discordId;
     try {
@@ -428,16 +384,13 @@ async function checkAndWarnDuplicateMemberships(client, activeMemberships) {
       userTag = user.tag;
     } catch {
     }
-
     const tierNames = { 1: 'Bronze', 2: 'Copper', 3: 'Silver', 4: 'Gold', 5: 'Platinum' };
     const listItems = memberships.map(m => {
       const tierName = tierNames[m.tier] || `Tier ${m.tier}`;
       const orderId = m.order_id || 'unknown';
       return `✨ ${tierName} (${orderId})`;
     }).join(' and ');
-
     const message = `User @${userTag} has currently two active memberships ${listItems}`;
-
     await webhook.send({
       content: message,
       username: 'Website Subscriber',
@@ -445,15 +398,11 @@ async function checkAndWarnDuplicateMemberships(client, activeMemberships) {
       allowedMentions: { users: [] },
       flags: [1 << 2]
     });
-
     console.log(`[DuplicateWarning] Sent warning for ${userTag}`);
-
     timestamps[discordId] = now;
     await storeDuplicateWarningTimestamps(timestamps);
   }
 }
-
-// ─── Helper: get member display name and tag ──────────────────────
 async function getMemberInfo(client, discordId) {
   let displayName = discordId;
   let userTag = discordId;
@@ -461,7 +410,7 @@ async function getMemberInfo(client, discordId) {
     const guild = await client.guilds.fetch(process.env.GUILD_ID);
     const member = await guild.members.fetch(discordId);
     if (member) {
-      displayName = member.displayName; // nickname or username
+      displayName = member.displayName;
       userTag = member.user.tag;
     }
   } catch (_) {
@@ -473,29 +422,19 @@ async function getMemberInfo(client, discordId) {
   }
   return { displayName, userTag };
 }
-
-// ─── Messaging approval helpers ──────────────────────────────────
-
 const TIER_NAMES = { 1: 'Bronze', 2: 'Copper', 3: 'Silver', 4: 'Gold', 5: 'Platinum' };
-
 async function shouldNotifyAdmin(discordId, tier) {
-  if (tier < 2) return false; // bronze (and Sneak Peak) never triggers
-
+  if (tier < 2) return false;
   const row = await db.query(
     `SELECT action FROM ${MESSAGING_TABLE}
      WHERE discord_id = ? AND tier = ?`,
     [discordId, tier],
     true
   );
-
   if (!row) return true;
-
-  // Once messaged or ignored, never ask again for this tier
   if (row.action === 'ignored' || row.action === 'messaged') return false;
-
   return true;
 }
-
 async function recordMessagingAction(discordId, discordTag, discordName, tier, tierName, action, source = null, orderId = null) {
   await db.query(
     `INSERT OR REPLACE INTO ${MESSAGING_TABLE}
@@ -504,15 +443,11 @@ async function recordMessagingAction(discordId, discordTag, discordName, tier, t
     [discordId, discordTag, discordName, tier, tierName, action, source, orderId]
   );
 }
-
 async function notifyAdminWithButtons(client, discordId, tier, membership) {
   const adminChannel = await client.channels.fetch(ADMIN_CHANNEL_ID);
   const webhook = await getWebsiteWebhook(adminChannel);
-
   const { displayName, userTag } = await getMemberInfo(client, discordId);
-
   const tierName = TIER_NAMES[tier] || `Tier ${tier}`;
-
   const embed = {
     color: 0x00aaff,
     title: '📨 Membership DM Approval Needed',
@@ -523,7 +458,6 @@ async function notifyAdminWithButtons(client, discordId, tier, membership) {
     ],
     timestamp: new Date().toISOString()
   };
-
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId(`membership_message_${discordId}_${tier}`)
@@ -534,7 +468,6 @@ async function notifyAdminWithButtons(client, discordId, tier, membership) {
       .setLabel('🚫 Ignore')
       .setStyle(ButtonStyle.Danger)
   );
-
   await webhook.send({
     embeds: [embed],
     components: [row],
@@ -542,27 +475,19 @@ async function notifyAdminWithButtons(client, discordId, tier, membership) {
     avatarURL: h.urls.LOGO_URL
   });
 }
-
-// ─── Process all active memberships for messaging ───────────────────
 async function processMembershipMessaging(client, userBestMembership) {
   const processed = new Set();
-
   for (const [discordId, membership] of userBestMembership.entries()) {
     if (processed.has(discordId)) continue;
     const tier = membership.tier;
-
     if (!(await shouldNotifyAdmin(discordId, tier))) continue;
-
     await notifyAdminWithButtons(client, discordId, tier, membership);
     processed.add(discordId);
   }
 }
-
-// ─── Handlers for button interactions (exported) ──────────────────
 async function handleMessageButton(interaction, discordId, tier) {
   await interaction.deferUpdate();
   const client = interaction.client;
-
   const membership = await db.query(
     `SELECT * FROM ${h.tables.MEMBERSHIPS}
      WHERE discord_id = ? AND tier = ? ORDER BY expires_at DESC LIMIT 1`,
@@ -572,33 +497,26 @@ async function handleMessageButton(interaction, discordId, tier) {
   if (!membership) {
     return interaction.followUp({ content: 'Membership not found.', ephemeral: true });
   }
-
   const { displayName, userTag } = await getMemberInfo(client, discordId);
   const tierName = TIER_NAMES[tier] || `Tier ${tier}`;
-
   await sendMembershipMessage(client, discordId, membership);
   await recordMessagingAction(discordId, userTag, displayName, tier, tierName, 'messaged', membership.source, membership.order_id);
-
   await interaction.editReply({
     content: `✅ DM sent to @${displayName} and recorded as "messaged".`,
     components: []
   });
 }
-
 async function handleIgnoreButton(interaction, discordId, tier) {
   await interaction.deferUpdate();
   const client = interaction.client;
-
   const { displayName, userTag } = await getMemberInfo(client, discordId);
   const tierName = TIER_NAMES[tier] || `Tier ${tier}`;
-
   const membership = await db.query(
     `SELECT source, order_id FROM ${h.tables.MEMBERSHIPS}
      WHERE discord_id = ? AND tier = ? ORDER BY expires_at DESC LIMIT 1`,
     [discordId, tier],
     true
   );
-
   await recordMessagingAction(
     discordId,
     userTag,
@@ -609,26 +527,16 @@ async function handleIgnoreButton(interaction, discordId, tier) {
     membership?.source || null,
     membership?.order_id || null
   );
-
   await interaction.editReply({
     content: `🚫 Ignored @${displayName} for tier ${tierName}. No future notifications for this tier.`,
     components: []
   });
 }
-
-// ─── MAIN SYNC (with retry and safe abort) ──────────────────────────
 async function syncMembershipRoles(client) {
   let changesMade = false;
-
   try {
-    // ─── Grace period extended to 10 days to cover PayPal retries ───
     const GRACE_DAYS = 10;
     const graceDate = new Date(Date.now() - GRACE_DAYS * 24 * 60 * 60 * 1000).toISOString();
-
-    // NOTE: We intentionally do NOT filter out tier 0 here. Tier 0
-    // (Patreon "Weekly Access (Sneak Peak)") is a real membership row
-    // that must stay in D1 and in the sync-state KV. It just doesn't
-    // grant any Discord role — which we handle below.
     let activeMemberships;
     try {
       activeMemberships = await queryWithRetry(
@@ -644,14 +552,11 @@ async function syncMembershipRoles(client) {
       console.error('[MembershipSync] ❌ Failed to fetch active memberships after retries:', err.message);
       return;
     }
-
     if (!activeMemberships || activeMemberships.length === 0) {
       console.warn('[MembershipSync] ⚠️ No active memberships found – aborting sync to preserve roles.');
       return;
     }
-
     await checkAndWarnDuplicateMemberships(client, activeMemberships);
-
     const userBestMembership = new Map();
     for (const membership of activeMemberships) {
       const discordId = membership.discord_id;
@@ -660,14 +565,12 @@ async function syncMembershipRoles(client) {
         userBestMembership.set(discordId, membership);
       }
     }
-
     const currentFullState = Object.fromEntries(userBestMembership);
     const currentActiveIds = new Set(Object.keys(currentFullState));
     const previousFullState = await getPreviousFullState();
     const previousActiveIds = new Set(Object.keys(previousFullState));
     const toUpsert = [];
     const toDelete = [];
-
     for (const [discordId, membership] of Object.entries(currentFullState)) {
       const prev = previousFullState[discordId];
       if (!prev) {
@@ -676,19 +579,13 @@ async function syncMembershipRoles(client) {
         toUpsert.push(membership);
       }
     }
-
     for (const discordId of Object.keys(previousFullState)) {
       if (!currentFullState[discordId]) {
         toDelete.push(discordId);
       }
     }
-
-    // ─── Process messaging approval for all active members ──────
     await processMembershipMessaging(client, userBestMembership);
-
-    // ─── Continue with role sync and DB updates ──────────────────────
     const newIds = [...currentActiveIds].filter(id => !previousActiveIds.has(id));
-
     const guild = await client.guilds.fetch(process.env.GUILD_ID);
     const tagMap = new Map();
     for (const discordId of currentActiveIds) {
@@ -699,7 +596,6 @@ async function syncMembershipRoles(client) {
         tagMap.set(discordId, null);
       }
     }
-
     if (toUpsert.length > 0) {
       const stmt = `
         INSERT INTO ${h.tables.MEMBERSHIPS}
@@ -735,7 +631,6 @@ async function syncMembershipRoles(client) {
       }
       changesMade = true;
     }
-
     if (toDelete.length > 0) {
       const placeholders = toDelete.map(() => '?').join(',');
       await db.query(
@@ -744,8 +639,6 @@ async function syncMembershipRoles(client) {
       );
       changesMade = true;
     }
-
-    // ─── Role sync loop ─────────────────────────────────────────────
     for (const [discordId, membership] of userBestMembership.entries()) {
       const member = await guild.members.fetch(discordId).catch(() => null);
       if (!member) continue;
@@ -753,17 +646,10 @@ async function syncMembershipRoles(client) {
         console.log(`[MembershipSync] Skipping role sync for Creator ${member.user.tag}`);
         continue;
       }
-
       const currentRoleIds = member.roles.cache.map(r => r.id);
       const hasSupporter = currentRoleIds.includes(SUPPORTER_ROLE);
-
-      // ─── Sneak Peak (tier 0): no tier role, no supporter role ──
-      //  Strip any lingering tier / supporter roles and ensure the
-      //  user has the base Member role. This also handles the case
-      //  of a downgrade from Archive (tier 1) → Sneak Peak (tier 0).
       if (membership.tier === SNEAK_PEAK_TIER) {
         let touched = false;
-
         for (const roleId of TIER_ROLE_IDS) {
           if (currentRoleIds.includes(roleId)) {
             await member.roles.remove(roleId);
@@ -778,15 +664,11 @@ async function syncMembershipRoles(client) {
           await member.roles.add(MEMBER_ROLE);
           touched = true;
         }
-
         if (touched) changesMade = true;
         continue;
       }
-
-      // ─── Normal paid tiers (1–5) ──────────────────────────────
       const targetRoleId = TIER_ROLES[membership.tier];
       const hasTargetRole = currentRoleIds.includes(targetRoleId);
-
       if (!hasTargetRole && targetRoleId) {
         await member.roles.add(targetRoleId);
         changesMade = true;
@@ -802,7 +684,6 @@ async function syncMembershipRoles(client) {
         }
       }
     }
-
     for (const discordId of toDelete) {
       try {
         const member = await guild.members.fetch(discordId).catch(() => null);
@@ -814,11 +695,9 @@ async function syncMembershipRoles(client) {
           console.log(`[MembershipSync] Skipping inactive Creator ${member.user.tag} (${discordId})`);
           continue;
         }
-
         const currentRoleIds = member.roles.cache.map(r => r.id);
         const hasTierRole = currentRoleIds.some(id => TIER_ROLE_IDS.includes(id));
         const hasSupporter = currentRoleIds.includes(SUPPORTER_ROLE);
-
         if (hasTierRole || hasSupporter) {
           for (const roleId of TIER_ROLE_IDS) {
             if (currentRoleIds.includes(roleId)) {
@@ -839,18 +718,14 @@ async function syncMembershipRoles(client) {
         console.error(`[MembershipSync] ❌ Error processing inactive user ${discordId}:`, err.message);
       }
     }
-
     if (changesMade) {
       await storeCurrentFullState(currentFullState);
       await storeCurrentActiveSet(currentActiveIds);
     }
-
   } catch (err) {
     console.error('[MembershipSync] Fatal error:', err.message);
   }
 }
-
-// ─── Helper: add a role with retry on 429 ──────────────────────────
 async function addRoleWithRetry(member, roleId, maxAttempts = 3) {
   let attempts = 0;
   while (attempts < maxAttempts) {
@@ -870,8 +745,6 @@ async function addRoleWithRetry(member, roleId, maxAttempts = 3) {
   }
   console.error(`[enforceRolesForMember] Failed to add role ${roleId} after ${maxAttempts} attempts`);
 }
-
-// ─── Helper: remove a role with retry on 429 ────────────────────────
 async function removeRoleWithRetry(member, roleId, maxAttempts = 3) {
   let attempts = 0;
   while (attempts < maxAttempts) {
@@ -891,16 +764,11 @@ async function removeRoleWithRetry(member, roleId, maxAttempts = 3) {
   }
   console.error(`[enforceRolesForMember] Failed to remove role ${roleId} after ${maxAttempts} attempts`);
 }
-
-// ─── ENHANCED REAL‑TIME ROLE FIX (with grace period) ──────────────
 async function enforceRolesForMember(member) {
   if (member.user.bot) return;
   if (member.roles.cache.has(CREATOR_ROLE)) return;
-
-  // ─── Apply 10‑day grace period for real‑time enforcement ────────
   const GRACE_DAYS = 10;
   const graceDate = new Date(Date.now() - GRACE_DAYS * 24 * 60 * 60 * 1000).toISOString();
-
   let activeMembership = null;
   try {
     activeMembership = await queryWithRetry(
@@ -916,15 +784,10 @@ async function enforceRolesForMember(member) {
     console.error(`[enforceRolesForMember] ❌ DB query failed for ${member.id}:`, err.message);
     return;
   }
-
   const hasSupporter = member.roles.cache.has(SUPPORTER_ROLE);
   const hasMember = member.roles.cache.has(MEMBER_ROLE);
   const hasUnverified = member.roles.cache.has(UNVERIFIED_ROLE);
   const currentRoleIds = member.roles.cache.map(r => r.id);
-
-  // ─── Sneak Peak (tier 0): strip tier + supporter roles, ensure member ──
-  //  Runs BEFORE the tierRoleId lookup, so tier 0 never triggers the
-  //  "No role mapping for tier 0" warning.
   if (activeMembership && activeMembership.tier === SNEAK_PEAK_TIER) {
     const removeRoles = [];
     for (const roleId of TIER_ROLE_IDS) {
@@ -932,7 +795,6 @@ async function enforceRolesForMember(member) {
     }
     if (hasSupporter)   removeRoles.push(SUPPORTER_ROLE);
     if (hasUnverified)  removeRoles.push(UNVERIFIED_ROLE);
-
     for (const roleId of removeRoles) {
       await removeRoleWithRetry(member, roleId);
     }
@@ -941,7 +803,6 @@ async function enforceRolesForMember(member) {
     }
     return;
   }
-
   if (activeMembership) {
     const tier = activeMembership.tier;
     const tierRoleId = h.weights.tierMapping[String(tier)];
@@ -949,38 +810,28 @@ async function enforceRolesForMember(member) {
       console.warn(`[enforceRolesForMember] No role mapping for tier ${tier}`);
       return;
     }
-
     const hasTierRole = currentRoleIds.includes(tierRoleId);
-
     if (hasTierRole && hasSupporter && !hasMember && !hasUnverified) {
       return;
     }
-
     const addRoles = [];
     const removeRoles = [];
-
     if (!hasTierRole)   addRoles.push(tierRoleId);
     if (!hasSupporter)  addRoles.push(SUPPORTER_ROLE);
     if (hasMember)      removeRoles.push(MEMBER_ROLE);
     if (hasUnverified)  removeRoles.push(UNVERIFIED_ROLE);
-
     for (const roleId of addRoles) {
       await addRoleWithRetry(member, roleId);
     }
     for (const roleId of removeRoles) {
       await removeRoleWithRetry(member, roleId);
     }
-
     return;
   }
-
-  // No active membership – ensure base Member role.
   if (!hasSupporter && !hasMember && !hasUnverified) {
     await addRoleWithRetry(member, MEMBER_ROLE);
   }
 }
-
-// ─── FULL SCAN (SAFETY NET) – rarely needed, now with mutex ──────
 async function enforceRolesForAllMembers(client) {
   if (isEnforcing) {
     console.log('[MembershipSync] Full enforcement already running, skipping.');
@@ -994,20 +845,16 @@ async function enforceRolesForAllMembers(client) {
       return;
     }
     lastEnforcementRun = now;
-
     const guild = await client.guilds.fetch(process.env.GUILD_ID);
     const members = await guild.members.fetch();
     let fixedCount = 0;
     let delay = 1000;
-
     for (const [, member] of members) {
       if (member.user.bot) continue;
       if (member.roles.cache.has(CREATOR_ROLE)) continue;
-
       const hasSupporter = member.roles.cache.has(SUPPORTER_ROLE);
       const hasMember = member.roles.cache.has(MEMBER_ROLE);
       const hasUnverified = member.roles.cache.has(UNVERIFIED_ROLE);
-
       if (!hasSupporter && !hasMember && !hasUnverified) {
         try {
           await member.roles.add(MEMBER_ROLE);
@@ -1033,7 +880,6 @@ async function enforceRolesForAllMembers(client) {
         delay = Math.min(delay + 200, 3000);
       }
     }
-
     if (fixedCount > 0) {
       console.log(`[MembershipSync] Fixed roles for ${fixedCount} members.`);
     }
@@ -1046,7 +892,6 @@ async function enforceRolesForAllMembers(client) {
     isEnforcing = false;
   }
 }
-
 module.exports = {
   syncMembershipRoles,
   enforceRolesForAllMembers,
