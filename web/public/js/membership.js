@@ -1,16 +1,15 @@
 // web/public/js/membership.js
 
 const MEMBERSHIP_MAP = {
-    "1": { name: "🥉 Bronze", color: "#cd7f32" },
-    "2": { name: "✨ Copper", color: "#b87333" },
-    "3": { name: "🥈 Silver", color: "#c0c0c0" },
-    "4": { name: "🥇 Gold", color: "#ffd700" },
-    "5": { name: "✨ Platinum", color: "#e5e4e2" }
+    "0": { name: "⚡ Sneak Peak", color: "#a78bfa" },
+    "1": { name: "🥉 Bronze",     color: "#cd7f32" },
+    "2": { name: "✨ Copper",     color: "#b87333" },
+    "3": { name: "🥈 Silver",     color: "#c0c0c0" },
+    "4": { name: "🥇 Gold",       color: "#ffd700" },
+    "5": { name: "✨ Platinum",   color: "#e5e4e2" }
 };
-
 let currentSort = { column: null, direction: 'asc' };
 let membersData = [];
-
 function sortMembers(col) {
     if (currentSort.column === col) {
         currentSort.direction = currentSort.direction === 'asc' ? 'desc' : 'asc';
@@ -20,7 +19,6 @@ function sortMembers(col) {
     }
     renderMembersTable();
 }
-
 function escapeHtml(str) {
     return String(str).replace(/[&<>]/g, function(m) {
         if (m === '&') return '&amp;';
@@ -37,7 +35,6 @@ function renderMembersTable() {
         tb.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:20px;">No active subscribers found.</td></tr>';
         return;
     }
-
     const sorted = [...membersData].sort((a,b) => {
         let va = a[currentSort.column], vb = b[currentSort.column];
         if (['daysLeft','userId'].includes(currentSort.column)) {
@@ -50,14 +47,12 @@ function renderMembersTable() {
         if (va > vb) return currentSort.direction === 'asc' ? 1 : -1;
         return 0;
     });
-
     document.querySelectorAll('thead th span').forEach(s => s.innerHTML = '');
     if (currentSort.column) {
         const arrow = currentSort.direction === 'asc' ? ' ▲' : ' ▼';
         const span = document.getElementById(`sort-${currentSort.column}`);
         if (span) span.innerHTML = arrow;
     }
-
     tb.innerHTML = sorted.map(m => {
         const r = MEMBERSHIP_MAP[m.rank] || { name: m.rank || 'Standard', color: '#94a3b8' };
         const days = m.daysLeft;
@@ -69,11 +64,9 @@ function renderMembersTable() {
                 <path d="M3 19H15C17.2091 19 19 17.2091 19 15"/>
             </svg>
         </span>` : '';
-
         const logoHtml = m.logoUrl 
             ? `<img src="${m.logoUrl}" alt="Source" style="height:20px; width:auto; vertical-align:middle;">` 
             : '—';
-
         return `<tr style="border-bottom:1px solid #1e293b;">
             <td style="padding:12px;">${escapeHtml(m.nickname||'Unknown')}</td>
             <td style="padding:12px; color:#94a3b8;">${escapeHtml(m.discordTag||'Unknown')}</td>
@@ -87,7 +80,6 @@ function renderMembersTable() {
         </tr>`;
     }).join('');
 }
-
 async function loadMembershipData() {
     const tb = document.getElementById('membership-list-body');
     if (tb) tb.innerHTML = '<tr><td colspan="5" style="padding:30px; text-align:center; color:#64748b;">Loading membership data...</td></tr>';
@@ -101,7 +93,5 @@ async function loadMembershipData() {
         if (tb) tb.innerHTML = '<tr><td colspan="5" style="padding:30px; text-align:center; color:#f87171;">Error loading data.</td></tr>';
     }
 }
-
-// Make functions globally available
 window.sortMembers = sortMembers;
 window.loadMembershipData = loadMembershipData;
