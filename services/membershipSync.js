@@ -481,17 +481,16 @@ async function notifyAdminWithButtons(client, discordId, tier, membership) {
 
   const tierName = TIER_NAMES[tier] || `Tier ${tier}`;
 
-  // ─── Clickable user link without unfurl ─────────────────────────
-  //  Wrapping the URL in <...> tells Discord "render as link, do NOT
-  //  attach a preview card". This is the correct way to suppress the
-  //  unfurl on a message that ALSO carries an embed — using the
-  //  SUPPRESS_EMBEDS flag here would strip the embed itself.
+  // ─── Clickable username, raw ID shown separately ────────────────
+  //  URLs inside an embed description do NOT unfurl — only URLs in
+  //  the message `content` field do. So a plain markdown link here
+  //  is safe and gives us exactly the rendering we want:
+  //
+  //      User: tt7852_76598 (1404317618730569828)
+  //            └── clickable ──┘ └── plain ID ──┘
   // ────────────────────────────────────────────────────────────────
-  const userProfileUrl = `<https://discord.com/users/${discordId}>`;
+  const userProfileLink = `[${displayName}](https://discord.com/users/${discordId})`;
 
-  // Order ID field: shown for website purchases (has a real PayPal
-  // transaction id) but hidden for Patreon rows (internal/manual IDs
-  // that aren't useful in the admin view).
   const fields = [
     { name: 'Source', value: membership.source || 'unknown', inline: true }
   ];
@@ -501,8 +500,11 @@ async function notifyAdminWithButtons(client, discordId, tier, membership) {
 
   const embed = {
     color: 0x00aaff,
-    title: '📨 Membership DM Approval Needed',
-    description: `**User:** ${displayName} (${userProfileUrl})\n**Tier:** ${tierName}\n**Expires:** ${new Date(membership.expires_at).toLocaleDateString()}`,
+    // no `title` — the webhook username already says "📨 Membership DM Approval"
+    description:
+      `**User:** ${userProfileLink} (${discordId})\n` +
+      `**Tier:** ${tierName}\n` +
+      `**Expires:** ${new Date(membership.expires_at).toLocaleDateString()}`,
     fields,
     timestamp: new Date().toISOString()
   };
@@ -523,6 +525,7 @@ async function notifyAdminWithButtons(client, discordId, tier, membership) {
     components: [row],
     username: '📨 Membership DM Approval',
     avatarURL: h.urls.LOGO_URL
+    // no flags — flags: [SUPPRESS_EMBEDS] would strip the embed itself
   });
 }
 
