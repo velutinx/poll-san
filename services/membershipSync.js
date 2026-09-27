@@ -15,11 +15,15 @@ const MESSAGING_TABLE = h.tables.PURCHASE_MESSAGING || 'purchase_messaging';
 
 // Discord message flag: suppresses link previews AND user-provided embeds.
 // Only used on messages that contain NO embeds array. Messages that carry
-// an embed use the <url> angle-bracket trick to prevent unfurling instead.
+// an embed use plain markdown links (embeds never unfurl) instead.
 const SUPPRESS_EMBEDS = 1 << 2; // = 4
 
+// Tier 0 = "Weekly Access (Sneak Peak)" on Patreon.
+// It is a paid membership but grants NO supporter role and NO tier role —
+// patrons on this tier are treated as regular members.
 const SNEAK_PEAK_TIER = 0;
 
+// ─── Retry helper for D1 queries ──────────────────────────────────────
 async function queryWithRetry(sql, params = [], method = 'all', maxRetries = 3) {
   let lastError;
   let delay = 500;
@@ -43,8 +47,11 @@ async function queryWithRetry(sql, params = [], method = 'all', maxRetries = 3) 
   throw lastError;
 }
 
+// Cooldown for the full scan (safety net) – not used automatically, but kept for manual calls
 let lastEnforcementRun = 0;
-const ENFORCEMENT_COOLDOWN = 12 * 60 * 60 * 1000;
+const ENFORCEMENT_COOLDOWN = 12 * 60 * 60 * 1000; // 12 hours
+
+// Mutex to prevent concurrent full scans
 let isEnforcing = false;
 
 const MESSAGES = {
@@ -68,6 +75,22 @@ const MESSAGES = {
 
 function formatDate(date) {
   return date.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
+}
+
+// ─── "Cycle key" = the membership's current expiry date (YYYY-MM-DD).
+//  Stored in purchase_messaging.order_id. Any mismatch on the next sync
+//  means the membership has renewed → reset the ignored/messaged state
+//  and re-prompt the admin for the new billing cycle.
+//  Date-only so tiny precision drift between code paths doesn't cause
+//  false positives.
+// ────────────────────────────────────────────────────────────────────
+function computeCycleKey(membership) {
+  if (!membership?.expires_at) return 'unknown';
+  try {
+    return new Date(membership.expires_at).toISOString().slice(0, 10);
+  } catch (_) {
+    return String(membership.expires_at).slice(0, 10);
+  }
 }
 
 async function getLanguageForOrder(orderId) {
@@ -261,9 +284,10 @@ async function sendRequestTierWebhook(client, discordId, membership) {
   const tierNames = { 2: 'Copper', 3: 'Silver' };
   const tierDisplay = `Request (${tierNames[tier] || tier})`;
 
-  const userLink = `[${tag}](https://discord.com/users/${discordId})`;
+  // Content-only message (no embed) → wrap URL in <...> to stop unfurl.
+  const userLink = `<https://discord.com/users/${discordId}>`;
   const message = `${h.releaseEmojis.PIXELSKY} **New Request Member!**\n` +
-                  `**Name:** ${userLink}\n` +
+                  `**Name:** ${tag} (${userLink})\n` +
                   `**Email:** ${email}\n` +
                   `**Tier:** ${tierDisplay}\n` +
                   `**Expires on:** ${formatDate(expiresAt)}`;
@@ -427,6 +451,7 @@ async function checkAndWarnDuplicateMemberships(client, activeMemberships) {
   }
 }
 
+// ─── Helper: get member display name and tag ──────────────────────
 async function getMemberInfo(client, discordId) {
   let displayName = discordId;
   let userTag = discordId;
@@ -447,29 +472,55 @@ async function getMemberInfo(client, discordId) {
   return { displayName, userTag };
 }
 
+// ─── Messaging approval helpers ──────────────────────────────────
+
 const TIER_NAMES = { 1: 'Bronze', 2: 'Copper', 3: 'Silver', 4: 'Gold', 5: 'Platinum' };
 
-async function shouldNotifyAdmin(discordId, tier) {
-  if (tier < 2) return false;
+async function shouldNotifyAdmin(discordId, tier, membership) {
+  if (tier < 2) return false; // bronze (and Sneak Peak) never triggers
+
+  const cycleKey = computeCycleKey(membership);
 
   const row = await db.query(
-    `SELECT action FROM ${MESSAGING_TABLE}
+    `SELECT action, order_id FROM ${MESSAGING_TABLE}
      WHERE discord_id = ? AND tier = ?`,
     [discordId, tier],
     true
   );
 
   if (!row) return true;
+
+  // New billing cycle → re-prompt regardless of previous action.
+  // (The purchase_messaging.order_id column stores the cycle key,
+  //  i.e. the membership's current expiry date in YYYY-MM-DD form.)
+  if (row.order_id !== cycleKey) return true;
+
+  // Same cycle → respect the previous decision.
   if (row.action === 'ignored' || row.action === 'messaged') return false;
+
   return true;
 }
 
-async function recordMessagingAction(discordId, discordTag, discordName, tier, tierName, action, source = null, orderId = null) {
+async function recordMessagingAction(
+  discordId,
+  discordTag,
+  discordName,
+  tier,
+  tierName,
+  action,
+  source = null,
+  membership = null
+) {
+  // Store the cycle key (expiry date) in the order_id column so the
+  // next sync can detect a renewal. Falls back to null for calls that
+  // don't have the full membership row available.
+  const cycleKey = membership ? computeCycleKey(membership) : null;
+
   await db.query(
     `INSERT OR REPLACE INTO ${MESSAGING_TABLE}
      (discord_id, discord_tag, discord_name, tier, tier_name, action, last_notified_at, source, order_id)
      VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?, ?)`,
-    [discordId, discordTag, discordName, tier, tierName, action, source, orderId]
+    [discordId, discordTag, discordName, tier, tierName, action, source, cycleKey]
   );
 }
 
@@ -491,6 +542,9 @@ async function notifyAdminWithButtons(client, discordId, tier, membership) {
   // ────────────────────────────────────────────────────────────────
   const userProfileLink = `[${displayName}](https://discord.com/users/${discordId})`;
 
+  // Order ID field: shown for website purchases (has a real PayPal
+  // transaction id) but hidden for Patreon rows (internal/manual IDs
+  // that aren't useful in the admin view).
   const fields = [
     { name: 'Source', value: membership.source || 'unknown', inline: true }
   ];
@@ -529,6 +583,7 @@ async function notifyAdminWithButtons(client, discordId, tier, membership) {
   });
 }
 
+// ─── Process all active memberships for messaging ───────────────────
 async function processMembershipMessaging(client, userBestMembership) {
   const processed = new Set();
 
@@ -536,13 +591,14 @@ async function processMembershipMessaging(client, userBestMembership) {
     if (processed.has(discordId)) continue;
     const tier = membership.tier;
 
-    if (!(await shouldNotifyAdmin(discordId, tier))) continue;
+    if (!(await shouldNotifyAdmin(discordId, tier, membership))) continue;
 
     await notifyAdminWithButtons(client, discordId, tier, membership);
     processed.add(discordId);
   }
 }
 
+// ─── Handlers for button interactions (exported) ──────────────────
 async function handleMessageButton(interaction, discordId, tier) {
   await interaction.deferUpdate();
   const client = interaction.client;
@@ -561,10 +617,17 @@ async function handleMessageButton(interaction, discordId, tier) {
   const tierName = TIER_NAMES[tier] || `Tier ${tier}`;
 
   await sendMembershipMessage(client, discordId, membership);
-  await recordMessagingAction(discordId, userTag, displayName, tier, tierName, 'messaged', membership.source, membership.order_id);
 
+  // Pass the full membership row so recordMessagingAction can derive
+  // the cycle key from expires_at and stamp it into purchase_messaging.
+  await recordMessagingAction(
+    discordId, userTag, displayName, tier, tierName,
+    'messaged', membership.source, membership
+  );
+
+  const userLink = `[${displayName}](https://discord.com/users/${discordId})`;
   await interaction.editReply({
-    content: `✅ DM sent to @${displayName} and recorded as "messaged".`,
+    content: `✅ DM sent to ${userLink} and recorded as "messaged".`,
     components: []
   });
 }
@@ -576,37 +639,39 @@ async function handleIgnoreButton(interaction, discordId, tier) {
   const { displayName, userTag } = await getMemberInfo(client, discordId);
   const tierName = TIER_NAMES[tier] || `Tier ${tier}`;
 
+  // expires_at is required so recordMessagingAction can build the cycle key.
   const membership = await db.query(
-    `SELECT source, order_id FROM ${h.tables.MEMBERSHIPS}
+    `SELECT source, order_id, expires_at FROM ${h.tables.MEMBERSHIPS}
      WHERE discord_id = ? AND tier = ? ORDER BY expires_at DESC LIMIT 1`,
     [discordId, tier],
     true
   );
 
   await recordMessagingAction(
-    discordId,
-    userTag,
-    displayName,
-    tier,
-    tierName,
-    'ignored',
-    membership?.source || null,
-    membership?.order_id || null
+    discordId, userTag, displayName, tier, tierName,
+    'ignored', membership?.source || null, membership
   );
 
+  const userLink = `[${displayName}](https://discord.com/users/${discordId})`;
   await interaction.editReply({
-    content: `🚫 Ignored @${displayName} for tier ${tierName}. No future notifications for this tier.`,
+    content: `🚫 Ignored ${userLink} for tier ${tierName}. No future notifications for this cycle.`,
     components: []
   });
 }
 
+// ─── MAIN SYNC (with retry and safe abort) ──────────────────────────
 async function syncMembershipRoles(client) {
   let changesMade = false;
 
   try {
+    // ─── Grace period extended to 10 days to cover PayPal retries ───
     const GRACE_DAYS = 10;
     const graceDate = new Date(Date.now() - GRACE_DAYS * 24 * 60 * 60 * 1000).toISOString();
 
+    // NOTE: We intentionally do NOT filter out tier 0 here. Tier 0
+    // (Patreon "Weekly Access (Sneak Peak)") is a real membership row
+    // that must stay in D1 and in the sync-state KV. It just doesn't
+    // grant any Discord role — which we handle below.
     let activeMemberships;
     try {
       activeMemberships = await queryWithRetry(
@@ -661,8 +726,10 @@ async function syncMembershipRoles(client) {
       }
     }
 
+    // ─── Process messaging approval for all active members ──────
     await processMembershipMessaging(client, userBestMembership);
 
+    // ─── Continue with role sync and DB updates ──────────────────────
     const newIds = [...currentActiveIds].filter(id => !previousActiveIds.has(id));
 
     const guild = await client.guilds.fetch(process.env.GUILD_ID);
@@ -721,6 +788,7 @@ async function syncMembershipRoles(client) {
       changesMade = true;
     }
 
+    // ─── Role sync loop ─────────────────────────────────────────────
     for (const [discordId, membership] of userBestMembership.entries()) {
       const member = await guild.members.fetch(discordId).catch(() => null);
       if (!member) continue;
@@ -732,6 +800,7 @@ async function syncMembershipRoles(client) {
       const currentRoleIds = member.roles.cache.map(r => r.id);
       const hasSupporter = currentRoleIds.includes(SUPPORTER_ROLE);
 
+      // ─── Sneak Peak (tier 0): no tier role, no supporter role ──
       if (membership.tier === SNEAK_PEAK_TIER) {
         let touched = false;
 
@@ -754,6 +823,7 @@ async function syncMembershipRoles(client) {
         continue;
       }
 
+      // ─── Normal paid tiers (1–5) ──────────────────────────────
       const targetRoleId = TIER_ROLES[membership.tier];
       const hasTargetRole = currentRoleIds.includes(targetRoleId);
 
@@ -820,6 +890,7 @@ async function syncMembershipRoles(client) {
   }
 }
 
+// ─── Helper: add a role with retry on 429 ──────────────────────────
 async function addRoleWithRetry(member, roleId, maxAttempts = 3) {
   let attempts = 0;
   while (attempts < maxAttempts) {
@@ -840,6 +911,7 @@ async function addRoleWithRetry(member, roleId, maxAttempts = 3) {
   console.error(`[enforceRolesForMember] Failed to add role ${roleId} after ${maxAttempts} attempts`);
 }
 
+// ─── Helper: remove a role with retry on 429 ────────────────────────
 async function removeRoleWithRetry(member, roleId, maxAttempts = 3) {
   let attempts = 0;
   while (attempts < maxAttempts) {
@@ -860,10 +932,12 @@ async function removeRoleWithRetry(member, roleId, maxAttempts = 3) {
   console.error(`[enforceRolesForMember] Failed to remove role ${roleId} after ${maxAttempts} attempts`);
 }
 
+// ─── ENHANCED REAL‑TIME ROLE FIX (with grace period) ──────────────
 async function enforceRolesForMember(member) {
   if (member.user.bot) return;
   if (member.roles.cache.has(CREATOR_ROLE)) return;
 
+  // ─── Apply 10‑day grace period for real‑time enforcement ────────
   const GRACE_DAYS = 10;
   const graceDate = new Date(Date.now() - GRACE_DAYS * 24 * 60 * 60 * 1000).toISOString();
 
@@ -888,6 +962,7 @@ async function enforceRolesForMember(member) {
   const hasUnverified = member.roles.cache.has(UNVERIFIED_ROLE);
   const currentRoleIds = member.roles.cache.map(r => r.id);
 
+  // ─── Sneak Peak (tier 0): strip tier + supporter roles, ensure member ──
   if (activeMembership && activeMembership.tier === SNEAK_PEAK_TIER) {
     const removeRoles = [];
     for (const roleId of TIER_ROLE_IDS) {
@@ -937,11 +1012,13 @@ async function enforceRolesForMember(member) {
     return;
   }
 
+  // No active membership – ensure base Member role.
   if (!hasSupporter && !hasMember && !hasUnverified) {
     await addRoleWithRetry(member, MEMBER_ROLE);
   }
 }
 
+// ─── FULL SCAN (SAFETY NET) – rarely needed, now with mutex ──────
 async function enforceRolesForAllMembers(client) {
   if (isEnforcing) {
     console.log('[MembershipSync] Full enforcement already running, skipping.');
