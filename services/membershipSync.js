@@ -5,7 +5,6 @@ const db = require('./database');
 const h = require('../utils/helpers');
 const TIER_ROLES = h.weights.tierMapping;
 const TIER_ROLE_IDS = Object.values(TIER_ROLES);
-const SUPPRESS_ROLE = h.ids.roles.supporter;
 const SUPPORTER_ROLE = h.ids.roles.supporter;
 const CREATOR_ROLE = h.ids.roles.creator;
 const MEMBER_ROLE = h.ids.roles.member;
@@ -14,12 +13,11 @@ const SYNC_STATE_WORKER_URL = h.urls.CLOUDFLARE_D1_WORKER;
 const ADMIN_CHANNEL_ID = h.ids.channels.admin_channel;
 const MESSAGING_TABLE = h.tables.PURCHASE_MESSAGING || 'purchase_messaging';
 
-// Discord message flag: suppresses link previews (embeds) on a message.
-// Used when we include discord.com/users/<id> links so Discord doesn't
-// attach a preview card underneath the notification.
+// Discord message flag: suppresses link previews AND user-provided embeds.
+// Only used on messages that contain NO embeds array. Messages that carry
+// an embed use the <url> angle-bracket trick to prevent unfurling instead.
 const SUPPRESS_EMBEDS = 1 << 2; // = 4
 
-// Tier 0 = "Weekly Access (Sneak Peak)" on Patreon.
 const SNEAK_PEAK_TIER = 0;
 
 async function queryWithRetry(sql, params = [], method = 'all', maxRetries = 3) {
@@ -483,24 +481,17 @@ async function notifyAdminWithButtons(client, discordId, tier, membership) {
 
   const tierName = TIER_NAMES[tier] || `Tier ${tier}`;
 
-  // ─── Clickable user link ────────────────────────────────────────
-  //  The display name links to the user's Discord profile so the admin
-  //  can jump straight to it. The raw ID is kept in parentheses for
-  //  copy-paste use.
-  //
-  //  The SUPPRESS_EMBEDS flag on the webhook.send call below prevents
-  //  Discord from attaching its auto-generated preview card for the
-  //  discord.com/users/<id> URL.
+  // ─── Clickable user link without unfurl ─────────────────────────
+  //  Wrapping the URL in <...> tells Discord "render as link, do NOT
+  //  attach a preview card". This is the correct way to suppress the
+  //  unfurl on a message that ALSO carries an embed — using the
+  //  SUPPRESS_EMBEDS flag here would strip the embed itself.
   // ────────────────────────────────────────────────────────────────
-  const userLink = `[${displayName}](https://discord.com/users/${discordId})`;
+  const userProfileUrl = `<https://discord.com/users/${discordId}>`;
 
-  // ─── Conditional Order ID field ─────────────────────────────────
-  //  Order IDs from the website are meaningful (PayPal transaction
-  //  references like `I-NGVPB4H6KT5S`). Patreon rows carry internal
-  //  IDs like `patreon_12345678` or manual placeholders like
-  //  `manual_priority_Jdoe13950` — pure noise in the admin view.
-  //  We only show the field for non-Patreon sources.
-  // ────────────────────────────────────────────────────────────────
+  // Order ID field: shown for website purchases (has a real PayPal
+  // transaction id) but hidden for Patreon rows (internal/manual IDs
+  // that aren't useful in the admin view).
   const fields = [
     { name: 'Source', value: membership.source || 'unknown', inline: true }
   ];
@@ -511,7 +502,7 @@ async function notifyAdminWithButtons(client, discordId, tier, membership) {
   const embed = {
     color: 0x00aaff,
     title: '📨 Membership DM Approval Needed',
-    description: `**User:** ${userLink} (${discordId})\n**Tier:** ${tierName}\n**Expires:** ${new Date(membership.expires_at).toLocaleDateString()}`,
+    description: `**User:** ${displayName} (${userProfileUrl})\n**Tier:** ${tierName}\n**Expires:** ${new Date(membership.expires_at).toLocaleDateString()}`,
     fields,
     timestamp: new Date().toISOString()
   };
@@ -531,8 +522,7 @@ async function notifyAdminWithButtons(client, discordId, tier, membership) {
     embeds: [embed],
     components: [row],
     username: '📨 Membership DM Approval',
-    avatarURL: h.urls.LOGO_URL,
-    flags: [SUPPRESS_EMBEDS]
+    avatarURL: h.urls.LOGO_URL
   });
 }
 
