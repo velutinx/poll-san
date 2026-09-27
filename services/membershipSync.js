@@ -23,6 +23,21 @@ const SUPPRESS_EMBEDS = 1 << 2; // = 4
 // patrons on this tier are treated as regular members.
 const SNEAK_PEAK_TIER = 0;
 
+// ─── Discord IDs that must NEVER trigger an admin DM-approval prompt.
+//  Test accounts, staff alts, dev sandboxes, etc. Add more IDs freely —
+//  the check short-circuits both shouldNotifyAdmin and the outer
+//  processMembershipMessaging loop so these users never appear.
+// ────────────────────────────────────────────────────────────────────
+const PERMANENTLY_IGNORED_IDS = new Set([
+  '842917477977161739', // dorem — test account
+]);
+
+// ─── Sources whose order_id is an internal/manual identifier rather than
+//  a real transaction the admin could look up. Order ID is hidden for
+//  these on the DM-approval card.
+// ────────────────────────────────────────────────────────────────────
+const HIDDEN_ORDER_ID_SOURCES = new Set(['patreon', 'subscribestar']);
+
 // ─── Retry helper for D1 queries ──────────────────────────────────────
 async function queryWithRetry(sql, params = [], method = 'all', maxRetries = 3) {
   let lastError;
@@ -75,6 +90,17 @@ const MESSAGES = {
 
 function formatDate(date) {
   return date.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
+}
+
+// ─── Short month-name format: "jun/9/2027", "oct/2/2026", etc.
+//  Lowercase 3-letter English month so it's compact and unambiguous.
+//  Used only on the DM-approval admin card.
+// ────────────────────────────────────────────────────────────────────
+const SHORT_MONTHS = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];
+function formatExpiry(date) {
+  const d = new Date(date);
+  if (isNaN(d.getTime())) return 'unknown';
+  return `${SHORT_MONTHS[d.getMonth()]}/${d.getDate()}/${d.getFullYear()}`;
 }
 
 // ─── "Cycle key" = the membership's current expiry date (YYYY-MM-DD).
@@ -479,6 +505,9 @@ const TIER_NAMES = { 1: 'Bronze', 2: 'Copper', 3: 'Silver', 4: 'Gold', 5: 'Plati
 async function shouldNotifyAdmin(discordId, tier, membership) {
   if (tier < 2) return false; // bronze (and Sneak Peak) never triggers
 
+  // Permanent skip list — test accounts, staff alts, etc.
+  if (PERMANENTLY_IGNORED_IDS.has(String(discordId))) return false;
+
   const cycleKey = computeCycleKey(membership);
 
   const row = await db.query(
@@ -542,13 +571,14 @@ async function notifyAdminWithButtons(client, discordId, tier, membership) {
   // ────────────────────────────────────────────────────────────────
   const userProfileLink = `[${displayName}](https://discord.com/users/${discordId})`;
 
-  // Order ID field: shown for website purchases (has a real PayPal
-  // transaction id) but hidden for Patreon rows (internal/manual IDs
-  // that aren't useful in the admin view).
+  // Order ID field: shown only for sources that have a real, externally
+  // verifiable transaction ID (website/PayPal, Ko-fi, etc.). Hidden for
+  // Patreon and SubscribeStar because their IDs are internal/manual and
+  // not useful on the admin card.
   const fields = [
     { name: 'Source', value: membership.source || 'unknown', inline: true }
   ];
-  if (membership.source !== 'patreon' && membership.order_id) {
+  if (!HIDDEN_ORDER_ID_SOURCES.has(membership.source) && membership.order_id) {
     fields.push({ name: 'Order ID', value: membership.order_id, inline: true });
   }
 
@@ -558,7 +588,7 @@ async function notifyAdminWithButtons(client, discordId, tier, membership) {
     description:
       `**User:** ${userProfileLink} (${discordId})\n` +
       `**Tier:** ${tierName}\n` +
-      `**Expires:** ${new Date(membership.expires_at).toLocaleDateString()}`,
+      `**Expires:** ${formatExpiry(membership.expires_at)}`,
     fields,
     timestamp: new Date().toISOString()
   };
@@ -589,6 +619,10 @@ async function processMembershipMessaging(client, userBestMembership) {
 
   for (const [discordId, membership] of userBestMembership.entries()) {
     if (processed.has(discordId)) continue;
+
+    // Short-circuit the permanent skip list before hitting the DB.
+    if (PERMANENTLY_IGNORED_IDS.has(String(discordId))) continue;
+
     const tier = membership.tier;
 
     if (!(await shouldNotifyAdmin(discordId, tier, membership))) continue;
@@ -668,10 +702,6 @@ async function syncMembershipRoles(client) {
     const GRACE_DAYS = 10;
     const graceDate = new Date(Date.now() - GRACE_DAYS * 24 * 60 * 60 * 1000).toISOString();
 
-    // NOTE: We intentionally do NOT filter out tier 0 here. Tier 0
-    // (Patreon "Weekly Access (Sneak Peak)") is a real membership row
-    // that must stay in D1 and in the sync-state KV. It just doesn't
-    // grant any Discord role — which we handle below.
     let activeMemberships;
     try {
       activeMemberships = await queryWithRetry(
@@ -937,7 +967,6 @@ async function enforceRolesForMember(member) {
   if (member.user.bot) return;
   if (member.roles.cache.has(CREATOR_ROLE)) return;
 
-  // ─── Apply 10‑day grace period for real‑time enforcement ────────
   const GRACE_DAYS = 10;
   const graceDate = new Date(Date.now() - GRACE_DAYS * 24 * 60 * 60 * 1000).toISOString();
 
@@ -962,7 +991,6 @@ async function enforceRolesForMember(member) {
   const hasUnverified = member.roles.cache.has(UNVERIFIED_ROLE);
   const currentRoleIds = member.roles.cache.map(r => r.id);
 
-  // ─── Sneak Peak (tier 0): strip tier + supporter roles, ensure member ──
   if (activeMembership && activeMembership.tier === SNEAK_PEAK_TIER) {
     const removeRoles = [];
     for (const roleId of TIER_ROLE_IDS) {
@@ -1012,7 +1040,6 @@ async function enforceRolesForMember(member) {
     return;
   }
 
-  // No active membership – ensure base Member role.
   if (!hasSupporter && !hasMember && !hasUnverified) {
     await addRoleWithRetry(member, MEMBER_ROLE);
   }
