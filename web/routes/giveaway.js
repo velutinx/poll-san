@@ -93,7 +93,6 @@ module.exports = function setupGiveawayRoutes(app, client, getGuildMembers) {
 
     app.get('/api/giveaway/active', async (req, res) => {
         try {
-            const now = new Date().toUTCString();
             const giveaway = await db.query(
                 `SELECT * FROM ${h.tables.GIVEAWAYS}
                  WHERE ended = 0
@@ -107,43 +106,6 @@ module.exports = function setupGiveawayRoutes(app, client, getGuildMembers) {
                 return res.json({ active: false });
             }
 
-            const endTimeDate = new Date(giveaway.end_time);
-            const nowDate = new Date();
-            const msLeft = endTimeDate - nowDate;
-            const hoursLeft = msLeft / (1000 * 60 * 60);
-
-            // ─── Send reminder only if within 24h and not yet sent ───
-            if (!giveaway.reminder_sent && hoursLeft <= 24 && hoursLeft > 0) {
-                try {
-                    const channel = await client.channels.fetch(giveaway.channel_id);
-                    const roleMention = `<@&${h.ids.roles.giveaway_notify_role}>`;
-                    const webhook = await getGiveawayWebhook(channel);
-                    const reminderMsg = await webhook.send({
-                        content: `${h.releaseEmojis.ALERT} **Last day in the current giveaway!** ${roleMention}`,
-                        username: 'Giveaway',
-                        avatarURL: h.urls.LOGO_URL
-                    });
-
-                    // ─── Store the reminder message ID with retry ───
-                    try {
-                        await db.query(
-                            `UPDATE ${h.tables.GIVEAWAYS}
-                             SET reminder_sent = 1, reminder_message_id = ?
-                             WHERE message_id = ?`,
-                            [reminderMsg.id, giveaway.message_id]
-                        );
-                        console.log(`✅ Reminder sent and stored for giveaway ${giveaway.message_id}`);
-                    } catch (updateErr) {
-                        console.error(`❌ Failed to store reminder ID for ${giveaway.message_id}:`, updateErr.message);
-                        // We still sent the message; we'll log the ID so we can manually delete if needed.
-                        console.log(`📌 Reminder message ID was ${reminderMsg.id} (not stored in DB)`);
-                    }
-                } catch (reminderErr) {
-                    console.error('Failed to send giveaway reminder:', reminderErr);
-                }
-            }
-
-            // ─── Rest of the endpoint (same as before) ──────────────
             const guild = await client.guilds.fetch(process.env.GUILD_ID);
             const entrants = await getEntrants(giveaway.message_id, client);
             const entrantsDetails = [];
@@ -230,7 +192,6 @@ module.exports = function setupGiveawayRoutes(app, client, getGuildMembers) {
         }
     });
 
-    // ─── The rest of the routes (adjust-time, remove, blacklist) unchanged ───
     app.post('/api/giveaway/adjust-time', async (req, res) => {
         const { hours } = req.body;
         if (typeof hours !== 'number' || isNaN(hours)) {
