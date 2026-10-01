@@ -236,7 +236,6 @@ async function endGiveaway(messageId, client) {
             const idx = Math.floor(Math.random() * remaining.length);
             secondWinner = remaining.splice(idx, 1)[0];
         }
-        // Fixed: Ensure blacklisted entrants don't win 3rd place!
         const allRemaining = [...remaining]; 
         if (allRemaining.length > 0) {
             const idx = Math.floor(Math.random() * allRemaining.length);
@@ -333,6 +332,55 @@ async function restoreGiveaways(client) {
     }
 }
 
+async function checkGiveawayReminders(client) {
+    try {
+        const now = new Date();
+        const in24h = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+
+        const giveaways = await db.query(
+            `SELECT * FROM ${h.tables.GIVEAWAYS}
+             WHERE ended = 0
+               AND reminder_sent = 0
+               AND end_time > ?
+               AND end_time <= ?`,
+            [now.toISOString(), in24h.toISOString()]
+        );
+
+        if (!giveaways || giveaways.length === 0) return;
+
+        for (const giveaway of giveaways) {
+            try {
+                const channel = await client.channels.fetch(giveaway.channel_id).catch(() => null);
+                if (!channel) {
+                    console.warn(`[GiveawayReminder] Channel ${giveaway.channel_id} not found for ${giveaway.message_id}`);
+                    continue;
+                }
+
+                const roleMention = `<@&${h.ids.roles.giveaway_notify_role}>`;
+                const webhook = await getGiveawayWebhook(channel);
+                const reminderMsg = await webhook.send({
+                    content: `${h.releaseEmojis.ALERT} **Last day in the current giveaway!** ${roleMention}`,
+                    username: 'Giveaway',
+                    avatarURL: h.urls.LOGO_URL
+                });
+
+                await db.query(
+                    `UPDATE ${h.tables.GIVEAWAYS}
+                     SET reminder_sent = 1, reminder_message_id = ?
+                     WHERE message_id = ?`,
+                    [reminderMsg.id, giveaway.message_id]
+                );
+
+                console.log(`✅ [GiveawayReminder] Sent reminder for giveaway ${giveaway.message_id} (${giveaway.prize})`);
+            } catch (err) {
+                console.error(`❌ [GiveawayReminder] Failed for ${giveaway.message_id}:`, err.message);
+            }
+        }
+    } catch (err) {
+        console.error('[GiveawayReminder] Query failed:', err.message);
+    }
+}
+
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('giveaway')
@@ -352,17 +400,13 @@ module.exports = {
                 .setRequired(true)),
                 
     async execute(interaction) {
-        // ⚠️ This function is only for slash commands; button interactions are handled separately.
-        // If for some reason a button reaches here, ignore it.
         if (interaction.isButton()) {
-            // This should never happen, but just in case, delegate to the button handler.
             if (interaction.customId === 'enter_giveaway') {
                 return handleGiveawayButton(interaction);
             }
             return;
         }
 
-        // Permission check
         if (!interaction.memberPermissions || !interaction.memberPermissions.has(PermissionsBitField.Flags.ManageGuild)) {
             return interaction.reply({
                 content: 'You need `Manage Server` permission to create giveaways.',
@@ -370,7 +414,6 @@ module.exports = {
             });
         }
 
-        // ─── 1. Defer reply immediately ──────────────────────────
         await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
 
         const durationStr = interaction.options.getString('duration');
@@ -447,7 +490,6 @@ module.exports = {
                 username: 'Giveaway',
                 avatar: h.urls.LOGO_URL
             });
-            // Fixed: Safely delete webhook message using webhook API, not message wrapper.
             setTimeout(() => {
                 webhook.deleteMessage(pingMessage.id).catch(() => {});
             }, 2000);
@@ -487,14 +529,13 @@ module.exports = {
             timeoutId
         });
         
-        // ─── 2. Send final reply via editReply ──────────────────
         await interaction.editReply({
             content: `Giveaway created in ${channel}!`
         });
     },
 
-    // Handlers exposed for event files/loaders needing them
     handleGiveawayButton,
     restoreGiveaways,
-    getBlacklistIds
+    getBlacklistIds,
+    checkGiveawayReminders
 };
