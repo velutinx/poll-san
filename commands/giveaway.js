@@ -334,16 +334,13 @@ async function restoreGiveaways(client) {
 
 async function checkGiveawayReminders(client) {
     try {
-        const now = new Date();
-        const in24h = new Date(now.getTime() + 24 * 60 * 60 * 1000);
-
         const giveaways = await db.query(
             `SELECT * FROM ${h.tables.GIVEAWAYS}
              WHERE ended = 0
                AND reminder_sent = 0
-               AND end_time > ?
-               AND end_time <= ?`,
-            [now.toISOString(), in24h.toISOString()]
+               AND end_time > datetime('now')
+               AND end_time <= datetime('now', '+24 hours')`,
+            []
         );
 
         if (!giveaways || giveaways.length === 0) return;
