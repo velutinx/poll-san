@@ -122,10 +122,19 @@ module.exports = async (c) => {
     console.error('Failed to fetch active polls:', err);
   }
 
-  const { restoreGiveaways } = require('../commands/giveaway');
+  const { restoreGiveaways, checkGiveawayReminders } = require('../commands/giveaway');
+
   setTimeout(() => {
     restoreGiveaways(c).catch(console.error);
   }, 10000);
+
+  setTimeout(() => {
+    checkGiveawayReminders(c).catch(err => console.error('[GiveawayReminder] Initial check failed:', err));
+  }, 15000);
+
+  setInterval(() => {
+    checkGiveawayReminders(c).catch(err => console.error('[GiveawayReminder] Periodic check failed:', err));
+  }, 10 * 60 * 1000);
 
   setTimeout(() => {
     cleanupExpiredMemberships(c).catch(err => console.error('Initial membership cleanup failed:', err));
