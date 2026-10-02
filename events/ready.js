@@ -75,7 +75,7 @@ module.exports = async (c) => {
 
   setInterval(() => {
     syncMembershipRoles(c).catch(err => console.error('[MembershipSync] Sync error:', err));
-  }, 12 * 60 * 60 * 1000);
+  }, 15 * 60 * 1000);
 
   setInterval(() => {
     enforceRolesForAllMembers(c).catch(err => console.error('[Ready] Periodic role enforcement error:', err));
