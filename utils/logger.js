@@ -18,6 +18,7 @@ const IGNORE_PATTERNS = [
   /⏭️ Skipping/i,
   /🗑️ Deleted reminder message .+ for giveaway .+/i,
   /🗳️ Vote (Recorded|Removed)/i,
+  /🧹 (Cleared stale poll_settings|Reset reminder columns)/i,
   /📋 .* to queue/i,
   /📋 Added .* to queue/i,
   /📋 Added winner to queue:/i,
