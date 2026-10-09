@@ -84,14 +84,7 @@ client.on(Events.GuildMemberUpdate, roleUpdateRecalcEvent);
 client.on(Events.MessageCreate, (message) => { handleTriviaMessage(message).catch(err => console.error('Trivia handler error:', err)); });
 client.on(Events.MessageCreate, async (message) => { await XPLib.updateXP(message); });
 client.on(Events.MessageCreate, triviaGuessEvent);
-
 client.on('error', console.error);
-process.on('unhandledRejection', (reason) => {
-    if (reason instanceof Error && reason.cause?.code === 'UND_ERR_CONNECT_TIMEOUT' && reason.message.includes('fetch failed')) {
-        return;
-    }
-    console.error(reason);
-});
 
 const { startCleanup } = require('./services/redeemHandler');
 startCleanup();
