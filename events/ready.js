@@ -41,7 +41,9 @@ module.exports = async (c) => {
     require('../commands/admin/post-verify-ui').data.toJSON(),
     require('../commands/admin/post-checkin-ui').data.toJSON(),
     require('../commands/admin/post-cointoss-ui').data.toJSON(),
-    require('../commands/admin/post-redeem-ui').data.toJSON()
+    require('../commands/admin/post-redeem-ui').data.toJSON(),
+    require('../commands/admin/mute').data.toJSON(),
+    require('../commands/admin/unmute').data.toJSON()
   ];
 
   const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
