@@ -760,4 +760,4 @@ function init(client) {
         startMonthlyCheck(client);
     });
 }
-module.exports = { init, processMember, NUDITY_THRESHOLD };
+module.exports = { init, processMember, NUDITY_THRESHOLD, applyDenyOverwrites, removeDenyOverwrites };
