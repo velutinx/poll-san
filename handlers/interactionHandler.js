@@ -29,6 +29,8 @@ module.exports = async function handleInteraction(interaction) {
                 case 'post_checkin_ui': await require('../commands/admin/post-checkin-ui').execute(interaction); break;
                 case 'post_cointoss_ui': await require('../commands/admin/post-cointoss-ui').execute(interaction); break;
                 case 'post_redeem_ui': await require('../commands/admin/post-redeem-ui').execute(interaction); break;
+                case 'mute': await require('../commands/admin/mute').execute(interaction); break;
+                case 'unmute': await require('../commands/admin/unmute').execute(interaction); break;
                 default: break;
             }
         }
